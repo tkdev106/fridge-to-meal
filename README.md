@@ -41,7 +41,7 @@ AI エージェントで作業する場合は [`CLAUDE.md`](CLAUDE.md) を参照
 
 ## これからやること
 
-1. **献立生成のプロンプト設計** — 設計は [`docs/prompt-design.md`](docs/prompt-design.md) に完了。残るのは実行:
+1. **献立生成のプロンプト設計** — 設計は [`docs/prompt-design.md`](docs/prompt-design.md) に完了。試行ツールは [`tools/prompt-trial/`](tools/prompt-trial/)。残るのは実行:
    - 7つの在庫パターンでの試行（同書 第9章）
    - `count_tokens` による費用の実測（同書 第10章）
    - 同じプロンプトを投げての LLM プロバイダ比較（同書 第11章、ADR-019）

@@ -1,0 +1,106 @@
+{
+  "_note": "docs/prompt-design.md 第9.1章の在庫パターン。expiryInDays: 0=今日, 負数=期限切れ, null=未設定。",
+  "patterns": [
+    {
+      "id": "P-1",
+      "name": "まとめ買い直後",
+      "watch": "基本形。3件の調理法が分かれるか、材料名が在庫の表記のままか",
+      "useAvoidTitles": 0,
+      "stock": [
+        { "name": "豚こま肉", "amount": "400g", "expiryInDays": 2 },
+        { "name": "鶏むね肉", "amount": "2枚", "expiryInDays": 3 },
+        { "name": "合いびき肉", "amount": "300g", "expiryInDays": 1 },
+        { "name": "生鮭", "amount": "2切れ", "expiryInDays": 1 },
+        { "name": "キャベツ", "amount": "1/2個", "expiryInDays": 5 },
+        { "name": "にんじん", "amount": "3本", "expiryInDays": 10 },
+        { "name": "玉ねぎ", "amount": "4個", "expiryInDays": 14 },
+        { "name": "じゃがいも", "amount": "5個", "expiryInDays": 14 },
+        { "name": "ピーマン", "amount": "4個", "expiryInDays": 4 },
+        { "name": "なす", "amount": "3本", "expiryInDays": 3 },
+        { "name": "ほうれん草", "amount": "1束", "expiryInDays": 2 },
+        { "name": "しめじ", "amount": "1パック", "expiryInDays": 4 },
+        { "name": "卵", "amount": "10個", "expiryInDays": 8 },
+        { "name": "牛乳", "amount": "1000ml", "expiryInDays": 6 },
+        { "name": "スライスチーズ", "amount": "5枚", "expiryInDays": 20 },
+        { "name": "木綿豆腐", "amount": "2丁", "expiryInDays": 3 },
+        { "name": "油揚げ", "amount": "3枚", "expiryInDays": 5 },
+        { "name": "乾燥わかめ", "amount": "1袋", "expiryInDays": null },
+        { "name": "干ししいたけ", "amount": "1袋", "expiryInDays": null },
+        { "name": "春雨", "amount": "1袋", "expiryInDays": null }
+      ]
+    },
+    {
+      "id": "P-2",
+      "name": "週末前の残り物",
+      "watch": "在庫が半端なときの挙動。在庫にない食材を2つより多く足さないか",
+      "useAvoidTitles": 0,
+      "stock": [
+        { "name": "豚こま肉", "amount": "100g", "expiryInDays": 0 },
+        { "name": "キャベツ", "amount": "1/4個", "expiryInDays": 2 },
+        { "name": "卵", "amount": "2個", "expiryInDays": 5 },
+        { "name": "にんじん", "amount": "1本", "expiryInDays": 9 },
+        { "name": "乾燥わかめ", "amount": "1袋", "expiryInDays": null }
+      ]
+    },
+    {
+      "id": "P-3",
+      "name": "極端に少ない",
+      "watch": "第8章の境界。3件を求めたときに無理な献立が出るか",
+      "useAvoidTitles": 0,
+      "stock": [
+        { "name": "卵", "amount": "4個", "expiryInDays": 6 },
+        { "name": "玉ねぎ", "amount": "2個", "expiryInDays": 12 }
+      ]
+    },
+    {
+      "id": "P-4",
+      "name": "期限が切迫",
+      "watch": "FR-18。期限が今日の3件が3件の献立に散るか、1件に集中するか。期限切れの1件が除外されているか",
+      "useAvoidTitles": 0,
+      "stock": [
+        { "name": "鶏むね肉", "amount": "1枚", "expiryInDays": 0 },
+        { "name": "小松菜", "amount": "1束", "expiryInDays": 0 },
+        { "name": "木綿豆腐", "amount": "1丁", "expiryInDays": 0 },
+        { "name": "絹ごし豆腐", "amount": "1丁", "expiryInDays": -1 },
+        { "name": "にんじん", "amount": "2本", "expiryInDays": 8 },
+        { "name": "玉ねぎ", "amount": "3個", "expiryInDays": 14 },
+        { "name": "卵", "amount": "6個", "expiryInDays": 7 },
+        { "name": "しめじ", "amount": "1パック", "expiryInDays": 4 }
+      ]
+    },
+    {
+      "id": "P-5",
+      "name": "蓄積後",
+      "watch": "FR-42 の実効性と、避けたい献立50件ぶんの入力トークンの増分",
+      "useAvoidTitles": 50,
+      "stockFrom": "P-1"
+    },
+    {
+      "id": "P-6",
+      "name": "偏った在庫",
+      "watch": "たんぱく質がない在庫で何を出すか。豆腐や肉を勝手に足さないか",
+      "useAvoidTitles": 0,
+      "stock": [
+        { "name": "キャベツ", "amount": "1/2個", "expiryInDays": 3 },
+        { "name": "にんじん", "amount": "2本", "expiryInDays": 9 },
+        { "name": "玉ねぎ", "amount": "2個", "expiryInDays": 12 },
+        { "name": "じゃがいも", "amount": "3個", "expiryInDays": 12 },
+        { "name": "ピーマン", "amount": "3個", "expiryInDays": 4 },
+        { "name": "もやし", "amount": "1袋", "expiryInDays": 1 }
+      ]
+    },
+    {
+      "id": "P-7",
+      "name": "表記ゆれを含む",
+      "watch": "D-3。崩れた表記でも材料名がそのまま使われるか。守られないなら食材カタログの優先度が上がる",
+      "useAvoidTitles": 0,
+      "stock": [
+        { "name": "豚こま", "amount": "100g", "expiryInDays": 0 },
+        { "name": "キャベツ（1/4）", "amount": "", "expiryInDays": 2 },
+        { "name": "たまご", "amount": "2コ", "expiryInDays": 5 },
+        { "name": "にんじん(小)", "amount": "1", "expiryInDays": 9 },
+        { "name": "乾燥ワカメ", "amount": "1袋", "expiryInDays": null }
+      ]
+    }
+  ]
+}
