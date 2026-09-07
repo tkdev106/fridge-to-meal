@@ -21,6 +21,7 @@
 | [`docs/requirements.md`](docs/requirements.md) | 要件定義。何を作るか、何を作らないか |
 | [`docs/domain-model.md`](docs/domain-model.md) | ドメインモデル。サブドメイン分類・ユビキタス言語・集約と不変条件 |
 | [`docs/adr.md`](docs/adr.md) | アーキテクチャ決定録。ADR-001〜021 |
+| [`docs/prompt-design.md`](docs/prompt-design.md) | 献立生成のプロンプト設計。ポートの契約・プロンプト全文・応答の検証規則・試行の設計 |
 
 `docs/html/` に同じ内容の閲覧用 HTML があります（図が読みやすい版）。**正は Markdown です。**
 
@@ -40,8 +41,10 @@ AI エージェントで作業する場合は [`CLAUDE.md`](CLAUDE.md) を参照
 
 ## これからやること
 
-1. **献立生成のプロンプト設計**と、少数の実在庫パターンでの試行
-   - ここで重複回避（FR-42）、費用の実測、LLM プロバイダの比較をまとめて行う
+1. **献立生成のプロンプト設計** — 設計は [`docs/prompt-design.md`](docs/prompt-design.md) に完了。残るのは実行:
+   - 7つの在庫パターンでの試行（同書 第9章）
+   - `count_tokens` による費用の実測（同書 第10章）
+   - 同じプロンプトを投げての LLM プロバイダ比較（同書 第11章、ADR-019）
 2. 主要画面のワイヤーフレーム作成
 3. ドメイン層とユースケース層の実装着手
 4. 開発環境のセットアップ（`CLAUDE.md` のコマンド節を埋める）
