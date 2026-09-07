@@ -22,6 +22,7 @@
 | [`docs/domain-model.md`](docs/domain-model.md) | ドメインモデル。サブドメイン分類・ユビキタス言語・集約と不変条件 |
 | [`docs/adr.md`](docs/adr.md) | アーキテクチャ決定録。ADR-001〜021 |
 | [`docs/prompt-design.md`](docs/prompt-design.md) | 献立生成のプロンプト設計。ポートの契約・プロンプト全文・応答の検証規則・試行の設計 |
+| [`docs/screen-design.md`](docs/screen-design.md) | 画面設計。画面遷移・各画面の状態・再利用の見せ方 |
 
 `docs/html/` に同じ内容の閲覧用 HTML があります（図が読みやすい版）。**正は Markdown です。**
 
@@ -45,6 +46,6 @@ AI エージェントで作業する場合は [`CLAUDE.md`](CLAUDE.md) を参照
    - 7つの在庫パターンでの試行（同書 第9章）
    - `count_tokens` による費用の実測（同書 第10章）
    - 同じプロンプトを投げての LLM プロバイダ比較（同書 第11章、ADR-019）
-2. 主要画面のワイヤーフレーム作成
-3. ドメイン層とユースケース層の実装着手
-4. 開発環境のセットアップ（`CLAUDE.md` のコマンド節を埋める）
+2. **主要画面のワイヤーフレーム作成** — [`docs/screen-design.md`](docs/screen-design.md) に一巡。起動時の画面をどれにするかだけ判断待ち
+3. 開発環境のセットアップ（`CLAUDE.md` のコマンド節を埋める）
+4. ドメイン層とユースケース層の実装着手
