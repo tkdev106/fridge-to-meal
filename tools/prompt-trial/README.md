@@ -85,4 +85,4 @@ node tools/prompt-trial/run.mjs --provider openai --model gpt-5.6-luna    --runs
 
 ## 単価
 
-`lib/pricing.mjs` に置いてある。**Anthropic 以外は二次情報なので、費用を根拠に判断する前に公式ページで確認すること。**
+`lib/pricing.mjs` に、実際に試すモデルの公式単価を**自分で入れてから**使う。未登録のモデルは `summary.md` の円の欄が「-」になるだけで、試行そのものは動く。
