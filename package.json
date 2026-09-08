@@ -10,13 +10,15 @@
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
     "build": "pnpm --filter \"./packages/*\" build && pnpm --filter \"./apps/*\" build",
     "test": "vitest run",
+    "test:hooks": "node --test .claude/hooks/*.test.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc --build --force",
     "lint": "pnpm lint:code && pnpm lint:deps",
     "lint:code": "eslint .",
     "lint:deps": "depcruise apps packages",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:hooks && pnpm build"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260908.1",

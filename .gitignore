@@ -12,3 +12,9 @@ build/
 .vscode/
 .idea/
 coverage/
+
+# AI の作業メモ置き場（計画・調査の下書き）。成果は git に、下書きはここに
+z-ai/
+
+# 個人ごとの Claude Code 設定。共有するのは .claude/settings.json だけ
+.claude/settings.local.json
