@@ -131,16 +131,45 @@ packages/contract/         API の型定義。web と api で共有
 
 ## コマンド
 
-まだセットアップされていない。**最初にセットアップした人がこの節を埋めること。**
-
-想定（未確定）:
+前提: **Node 22 以上**と **pnpm**。初回は `pnpm install`。
 
 ```
-pnpm dev          # web と api を同時起動
-pnpm test         # ドメイン層とユースケース層のテスト
-pnpm lint         # 依存ルールの検査を含む
-pnpm typecheck
+pnpm dev          # web (:5173) と api (:8787) を同時起動
+pnpm test         # vitest。ドメイン層とユースケース層のテスト
+pnpm typecheck    # tsc --build。全ワークスペース
+pnpm lint         # lint:code と lint:deps の両方
+pnpm build        # contract → apps の順にビルド
+pnpm format       # prettier。docs/ と tools/ は対象外
 ```
+
+**`pnpm lint` は2つに分かれる。**
+
+| コマンド | 中身 |
+| --- | --- |
+| `pnpm lint:code` | ESLint。型の指摘に加えて、**禁止語（`Recipe` / `Menu` 等）を識別子に書くとエラーにする** |
+| `pnpm lint:deps` | dependency-cruiser。**上の依存ルールの表を機械的に検査する** |
+
+依存ルールは `.dependency-cruiser.cjs` にあり、**この文書の表と1対1で対応している。**
+表を変えたらそちらも変えること。**規則を緩めて表を放置しない。**
+
+個別のワークスペースだけ動かすとき:
+
+```
+pnpm --filter @fridge-to-meal/api dev      # wrangler dev
+pnpm --filter @fridge-to-meal/web dev      # vite
+pnpm --filter @fridge-to-meal/web build
+```
+
+### 環境変数
+
+`apps/api/.dev.vars`（gitignore 済み）に置く。**クライアント側には置かない。**
+
+```
+SUPABASE_URL=...
+SUPABASE_ANON_KEY=...
+```
+
+**`service_role` キーは使わない**（RLS を迂回する）。**LLM の API キーもサーバ側だけ**（NFR-10）。
 
 ## 作業の進め方
 

@@ -35,7 +35,19 @@ AI エージェントで作業する場合は [`CLAUDE.md`](CLAUDE.md) を参照
 | フロントエンド | React + Vite（SPA・PWA） |
 | サーバサイド | Hono on Cloudflare Workers |
 | DB・認証 | Supabase（Postgres + Auth） |
-| LLM | 未決（Claude / Gemini などを比較して決める） |
+| LLM | 未決（プロンプト設計を固めてから比較して決める） |
+
+## 動かす
+
+Node 22 以上と pnpm が要ります。
+
+```sh
+pnpm install
+pnpm dev        # web (:5173) と api (:8787)
+pnpm test
+pnpm lint       # 依存ルールと禁止語の検査を含む
+pnpm typecheck
+```
 
 アーキテクチャはオニオン構成。コンテキストごとに垂直にディレクトリを切り、ドメイン層とインフラ層は依存関係逆転で結ぶ。
 将来のネイティブアプリ化に備え、ユースケース層はプレゼンテーション層に依存しません。
@@ -47,5 +59,5 @@ AI エージェントで作業する場合は [`CLAUDE.md`](CLAUDE.md) を参照
    - `count_tokens` による費用の実測（同書 第10章）
    - 同じプロンプトを投げての LLM プロバイダ比較（同書 第11章、ADR-019）
 2. **主要画面のワイヤーフレーム作成** — [`docs/screen-design.md`](docs/screen-design.md) に一巡。起動時の画面をどれにするかだけ判断待ち
-3. 開発環境のセットアップ（`CLAUDE.md` のコマンド節を埋める）
-4. ドメイン層とユースケース層の実装着手
+3. ~~開発環境のセットアップ~~ — 完了。コマンドは [`CLAUDE.md`](CLAUDE.md) のコマンド節
+4. ドメイン層とユースケース層の実装着手 — `MealCoverageService` と `CookableMealFinder` から
