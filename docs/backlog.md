@@ -10,16 +10,16 @@
 - 各行の括弧内は根拠（FR / NFR は `docs/requirements.md`、C-n は `docs/domain-model.md` 第7章、
   ADR-n は `docs/adr.md`）。**根拠を書けないタスクは backlog に入れない**
 
-> **状態: 初期案。** 順序は「在庫を1本の縦切りで通してから献立に入る」という方針で置いている。
-> **最初の1周に限り、着手前に順序の妥当性をユーザーに確認する。** 2周目以降は確認しない。
+> 順序は「在庫を1本の縦切りで通してから献立に入る」という方針。**ドメインを先に置き、DTO は
+> そこから導く**（依存の向きと揃える）。この順序は確認済みなので、以後は上から順に取る。
 
 ---
 
 ## 次にやること
 
-- [ ] **B-01** `packages/contract` に在庫の DTO を定義する（FR-01 / FR-04 / FR-05 / FR-06）
 - [ ] **B-02** `pantry/domain`: 値 `Amount`（自由文字列。構造化しない）と実体 `StockItem` を置く（FR-01 / FR-13 / C-9）
 - [ ] **B-03** `pantry/domain/repository`: `StockItemRepository` の interface。**全メソッドが `householdId` を必須引数に取る**（C-9）
+- [ ] **B-01** `packages/contract` に在庫の DTO を定義する（FR-01 / FR-04 / FR-05 / FR-06）
 - [ ] **B-04** `pantry/usecase`: 在庫品を登録する。カタログに無い食材名でも登録が止まらない（FR-01 / FR-03）
 - [ ] **B-05** `pantry/usecase`: 在庫を期限の近い順に一覧する。期限未入力の在庫品は警告・優先の対象外（FR-04 / FR-11 / FR-13）
 - [ ] **B-06** `pantry/usecase`: 在庫品の数量・期限の更新と、削除（FR-05 / FR-06）
