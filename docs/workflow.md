@@ -19,7 +19,7 @@
 | 枝 | 作業ブランチ1本 = 1 PR = 1タスク。**寿命に上限は設けない** |
 | 命名 | `<type>/<slug>`。type は Conventional Commits と揃える（`feat/` `fix/` `docs/` `refactor/` `test/` `chore/`）。**変更の内容で選ぶ。機能追加に限らない** |
 | 統合 | PR → CI グリーン → **squash merge**。マージ後にブランチを削除する |
-| 直接 push | **禁止。** `main` への push はフック（`.claude/hooks/guard.mjs`）が機械的に拒否する |
+| 直接 push | **禁止。** `.claude/hooks/guard.mjs`（エージェント側）と `.githooks/pre-push`（git 側）の2枚で止める |
 | 同期 | 枝が古くなったら `main` を取り込む（`/sync`）。取り込みは普通の作業であって、失敗の合図ではない |
 | 未完成の機能 | **マージを止めない。`main` に入れ、画面に出すかどうかだけを feature flag で制御する**（ADR-024） |
 
@@ -27,9 +27,21 @@
 後者は `pnpm verify` で機械的に決まる。ループが自分で完了を判断できるのはこの形のときだけで、
 未完成をブランチで抱えると、判断がマージのたびに人へ戻ってしまう。
 
-**フックは自分のエージェントしか止められない。** `main` を本当に守るのは GitHub 側の
-ブランチ保護である。リポジトリの設定で「`main` への直接 push を禁止」「PR に CI（`verify`）の
-成功を必須」を有効にすること。**これは手作業で1度だけ必要**（リポジトリ設定なので git に入らない）。
+**`main` を守る手段は2枚のフックだけである。** GitHub のブランチ保護は、この
+リポジトリが private であるあいだ、現在のプランでは**効かない**（Team / Enterprise が要る）。
+したがって次の構成になっている。
+
+| 層 | 何を止めるか | 抜け道 |
+| --- | --- | --- |
+| `.claude/hooks/guard.mjs` | エージェントが打つコマンド | エージェント以外の操作は見えない |
+| `.githooks/pre-push` | **この作業ツリーからの `main` への push すべて**（人の手も含む） | `--no-verify`、別の clone、GitHub の Web UI |
+| `.github/workflows/ci.yml` | 何も止めない。**壊れたことを後から知らせる** | — |
+
+git 側のフックは clone ごとに1度有効化する（`git config core.hooksPath .githooks`）。
+**どれも越えられる。** 越えたいときに越えられることは承知のうえで、
+**うっかり越えないため**に置いている。リポジトリを public にするか Team に上げたときは、
+GitHub のブランチ保護（直接 push の禁止 / `verify` 必須）を有効にして、そちらを一次の
+防御に戻すこと。
 
 **コンフリクトが出たら:** `main` を取り込んで解消する。他人（自分の別セッションを含む）の
 ブランチで履歴を書き換えない。`pnpm-lock.yaml` は手で直さず `pnpm install` で作り直す。
@@ -117,6 +129,7 @@ PR に書いて止まる。
 | `.claude/hooks/guard.test.mjs` | 上の回帰テスト。`pnpm test:hooks` で走る。ガードが黙って効かなくなるのが最悪のため、拒否側と許可側の両方を固定している |
 | `.claude/settings.json` | `permissions.deny` で秘密ファイルの Read/Edit を止め、`allow` に検証・git の常用コマンドを並べてプロンプトを消している |
 | `.claude/hooks/session-start.sh` | Claude Code on the web のセッション開始時に `pnpm install`。依存が無いと検証が動かないため |
+| `.githooks/pre-push` | git の pre-push。`main` への push を、エージェント以外の操作も含めて止める。`.githooks/pre-push.test.mjs` が回帰テスト |
 
 一括 stage を禁じているのは、`.dev.vars` や生成物の混入が **push されるまで気づけない**ため。
 コミットに入れるファイルは毎回明示する。
@@ -136,7 +149,15 @@ PR に書いて止まる。
 ## 6. コミット
 
 - **staged になっているものからコミットを作る。** コミットを整えるために stage を足し引きしない
-- 1コミット1目的。Conventional Commits の型を混ぜない（`.gitmessage` がテンプレート。
-  `git config commit.template .gitmessage` を clone 後に1度だけ実行する）
+- 1コミット1目的。Conventional Commits の型を混ぜない（`.gitmessage` がテンプレート）
 - メッセージは会話ではなく `git diff --staged` から書く。**やらなかったこと・見送ったことは書かない**
 - 「なぜ」をコミットに、「なぜそうしなかったか」をコメントに、「何を」をテストに、「どうやって」をコードに置く
+
+## 7. clone 後に1度だけやること
+
+**どちらもローカル設定であり、git に入らない。** 新しい作業ツリーを作るたびに必要になる。
+
+```sh
+git config commit.template .gitmessage   # コミットの形式
+git config core.hooksPath .githooks      # main への直接 push を止める
+```
