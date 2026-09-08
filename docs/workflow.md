@@ -113,13 +113,16 @@ PR に書いて止まる。
 
 | 場所 | 役割 |
 | --- | --- |
-| `.claude/hooks/guard.mjs` | `PreToolUse(Bash)`。`main` への直接 push・force push・`reset --hard`・`clean -f`・`branch -D`・`stash drop`・`git add -A`／`git add .`・`.dev.vars` や `.env` の読み出し・環境変数のダンプを拒否する |
+| `.claude/hooks/guard.mjs` | `PreToolUse(Bash)`。`main` への直接 push（`+main` や `HEAD:refs/heads/main` の形も）・force push・`reset --hard`・`checkout -f`・`clean -f`・`branch -D`／`-f`・`stash drop`・一括 stage・`.dev.vars` や `.env` の読み出し・環境変数のダンプを拒否する。**ヒアドキュメントとコミットメッセージの中身は検査しない**（実行されないデータのため） |
 | `.claude/hooks/guard.test.mjs` | 上の回帰テスト。`pnpm test:hooks` で走る。ガードが黙って効かなくなるのが最悪のため、拒否側と許可側の両方を固定している |
 | `.claude/settings.json` | `permissions.deny` で秘密ファイルの Read/Edit を止め、`allow` に検証・git の常用コマンドを並べてプロンプトを消している |
 | `.claude/hooks/session-start.sh` | Claude Code on the web のセッション開始時に `pnpm install`。依存が無いと検証が動かないため |
 
-`git add -A` を禁じているのは、`.dev.vars` や生成物の混入が **push されるまで気づけない**ため。
+一括 stage を禁じているのは、`.dev.vars` や生成物の混入が **push されるまで気づけない**ため。
 コミットに入れるファイルは毎回明示する。
+
+**検査は `;` `&&` `||` `|` で区切った単位で行う。** `git log && pnpm clean --force` のように、
+無関係なコマンドが同じ行に居合わせただけで拒否されないようにするため。
 
 ## 5. コマンド
 

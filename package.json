@@ -18,7 +18,7 @@
     "lint:deps": "depcruise apps packages",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:hooks && pnpm build"
+    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:hooks && pnpm build"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260908.1",

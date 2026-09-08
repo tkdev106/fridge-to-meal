@@ -3,6 +3,7 @@
   "permissions": {
     "defaultMode": "acceptEdits",
     "allow": [
+      "Bash(pnpm verify)",
       "Bash(pnpm install)",
       "Bash(pnpm install:*)",
       "Bash(pnpm test:*)",
@@ -24,6 +25,8 @@
       "Bash(git pull:*)",
       "Bash(git rebase:*)",
       "Bash(git add:*)",
+      "Bash(git stash:*)",
+      "Bash(git merge:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(gh pr:*)",
@@ -33,7 +36,7 @@
       "Bash(rg:*)",
       "Bash(find:*)"
     ],
-    "ask": ["Bash(git merge:*)", "Bash(pnpm add:*)", "Bash(pnpm remove:*)", "Bash(pnpm dlx:*)"],
+    "ask": ["Bash(pnpm add:*)", "Bash(pnpm remove:*)", "Bash(pnpm dlx:*)", "Bash(gh api:*)"],
     "deny": [
       "Read(**/.dev.vars)",
       "Read(**/.dev.vars.*)",
