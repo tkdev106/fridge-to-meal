@@ -32,6 +32,9 @@
 - [ ] **B-13** `meal/domain/service`: `MealCoverageService`。**主材料だけを名称の完全一致で突き合わせる**（C-6 / C-16）
 - [ ] **B-14** `meal/domain/service`: `CookableMealFinder`。不足0件のみ、並びは決定的（C-10 / C-12 / C-13）
 - [ ] **B-15** `meal/domain/port`: `MealGenerator` ポートの定義。プロバイダ未決のまま進める（ADR-019 / NFR-18）
+- [ ] **B-16** `apps/api`: `test/` を typecheck の対象に入れる。いま tsc の include が `src/**` だけで、
+  テストの型の誤りが検出されない（B-02 でブランド型に生の文字列を渡しても通った）。**順序は要判断 —
+  ドメインを書き進めるほど効く**（docs/workflow.md 完了の定義）
 
 ## 判断待ち（着手しない）
 
