@@ -270,8 +270,19 @@ for (const segment of splitSegments(command)) {
 
   // 参照先がコマンドに出ない push（`git push` / `git push -u origin HEAD`）は、
   // 実際の HEAD を見て trunk 上からの push を止める。
+  //
+  // 参照先が明示されている push（`git push origin feat/x`、マージ済み枝の削除）は
+  // ここでは見ない。trunk が対象なら push-to-trunk が既に拒否しているので、
+  // 「HEAD が main である」ことだけを理由に止めると、枝の後片付けができなくなる。
+  // `HEAD` は現在のブランチに解決されるので、明示のうちに入らない。
   const git = gitSubcommand(tokens);
-  if (git?.name === 'push' && currentBranch(input?.cwd) === TRUNK) {
+  const explicitRef =
+    git?.name === 'push' &&
+    git.args
+      .filter((a) => !isFlag(a))
+      .slice(1) // 先頭はリモート名
+      .some((a) => a.replace(/^\+/, '').split(':').pop() !== 'HEAD');
+  if (git?.name === 'push' && !explicitRef && currentBranch(input?.cwd) === TRUNK) {
     deny(
       'push-from-trunk',
       `${TRUNK} 上から push しようとしています。${TRUNK} は PR 経由でのみ更新します（docs/workflow.md）。`,

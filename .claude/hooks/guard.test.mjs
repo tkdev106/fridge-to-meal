@@ -142,6 +142,29 @@ test('拒否: trunk 上からの push（参照先がコマンドに出ない）'
   assert.match(stderr, /^\[guard:push-from-trunk\] /);
 });
 
+test('拒否: trunk 上からの push（リモート名だけ）', () => {
+  const { status, stderr } = run('git push origin', ON_TRUNK);
+  assert.equal(status, 2);
+  assert.match(stderr, /^\[guard:push-from-trunk\] /);
+});
+
+test('許可: trunk 上からのマージ済み枝の削除', () => {
+  // 枝の後片付けは main に居るときに行う。trunk を更新しないので止める理由がない
+  const { status, stderr } = run('git push origin --delete feat/x', ON_TRUNK);
+  assert.equal(status, 0, stderr);
+});
+
+test('許可: trunk 上から作業ブランチを明示して push', () => {
+  const { status, stderr } = run('git push origin feat/x', ON_TRUNK);
+  assert.equal(status, 0, stderr);
+});
+
+test('拒否: trunk 上から trunk を明示して push', () => {
+  const { status, stderr } = run('git push origin main', ON_TRUNK);
+  assert.equal(status, 2);
+  assert.match(stderr, /^\[guard:push-to-trunk\] /);
+});
+
 test('許可: 作業ブランチ上からの同じ push', () => {
   spawnSync('git', ['-C', ON_TRUNK, 'switch', '-c', 'feat/x'], { encoding: 'utf8' });
   const { status, stderr } = run('git push -u origin HEAD', ON_TRUNK);
