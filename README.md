@@ -20,9 +20,11 @@
 | --- | --- |
 | [`docs/requirements.md`](docs/requirements.md) | 要件定義。何を作るか、何を作らないか |
 | [`docs/domain-model.md`](docs/domain-model.md) | ドメインモデル。サブドメイン分類・ユビキタス言語・集約と不変条件 |
-| [`docs/adr.md`](docs/adr.md) | アーキテクチャ決定録。ADR-001〜023 |
+| [`docs/adr.md`](docs/adr.md) | アーキテクチャ決定録。ADR-001〜024 |
 | [`docs/prompt-design.md`](docs/prompt-design.md) | 献立生成のプロンプト設計。ポートの契約・プロンプト全文・応答の検証規則・試行の設計 |
 | [`docs/screen-design.md`](docs/screen-design.md) | 画面設計。画面遷移・各画面の状態・再利用の見せ方 |
+| [`docs/workflow.md`](docs/workflow.md) | 開発ワークフロー。ブランチ運用・完了の定義・自律ループ |
+| [`docs/backlog.md`](docs/backlog.md) | 次にやることの一覧。自律ループの入力 |
 
 `docs/html/` に同じ内容の閲覧用 HTML があります（図が読みやすい版）。**正は Markdown です。**
 
@@ -43,6 +45,7 @@ Node 22 以上と pnpm が要ります。
 
 ```sh
 pnpm install
+pnpm verify     # 完了の定義。lint → typecheck → test → test:hooks → build
 pnpm dev        # web (:5173) と api (:8787)
 pnpm test
 pnpm lint       # 依存ルールと禁止語の検査を含む
@@ -60,4 +63,4 @@ pnpm typecheck
    - 同じプロンプトを投げての LLM プロバイダ比較（同書 第11章、ADR-019）
 2. **主要画面のワイヤーフレーム作成** — [`docs/screen-design.md`](docs/screen-design.md) に一巡。起動時の画面をどれにするかだけ判断待ち
 3. ~~開発環境のセットアップ~~ — 完了。コマンドは [`CLAUDE.md`](CLAUDE.md) のコマンド節
-4. ドメイン層とユースケース層の実装着手 — `MealCoverageService` と `CookableMealFinder` から
+4. ドメイン層とユースケース層の実装着手 — 着手順は [`docs/backlog.md`](docs/backlog.md)

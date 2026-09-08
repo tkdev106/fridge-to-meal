@@ -1,0 +1,40 @@
+name: CI
+
+# トランクベース開発では main が常に緑であることが前提になる（docs/workflow.md）。
+# PR と main への push で、ローカルの `pnpm verify` と同じものを走らせる。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # main の CI を手で回し直せるようにする（外部要因で落ちたときの再実行）
+  workflow_dispatch:
+
+# 同じブランチで新しい push があったら、走っている実行を止める。
+# main だけは履歴を残したいので止めない。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    # ハングしたジョブはループを待たせ続ける（/next は CI の完了を待つ）
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # CI では lockfile を動かさない。ずれていたら落ちるのが正しい。
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm verify

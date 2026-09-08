@@ -53,4 +53,9 @@ export default tseslint.config(
     files: ['**/*.cjs'],
     languageOptions: { sourceType: 'commonjs', globals: globals.node },
   },
+  {
+    // Claude Code のフックは Node で直接実行される（バンドルも型チェックもしない）
+    files: ['.claude/hooks/**/*.mjs'],
+    languageOptions: { globals: globals.node },
+  },
 );
