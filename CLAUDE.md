@@ -14,6 +14,8 @@
 | なぜその作りなのか（アーキテクチャ決定 ADR-001〜023） | `docs/adr.md` |
 | LLM に何を渡し何を受け取るか（プロンプト全文・応答の検証規則） | `docs/prompt-design.md` |
 | 画面に何をどう出すか（遷移・状態・再利用の見せ方） | `docs/screen-design.md` |
+| どう進めるか（ブランチ運用・完了の定義・自律ループ） | `docs/workflow.md` |
+| 次に何をやるか（ループの入力になるタスク一覧） | `docs/backlog.md` |
 
 `docs/html/` は同じ内容の閲覧用 HTML。**正は Markdown。HTML だけを直さないこと。**
 
@@ -90,6 +92,32 @@
 
 ---
 
+## ブランチ運用と自律ループ
+
+詳細は `docs/workflow.md`。**AI がループで開発することを前提にした運用**であり、
+人が1コマンドずつ見ていないことが以下すべての理由である。
+
+**トランクベース開発。`main` が唯一の幹。**
+
+- 短命ブランチ1本 = 1 PR = 1タスク。**寿命は原則1日以内。** `develop` / `release/*` は作らない
+- `<type>/<slug>` で切り、**squash merge** で入れる。マージしたら枝を消す
+- **`main` への直接 push は禁止。** `.claude/hooks/guard.mjs` が機械的に拒否する
+- 未完成の機能は枝を伸ばさず、**画面から導線を出さない形で `main` に入れる**
+
+**完了の定義は `pnpm verify` が緑になること。** PR を出す条件であり、マージの条件でもある。
+**テストを skip・無効化して緑にしない。**
+
+**ループの1周は `/next`。** 入力は `docs/backlog.md`、出力は PR。以下に当たったら
+**進めずに止まり、ドラフト PR を push して、何が決まれば進むかを1つの質問にして終える。**
+
+- 確定事項 C-1〜C-16 を破る必要が出た
+- 未決事項の決定が必要になった
+- FR / NFR に無い機能が必要になった
+- 依存パッケージの追加が必要になった
+- 同じ検証失敗を2回直せなかった
+
+黙って止まらない。黙って進めない。
+
 ## 技術スタック
 
 | 領域 | 採用 | 根拠 |
@@ -109,6 +137,12 @@
 ## ディレクトリ構成
 
 ```
+.claude/                   エージェントの作業環境
+  settings.json            許可・拒否とフックの登録（settings.local.json は各自のもので git 管理外）
+  hooks/guard.mjs          戻せない操作の拒否。guard.test.mjs が回帰テスト
+  hooks/session-start.sh   web セッション開始時の pnpm install
+  commands/                /next（ループ1周）/verify /sync /address
+  agents/design-reviewer   差分を設計文書と突き合わせる読み手
 apps/web/                  React + Vite（PWA）— API のクライアント
   src/features/meal/       画面もコンテキスト単位で切る
   src/features/pantry/
@@ -134,13 +168,18 @@ packages/contract/         API の型定義。web と api で共有
 前提: **Node 22 以上**と **pnpm**。初回は `pnpm install`。
 
 ```
+pnpm verify       # 完了の定義。lint → typecheck → test → test:hooks → build
 pnpm dev          # web (:5173) と api (:8787) を同時起動
 pnpm test         # vitest。ドメイン層とユースケース層のテスト
+pnpm test:hooks   # .claude/hooks のガードの回帰テスト（node --test）
 pnpm typecheck    # tsc --build。全ワークスペース
 pnpm lint         # lint:code と lint:deps の両方
 pnpm build        # contract → apps の順にビルド
 pnpm format       # prettier。docs/ と tools/ は対象外
 ```
+
+**`pnpm verify` が緑にならないものを PR にしない。** CI（`.github/workflows/ci.yml`）が
+PR と `main` への push で同じものを走らせる。
 
 **`pnpm lint` は2つに分かれる。**
 
@@ -173,6 +212,8 @@ SUPABASE_ANON_KEY=...
 
 ## 作業の進め方
 
+- **着手するタスクは `docs/backlog.md` から取る。** ここに無いものを勝手に始めない。
+  必要になったら、まず backlog に行を足す提案をする。
 - **実装を始める前に、対象コンテキストの `docs/domain-model.md` の該当集約と不変条件を読む。**
 - **アーキテクチャ上の判断を変える必要が出たら、`docs/adr.md` に新しい ADR を追記して提案する。** 既存の ADR は書き換えず、状態を「置き換え済み」に改める。
 - **要件にない機能を足さない。** `docs/requirements.md` の FR / NFR が範囲。
