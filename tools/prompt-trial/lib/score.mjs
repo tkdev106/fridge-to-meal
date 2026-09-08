@@ -27,18 +27,25 @@ export function score({ stock, meals, avoidTitles = [], discarded = [] }) {
   const staples = new Set(PANTRY_STAPLES);
   const avoidSet = new Set(avoidTitles);
 
-  let matched = 0;      // 在庫の表記と完全一致した材料
-  let variant = 0;      // 表記ゆれの疑い
-  let missing = 0;      // 在庫にない材料（= 不足材料）
-  let stapleLeak = 0;   // 正規化前に材料へ現れた常備調味料
+  let matched = 0;          // 在庫の表記と完全一致した主材料
+  let variant = 0;          // 表記ゆれの疑い
+  let missing = 0;          // 在庫にない主材料（= 不足材料）
+  let kindCorrections = 0;  // リストにあるのに 'main' と申告され、倒し込まれた件数
+  let seasoningTotal = 0;   // 'seasoning' と申告された材料
+  let seasoningOffList = 0; // うち固定リストにないもの（ADR-023 の利点が出た件数）
   const missingPerMeal = [];
 
   for (const meal of meals) {
-    stapleLeak += meal.stapleHits ?? 0;
+    kindCorrections += meal.kindCorrections ?? 0;
     let mealMissing = 0;
     for (const ing of meal.ingredients) {
+      // C-16: 充足判定の対象は主材料だけ。調味料は数えない。
+      if (ing.kind === 'seasoning') {
+        seasoningTotal += 1;
+        if (!staples.has(ing.name)) seasoningOffList += 1;
+        continue;
+      }
       if (stockSet.has(ing.name)) matched += 1;
-      else if (staples.has(ing.name)) stapleLeak += 1;
       else {
         missing += 1;
         mealMissing += 1;
@@ -50,7 +57,7 @@ export function score({ stock, meals, avoidTitles = [], discarded = [] }) {
 
   const usesUrgent = urgentNames.size === 0
     ? null // 判定対象なし
-    : meals.some((m) => m.ingredients.some((i) => urgentNames.has(i.name)));
+    : meals.some((m) => m.ingredients.some((i) => i.kind === 'main' && urgentNames.has(i.name)));
 
   const methods = new Set();
   for (const meal of meals) {
@@ -63,7 +70,9 @@ export function score({ stock, meals, avoidTitles = [], discarded = [] }) {
     mealCount: meals.length,
     ingredientNameMatchRate: totalIngredients === 0 ? null : matched / totalIngredients,
     variantSuspects: variant,
-    stapleLeak,
+    kindCorrections,
+    seasoningTotal,
+    seasoningOffList,
     missingTotal: missing,
     missingMedian: median(missingPerMeal),
     missingOverLimit: missingPerMeal.filter((n) => n > 2).length, // 規則3（追加は2件まで）違反

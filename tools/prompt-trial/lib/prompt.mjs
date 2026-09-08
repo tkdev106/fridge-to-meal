@@ -1,7 +1,11 @@
 // docs/prompt-design.md 第4章・第5章の実装。
 // この文字列が設計文書とずれたら、直すのは文書ではなくこちら。
 
-/** D-1 の常備調味料。材料に書かせず、手順の中に分量とともに書かせる。 */
+/**
+ * D-1 の常備調味料。**調味料の集合の上限ではなく下限である。**
+ * ここに載る名称は kind の申告によらず 'seasoning' に倒す（保険）。
+ * ここにない調味料も、LLM が 'seasoning' と申告すればそのまま受け入れる。
+ */
 export const PANTRY_STAPLES = [
   '塩', 'こしょう', '砂糖', '醤油', '味噌', '酢', 'みりん', '酒',
   'サラダ油', 'ごま油', '片栗粉', '小麦粉', 'だしの素', 'コンソメ',
@@ -19,9 +23,13 @@ export const SYSTEM_PROMPT = `あなたは日本の家庭の食事を組み立�
    1件の献立につき2つまでとする。
 4. 在庫にある食材を材料に書くときは、在庫に書かれている名称をそのまま使う。
    「豚こま肉」を「豚肉」や「豚こま」に書き換えない。
-5. 次の常備調味料は材料に書かない。手順の中に分量とともに書く。
-   ${PANTRY_STAPLES.join('、')}
-   ここに挙げていない調味料（オイスターソース、豆板醤など）は材料に書く。
+5. 材料には kind を必ず付ける。食材そのものは "main"、味付けに使うものは
+   "seasoning" とする。
+   "seasoning" にするもの: ${PANTRY_STAPLES.join('、')}、オイスターソース、
+   豆板醤、ナンプラーなど、味や香りや口当たりをととのえるために少量使うもの。
+   "main" にするもの: 肉、魚、野菜、卵、豆腐、乾物、麺、米など、
+   その献立の中身になるもの。
+   迷う場合は "main" にする。
 6. 期限が近い食材を優先して使う。「期限は今日」「期限まであと1日」と書かれた
    食材がある場合、少なくとも1件の献立でそれを主な材料として使う。
 7. 調理時間は40分以内、手順は6ステップ以内に収める。
@@ -42,7 +50,7 @@ export const SYSTEM_PROMPT = `あなたは日本の家庭の食事を組み立�
     {
       "title": "献立の名称",
       "ingredients": [
-        { "name": "食材名", "amount": "分量" }
+        { "name": "食材名", "amount": "分量", "kind": "main" }
       ],
       "steps": [
         "手順1", "手順2"
@@ -52,8 +60,10 @@ export const SYSTEM_PROMPT = `あなたは日本の家庭の食事を組み立�
 }
 
 meals の件数は、指示された件数と正確に一致させる。
-ingredients は1件以上10件以内、steps は3件以上6件以内とする。
+ingredients は1件以上12件以内で、"main" を1件以上含める。
+steps は3件以上6件以内とする。
 amount は「200g」「1/4個」「大さじ2」のような文字列にする。
+kind は "main" か "seasoning" のどちらかとする。
 上記以外のフィールドを追加しない。`;
 
 /** 応答 JSON の形。構造化出力に対応したプロバイダへ渡す。 */
@@ -70,8 +80,12 @@ export const RESPONSE_SCHEMA = {
             type: 'array',
             items: {
               type: 'object',
-              properties: { name: { type: 'string' }, amount: { type: 'string' } },
-              required: ['name', 'amount'],
+              properties: {
+                name: { type: 'string' },
+                amount: { type: 'string' },
+                kind: { type: 'string', enum: ['main', 'seasoning'] },
+              },
+              required: ['name', 'amount', 'kind'],
               additionalProperties: false,
             },
           },

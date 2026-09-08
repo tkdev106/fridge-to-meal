@@ -4,7 +4,7 @@ import { PANTRY_STAPLES } from './prompt.mjs';
 const LIMITS = {
   titleMax: 40,
   ingredientsMin: 1,
-  ingredientsMax: 10,
+  ingredientsMax: 12,
   nameMax: 30,
   amountMax: 30,
   stepsMin: 1,
@@ -79,25 +79,31 @@ export function validate(raw, { requiredCount, precedingTitles = [] } = {}) {
 
     const seenNames = new Set();
     const ingredients = [];
-    let stapleHits = 0;
+    let kindCorrections = 0;
     for (const ing of meal.ingredients) {
       const name = trim(ing?.name);
       if (!name || name.length > LIMITS.nameMax) continue;
-      // 6.3 正規化: D-1 が守られなかった場合の保険
-      if (staples.has(name)) { stapleHits += 1; continue; }
       if (seenNames.has(name)) continue;
       seenNames.add(name);
+
+      // 6.2: 'main' / 'seasoning' 以外と欠落は 'main' に倒す（C-16）
+      let kind = ing?.kind === 'seasoning' ? 'seasoning' : 'main';
+      // 6.3 正規化: リストにある名称は申告によらず調味料に倒す。**倒し込みは片側だけ** —
+      // リストにないものを 'main' に戻すと、リストが再び調味料の上限になる（ADR-023）。
+      if (staples.has(name) && kind !== 'seasoning') { kind = 'seasoning'; kindCorrections += 1; }
+
       let amount = trim(ing?.amount);
       if (amount.length > LIMITS.amountMax) amount = '';
-      ingredients.push({ name, amount });
+      ingredients.push({ name, amount, kind });
     }
     if (ingredients.length === 0) { drop('正規化の結果 ingredients が0件'); continue; }
+    if (!ingredients.some((i) => i.kind === 'main')) { drop('主材料が0件'); continue; }
 
     const steps = meal.steps.map(trim).filter((s) => s.length > 0 && s.length <= LIMITS.stepMax);
     if (steps.length === 0) { drop('正規化の結果 steps が0件'); continue; }
 
     seenTitles.add(title);
-    accepted.push({ title, ingredients, steps, stapleHits });
+    accepted.push({ title, ingredients, steps, kindCorrections });
   }
 
   if (accepted.length === 0) {

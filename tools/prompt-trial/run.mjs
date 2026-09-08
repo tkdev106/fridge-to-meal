@@ -178,15 +178,16 @@ function renderSummary(results, { provider, model, args }) {
     `- 生成件数の指示: ${args.count} / 出力上限: ${args.maxTokens}${args.structured ? ' / 構造化出力: あり' : ''}`,
     `- 為替: 1 USD = ${USD_JPY} 円`,
     '',
-    '| パターン | 回 | 検証 | 件数 | 材料名一致 | 表記ゆれ疑い | 調味料混入 | 期限遵守 | 調理法 | 不足材料(中央値) | 名称一致の重複 | 入力tok | 出力tok | 円 | 秒 |',
-    '| --- | --: | --- | --: | --: | --: | --: | --- | --: | --: | --: | --: | --: | --: | --: |',
+    '| パターン | 回 | 検証 | 件数 | 材料名一致 | 表記ゆれ疑い | 種別の倒し込み | 調味料(うちリスト外) | 期限遵守 | 調理法 | 不足材料(中央値) | 名称一致の重複 | 入力tok | 出力tok | 円 | 秒 |',
+    '| --- | --: | --- | --: | --: | --: | --: | --: | --- | --: | --: | --: | --: | --: | --: | --: |',
   ];
   const pct = (v) => (v === null || v === undefined ? '-' : `${Math.round(v * 100)}%`);
   const body = rows.map((r) => {
     const m = r.metrics;
     const urgent = m?.usesUrgentIngredient;
     return `| ${r.pattern} | ${r.run ?? '-'} | ${r.ok ? 'OK' : 'NG'} | ${m?.mealCount ?? '-'} | `
-      + `${pct(m?.ingredientNameMatchRate)} | ${m?.variantSuspects ?? '-'} | ${m?.stapleLeak ?? '-'} | `
+      + `${pct(m?.ingredientNameMatchRate)} | ${m?.variantSuspects ?? '-'} | ${m?.kindCorrections ?? '-'} | `
+      + `${m ? `${m.seasoningTotal}(${m.seasoningOffList})` : '-'} | `
       + `${urgent === null || urgent === undefined ? '-' : (urgent ? 'あり' : 'なし')} | `
       + `${m?.distinctCookingMethods ?? '-'} | ${m?.missingMedian ?? '-'} | ${m?.exactAvoidHits ?? '-'} | `
       + `${r.usage?.input ?? '-'} | ${r.usage?.output ?? '-'} | ${r.cost ? r.cost.jpy.toFixed(2) : '-'} | `
@@ -197,7 +198,7 @@ function renderSummary(results, { provider, model, args }) {
     '',
     `検証通過率: ${rows.length ? Math.round((rows.filter((r) => r.ok).length / rows.length) * 100) : 0}%`,
     '',
-    '**人が見る項目（自動では測らない）**: 意味的な重複の有無、「今日これを作るか」と思えるか。',
+    '**人が見る項目（自動では測らない）**: 意味的な重複の有無、「今日これを作るか」と思えるか、リストにない調味料が正しく seasoning になっているか。',
   ];
   if (failures.length) tail.push('', '## 失敗', ...failures);
   return [...head, ...body, ...tail].join('\n');
@@ -205,36 +206,57 @@ function renderSummary(results, { provider, model, args }) {
 
 /** API を使わない自己診断。検証規則が壊れていないかを確かめる。 */
 function selfTest() {
-  const cases = [
-    ['前置き＋コードブロックを剥がせる', 'はい。\n```json\n{"meals":[{"title":"卵とじ","ingredients":[{"name":"卵","amount":"2個"}],"steps":["煮る"]}]}\n```', true],
-    ['常備調味料を材料から除去する', '{"meals":[{"title":"A","ingredients":[{"name":"卵","amount":"2個"},{"name":"醤油","amount":"少々"}],"steps":["焼く"]}]}', true],
-    ['材料が調味料だけなら捨てる', '{"meals":[{"title":"A","ingredients":[{"name":"醤油","amount":"少々"}],"steps":["和える"]}]}', false],
-    ['JSON でなければ失敗', 'すみません、提案できません。', false],
-    ['meals が配列でなければ失敗', '{"meals":{}}', false],
-    ['title が空なら捨てる', '{"meals":[{"title":"  ","ingredients":[{"name":"卵","amount":"1個"}],"steps":["焼く"]}]}', false],
-  ];
-  let failed = 0;
-  for (const [name, raw, expected] of cases) {
-    const got = validate(raw, { requiredCount: 3 }).ok;
-    const pass = got === expected;
-    if (!pass) failed += 1;
-    console.log(`${pass ? 'PASS' : 'FAIL'}  ${name}`);
-  }
-  // 多く返ったときに先頭から切り詰めるか
-  const many = validate(JSON.stringify({
-    meals: ['A', 'B', 'C', 'D'].map((t) => ({ title: t, ingredients: [{ name: '卵', amount: '1個' }], steps: ['焼く'] })),
-  }), { requiredCount: 3 });
-  const trimmed = many.meals.length === 3 && many.meals[0].title === 'A';
-  if (!trimmed) failed += 1;
-  console.log(`${trimmed ? 'PASS' : 'FAIL'}  4件返っても先頭3件に切り詰める`);
+  const ing = (name, kind) => ({ name, amount: '1個', ...(kind ? { kind } : {}) });
+  const meal = (title, ingredients, steps = ['焼く']) => ({ title, ingredients, steps });
+  const wrap = (meals) => JSON.stringify({ meals });
 
-  // 少なく返ったときに、その件数で通すか（論点1）
-  const few = validate(JSON.stringify({
-    meals: [{ title: 'A', ingredients: [{ name: '卵', amount: '1個' }], steps: ['焼く'] }],
-  }), { requiredCount: 3 });
-  const kept = few.ok && few.meals.length === 1;
-  if (!kept) failed += 1;
-  console.log(`${kept ? 'PASS' : 'FAIL'}  1件でも提案を組む`);
+  let failed = 0;
+  const check = (name, cond) => {
+    if (!cond) failed += 1;
+    console.log(`${cond ? 'PASS' : 'FAIL'}  ${name}`);
+  };
+
+  // --- 抽出と構造 ---
+  check('前置き＋コードブロックを剥がせる',
+    validate('はい。\n```json\n' + wrap([meal('卵とじ', [ing('卵', 'main')])]) + '\n```', { requiredCount: 3 }).ok);
+  check('JSON でなければ失敗', !validate('すみません、提案できません。', { requiredCount: 3 }).ok);
+  check('meals が配列でなければ失敗', !validate('{"meals":{}}', { requiredCount: 3 }).ok);
+  check('title が空なら捨てる',
+    !validate(wrap([meal('  ', [ing('卵', 'main')])]), { requiredCount: 3 }).ok);
+
+  // --- 材料の種別（C-16 / ADR-023）---
+  const listed = validate(wrap([meal('A', [ing('卵', 'main'), ing('醤油', 'main')])]), { requiredCount: 3 });
+  check('リストにある調味料は main 申告でも seasoning に倒す',
+    listed.ok && listed.meals[0].ingredients.find((i) => i.name === '醤油')?.kind === 'seasoning');
+
+  const offList = validate(wrap([meal('A', [ing('卵', 'main'), ing('オイスターソース', 'seasoning')])]), { requiredCount: 3 });
+  check('リストにない調味料も seasoning のまま受け入れる',
+    offList.ok && offList.meals[0].ingredients.find((i) => i.name === 'オイスターソース')?.kind === 'seasoning');
+
+  const notReverted = validate(wrap([meal('A', [ing('卵', 'main'), ing('ナンプラー', 'seasoning')])]), { requiredCount: 3 });
+  check('リストにない調味料を main に戻さない（倒し込みは片側だけ）',
+    notReverted.meals[0].ingredients.find((i) => i.name === 'ナンプラー')?.kind === 'seasoning');
+
+  const missingKind = validate(wrap([meal('A', [ing('卵'), ing('謎の粉', 'unknown')])]), { requiredCount: 3 });
+  check('kind の欠落と不正値は main に倒す',
+    missingKind.ok && missingKind.meals[0].ingredients.every((i) => i.kind === 'main'));
+
+  check('主材料が0件なら捨てる',
+    !validate(wrap([meal('A', [ing('醤油', 'seasoning')])]), { requiredCount: 3 }).ok);
+
+  // --- 件数（6.4）---
+  const many = validate(wrap(['A', 'B', 'C', 'D'].map((t) => meal(t, [ing('卵', 'main')]))), { requiredCount: 3 });
+  check('4件返っても先頭3件に切り詰める', many.meals.length === 3 && many.meals[0].title === 'A');
+
+  const few = validate(wrap([meal('A', [ing('卵', 'main')])]), { requiredCount: 3 });
+  check('1件でも提案を組む', few.ok && few.meals.length === 1);
+
+  // --- 重複と直前の提案（FR-36）---
+  const dup = validate(wrap([meal('A', [ing('卵', 'main')]), meal('A', [ing('豆腐', 'main')])]), { requiredCount: 3 });
+  check('同じ応答内の title 重複は後を捨てる', dup.meals.length === 1);
+
+  const preceding = validate(wrap([meal('A', [ing('卵', 'main')])]), { requiredCount: 3, precedingTitles: ['A'] });
+  check('直前の提案と同名は捨てる', !preceding.ok);
 
   console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件失敗`);
   process.exitCode = failed === 0 ? 0 : 1;
