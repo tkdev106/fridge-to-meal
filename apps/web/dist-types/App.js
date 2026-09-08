@@ -1,0 +1,11 @@
+import { jsx as _jsx } from "react/jsx-runtime";
+/**
+ * 画面の骨組みはこれから。構造は `docs/screen-design.md` に定めてある。
+ * 下タブ3つ（献立 / 在庫 / 履歴）で、起動時にどれを開くかは判断待ち（同書 論点1）。
+ *
+ * **文言と配色は決まっていない**（同書 冒頭）。ここに書く日本語も仮である。
+ */
+export function App() {
+    return _jsx("main", { children: "\u6E96\u5099\u4E2D" });
+}
+//# sourceMappingURL=App.js.map
