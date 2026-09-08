@@ -102,8 +102,9 @@
 - 作業ブランチ1本 = 1 PR = 1タスク。**寿命に上限は設けない。** `develop` / `release/*` は作らない
 - 種別は変更の内容で選ぶ（`feat/` `fix/` `docs/` …）。**機能追加のブランチに限る運用ではない**
 - `<type>/<slug>` で切り、**squash merge** で入れる。マージしたら枝を消す
-- **`main` への直接 push は禁止。** `.claude/hooks/guard.mjs` が機械的に拒否する。
-  ただしフックは自分のエージェントしか止められない。**本当に守るのは GitHub のブランチ保護**
+- **`main` への直接 push は禁止。** `.claude/hooks/guard.mjs`（エージェント）と
+  `.githooks/pre-push`（git）の2枚で止める。**GitHub のブランチ保護は private + 現行プランでは
+  効かない**ため、この2枚が実質の防御であり、どちらも越えられることを前提にする
 - 未完成の機能も**マージを止めない。** 画面に出すかどうかだけを feature flag で制御する（ADR-024）。
   既定は無効、読み出しは `apps/web/src/features.ts` の1か所、分岐はプレゼンテーション層のみ
 
@@ -146,6 +147,7 @@
   hooks/session-start.sh   web セッション開始時の pnpm install
   commands/                /next（ループ1周）/verify /sync /address
   agents/design-reviewer   差分を設計文書と突き合わせる読み手
+.githooks/pre-push         main への push を git の側で止める（要 core.hooksPath）
 apps/web/                  React + Vite（PWA）— API のクライアント
   src/features/meal/       画面もコンテキスト単位で切る
   src/features/pantry/

@@ -10,7 +10,7 @@
     "dev": "pnpm --parallel --filter \"./apps/*\" dev",
     "build": "pnpm --filter \"./packages/*\" build && pnpm --filter \"./apps/*\" build",
     "test": "vitest run",
-    "test:hooks": "node --test .claude/hooks/*.test.mjs",
+    "test:hooks": "node --test .claude/hooks/*.test.mjs .githooks/*.test.mjs",
     "test:watch": "vitest",
     "typecheck": "tsc --build --force",
     "lint": "pnpm lint:code && pnpm lint:deps",
