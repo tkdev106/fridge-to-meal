@@ -29,7 +29,8 @@ description: "backlog の先頭タスクを1件だけ、作業ブランチ1本 +
    画面に出せない段階でもマージを止めない。**表示は feature flag で隠す**（ADR-024）。
    フラグを足したら、`docs/backlog.md` に**それを消すタスクを同時に足す**。
 7. **`pnpm verify`** が緑になるまで直す。**同じ失敗を2回直せなかったら止める**（下記）。
-8. **自己レビュー**: `design-reviewer` サブエージェントに `git diff main...HEAD` を渡す。
+8. **自己レビュー**: `git fetch origin main` の後、`design-reviewer` サブエージェントに
+   `git diff origin/main...HEAD` を渡す（**ローカルの `main` は古いことがある**）。
    指摘は直すか、直さない理由を PR に書く。
 9. **コミット**: 入れるファイルを明示して stage し、`git diff --staged` からメッセージを書く。
    1コミット1目的。型を混ぜない。`.gitmessage` が形式。

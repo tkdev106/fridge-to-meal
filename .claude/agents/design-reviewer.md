@@ -14,7 +14,9 @@ tools: Bash, Read, Grep, Glob
 
 ## 手順
 
-1. `git diff main...HEAD` と `git diff main...HEAD --stat` で差分の全体を把握する
+1. `git fetch origin main` してから、`git diff origin/main...HEAD` と同 `--stat` で差分の全体を
+   把握する。**基準は `origin/main`。** ローカルの `main` は古いことがあり、そのまま使うと
+   差分が実際より広く見える
 2. 触れているコンテキスト（`meal` / `pantry` / `catalog` / `identity`）を特定する
 3. `docs/domain-model.md` の該当集約・不変条件・第7章、`docs/adr.md` の関連 ADR を読む
 4. 下の観点で1つずつ検査する
