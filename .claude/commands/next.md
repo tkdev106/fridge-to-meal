@@ -1,5 +1,5 @@
 ---
-description: "backlog の先頭タスクを1件だけ、feature ブランチ1本 + PR 1本で main に入れる（自律ループの1周）"
+description: "backlog の先頭タスクを1件だけ、作業ブランチ1本 + PR 1本で main に入れる（自律ループの1周）"
 ---
 
 # /next — 自律ループの1周

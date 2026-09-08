@@ -49,7 +49,7 @@ const DENIED = [
 
 const ALLOWED = [
   ['検証コマンド', 'pnpm lint && pnpm typecheck && pnpm test'],
-  ['短命ブランチへの push', 'git push -u origin feat/pantry-stock-item'],
+  ['作業ブランチへの push', 'git push -u origin feat/pantry-stock-item'],
   ['積み直し（lease つき）', 'git push --force-with-lease --force-if-includes origin feat/x'],
   ['ファイルを明示した add', 'git add apps/api/src/main.ts'],
   ['branch -d', 'git branch -d feat/x'],

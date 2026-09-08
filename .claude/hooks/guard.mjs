@@ -22,14 +22,14 @@ const RULES = [
     pattern:
       /\bgit\b[^\n]*\bpush\b[^\n]*(--force(?!-with-lease|-if-includes)|(?<![\w-])-f(?![\w-])|\s\+refs)/,
     message:
-      'force push は禁止です。短命ブランチの積み直しが必要なら --force-with-lease --force-if-includes を使ってください。',
+      'force push は禁止です。作業ブランチの積み直しが必要なら --force-with-lease --force-if-includes を使ってください。',
   },
   {
     name: 'push-to-trunk',
     pattern: new RegExp(
       `\\bgit\\b[^\\n]*\\bpush\\b[^\\n]*(\\borigin\\s+(HEAD:)?${TRUNK}\\b|:${TRUNK}\\b)`,
     ),
-    message: `${TRUNK} への直接 push は禁止です。短命ブランチを切って PR にしてください（docs/workflow.md）。`,
+    message: `${TRUNK} への直接 push は禁止です。作業ブランチを切って PR にしてください（docs/workflow.md）。`,
   },
   // ---- 戻せない操作 ----
   {

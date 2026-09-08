@@ -16,8 +16,8 @@
 | 決めごと | 内容 |
 | --- | --- |
 | 幹 | `main` の1本のみ。`develop` / `release/*` は作らない |
-| 枝 | feature ブランチ1本 = 1 PR = 1タスク。**寿命に上限は設けない** |
-| 命名 | `<type>/<slug>`。type は Conventional Commits と揃える（`feat/` `fix/` `docs/` `refactor/` `test/` `chore/`） |
+| 枝 | 作業ブランチ1本 = 1 PR = 1タスク。**寿命に上限は設けない** |
+| 命名 | `<type>/<slug>`。type は Conventional Commits と揃える（`feat/` `fix/` `docs/` `refactor/` `test/` `chore/`）。**変更の内容で選ぶ。機能追加に限らない** |
 | 統合 | PR → CI グリーン → **squash merge**。マージ後にブランチを削除する |
 | 直接 push | **禁止。** `main` への push はフック（`.claude/hooks/guard.mjs`）が機械的に拒否する |
 | 同期 | 枝が古くなったら `main` を取り込む（`/sync`）。取り込みは普通の作業であって、失敗の合図ではない |
