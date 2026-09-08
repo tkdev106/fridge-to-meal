@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { expiryDateOf } from '../../../../src/contexts/pantry/domain/value/expiry-date.js';
-import { PantryRuleViolation } from '../../../../src/contexts/pantry/domain/pantry-rule-violation.js';
+import { expiryDateOf } from '../../../../src/contexts/pantry/domain/value/ExpiryDate.js';
+import { PantryRuleViolation } from '../../../../src/contexts/pantry/domain/PantryRuleViolation.js';
 
 describe('期限 ExpiryDate', () => {
   it('日付として保持する。時刻は持たない', () => {

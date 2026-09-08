@@ -1,20 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { createStockItem } from '../../../../src/contexts/pantry/domain/entity/stock-item.js';
-import { PantryRuleViolation } from '../../../../src/contexts/pantry/domain/pantry-rule-violation.js';
-import { stockItemIdOf } from '../../../../src/contexts/pantry/domain/value/stock-item-id.js';
-import { ingredientIdOf } from '../../../../src/contexts/pantry/domain/value/ingredient-id.js';
-import { householdIdOf } from '../../../../src/shared/domain/household-id.js';
-import { amountOf } from '../../../../src/contexts/pantry/domain/value/amount.js';
-import { expiryDateOf } from '../../../../src/contexts/pantry/domain/value/expiry-date.js';
+import { createStockItem } from '../../../../src/contexts/pantry/domain/entity/StockItem.js';
+import { PantryRuleViolation } from '../../../../src/contexts/pantry/domain/PantryRuleViolation.js';
+import { stockItemIdOf } from '../../../../src/contexts/pantry/domain/value/StockItemId.js';
+import { ingredientIdOf } from '../../../../src/contexts/pantry/domain/value/IngredientId.js';
+import { householdIdOf } from '../../../../src/shared/domain/HouseholdId.js';
+import { amountOf } from '../../../../src/contexts/pantry/domain/value/Amount.js';
+import { expiryDateOf } from '../../../../src/contexts/pantry/domain/value/ExpiryDate.js';
 
-const 世帯 = householdIdOf('11111111-1111-4111-8111-111111111111');
-const 識別子 = stockItemIdOf('22222222-2222-4222-8222-222222222222');
+const 世帯識別子 = householdIdOf('11111111-1111-4111-8111-111111111111');
+const 在庫品識別子 = stockItemIdOf('22222222-2222-4222-8222-222222222222');
 
 /** 名前だけ変えて在庫品を作る。テストの本題以外を書かないためのもの。 */
 function 在庫品(overrides: Partial<Parameters<typeof createStockItem>[0]> = {}) {
   return createStockItem({
-    id: 識別子,
-    householdId: 世帯,
+    id: 在庫品識別子,
+    householdId: 世帯識別子,
     name: 'にんじん',
     ingredientId: null,
     amount: null,
@@ -30,7 +30,7 @@ describe('在庫品 StockItem', () => {
     expect(item.name).toBe('にんじん');
     expect(item.amount).toBe('2本');
     expect(item.expiryDate).toBe('2026-09-30');
-    expect(item.householdId).toBe(世帯);
+    expect(item.householdId).toBe(世帯識別子);
   });
 
   it('名称の前後の空白は落とす', () => {

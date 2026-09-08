@@ -10,6 +10,7 @@ contexts/<ctx>/
     service/         ドメインサービス（純粋関数）
     repository/      リポジトリの interface。実装はここに置かない
     port/            外部への出口の interface（MealGenerator など）
+    *.ts             規則違反を表す例外型（PantryRuleViolation など）。5つのどれでもない
   usecase/           domain の**兄弟**。domain/usecase/ ではない
   infrastructure/    repository/port の実装。腐敗防止層はここ
   api/               HTTP のハンドラ。usecase だけを呼ぶ

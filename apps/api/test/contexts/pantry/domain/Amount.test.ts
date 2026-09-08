@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { amountOf } from '../../../../src/contexts/pantry/domain/value/amount.js';
+import { amountOf } from '../../../../src/contexts/pantry/domain/value/Amount.js';
 
 describe('分量 Amount', () => {
   it('書かれたとおりに保持する。数値と単位に分解しない（ADR-010）', () => {

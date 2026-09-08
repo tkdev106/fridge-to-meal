@@ -1,4 +1,4 @@
-import { PantryRuleViolation } from '../pantry-rule-violation.js';
+import { PantryRuleViolation } from '../PantryRuleViolation.js';
 
 /**
  * 期限。日付であり、時刻を持たない。`YYYY-MM-DD`。
@@ -29,7 +29,7 @@ export function expiryDateOf(raw: string | null): ExpiryDate | null {
   if (!ISO_DATE.test(trimmed)) {
     throw new PantryRuleViolation(
       'expiryDate.format',
-      `期限は YYYY-MM-DD で指定してください: ${trimmed}`,
+      `期限の書式が YYYY-MM-DD ではありません: ${trimmed}`,
     );
   }
 

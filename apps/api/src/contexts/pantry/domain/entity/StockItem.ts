@@ -1,9 +1,9 @@
-import type { HouseholdId } from '../../../../shared/domain/household-id.js';
-import { PantryRuleViolation } from '../pantry-rule-violation.js';
-import type { Amount } from '../value/amount.js';
-import type { ExpiryDate } from '../value/expiry-date.js';
-import type { IngredientId } from '../value/ingredient-id.js';
-import type { StockItemId } from '../value/stock-item-id.js';
+import type { HouseholdId } from '../../../../shared/domain/HouseholdId.js';
+import { PantryRuleViolation } from '../PantryRuleViolation.js';
+import type { Amount } from '../value/Amount.js';
+import type { ExpiryDate } from '../value/ExpiryDate.js';
+import type { IngredientId } from '../value/IngredientId.js';
+import type { StockItemId } from '../value/StockItemId.js';
 
 /**
  * 在庫品。冷蔵庫にある1件の食材。**集約ルート**（ADR-007）。
@@ -15,6 +15,8 @@ import type { StockItemId } from '../value/stock-item-id.js';
  * - 削除は物理削除でよい。献立は材料を複製済みで参照を持たない（C-5）
  */
 export type StockItem = {
+  /** 生成の経路を1つに絞るための印。素のオブジェクトリテラルを StockItem として扱えなくする。 */
+  readonly __brand: 'StockItem';
   readonly id: StockItemId;
   /** 所有する世帯。全メソッドで必須にすることで、世帯をまたぐ取得を不可能にする（C-9）。 */
   readonly householdId: HouseholdId;
@@ -27,10 +29,13 @@ export type StockItem = {
 };
 
 /**
- * 在庫品を作る。**不変条件を通った `StockItem` は、これ以外の経路では作られない。**
+ * 在庫品を作る。**不変条件を通った `StockItem` は、これ以外の経路では作られない**
+ * （型にブランドがあるため、素のオブジェクトリテラルでは作れない）。
  *
- * 返す値は凍結する。更新は書き換えではなく作り直しで表す — 可変にすると、
- * 不変条件を通らない書き換えが可能になる。
+ * 返す値は凍結する。在庫品そのものは編集できる（FR-05 / FR-06）が、**編集は
+ * 書き換えではなく作り直しで表す** — 可変にすると不変条件を通らない書き換えが
+ * 可能になる。これは実装上の取り決めであり、設計文書に根拠を持たない。
+ * 更新の形は B-06 で決める。
  *
  * @throws {PantryRuleViolation} 名称が空のとき
  */
@@ -47,10 +52,11 @@ export function createStockItem(props: {
     // 名前だけが在庫品を在庫品たらしめている。充足判定は名称の突き合わせで
     // 行うため（C-6）、空の名前を通すと、その在庫品は献立に対して存在しないのと
     // 同じになる。
-    throw new PantryRuleViolation('name.empty', '食材名を入力してください');
+    throw new PantryRuleViolation('name.empty', '在庫品の名称が空です');
   }
 
   return Object.freeze({
+    __brand: 'StockItem' as const,
     id: props.id,
     householdId: props.householdId,
     name,
