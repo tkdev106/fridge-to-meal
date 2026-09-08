@@ -20,7 +20,7 @@
 | --- | --- |
 | [`docs/requirements.md`](docs/requirements.md) | 要件定義。何を作るか、何を作らないか |
 | [`docs/domain-model.md`](docs/domain-model.md) | ドメインモデル。サブドメイン分類・ユビキタス言語・集約と不変条件 |
-| [`docs/adr.md`](docs/adr.md) | アーキテクチャ決定録。ADR-001〜021 |
+| [`docs/adr.md`](docs/adr.md) | アーキテクチャ決定録。ADR-001〜023 |
 | [`docs/prompt-design.md`](docs/prompt-design.md) | 献立生成のプロンプト設計。ポートの契約・プロンプト全文・応答の検証規則・試行の設計 |
 | [`docs/screen-design.md`](docs/screen-design.md) | 画面設計。画面遷移・各画面の状態・再利用の見せ方 |
 

@@ -15,19 +15,27 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const readJson = (p) => JSON.parse(readFileSync(join(HERE, p), 'utf8'));
 
 function parseArgs(argv) {
-  const out = { provider: 'anthropic', runs: 1, count: 3, maxTokens: 2048, effort: 'low' };
+  const out = { provider: 'anthropic', runs: 1, count: 3, maxTokens: 8192, effort: 'low' };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     const next = () => argv[++i];
+    const num = (min, max) => {
+      const raw = next();
+      const v = Number(raw);
+      if (!Number.isInteger(v) || v < min || v > max) {
+        throw new Error(`${a} は ${min}〜${max} の整数で指定する（受け取った値: ${raw}）`);
+      }
+      return v;
+    };
     if (a === '--provider') out.provider = next();
     else if (a === '--model') out.model = next();
     else if (a === '--patterns') out.patterns = next().split(',').map((s) => s.trim());
-    else if (a === '--runs') out.runs = Number(next());
-    else if (a === '--count') out.count = Number(next());
-    else if (a === '--max-tokens') out.maxTokens = Number(next());
+    else if (a === '--runs') out.runs = num(1, 100);
+    else if (a === '--count') out.count = num(1, 3);
+    else if (a === '--max-tokens') out.maxTokens = num(256, 64000);
     else if (a === '--effort') out.effort = next();
     else if (a === '--temperature') out.temperature = Number(next());
-    else if (a === '--avoid') out.avoid = Number(next());
+    else if (a === '--avoid') out.avoid = num(0, 200);
     else if (a === '--structured') out.structured = true;
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '--count-tokens') out.countTokens = true;
@@ -47,7 +55,7 @@ const HELP = `献立生成プロンプトの試行ツール
   --patterns P-1,P-2  試すパターン（既定: 全部）
   --runs <n>          パターンごとの試行回数（既定: 1。設計上の推奨は3）
   --count <n>         生成させる件数（既定: 3）
-  --max-tokens <n>    出力の上限（既定: 2048）
+  --max-tokens <n>    出力の上限（既定: 8192）。**思考のトークンもここを消費する**
   --effort <level>    anthropic のみ。low|medium|high（既定: low）
   --temperature <n>   対応プロバイダのみ。Claude Opus 5 / Sonnet 5 は受け付けない
   --avoid <n>         避けたい献立の件数を上書き（Q-6 の検証用。0 / 20 / 50）
@@ -178,8 +186,8 @@ function renderSummary(results, { provider, model, args }) {
     `- 生成件数の指示: ${args.count} / 出力上限: ${args.maxTokens}${args.structured ? ' / 構造化出力: あり' : ''}`,
     `- 為替: 1 USD = ${USD_JPY} 円`,
     '',
-    '| パターン | 回 | 検証 | 件数 | 材料名一致 | 表記ゆれ疑い | 種別の倒し込み | 調味料(うちリスト外) | 期限遵守 | 調理法 | 不足材料(中央値) | 名称一致の重複 | 入力tok | 出力tok | 円 | 秒 |',
-    '| --- | --: | --- | --: | --: | --: | --: | --: | --- | --: | --: | --: | --: | --: | --: | --: |',
+    '| パターン | 回 | 検証 | 件数 | 材料名一致 | 表記ゆれ疑い | 種別の倒し込み | 調味料(うちリスト外) | 期限遵守 | 調理法 | 不足材料(中央値) | 追加超過 | 名称一致の重複 | 停止理由 | 入力tok | 出力tok | 円 | 秒 |',
+    '| --- | --: | --- | --: | --: | --: | --: | --: | --- | --: | --: | --: | --: | --- | --: | --: | --: | --: |',
   ];
   const pct = (v) => (v === null || v === undefined ? '-' : `${Math.round(v * 100)}%`);
   const body = rows.map((r) => {
@@ -189,14 +197,21 @@ function renderSummary(results, { provider, model, args }) {
       + `${pct(m?.ingredientNameMatchRate)} | ${m?.variantSuspects ?? '-'} | ${m?.kindCorrections ?? '-'} | `
       + `${m ? `${m.seasoningTotal}(${m.seasoningOffList})` : '-'} | `
       + `${urgent === null || urgent === undefined ? '-' : (urgent ? 'あり' : 'なし')} | `
-      + `${m?.distinctCookingMethods ?? '-'} | ${m?.missingMedian ?? '-'} | ${m?.exactAvoidHits ?? '-'} | `
+      + `${m?.distinctCookingMethods ?? '-'} | ${m?.missingMedian ?? '-'} | ${m?.missingOverLimit ?? '-'} | `
+      + `${m?.exactAvoidHits ?? '-'} | ${r.stopReason ?? '-'} | `
       + `${r.usage?.input ?? '-'} | ${r.usage?.output ?? '-'} | ${r.cost ? r.cost.jpy.toFixed(2) : '-'} | `
       + `${r.elapsedMs ? (r.elapsedMs / 1000).toFixed(1) : '-'} |`;
   });
   const failures = rows.filter((r) => !r.ok).map((r) => `- ${r.pattern} run ${r.run}: ${r.failure}`);
+  // 9.2 の「形式の妥当性」は**応答が検証を通った割合**である。
+  // API エラー（429・5xx・タイムアウト）は応答が返っていないので分母から外す。
+  const apiErrors = rows.filter((r) => r.failure?.startsWith('API エラー'));
+  const answered = rows.filter((r) => !apiErrors.includes(r));
   const tail = [
     '',
-    `検証通過率: ${rows.length ? Math.round((rows.filter((r) => r.ok).length / rows.length) * 100) : 0}%`,
+    `検証通過率: ${answered.length ? Math.round((answered.filter((r) => r.ok).length / answered.length) * 100) : 0}%`
+      + `（応答 ${answered.length} 件中）`,
+    apiErrors.length ? `API エラー: ${apiErrors.length} 件（通過率の分母から除外）` : '',
     '',
     '**人が見る項目（自動では測らない）**: 意味的な重複の有無、「今日これを作るか」と思えるか、リストにない調味料が正しく seasoning になっているか。',
   ];
@@ -207,6 +222,7 @@ function renderSummary(results, { provider, model, args }) {
 /** API を使わない自己診断。検証規則が壊れていないかを確かめる。 */
 function selfTest() {
   const ing = (name, kind) => ({ name, amount: '1個', ...(kind ? { kind } : {}) });
+  const ing2 = (name, kind) => ({ name, amount: '1個', kind });
   const meal = (title, ingredients, steps = ['焼く']) => ({ title, ingredients, steps });
   const wrap = (meals) => JSON.stringify({ meals });
 
@@ -257,6 +273,47 @@ function selfTest() {
 
   const preceding = validate(wrap([meal('A', [ing('卵', 'main')])]), { requiredCount: 3, precedingTitles: ['A'] });
   check('直前の提案と同名は捨てる', !preceding.ok);
+
+  // --- ok === true なら meals は必ず1件以上（呼び出し側の前提）---
+  const one = wrap([meal('A', [ing('卵', 'main')])]);
+  check('requiredCount が 0 でも ok を返さない', !validate(one, { requiredCount: 0 }).ok);
+  check('requiredCount が NaN でも ok を返さない', !validate(one, { requiredCount: NaN }).ok);
+
+  // --- 壊れた入力（実運用で最も起きる形）---
+  check('切り詰められた JSON は失敗',
+    !validate('{"meals":[{"title":"A","ingredients":[{"name":"卵"', { requiredCount: 3 }).ok);
+  const braces = validate(wrap([meal('卵の{甘辛}焼き "特製"', [ing('卵', 'main')])]), { requiredCount: 3 });
+  check('名称に波括弧と引用符があっても抽出できる',
+    braces.ok && braces.meals[0].title === '卵の{甘辛}焼き "特製"');
+  check('meals の要素が文字列でも残りを通す',
+    validate('{"meals":["こわれた",' + JSON.stringify(meal('A', [ing('卵', 'main')])) + ']}', { requiredCount: 3 }).ok);
+
+  // --- 境界値（6.2 の値をプロンプト側の値に揃えてしまう事故を防ぐ）---
+  const long = (n) => 'あ'.repeat(n);
+  check('title 40字は通り 41字は捨てる',
+    validate(wrap([meal(long(40), [ing('卵', 'main')])]), { requiredCount: 3 }).ok
+    && !validate(wrap([meal(long(41), [ing('卵', 'main')])]), { requiredCount: 3 }).ok);
+  check('steps 8件は通り 9件は捨てる',
+    validate(wrap([meal('A', [ing('卵', 'main')], Array(8).fill('焼く'))]), { requiredCount: 3 }).ok
+    && !validate(wrap([meal('A', [ing('卵', 'main')], Array(9).fill('焼く'))]), { requiredCount: 3 }).ok);
+  check('ingredients 12件は通り 13件は捨てる',
+    validate(wrap([meal('A', Array.from({ length: 12 }, (_, i) => ing(`食材${i}`, 'main')))]), { requiredCount: 3 }).ok
+    && !validate(wrap([meal('A', Array.from({ length: 13 }, (_, i) => ing(`食材${i}`, 'main')))]), { requiredCount: 3 }).ok);
+
+  // --- 集計（score）---
+  const scored = score({
+    stock: [{ name: '豚こま肉', amount: '300g', expiryInDays: 0 }, { name: 'にんじん', amount: '1本', expiryInDays: 5 }],
+    meals: [
+      { title: '豚こま肉の生姜焼き', kindCorrections: 0, steps: ['フライパンで炒める。'],
+        ingredients: [ing2('豚こま肉', 'main'), ing2('醤油', 'seasoning')] },
+      { title: 'にんじんの含め煮', kindCorrections: 0, steps: ['鍋で煮る。'],
+        ingredients: [ing2('にんじん', 'main')] },
+    ],
+    avoidTitles: [],
+  });
+  check('調味料は材料名一致率の分母に入らない', scored.ingredientNameMatchRate === 1);
+  check('「フライパン」を揚げ物と判定しない', scored.distinctCookingMethods === 2);
+  check('期限が迫った主材料を使ったと判定する', scored.usesUrgentIngredient === true);
 
   console.log(failed === 0 ? '\nすべて通過' : `\n${failed} 件失敗`);
   process.exitCode = failed === 0 ? 0 : 1;

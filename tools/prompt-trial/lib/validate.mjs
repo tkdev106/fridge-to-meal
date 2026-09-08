@@ -106,9 +106,11 @@ export function validate(raw, { requiredCount, precedingTitles = [] } = {}) {
     accepted.push({ title, ingredients, steps, kindCorrections });
   }
 
-  if (accepted.length === 0) {
+  // 6.4: 多い場合は先頭から採る。少ない場合はその件数で提案を組む（論点1）。
+  const meals = accepted.slice(0, requiredCount);
+  // 0件判定は切り詰めの**後**に行う。ok === true なら meals は必ず1件以上ある。
+  if (meals.length === 0) {
     return { ok: false, meals: [], failure: '検証を通った献立が0件', discarded };
   }
-  // 6.4: 多い場合は先頭から採る。少ない場合はその件数で提案を組む（論点1）。
-  return { ok: true, meals: accepted.slice(0, requiredCount), failure: null, discarded };
+  return { ok: true, meals, failure: null, discarded };
 }

@@ -76,8 +76,6 @@ export const PROVIDERS = {
   google: {
     envKey: 'GOOGLE_API_KEY',
     defaultModel: 'gemini-2.5-flash',
-    supportsTemperature: () => true,
-
     async generate({ model, system, user, maxTokens, schema, temperature }) {
       const generationConfig = { maxOutputTokens: maxTokens };
       if (temperature !== undefined) generationConfig.temperature = temperature;
@@ -114,8 +112,6 @@ export const PROVIDERS = {
   openai: {
     envKey: 'OPENAI_API_KEY',
     defaultModel: 'gpt-5.6-luna',
-    supportsTemperature: () => true,
-
     async generate({ model, system, user, maxTokens, schema, temperature }) {
       const body = {
         model,
