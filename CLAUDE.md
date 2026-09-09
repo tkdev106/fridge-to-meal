@@ -14,6 +14,7 @@
 | なぜその作りなのか（アーキテクチャ決定 ADR-001〜024） | `docs/adr.md` |
 | LLM に何を渡し何を受け取るか（プロンプト全文・応答の検証規則） | `docs/prompt-design.md` |
 | 画面に何をどう出すか（遷移・状態・再利用の見せ方） | `docs/screen-design.md` |
+| どうテストするか（古典派・観察可能な振る舞い・TDD の1周） | `docs/testing.md` |
 | どう進めるか（ブランチ運用・完了の定義・自律ループ） | `docs/workflow.md` |
 | 次に何をやるか（ループの入力になるタスク一覧） | `docs/backlog.md` |
 
@@ -111,6 +112,11 @@
 **完了の定義は `pnpm verify` が緑になること。** PR を出す条件であり、マージの条件でもある。
 **テストを skip・無効化して緑にしない。**
 
+**実装はテストから作る。** `/tdd` が1件ぶんの `test-designer`（洗い出し）→ `test-writer`（赤）→
+`implementer`（緑）を回す。方針は `docs/testing.md` — **古典派**をとり、単体テストでは
+**観察可能な振る舞い**だけを検証する（`vi.fn()` で呼び出し回数を数えない）。
+リファクタリング耐性と実行の速さは、そこに書かれた制約で担保する。
+
 **ループの1周は `/next`。** 入力は `docs/backlog.md`、出力は PR。以下に当たったら
 **進めずに止まり、ドラフト PR を push して、何が決まれば進むかを1つの質問にして終える。**
 
@@ -119,6 +125,7 @@
 - FR / NFR に無い機能が必要になった
 - 依存パッケージの追加が必要になった
 - 同じ検証失敗を2回直せなかった
+- `implementer` が「テストが仕様として誤っている」と報告した
 
 黙って止まらない。黙って進めない。
 
@@ -145,8 +152,11 @@
   settings.json            許可・拒否とフックの登録（settings.local.json は各自のもので git 管理外）
   hooks/guard.mjs          戻せない操作の拒否。guard.test.mjs が回帰テスト
   hooks/session-start.sh   web セッション開始時の pnpm install
-  commands/                /next（ループ1周）/verify /sync /address
+  commands/                /next（ループ1周）/tdd（テスト駆動で1件）/verify /sync /address
   agents/design-reviewer   差分を設計文書と突き合わせる読み手
+  agents/test-designer     観察可能な振る舞いを洗い出し、テストケース一覧を作る
+  agents/test-writer       一覧をテストにし、落ちること（赤）を確認する
+  agents/implementer       テストを変えずに緑にする
 .githooks/pre-push         main への push を git の側で止める（要 core.hooksPath）
 apps/web/                  React + Vite（PWA）— API のクライアント
   src/features/meal/       画面もコンテキスト単位で切る
