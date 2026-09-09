@@ -39,9 +39,10 @@
   **クライアントはリクエストごとに作る** — Workers は同じ isolate で複数のリクエストを処理するため、
   使い回すと他人の JWT で問い合わせる事故になる。テストでは再現しない
 - [ ] **B-08** `pantry/api`: Hono のルート。やりとりは DTO だけで、ドメインの型を HTTP 層に出さない（ADR-003）。
-  **`PantryRuleViolation.rule` から状態コードを引く表を設計書に持たせる** — B-06 が
-  `update.notFound`（見つからない）を規則違反の一種として表したため、404 と 400 の
-  区別が `rule` の値に載っている。表が無いとどちらも 400 になる
+  **`PantryRuleViolation.rule` から状態コードを引く表を設計書に持たせる** — B-06 の
+  `update.notFound` と B-06a の `delete.notFound`（どちらも見つからない）を規則違反の
+  一種として表したため、404 と 400 の区別が `rule` の値に載っている。表が無いと
+  すべて 400 になる
 - [ ] **B-09** `apps/api/src/main.ts`: composition root で結線する。実装クラスの生成をここだけに閉じる
 - [ ] **B-10** `apps/web`: feature flag の仕組み。`features.ts` の1か所で `VITE_FEATURE_*` を読み、既定は無効（ADR-024 / docs/workflow.md）
 - [ ] **B-11** `apps/web`: 在庫一覧の画面。残日数を出し、期限が近いものを区別する。**色だけで表さない**（FR-04 / FR-11 / FR-12 / NFR-17）
