@@ -23,7 +23,15 @@
   **着手時に、テスト用の記憶上のリポジトリの置き場所を決める** — B-03 でテストファイル内に置いており、複製が生まれる前に共有先を決める
 - [ ] **B-05** `pantry/usecase`: 在庫を期限の近い順に一覧する。期限未入力の在庫品は警告・優先の対象外（FR-04 / FR-11 / FR-13）
 - [ ] **B-06** `pantry/usecase`: 在庫品の数量・期限の更新と、削除（FR-05 / FR-06）
-- [ ] **B-07** `pantry/infrastructure`: Supabase 実装。**利用者の JWT で問い合わせる。`service_role` は使わない**（ADR-020 / NFR-09）
+- [ ] **B-07a** `stock_items` のスキーマと RLS ポリシー（select / insert / update / delete の4種）を置く。
+  **`insert` の `with check` を落とさない** — `using` は見える行の条件であって、他世帯の行を作ることを止めない。
+  世帯を DB でどう表すか（`auth.uid()` に寄せるか、`household_members` を挟むか）は**着手時に ADR を起こして決める**（ADR-020 / NFR-09 / C-9）
+- [ ] **B-07b** RLS の回帰テスト。他世帯の行が**見えない・書けない・消せない**ことを実 Supabase に対して確かめる。
+  **RLS は効いていないことに気づけない** — ポリシーを1行消してもアプリは正常に動き続ける。実 DB を使うため、
+  ドメイン層のテスト（ADR-002）とは別枠になる。**接続情報の置き場と CI で回すかは着手時に決める**（NFR-09）
+- [ ] **B-07** `pantry/infrastructure`: Supabase 実装。**利用者の JWT で問い合わせる。`service_role` は使わない**（ADR-020 / NFR-09）。
+  **クライアントはリクエストごとに作る** — Workers は同じ isolate で複数のリクエストを処理するため、
+  使い回すと他人の JWT で問い合わせる事故になる。テストでは再現しない
 - [ ] **B-08** `pantry/api`: Hono のルート。やりとりは DTO だけで、ドメインの型を HTTP 層に出さない（ADR-003）
 - [ ] **B-09** `apps/api/src/main.ts`: composition root で結線する。実装クラスの生成をここだけに閉じる
 - [ ] **B-10** `apps/web`: feature flag の仕組み。`features.ts` の1か所で `VITE_FEATURE_*` を読み、既定は無効（ADR-024 / docs/workflow.md）
