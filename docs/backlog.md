@@ -41,8 +41,6 @@
   **突き合わせる前に両側の前後空白を落とす** — 在庫品の名称は登録時に落としてあり、片側だけ正規化すると一致が静かにずれる
 - [ ] **B-14** `meal/domain/service`: `CookableMealFinder`。不足0件のみ、並びは決定的（C-10 / C-12 / C-13）
 - [ ] **B-15** `meal/domain/port`: `MealGenerator` ポートの定義。プロバイダ未決のまま進める（ADR-019 / NFR-18）
-- [ ] **B-17** `docs/html/adr.html` が ADR-022 以降を欠いている。閲覧用 HTML を Markdown に追いつかせる
-  （正は Markdown。`CLAUDE.md`「迷ったらここを見る」）
 
 ## 判断待ち（着手しない）
 
