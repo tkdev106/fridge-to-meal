@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { createStockItem } from '../../../../src/contexts/pantry/domain/entity/StockItem.js';
+import {
+  createStockItem,
+  withAmountAndExpiryDate,
+} from '../../../../src/contexts/pantry/domain/entity/StockItem.js';
 import { PantryRuleViolation } from '../../../../src/contexts/pantry/domain/error/PantryRuleViolation.js';
 import { stockItemIdOf } from '../../../../src/contexts/pantry/domain/value/StockItemId.js';
 import { ingredientIdOf } from '../../../../src/contexts/pantry/domain/value/IngredientId.js';
@@ -73,6 +76,29 @@ describe('在庫品 StockItem', () => {
 
     expect(先週買った.id).not.toBe(今日買った.id);
     expect(先週買った.expiryDate).not.toBe(今日買った.expiryDate);
+  });
+
+  it('分量と期限だけを置き換え、識別子・世帯・名称・食材の指定は元の在庫品から引き継ぐ', () => {
+    // B-06 規則2 / FR-05: 更新は書き換えではなく作り直しで表す。引き継ぐ4つを引数に
+    // 取らないので、名称の変更が型として起こせない。
+    const にんじん = ingredientIdOf('33333333-3333-4333-8333-333333333333');
+    const 元の在庫品 = 在庫品({
+      ingredientId: にんじん,
+      amount: amountOf('2本'),
+      expiryDate: expiryDateOf('2026-10-01'),
+    });
+
+    const 作り直したもの = withAmountAndExpiryDate(元の在庫品, {
+      amount: amountOf('5本'),
+      expiryDate: expiryDateOf('2026-12-31'),
+    });
+
+    expect(作り直したもの.amount).toBe('5本');
+    expect(作り直したもの.expiryDate).toBe('2026-12-31');
+    expect(作り直したもの.id).toBe(在庫品識別子);
+    expect(作り直したもの.householdId).toBe(世帯識別子);
+    expect(作り直したもの.name).toBe('にんじん');
+    expect(作り直したもの.ingredientId).toBe(にんじん);
   });
 
   it('作ったあとに書き換えられない', () => {
