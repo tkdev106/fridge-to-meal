@@ -38,6 +38,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@fridge-to-meal/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
       hono:
         specifier: ^4.13.7
         version: 4.13.7

@@ -111,7 +111,12 @@ module.exports = {
     tsConfig: { fileName: 'tsconfig.base.json' },
     enhancedResolveOptions: {
       exportsFields: ['exports'],
-      conditionNames: ['import', 'require', 'types', 'default'],
+      // 'source' を先に置き、ワークスペースの package をビルド成果物ではなくソースで解決する。
+      // 無いと2つ困る。(1) dist の無いクローン（CI）では lint が build より先に走るため
+      // 「存在しないモジュール」で落ちる。(2) dist があるときは exclude に当たって
+      // apps → contract の辺がグラフから消え、規則が当たらないまま緑になる。
+      // tsc・vite・wrangler はこの条件を有効にしないので、実行時の解決は dist のままである。
+      conditionNames: ['source', 'import', 'require', 'types', 'default'],
       extensions: ['.ts', '.tsx', '.js', '.jsx'],
     },
     reporterOptions: {
