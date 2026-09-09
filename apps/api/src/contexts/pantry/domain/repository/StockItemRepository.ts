@@ -33,9 +33,9 @@ export interface StockItemRepository {
   /**
    * 登録（FR-01）と更新（FR-05）の永続化を兼ねる。同じ `id` の在庫品があれば置き換える。
    *
-   * **更新を「作り直したものを保存する」形にするかは、ここでは決めない。** 在庫品を
-   * 不変にしているのは実装上の取り決めであり（`StockItem` の doc を参照）、更新の形は
-   * B-06 で決める。このメソッドはどちらの形でも使える。
+   * **更新は「作り直したものを保存する」形をとる**（B-06）。在庫品は不変であり、
+   * `withAmountAndExpiryDate` が分量と期限だけを差し替えた在庫品を作って渡す。
+   * このメソッドから見れば、登録も更新も同じ「同じ id なら置き換える」1つの操作である。
    * `stockItem.householdId` と引数の `householdId` が食い違う場合、実装は
    * **`PantryRuleViolation`（`rule: 'save.householdMismatch'`）を投げて保存を拒む。**
    * 食い違いは呼び出し側の誤りであり、黙って引数の側に寄せない。interface では
