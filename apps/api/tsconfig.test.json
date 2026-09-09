@@ -1,0 +1,23 @@
+{
+  // テストを型検査の対象に入れるためのプロジェクト。
+  //
+  // 本体（tsconfig.json）の include は src/** だけである。rootDir を src に固定して
+  // dist の形を保つためで、ここに test/** を足すと出力の配置が変わる。そこで
+  // テストは別プロジェクトにし、本体を references で参照する。
+  //
+  // これが無いと、テストの型の誤りが検出されない。ドメイン層は型で不変条件を表す層
+  // なので、テストが型検査を受けないと「表しているつもりの制約が効いていない」ことに
+  // 気づけない（実際に、ブランド型を要求する引数へ生の文字列を渡したテストが通った）。
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    // 本体の型は references 経由で入る。テスト自身は実行環境の型を必要としない。
+    "types": [],
+    "rootDir": ".",
+    // 型検査だけが目的だが、composite なプロジェクトは emit を止められないため
+    // 出力先を分ける。dist-test/ は git 管理外。
+    "outDir": "./dist-test"
+  },
+  "include": ["test/**/*.ts"],
+  "references": [{ "path": "./tsconfig.json" }]
+}
