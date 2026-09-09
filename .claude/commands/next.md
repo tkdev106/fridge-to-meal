@@ -23,14 +23,18 @@ description: "backlog の先頭タスクを1件だけ、作業ブランチ1本 +
    - `docs/adr.md` の関連 ADR
    - 画面に触るなら `docs/screen-design.md`、生成に触るなら `docs/prompt-design.md`
 4. **枝を切る**: `git switch -c <type>/<slug>`（type は Conventional Commits と揃える）
-5. **テストを先に書く。** ドメイン層・ユースケース層は実 DB も実 API も使わない（ADR-002）。
-   落ちることを確認してから実装に移る。
-6. **実装する。** `CLAUDE.md` の4つの約束（用語表 / 依存の向き / C-1〜C-16 / 未決事項）を守る。
+5. **テスト駆動で実装する: `/tdd` を呼ぶ。** `test-designer`（洗い出し）→ `test-writer`（赤）→
+   `implementer`（緑）の3段。方針は `docs/testing.md`。**テストを先に書き、落ちることを
+   確認してから実装に移る。** ドメイン層・ユースケース層は実 DB も実 API も使わない（ADR-002）。
+   タスクが複数の振る舞いのかたまりに分かれるなら、**かたまりごとに1周**回す。
+6. **実装で守るもの。** `CLAUDE.md` の4つの約束（用語表 / 依存の向き / C-1〜C-16 / 未決事項）。
    画面に出せない段階でもマージを止めない。**表示は feature flag で隠す**（ADR-024）。
    フラグを足したら、`docs/backlog.md` に**それを消すタスクを同時に足す**。
 7. **`pnpm verify`** が緑になるまで直す。**同じ失敗を2回直せなかったら止める**（下記）。
+   **テストを skip・無効化して緑にしない。**
 8. **自己レビュー**: `git fetch origin main` の後、`design-reviewer` サブエージェントに
    `git diff origin/main...HEAD` を渡す（**ローカルの `main` は古いことがある**）。
+   `/tdd` の中で済ませているなら、**その後に足した差分だけ**を対象にすればよい。
    指摘は直すか、直さない理由を PR に書く。
 9. **コミット**: 入れるファイルを明示して stage し、`git diff --staged` からメッセージを書く。
    1コミット1目的。型を混ぜない。`.gitmessage` が形式。
