@@ -122,6 +122,12 @@ apps/api/src/contexts/pantry/domain/entity/StockItem.ts
 apps/api/test/contexts/pantry/domain/StockItem.test.ts
 ```
 
+**共有する道具は `apps/api/test/support/<コンテキスト>/` に置く。** 記憶上のリポジトリのように、
+複数のテストが同じものを使うヘルパーの置き場である。`src/` に置くと Worker の成果物に載り、
+`infrastructure/` に置くと本物の実装と並んで**結線を間違えたときに気づけない**。
+`test/contexts/**` は `src/` の写しなので、src に対応の無いものをそこに混ぜない。
+vitest が拾うのは `.test.ts` だけなので、ここに置いたものは収集されない。
+
 **命名** — `describe` は対象（`在庫品 StockItem`）、`it` は**振る舞いを日本語の文**で書く。
 「〜する」「〜を許さない」。`it('should work')` のような、落ちたときに何が壊れたか
 わからない名前を書かない。
