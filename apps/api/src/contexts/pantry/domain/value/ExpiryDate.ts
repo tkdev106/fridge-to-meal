@@ -1,4 +1,4 @@
-import { PantryRuleViolation } from '../PantryRuleViolation.js';
+import { PantryRuleViolation } from '../error/PantryRuleViolation.js';
 
 /**
  * 期限。日付であり、時刻を持たない。`YYYY-MM-DD`。

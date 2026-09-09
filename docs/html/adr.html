@@ -328,7 +328,8 @@
 │     │  │  │                CookingRecord.ts  PantrySnapshot.ts
 │     │  │  ├─ service/      MealCoverageService.ts  CookableMealFinder.ts
 │     │  │  ├─ <i>repository/</i>   MealRepository.ts  SuggestionRepository.ts
-│     │  │  └─ <i>port/</i>         MealGenerator.ts
+│     │  │  ├─ <i>port/</i>         MealGenerator.ts
+│     │  │  └─ error/        MealRuleViolation.ts        <span>規則違反を断る例外（ADR-025）</span>
 │     │  ├─ usecase/         SuggestMeals.ts  RegenerateMeals.ts
 │     │  │                   ListMeals.ts  RecordCooking.ts
 │     │  ├─ infrastructure/  DbMealRepository.ts  LlmMealGenerator.ts

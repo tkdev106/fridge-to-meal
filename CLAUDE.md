@@ -154,7 +154,7 @@ apps/web/                  React + Vite（PWA）— API のクライアント
 apps/api/                  Hono on Cloudflare Workers
   src/contexts/meal/       ← コアドメイン
     domain/
-      entity/  value/  service/  repository/«if»  port/«if»
+      entity/  value/  service/  repository/«if»  port/«if»  error/
     usecase/
     infrastructure/        ← 腐敗防止層はここ
     api/

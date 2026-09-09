@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createStockItem } from '../../../../src/contexts/pantry/domain/entity/StockItem.js';
-import { PantryRuleViolation } from '../../../../src/contexts/pantry/domain/PantryRuleViolation.js';
+import { PantryRuleViolation } from '../../../../src/contexts/pantry/domain/error/PantryRuleViolation.js';
 import { stockItemIdOf } from '../../../../src/contexts/pantry/domain/value/StockItemId.js';
 import { ingredientIdOf } from '../../../../src/contexts/pantry/domain/value/IngredientId.js';
 import { householdIdOf } from '../../../../src/shared/domain/HouseholdId.js';

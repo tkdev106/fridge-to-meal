@@ -1,5 +1,5 @@
 import type { HouseholdId } from '../../../../shared/domain/HouseholdId.js';
-import { PantryRuleViolation } from '../PantryRuleViolation.js';
+import { PantryRuleViolation } from '../error/PantryRuleViolation.js';
 import type { Amount } from '../value/Amount.js';
 import type { ExpiryDate } from '../value/ExpiryDate.js';
 import type { IngredientId } from '../value/IngredientId.js';

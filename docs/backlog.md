@@ -37,6 +37,8 @@
 - [ ] **B-16** `apps/api`: `test/` を typecheck の対象に入れる。いま tsc の include が `src/**` だけで、
   テストの型の誤りが検出されない（B-02 でブランド型に生の文字列を渡しても通った）。**順序は要判断 —
   ドメインを書き進めるほど効く**（docs/workflow.md 完了の定義）
+- [ ] **B-17** `docs/html/adr.html` が ADR-022 以降を欠いている。閲覧用 HTML を Markdown に追いつかせる
+  （正は Markdown。`CLAUDE.md`「迷ったらここを見る」）
 
 ## 判断待ち（着手しない）
 
