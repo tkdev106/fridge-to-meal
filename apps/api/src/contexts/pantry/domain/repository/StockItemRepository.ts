@@ -52,7 +52,7 @@ export interface StockItemRepository {
    *
    * **これはリポジトリの契約であって、アプリの振る舞いではない。** 利用者に対しては
    * 消せなかったことを断る（`DeleteStockItem` が `delete` の前に `findById` で確かめる。
-   * ADR-027 提案中）。存在しないのか他の世帯のものなのかを漏らさない役割は、
+   * ADR-027）。存在しないのか他の世帯のものなのかを漏らさない役割は、
    * そちらでも同じく果たされる。
    */
   delete(householdId: HouseholdId, id: StockItemId): Promise<void>;
