@@ -146,6 +146,7 @@
   hooks/guard.mjs          戻せない操作の拒否。guard.test.mjs が回帰テスト
   hooks/session-start.sh   web セッション開始時の pnpm install
   commands/                /next（ループ1周）/verify /sync /address
+  agents/design-writer     タスク1件を実装できる設計書に落とす書き手
   agents/design-reviewer   差分を設計文書と突き合わせる読み手
 .githooks/pre-push         main への push を git の側で止める（要 core.hooksPath）
 apps/web/                  React + Vite（PWA）— API のクライアント
