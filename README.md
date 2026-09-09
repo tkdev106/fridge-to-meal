@@ -23,6 +23,7 @@
 | [`docs/adr.md`](docs/adr.md) | アーキテクチャ決定録。ADR-001〜024 |
 | [`docs/prompt-design.md`](docs/prompt-design.md) | 献立生成のプロンプト設計。ポートの契約・プロンプト全文・応答の検証規則・試行の設計 |
 | [`docs/screen-design.md`](docs/screen-design.md) | 画面設計。画面遷移・各画面の状態・再利用の見せ方 |
+| [`docs/testing.md`](docs/testing.md) | テスト方針。古典派・観察可能な振る舞い・TDD の1周 |
 | [`docs/workflow.md`](docs/workflow.md) | 開発ワークフロー。ブランチ運用・完了の定義・自律ループ |
 | [`docs/backlog.md`](docs/backlog.md) | 次にやることの一覧。自律ループの入力 |
 

@@ -34,7 +34,8 @@ description: "backlog の先頭タスクを1件だけ、作業ブランチ1本 +
    **テストを skip・無効化して緑にしない。**
 8. **自己レビュー**: `git fetch origin main` の後、`design-reviewer` サブエージェントに
    `git diff origin/main...HEAD` を渡す（**ローカルの `main` は古いことがある**）。
-   `/tdd` の中で済ませているなら、**その後に足した差分だけ**を対象にすればよい。
+   **渡す差分は常に `origin/main...HEAD` の全体。** `/tdd` の中で済ませていて、
+   その後に差分が増えていないなら省いてよい。
    指摘は直すか、直さない理由を PR に書く。
 9. **コミット**: 入れるファイルを明示して stage し、`git diff --staged` からメッセージを書く。
    1コミット1目的。型を混ぜない。`.gitmessage` が形式。
