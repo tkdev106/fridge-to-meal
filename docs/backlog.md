@@ -18,7 +18,6 @@
 
 ## 次にやること
 
-- [ ] **B-05** `pantry/usecase`: 在庫を期限の近い順に一覧する。期限未入力の在庫品は警告・優先の対象外（FR-04 / FR-11 / FR-13）
 - [ ] **B-06** `pantry/usecase`: 在庫品の数量・期限の更新と、削除（FR-05 / FR-06）
 - [ ] **B-07a** `stock_items` のスキーマと RLS ポリシー（select / insert / update / delete の4種）を置く。
   **`insert` の `with check` を落とさない** — `using` は見える行の条件であって、他世帯の行を作ることを止めない。
