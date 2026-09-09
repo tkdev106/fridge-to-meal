@@ -9,6 +9,7 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
+    "@fridge-to-meal/contract": "workspace:*",
     "hono": "^4.13.7"
   },
   "devDependencies": {
