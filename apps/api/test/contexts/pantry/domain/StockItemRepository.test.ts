@@ -7,6 +7,7 @@ import type { StockItemId } from '../../../../src/contexts/pantry/domain/value/S
 import { amountOf } from '../../../../src/contexts/pantry/domain/value/Amount.js';
 import { householdIdOf } from '../../../../src/shared/domain/HouseholdId.js';
 import type { HouseholdId } from '../../../../src/shared/domain/HouseholdId.js';
+import { PantryRuleViolation } from '../../../../src/contexts/pantry/domain/error/PantryRuleViolation.js';
 
 const 我が家 = householdIdOf('11111111-1111-4111-8111-111111111111');
 const 隣の家 = householdIdOf('99999999-9999-4999-8999-999999999999');
@@ -25,13 +26,16 @@ class 記憶上の在庫品リポジトリ implements StockItemRepository {
     return 在庫品 !== undefined && 在庫品.householdId === householdId ? 在庫品 : null;
   }
 
-  async list(householdId: HouseholdId) {
+  async findByHousehold(householdId: HouseholdId) {
     return [...this.#保存済み.values()].filter((在庫品) => 在庫品.householdId === householdId);
   }
 
   async save(householdId: HouseholdId, stockItem: StockItem) {
     if (stockItem.householdId !== householdId) {
-      throw new Error('引数の世帯と在庫品の世帯が食い違っている');
+      throw new PantryRuleViolation(
+        'save.householdMismatch',
+        '引数の世帯と在庫品の世帯が食い違っている',
+      );
     }
     this.#保存済み.set(stockItem.id, stockItem);
   }
@@ -104,8 +108,15 @@ describe('在庫品リポジトリ StockItemRepository', () => {
     await repository.save(我が家, にんじん(我が家));
     await repository.save(隣の家, にんじん(隣の家, '33333333-3333-4333-8333-333333333333'));
 
-    expect(await repository.list(我が家)).toHaveLength(1);
-    expect(await repository.list(隣の家)).toHaveLength(1);
+    expect(await repository.findByHousehold(我が家)).toHaveLength(1);
+    expect(await repository.findByHousehold(隣の家)).toHaveLength(1);
+  });
+
+  it('他の世帯の在庫品として保存しようとすると拒む', async () => {
+    // interface では強制できない約束なので、実装ごとにここで確かめる。
+    const repository: StockItemRepository = new 記憶上の在庫品リポジトリ();
+
+    await expect(repository.save(隣の家, にんじん(我が家))).rejects.toThrow(PantryRuleViolation);
   });
 
   it('削除できる', async () => {

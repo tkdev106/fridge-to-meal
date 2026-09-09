@@ -20,18 +20,26 @@ export interface StockItemRepository {
   /**
    * その世帯の在庫品をすべて返す。
    *
+   * 名前は ADR-002 の結果が挙げた例（`findByHousehold`）に合わせた。全メソッドが
+   * `householdId` を取るので `ByHousehold` は冗長だが、**後続のリポジトリが同じ判断を
+   * やり直さずに済むほうを採る。**
+   *
    * **並び順を約束しない。** 期限の近い順に見せるのは画面の要求（FR-04）であり、
    * 並べ替えはユースケース層で行う（B-05）。ここで順序を決めると、実装ごとに
    * 並びが変わる余地が残る。
    */
-  list(householdId: HouseholdId): Promise<StockItem[]>;
+  findByHousehold(householdId: HouseholdId): Promise<StockItem[]>;
 
   /**
-   * 登録と更新を兼ねる。同じ `id` の在庫品があれば置き換える。
+   * 登録（FR-01）と更新（FR-05）の永続化を兼ねる。同じ `id` の在庫品があれば置き換える。
    *
-   * 在庫品は不変なので、更新は「作り直したものを保存する」形になる（FR-05）。
-   * `stockItem.householdId` と引数の `householdId` が食い違う場合、実装は保存を
-   * 拒む。**食い違いは呼び出し側の誤りであり、黙って引数の側に寄せない。**
+   * **更新を「作り直したものを保存する」形にするかは、ここでは決めない。** 在庫品を
+   * 不変にしているのは実装上の取り決めであり（`StockItem` の doc を参照）、更新の形は
+   * B-06 で決める。このメソッドはどちらの形でも使える。
+   * `stockItem.householdId` と引数の `householdId` が食い違う場合、実装は
+   * **`PantryRuleViolation`（`rule: 'save.householdMismatch'`）を投げて保存を拒む。**
+   * 食い違いは呼び出し側の誤りであり、黙って引数の側に寄せない。interface では
+   * 強制できない約束なので、**実装ごとにテストで確かめる。**
    */
   save(householdId: HouseholdId, stockItem: StockItem): Promise<void>;
 
