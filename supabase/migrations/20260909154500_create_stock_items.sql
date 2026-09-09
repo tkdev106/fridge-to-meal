@@ -7,7 +7,11 @@
 -- アプリが常に householdId を渡すことの2つを守る限り、共有が要件になった日の移行は
 -- 行を1件も書き換えずポリシーの差し替えだけで済む（ADR-028）。
 
-create table if not exists public.stock_items (
+-- **適用手段に依らず1トランザクションで通す。** SQL エディタは複数文をまとめて流すが、
+-- psql -f は文ごとに別のトランザクションになり、途中で失敗すると上の窓が実際に開く。
+begin;
+
+create table public.stock_items (
   -- 既定値を置かない。識別子はアプリが発行して渡す（ADR-026）。既定値があると、
   -- 渡し忘れが別の値で黙って成功し、返した DTO の id と DB の id がずれる。
   id uuid primary key,
@@ -35,7 +39,7 @@ create table if not exists public.stock_items (
 
 -- 一覧は必ず世帯で絞る（C-9）。期限順の並べ替えはユースケースが行うため、
 -- expiry_date の索引は先回りして置かない。
-create index if not exists stock_items_household_id_idx on public.stock_items (household_id);
+create index stock_items_household_id_idx on public.stock_items (household_id);
 
 alter table public.stock_items enable row level security;
 
@@ -68,3 +72,5 @@ create policy stock_items_delete on public.stock_items
 -- 接続に service_role を使わないことが前提として効き続ける（ADR-020 / NFR-09）。
 revoke all on public.stock_items from anon;
 grant select, insert, update, delete on public.stock_items to authenticated;
+
+commit;
