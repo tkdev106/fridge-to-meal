@@ -2,49 +2,14 @@ import { describe, expect, it } from 'vitest';
 import type { StockItemRepository } from '../../../../src/contexts/pantry/domain/repository/StockItemRepository.js';
 import { createStockItem } from '../../../../src/contexts/pantry/domain/entity/StockItem.js';
 import { stockItemIdOf } from '../../../../src/contexts/pantry/domain/value/StockItemId.js';
-import type { StockItem } from '../../../../src/contexts/pantry/domain/entity/StockItem.js';
-import type { StockItemId } from '../../../../src/contexts/pantry/domain/value/StockItemId.js';
 import { amountOf } from '../../../../src/contexts/pantry/domain/value/Amount.js';
 import { householdIdOf } from '../../../../src/shared/domain/HouseholdId.js';
 import type { HouseholdId } from '../../../../src/shared/domain/HouseholdId.js';
 import { PantryRuleViolation } from '../../../../src/contexts/pantry/domain/error/PantryRuleViolation.js';
+import { 記憶上の在庫品リポジトリ } from '../../../support/pantry/InMemoryStockItemRepository.js';
 
 const 我が家 = householdIdOf('11111111-1111-4111-8111-111111111111');
 const 隣の家 = householdIdOf('99999999-9999-4999-8999-999999999999');
-
-/**
- * 記憶の上だけで動く実装。ユースケース層のテスト（B-04 以降）でも同じものが要るが、
- * 置き場所が決まるまではここに持つ。**interface が実装できる形をしていること**の
- * 確認を兼ねている。
- */
-class 記憶上の在庫品リポジトリ implements StockItemRepository {
-  readonly #保存済み = new Map<string, StockItem>();
-
-  async findById(householdId: HouseholdId, id: StockItemId) {
-    const 在庫品 = this.#保存済み.get(id);
-    // 世帯が違えば「無い」と答える。ここを緩めると世帯分離が破れる。
-    return 在庫品 !== undefined && 在庫品.householdId === householdId ? 在庫品 : null;
-  }
-
-  async findByHousehold(householdId: HouseholdId) {
-    return [...this.#保存済み.values()].filter((在庫品) => 在庫品.householdId === householdId);
-  }
-
-  async save(householdId: HouseholdId, stockItem: StockItem) {
-    if (stockItem.householdId !== householdId) {
-      throw new PantryRuleViolation(
-        'save.householdMismatch',
-        '引数の世帯と在庫品の世帯が食い違っている',
-      );
-    }
-    this.#保存済み.set(stockItem.id, stockItem);
-  }
-
-  async delete(householdId: HouseholdId, id: StockItemId) {
-    const 在庫品 = await this.findById(householdId, id);
-    if (在庫品 !== null) this.#保存済み.delete(id);
-  }
-}
 
 function にんじん(householdId: HouseholdId, id = '22222222-2222-4222-8222-222222222222') {
   return createStockItem({
