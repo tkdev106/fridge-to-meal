@@ -1,7 +1,8 @@
 import type { RegisterStockItemInput, StockItemDto } from '@fridge-to-meal/contract';
 import type { HouseholdId } from '../../../shared/domain/HouseholdId.js';
-import { createStockItem, type StockItem } from '../domain/entity/StockItem.js';
+import { createStockItem } from '../domain/entity/StockItem.js';
 import type { StockItemIdGenerator } from '../domain/port/StockItemIdGenerator.js';
+import { stockItemDtoOf } from './StockItemDto.js';
 import type { StockItemRepository } from '../domain/repository/StockItemRepository.js';
 import { amountOf } from '../domain/value/Amount.js';
 import { expiryDateOf } from '../domain/value/ExpiryDate.js';
@@ -41,7 +42,7 @@ export function registerStockItem(deps: {
 
     await deps.stockItemRepository.save(householdId, 在庫品);
 
-    return dtoOf(在庫品);
+    return stockItemDtoOf(在庫品);
   };
 }
 
@@ -55,15 +56,4 @@ export function registerStockItem(deps: {
 function 食材の指定(raw: string | null | undefined) {
   if (raw === undefined || raw === null || raw.trim() === '') return null;
   return ingredientIdOf(raw);
-}
-
-/** 保存した在庫品の値を写す。入力をそのまま返さない（規則7）。 */
-function dtoOf(stockItem: StockItem): StockItemDto {
-  return {
-    id: stockItem.id,
-    name: stockItem.name,
-    ingredientId: stockItem.ingredientId,
-    amount: stockItem.amount,
-    expiryDate: stockItem.expiryDate,
-  };
 }
