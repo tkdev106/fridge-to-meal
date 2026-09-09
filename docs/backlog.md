@@ -25,7 +25,12 @@
 - [ ] **B-06** `pantry/usecase`: 在庫品の数量・期限の更新と、削除（FR-05 / FR-06）
 - [ ] **B-07a** `stock_items` のスキーマと RLS ポリシー（select / insert / update / delete の4種）を置く。
   **`insert` の `with check` を落とさない** — `using` は見える行の条件であって、他世帯の行を作ることを止めない。
-  世帯を DB でどう表すか（`auth.uid()` に寄せるか、`household_members` を挟むか）は**着手時に ADR を起こして決める**（ADR-020 / NFR-09 / C-9）
+  世帯の DB 表現は**`household_id = (select auth.uid())` から始める**（`household_members` は置かない）。着手時に ADR を起こし、
+  この方向の追認として書く。条件は2つ — **列名を `user_id` にしない**、**アプリは常に `householdId` を渡す**。
+  この2つを守る限り、共有が要件になった日の移行は**既存データを書き換えずポリシーの差し替えだけ**で済む
+  （`households` と `household_members` を足し、`household_id` の値をそのまま世帯 id にする）。
+  いま `household_members` を置くと、MVP では価値を生まないサインアップ時の書き込み経路が増え、そこが壊れると新規利用者が何もできない
+  （ADR-020 / NFR-09 / C-9 / requirements 8.1「世帯を最初から導入する」）
 - [ ] **B-07b** RLS の回帰テスト。他世帯の行が**見えない・書けない・消せない**ことを実 Supabase に対して確かめる。
   **RLS は効いていないことに気づけない** — ポリシーを1行消してもアプリは正常に動き続ける。実 DB を使うため、
   ドメイン層のテスト（ADR-002）とは別枠になる。**接続情報の置き場と CI で回すかは着手時に決める**（NFR-09）
