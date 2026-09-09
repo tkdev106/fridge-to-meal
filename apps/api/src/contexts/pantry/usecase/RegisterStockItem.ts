@@ -36,7 +36,7 @@ export function registerStockItem(deps: {
       householdId,
       name: input.name,
       ingredientId: 食材の指定(input.ingredientId),
-      amount: input.amount === undefined || input.amount === null ? null : amountOf(input.amount),
+      amount: amountOf(input.amount ?? null),
       expiryDate: expiryDateOf(input.expiryDate ?? null),
     });
 
