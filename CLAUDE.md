@@ -14,6 +14,7 @@
 | なぜその作りなのか（アーキテクチャ決定 ADR-001〜024） | `docs/adr.md` |
 | LLM に何を渡し何を受け取るか（プロンプト全文・応答の検証規則） | `docs/prompt-design.md` |
 | 画面に何をどう出すか（遷移・状態・再利用の見せ方） | `docs/screen-design.md` |
+| どうテストするか（古典派・観察可能な振る舞い・TDD の1周） | `docs/testing.md` |
 | どう進めるか（ブランチ運用・完了の定義・自律ループ） | `docs/workflow.md` |
 | 次に何をやるか（ループの入力になるタスク一覧） | `docs/backlog.md` |
 
@@ -106,10 +107,20 @@
   `.githooks/pre-push`（git）の2枚で止める。**GitHub のブランチ保護は private + 現行プランでは
   効かない**ため、この2枚が実質の防御であり、どちらも越えられることを前提にする
 - 未完成の機能も**マージを止めない。** 画面に出すかどうかだけを feature flag で制御する（ADR-024）。
-  既定は無効、読み出しは `apps/web/src/features.ts` の1か所、分岐はプレゼンテーション層のみ
+  既定は無効、読み出しは `apps/web/src/features.ts` の1か所、分岐はプレゼンテーション層のみ。
+  **フラグを置くのは `apps/web` だけ。** サーバ側の未完成は隠さない — 止めたいなら
+  `main.ts` で結線しなければ到達しない
 
 **完了の定義は `pnpm verify` が緑になること。** PR を出す条件であり、マージの条件でもある。
 **テストを skip・無効化して緑にしない。**
+
+**実装の前に設計書を書く。** `design-writer` が backlog のタスク1件を `z-ai/design/<ID>.md` に落とし、
+実装の3段はそれを入力に取る。**設計書にテストケースの一覧は書かない** — 洗い出しは `test-designer` の仕事。
+
+**実装はテストから作る。** `/tdd` が1件ぶんの `test-designer`（洗い出し）→ `test-writer`（赤）→
+`implementer`（緑）を回す。方針は `docs/testing.md` — **古典派**をとり、単体テストでは
+**観察可能な振る舞い**だけを検証する（`vi.fn()` で呼び出し回数を数えない）。
+リファクタリング耐性と実行の速さは、そこに書かれた制約で担保する。
 
 **ループの1周は `/next`。** 入力は `docs/backlog.md`、出力は PR。以下に当たったら
 **進めずに止まり、ドラフト PR を push して、何が決まれば進むかを1つの質問にして終える。**
@@ -119,6 +130,7 @@
 - FR / NFR に無い機能が必要になった
 - 依存パッケージの追加が必要になった
 - 同じ検証失敗を2回直せなかった
+- `implementer` が「テストが仕様として誤っている」と報告した
 
 黙って止まらない。黙って進めない。
 
@@ -145,8 +157,11 @@
   settings.json            許可・拒否とフックの登録（settings.local.json は各自のもので git 管理外）
   hooks/guard.mjs          戻せない操作の拒否。guard.test.mjs が回帰テスト
   hooks/session-start.sh   web セッション開始時の pnpm install
-  commands/                /next（ループ1周）/verify /sync /address
-  agents/design-writer     タスク1件を実装できる設計書に落とす書き手
+  commands/                /next（ループ1周）/tdd（テスト駆動で1件）/verify /sync /address
+  agents/design-writer     タスク1件を設計書に落とす。実装の3段はこれを入力に取る
+  agents/test-designer     観察可能な振る舞いを洗い出し、テストケース一覧を作る
+  agents/test-writer       一覧をテストにし、落ちること（赤）を確認する
+  agents/implementer       テストを変えずに緑にする
   agents/design-reviewer   差分を設計文書と突き合わせる読み手
 .githooks/pre-push         main への push を git の側で止める（要 core.hooksPath）
 apps/web/                  React + Vite（PWA）— API のクライアント
