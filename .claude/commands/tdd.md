@@ -23,13 +23,18 @@ test-designer（洗い出し） → test-writer（赤） → implementer（緑�
 | --- | --- |
 | `test-designer` | 対象のタスク（backlog の ID か、実装したい振る舞いの文）/ コンテキスト（`meal` `pantry` `catalog` `identity`）と層 / 関係する FR・C-n・ADR の番号 |
 | `test-writer` | **検分後の**テストケース一覧（表のまま）/ 対象のファイルパス / 既存の似たテストのパス |
-| `implementer` | 赤いテストのパスとその落ち方 / 置かれたスタブ / 対象コンテキストと層 |
+| `implementer` | 赤いテストのパスとその落ち方 / 置かれたスタブ / 対象コンテキストと層 / 設計書のパス |
 | `design-reviewer` | `git diff origin/main...HEAD`（差分そのものではなく、見る対象として） |
 
 **設計書（`z-ai/design/<ID>.md`）があるなら、渡すものの多くはそこにある** — 対象と根拠の番号は
 8章、置き場所とファイルパスは4章、型は5章。**書き写さず、パスを渡して読ませる。**
-設計書は `design-writer` が書く（`docs/workflow.md` 5章）。**設計書にテストケースの一覧は無い** —
-数え上げるのは `test-designer` である。
+設計書は `design-writer` が書く（`docs/workflow.md` 5章）。
+
+**3段とも設計書を読むが、位置づけは段によって違う。** `test-designer` にとっては
+**数え上げの手がかり**（一覧そのものは設計書に無い）、`test-writer` にとっては
+**置き場所と署名の指定**、`implementer` にとっては**文脈であって仕様ではない**。
+`implementer` が「設計書にあるがテストに無い」と報告してきたら、それは一覧の抜けの合図なので
+**4 の検分に戻る。実装させて済ませない。**
 
 ## 手順
 
