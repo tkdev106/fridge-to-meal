@@ -41,10 +41,10 @@ function 期限の近い順(左: StockItem, 右: StockItem): number {
 
   // 照合順序は実行環境の ICU に依存するため localeCompare を使わない。
   // コード単位の大小なら Workers と Node で同じ並びになる。
-  const 名称の差 = 符号なしで比べる(左.name, 右.name);
+  const 名称の差 = コード単位で比べる(左.name, 右.name);
   if (名称の差 !== 0) return 名称の差;
 
-  return 符号なしで比べる(左.id, 右.id);
+  return コード単位で比べる(左.id, 右.id);
 }
 
 /**
@@ -55,11 +55,11 @@ function 期限を比べる(左: string | null, 右: string | null): number {
   if (左 === null && 右 === null) return 0;
   if (左 === null) return 1;
   if (右 === null) return -1;
-  return 符号なしで比べる(左, 右);
+  return コード単位で比べる(左, 右);
 }
 
 /** コード単位の大小で比べる。 */
-function 符号なしで比べる(左: string, 右: string): number {
+function コード単位で比べる(左: string, 右: string): number {
   if (左 < 右) return -1;
   if (左 > 右) return 1;
   return 0;

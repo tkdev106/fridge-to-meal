@@ -69,23 +69,33 @@ const 名称の並び = (出力: ListStockItemsOutput) => 出力.stockItems.map(
 const 識別子の並び = (出力: ListStockItemsOutput) => 出力.stockItems.map((品) => 品.id);
 
 /**
- * 内部の配列を**毎回同じ参照で**返す記憶上の実装。一覧が受け取った配列をその場で
+ * 世帯ごとの配列を**毎回同じ参照で**返す記憶上の実装。一覧が受け取った配列をその場で
  * 並べ替えていないかを見るためだけのもので、共有の道具ではない（`docs/testing.md` 6章）。
- * 世帯で絞らないのは、このテストが1つの世帯しか使わないためである。
+ * 世帯で分けて持つのは、`findByHousehold` の「その世帯の在庫品をすべて返す」という
+ * 約束から外れた実装をテストの側に作らないためである。
  */
 class 同じ配列を返す記憶上の在庫品リポジトリ implements StockItemRepository {
-  readonly #保存済み: StockItem[] = [];
+  readonly #世帯ごとの保存済み = new Map<HouseholdId, StockItem[]>();
 
-  async findById(householdId: HouseholdId, id: StockItemId) {
-    return this.#保存済み.find((品) => 品.householdId === householdId && 品.id === id) ?? null;
+  #その世帯の配列(householdId: HouseholdId): StockItem[] {
+    const 既存 = this.#世帯ごとの保存済み.get(householdId);
+    if (既存 !== undefined) return 既存;
+
+    const 新しい配列: StockItem[] = [];
+    this.#世帯ごとの保存済み.set(householdId, 新しい配列);
+    return 新しい配列;
   }
 
-  async findByHousehold() {
-    return this.#保存済み;
+  async findById(householdId: HouseholdId, id: StockItemId) {
+    return this.#その世帯の配列(householdId).find((品) => 品.id === id) ?? null;
+  }
+
+  async findByHousehold(householdId: HouseholdId) {
+    return this.#その世帯の配列(householdId);
   }
 
   async save(householdId: HouseholdId, stockItem: StockItem) {
-    if (stockItem.householdId === householdId) this.#保存済み.push(stockItem);
+    if (stockItem.householdId === householdId) this.#その世帯の配列(householdId).push(stockItem);
   }
 
   async delete() {
