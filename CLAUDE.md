@@ -114,6 +114,9 @@
 **完了の定義は `pnpm verify` が緑になること。** PR を出す条件であり、マージの条件でもある。
 **テストを skip・無効化して緑にしない。**
 
+**実装の前に設計書を書く。** `design-writer` が backlog のタスク1件を `z-ai/design/<ID>.md` に落とし、
+実装の3段はそれを入力に取る。**設計書にテストケースの一覧は書かない** — 洗い出しは `test-designer` の仕事。
+
 **実装はテストから作る。** `/tdd` が1件ぶんの `test-designer`（洗い出し）→ `test-writer`（赤）→
 `implementer`（緑）を回す。方針は `docs/testing.md` — **古典派**をとり、単体テストでは
 **観察可能な振る舞い**だけを検証する（`vi.fn()` で呼び出し回数を数えない）。
@@ -155,10 +158,11 @@
   hooks/guard.mjs          戻せない操作の拒否。guard.test.mjs が回帰テスト
   hooks/session-start.sh   web セッション開始時の pnpm install
   commands/                /next（ループ1周）/tdd（テスト駆動で1件）/verify /sync /address
-  agents/design-reviewer   差分を設計文書と突き合わせる読み手
+  agents/design-writer     タスク1件を設計書に落とす。実装の3段はこれを入力に取る
   agents/test-designer     観察可能な振る舞いを洗い出し、テストケース一覧を作る
   agents/test-writer       一覧をテストにし、落ちること（赤）を確認する
   agents/implementer       テストを変えずに緑にする
+  agents/design-reviewer   差分を設計文書と突き合わせる読み手
 .githooks/pre-push         main への push を git の側で止める（要 core.hooksPath）
 apps/web/                  React + Vite（PWA）— API のクライアント
   src/features/meal/       画面もコンテキスト単位で切る
