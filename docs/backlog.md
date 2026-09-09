@@ -18,8 +18,6 @@
 
 ## 次にやること
 
-- [ ] **B-02** `pantry/domain`: 値 `Amount`（自由文字列。構造化しない）と実体 `StockItem` を置く（FR-01 / FR-13 / C-9）
-- [ ] **B-03** `pantry/domain/repository`: `StockItemRepository` の interface。**全メソッドが `householdId` を必須引数に取る**（C-9）
 - [ ] **B-01** `packages/contract` に在庫の DTO を定義する（FR-01 / FR-04 / FR-05 / FR-06）
 - [ ] **B-04** `pantry/usecase`: 在庫品を登録する。カタログに無い食材名でも登録が止まらない（FR-01 / FR-03）
 - [ ] **B-05** `pantry/usecase`: 在庫を期限の近い順に一覧する。期限未入力の在庫品は警告・優先の対象外（FR-04 / FR-11 / FR-13）
@@ -34,9 +32,6 @@
   **突き合わせる前に両側の前後空白を落とす** — 在庫品の名称は登録時に落としてあり、片側だけ正規化すると一致が静かにずれる
 - [ ] **B-14** `meal/domain/service`: `CookableMealFinder`。不足0件のみ、並びは決定的（C-10 / C-12 / C-13）
 - [ ] **B-15** `meal/domain/port`: `MealGenerator` ポートの定義。プロバイダ未決のまま進める（ADR-019 / NFR-18）
-- [ ] **B-16** `apps/api`: `test/` を typecheck の対象に入れる。いま tsc の include が `src/**` だけで、
-  テストの型の誤りが検出されない（B-02 でブランド型に生の文字列を渡しても通った）。**順序は要判断 —
-  ドメインを書き進めるほど効く**（docs/workflow.md 完了の定義）
 - [ ] **B-17** `docs/html/adr.html` が ADR-022 以降を欠いている。閲覧用 HTML を Markdown に追いつかせる
   （正は Markdown。`CLAUDE.md`「迷ったらここを見る」）
 
