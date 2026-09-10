@@ -240,7 +240,7 @@ pnpm --filter @fridge-to-meal/web build
 DATABASE_URL=...          # Postgres への接続。authenticated に切り替えられる非所有者ロール
 SUPABASE_URL=...          # 認証（Supabase Auth）用。DB アクセスには使わない
 SUPABASE_ANON_KEY=...     # 同上
-SUPABASE_JWT_SECRET=...   # 受け取った JWT の検証に使う（鍵の方式は B-07e で確かめる）
+SUPABASE_JWT_SECRET=...   # 受け取った JWT の検証に使う（共有秘密 HS256 を前提とする。ADR-031 `提案`。実環境の署名方式は B-07f で確かめる）
 ```
 
 **`service_role` キーと、表の所有者ロールの接続文字列を使わない**（どちらも RLS を迂回する）。**`DATABASE_URL` は秘密である** — クライアントにも `apps/web` のビルド環境にも置かない。**LLM の API キーもサーバ側だけ**（NFR-10）。
