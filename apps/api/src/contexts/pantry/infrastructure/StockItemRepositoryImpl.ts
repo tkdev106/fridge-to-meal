@@ -1,0 +1,136 @@
+import { and, eq } from 'drizzle-orm';
+import type { StockItem } from '../domain/entity/StockItem.js';
+import { createStockItem } from '../domain/entity/StockItem.js';
+import { PantryRuleViolation } from '../domain/error/PantryRuleViolation.js';
+import type { StockItemRepository } from '../domain/repository/StockItemRepository.js';
+import type { StockItemId } from '../domain/value/StockItemId.js';
+import { stockItemIdOf } from '../domain/value/StockItemId.js';
+import { amountOf } from '../domain/value/Amount.js';
+import { expiryDateOf } from '../domain/value/ExpiryDate.js';
+import { ingredientIdOf } from '../domain/value/IngredientId.js';
+import type { HouseholdId } from '../../../shared/domain/HouseholdId.js';
+import { householdIdOf } from '../../../shared/domain/HouseholdId.js';
+import type { HouseholdTransaction } from './db/HouseholdTransaction.js';
+import type { StockItemRow } from './db/schema.js';
+import { stockItems } from './db/schema.js';
+
+/**
+ * `StockItemRepository` の実装（B-07 設計 4章・5章）。
+ *
+ * **トランザクションを開かず、接続も作らず、`set local` も張らない**（設計 規則1 /
+ * ADR-029 決定3(a)）。受け取った1つの handle の上でだけ問い合わせる。
+ */
+export class StockItemRepositoryImpl implements StockItemRepository {
+  constructor(private readonly tx: HouseholdTransaction) {}
+
+  /**
+   * **引数の世帯で必ず絞る**（設計 規則3 / C-9）。クレームで RLS が絞っていても `where` を
+   * 外さない — 網は二重であり、片方を頼ると渡された世帯が実際には使われないままになる。
+   *
+   * 0行は `null`。他世帯を指したときも同じく `null` で、例外にしない（設計 規則4）。
+   */
+  async findById(householdId: HouseholdId, id: StockItemId): Promise<StockItem | null> {
+    const 行 = await this.tx
+      .select()
+      .from(stockItems)
+      .where(and(eq(stockItems.id, id), eq(stockItems.householdId, householdId)))
+      .limit(1);
+
+    const 見つかった行 = 行[0];
+    return 見つかった行 === undefined ? null : 在庫品にする(見つかった行);
+  }
+
+  /**
+   * その世帯の在庫品をすべて返す。0行なら空の配列で、`null` にも例外にもしない。
+   *
+   * **引数の世帯で必ず絞る**（設計 規則3 / C-9）。クレームで見えている在庫品でも、
+   * 渡された世帯と食い違えば返さない。
+   *
+   * **並び順を約束しない**（設計 規則5）ので `order by` を足さない — 期限の近い順に
+   * 見せるのは画面の要求であり、並べ替えはユースケース層が行う（B-05）。
+   */
+  async findByHousehold(householdId: HouseholdId): Promise<StockItem[]> {
+    const 行たち = await this.tx
+      .select()
+      .from(stockItems)
+      .where(eq(stockItems.householdId, householdId));
+
+    return 行たち.map(在庫品にする);
+  }
+
+  /**
+   * 登録（FR-01）と更新（FR-05）を兼ねる**1文の upsert**（設計 規則7）。`findById` して
+   * から分岐しない — 同じ id の同時保存を取りこぼす。
+   *
+   * 上書きするのは `name` / `ingredient_id` / `amount` / `expiry_date` の4列すべてで、
+   * `null` もそのまま書く（分量や期限を**消す**更新が FR-05 の主役）。
+   * **`household_id` は上書きしない** — 世帯は移らない（設計 規則8 / ADR-028）。
+   *
+   * 書き込みが DB に拒まれたら、**握りつぶさずそのまま伝える**（設計 7章）。他世帯の
+   * 在庫品と id が衝突する保存は、RLS が更新の対象にできず失敗する（設計 規則13）。
+   *
+   * **`on conflict do update` に世帯の条件を足さない。** 4メソッドのうちここだけが
+   * 引数の世帯を `where` で使わないが、意図してそうしている — 条件を足すと、他世帯の
+   * id と衝突した保存が**エラーではなく「0行を更新した成功」**に変わり、拒否が沈黙する。
+   * 衝突を失敗として見せているのは RLS であり、ここでは網を1枚に保つ（設計 規則13）。
+   * 引数と在庫品の世帯の食い違いは、この文の手前で `save.householdMismatch` が断つ。
+   */
+  async save(householdId: HouseholdId, stockItem: StockItem): Promise<void> {
+    if (stockItem.householdId !== householdId) {
+      throw new PantryRuleViolation(
+        'save.householdMismatch',
+        '引数の世帯と在庫品の世帯が食い違っている',
+      );
+    }
+
+    await this.tx
+      .insert(stockItems)
+      .values({
+        id: stockItem.id,
+        householdId: stockItem.householdId,
+        name: stockItem.name,
+        ingredientId: stockItem.ingredientId,
+        amount: stockItem.amount,
+        expiryDate: stockItem.expiryDate,
+      })
+      .onConflictDoUpdate({
+        target: stockItems.id,
+        set: {
+          name: stockItem.name,
+          ingredientId: stockItem.ingredientId,
+          amount: stockItem.amount,
+          expiryDate: stockItem.expiryDate,
+        },
+      });
+  }
+
+  /**
+   * 物理削除する（FR-06）。献立は材料を複製済みで在庫品を参照しないため、消しても
+   * 献立は壊れない（C-5）。
+   *
+   * `id` と `householdId` の**両方**で絞る（設計 規則3・12 / C-9）。**行が無くても
+   * 他世帯を指していても、何もせずに成功する** — 影響行数を見ず、例外にしない。
+   * 「無い」を利用者に断るのはユースケース層の役目である（ADR-027）。
+   */
+  async delete(householdId: HouseholdId, id: StockItemId): Promise<void> {
+    await this.tx
+      .delete(stockItems)
+      .where(and(eq(stockItems.id, id), eq(stockItems.householdId, householdId)));
+  }
+}
+
+/**
+ * 行から在庫品を組む。**各値の生成関数と `createStockItem` を必ず通す**（設計 規則11）。
+ * 素のリテラルは型のブランドがあるため在庫品として扱えず、通さない実装は書けない。
+ * 期限は `date` 列から `YYYY-MM-DD` の文字列として受け取る（設計 規則10）。
+ */
+function 在庫品にする(row: StockItemRow): StockItem {
+  return createStockItem({
+    id: stockItemIdOf(row.id),
+    householdId: householdIdOf(row.householdId),
+    name: row.name,
+    ingredientId: row.ingredientId === null ? null : ingredientIdOf(row.ingredientId),
+    amount: amountOf(row.amount),
+    expiryDate: expiryDateOf(row.expiryDate),
+  });
+}

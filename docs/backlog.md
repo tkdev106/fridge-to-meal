@@ -18,13 +18,6 @@
 
 ## 次にやること
 
-- [ ] **B-07b** RLS の回帰テスト。他世帯の行が**見えない・書けない・消せない**ことを、**ローカル Postgres に対して**
-  確かめる（実 Supabase ではなくなった）。**`insert` の `with check` と `update` の両側**を1件ずつ。
-  **クレームを張り忘れた問い合わせが0行になることも確かめる** — これが3点セットの効きそのものである。
-  **あわせて「0行」が別の理由で起きていないことを確かめる** — B-07d の煙テストは、書いた行が
-  commit されずに消えていても同じ0行になり、**その場合も緑のまま通る。** クレームを張り直した
-  3つ目のトランザクションで同じ行がもう一度見えることを見る。
-  **RLS は効いていないことに気づけない** — ポリシーを1行消してもアプリは正常に動き続ける（ADR-029 / ADR-028 / NFR-09 / C-9）
 - [ ] **B-07** `pantry/infrastructure`: **`StockItemRepositoryImpl`**（Drizzle 実装）。**supabase-js は使わない。**
   リクエストごとに**トランザクション**を作り、そこにクレームとロールを張った接続を渡す — **クライアントの使い回しではなく
   トランザクションの寿命**が問題になる。`save` の上書きと `save.householdMismatch`、`findById` が他世帯を `null` に
@@ -49,6 +42,13 @@
   **突き合わせる前に両側の前後空白を落とす** — 在庫品の名称は登録時に落としてあり、片側だけ正規化すると一致が静かにずれる
 - [ ] **B-14** `meal/domain/service`: `CookableMealFinder`。不足0件のみ、並びは決定的（C-10 / C-12 / C-13）
 - [ ] **B-15** `meal/domain/port`: `MealGenerator` ポートの定義。プロバイダ未決のまま進める（ADR-019 / NFR-18）
+- [ ] **B-16** 置き換え済みの **ADR-020 への参照を掃除する**。`apps/api/src/shared/domain/HouseholdId.ts` と
+  `packages/contract/src/pantry.ts` に残っている。B-07 で直したのは backlog が名指しした
+  `StockItemRepository` の1文だけで、**範囲外には触れていない**（ADR-029 の結果1）
+- [ ] **B-17** トランザクションの helper（`withHouseholdTransaction`）を
+  `contexts/pantry/infrastructure/db/` から **`shared/` 側へ移す**。**2つ目のコンテキストが表を持つ日に着手する** —
+  コンテキストをまたぐ import は禁止のため、そのままでは2つ目の実装が写しを作る。
+  **移動であって決定の変更ではない**（B-07 設計 10章 / ADR-029 決定3(a)）
 
 ## 判断待ち（着手しない）
 
