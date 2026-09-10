@@ -159,7 +159,7 @@ flowchart TD
 | ADR-027 | 在庫品の削除を冪等にせず、消せなかったことを断る | 承認 |
 | ADR-028 | 世帯を `household_id = auth.uid()` から始め、`household_members` を置かない | **提案** |
 | ADR-029 | DB アクセスを Drizzle に寄せ、RLS をトランザクション単位のクレーム設定で効かせる | **提案** |
-| ADR-030 | エージェントのコンテナでは Docker を使わず素の PostgreSQL で `pnpm test:db` を回す | **提案** |
+| ADR-030 | エージェントのコンテナでは Docker を使わず素の PostgreSQL で `pnpm test:db` を回す | 承認 |
 
 ---
 
@@ -387,7 +387,7 @@ flowchart TD
 
 ---
 
-### ADR-030　エージェントのコンテナでは Docker を使わず素の PostgreSQL で `pnpm test:db` を回す　`提案`
+### ADR-030　エージェントのコンテナでは Docker を使わず素の PostgreSQL で `pnpm test:db` を回す　`承認`
 
 - **状況** — ADR-029 の結果6 は「**エージェントのコンテナには Docker デーモンが無い**ため、DB を使うテストの赤→緑をローカルで回せない」とし、該当する周は赤も緑も CI で確かめる形にした。B-07 の周（2026-09-10）はこの手順で回し、**1周につき CI 往復が2回増えた。** その周の終わりにコンテナを調べたところ、前提が事実と違っていた。**(1) Docker は入っている** — `dockerd` も compose も同梱されており、root で `dockerd` を起動すれば `docker info` が通る。無いのは動いているデーモンだけである。**(2) 動かないのはイメージの取得のほうである** — `docker compose up` は `postgres:17` の取得時に Docker Hub の blob CDN（`production.cloudfront.docker.com`）で `403 Forbidden` になる。これは実行環境の egress ポリシーによる遮断で、プロキシの手引きは**迂回せず報告せよ**としている。さらに **(3) PostgreSQL のサーバ本体がイメージに最初から入っている**（`/usr/lib/postgresql/16/bin/`）。`pnpm test:db` が要求するのは 127.0.0.1:55432 に居る Postgres だけであり、Docker はその手段にすぎない。
 - **決定** — 3つ。
