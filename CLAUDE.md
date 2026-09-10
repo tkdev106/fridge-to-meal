@@ -11,7 +11,7 @@
 | --- | --- |
 | 何を作るか（機能要件・非機能要件・コスト設計） | `docs/requirements.md` |
 | どう表現するか（ドメインモデル・用語・不変条件・確定事項） | `docs/domain-model.md` |
-| なぜその作りなのか（アーキテクチャ決定 ADR-001〜024） | `docs/adr.md` |
+| なぜその作りなのか（アーキテクチャ決定 ADR-001〜030） | `docs/adr.md` |
 | LLM に何を渡し何を受け取るか（プロンプト全文・応答の検証規則） | `docs/prompt-design.md` |
 | 画面に何をどう出すか（遷移・状態・再利用の見せ方） | `docs/screen-design.md` |
 | どうテストするか（古典派・観察可能な振る舞い・TDD の1周） | `docs/testing.md` |
@@ -159,7 +159,7 @@
 .claude/                   エージェントの作業環境
   settings.json            許可・拒否とフックの登録（settings.local.json は各自のもので git 管理外）
   hooks/guard.mjs          戻せない操作の拒否。guard.test.mjs が回帰テスト
-  hooks/session-start.sh   web セッション開始時の pnpm install
+  hooks/session-start.sh   web セッション開始時の pnpm install とローカル Postgres の起動
   commands/                /next（ループ1周）/tdd（テスト駆動で1件）/verify /sync /address
   agents/design-writer     タスク1件を設計書に落とす。実装の3段はこれを入力に取る
   agents/test-designer     観察可能な振る舞いを洗い出し、テストケース一覧を作る
