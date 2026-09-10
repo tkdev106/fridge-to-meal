@@ -20,7 +20,7 @@
 | --- | --- |
 | [`docs/requirements.md`](docs/requirements.md) | 要件定義。何を作るか、何を作らないか |
 | [`docs/domain-model.md`](docs/domain-model.md) | ドメインモデル。サブドメイン分類・ユビキタス言語・集約と不変条件 |
-| [`docs/adr.md`](docs/adr.md) | アーキテクチャ決定録。ADR-001〜024 |
+| [`docs/adr.md`](docs/adr.md) | アーキテクチャ決定録。ADR-001〜030 |
 | [`docs/prompt-design.md`](docs/prompt-design.md) | 献立生成のプロンプト設計。ポートの契約・プロンプト全文・応答の検証規則・試行の設計 |
 | [`docs/screen-design.md`](docs/screen-design.md) | 画面設計。画面遷移・各画面の状態・再利用の見せ方 |
 | [`docs/testing.md`](docs/testing.md) | テスト方針。古典派・観察可能な振る舞い・TDD の1周 |
@@ -50,6 +50,7 @@ git config commit.template .gitmessage   # 1度だけ
 git config core.hooksPath .githooks      # 1度だけ。main への push を止める
 pnpm verify     # 完了の定義の片方。format:check → lint → typecheck → test → test:hooks → build
 pnpm db:up      # ローカル Postgres を起こす（Docker）
+pnpm db:up:native  # Docker が使えないときはこちら（素の PostgreSQL。ADR-030）
 pnpm test:db    # もう片方。ローカル Postgres に対する RLS のテスト
 pnpm dev        # web (:5173) と api (:8787)
 pnpm test

@@ -4,7 +4,8 @@
  * **環境変数で上書きしない。** ローカルの接続先は秘密でなく（`.dev.vars` に置かない理由と
  * 同じ）、`apps/api/tsconfig.test.json` は `types: []` で `process` を持たないためでもある。
  * ポートは **55432** — 手元の 5432 と衝突させない。ポートを変えるときは
- * `docker-compose.yml` とここの2か所を直す。
+ * `docker-compose.yml`・`tools/start-local-postgres.sh`・ここの**3か所**を直す
+ * （Docker を使わない経路が増えた。ADR-030）。
  *
  * `search_path` を両方に明示するのは、`supabase/migrations/*.sql` が無修飾で表を作るため
  * （解決を既定値に委ねない。設計 規則9）。

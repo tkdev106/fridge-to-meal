@@ -4,6 +4,8 @@
     "defaultMode": "acceptEdits",
     "allow": [
       "Bash(pnpm verify)",
+      "Bash(pnpm db:up)",
+      "Bash(pnpm db:up:native)",
       "Bash(pnpm install)",
       "Bash(pnpm install:*)",
       "Bash(pnpm test:*)",
