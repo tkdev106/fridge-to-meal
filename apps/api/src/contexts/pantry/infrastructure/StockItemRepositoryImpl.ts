@@ -68,6 +68,12 @@ export class StockItemRepositoryImpl implements StockItemRepository {
    *
    * 書き込みが DB に拒まれたら、**握りつぶさずそのまま伝える**（設計 7章）。他世帯の
    * 在庫品と id が衝突する保存は、RLS が更新の対象にできず失敗する（設計 規則13）。
+   *
+   * **`on conflict do update` に世帯の条件を足さない。** 4メソッドのうちここだけが
+   * 引数の世帯を `where` で使わないが、意図してそうしている — 条件を足すと、他世帯の
+   * id と衝突した保存が**エラーではなく「0行を更新した成功」**に変わり、拒否が沈黙する。
+   * 衝突を失敗として見せているのは RLS であり、ここでは網を1枚に保つ（設計 規則13）。
+   * 引数と在庫品の世帯の食い違いは、この文の手前で `save.householdMismatch` が断つ。
    */
   async save(householdId: HouseholdId, stockItem: StockItem): Promise<void> {
     if (stockItem.householdId !== householdId) {

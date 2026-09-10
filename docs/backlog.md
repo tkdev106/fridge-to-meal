@@ -42,6 +42,13 @@
   **突き合わせる前に両側の前後空白を落とす** — 在庫品の名称は登録時に落としてあり、片側だけ正規化すると一致が静かにずれる
 - [ ] **B-14** `meal/domain/service`: `CookableMealFinder`。不足0件のみ、並びは決定的（C-10 / C-12 / C-13）
 - [ ] **B-15** `meal/domain/port`: `MealGenerator` ポートの定義。プロバイダ未決のまま進める（ADR-019 / NFR-18）
+- [ ] **B-16** 置き換え済みの **ADR-020 への参照を掃除する**。`apps/api/src/shared/domain/HouseholdId.ts` と
+  `packages/contract/src/pantry.ts` に残っている。B-07 で直したのは backlog が名指しした
+  `StockItemRepository` の1文だけで、**範囲外には触れていない**（ADR-029 の結果1）
+- [ ] **B-17** トランザクションの helper（`withHouseholdTransaction`）を
+  `contexts/pantry/infrastructure/db/` から **`shared/` 側へ移す**。**2つ目のコンテキストが表を持つ日に着手する** —
+  コンテキストをまたぐ import は禁止のため、そのままでは2つ目の実装が写しを作る。
+  **移動であって決定の変更ではない**（B-07 設計 10章 / ADR-029 決定3(a)）
 
 ## 判断待ち（着手しない）
 
