@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { StockItem } from '../domain/entity/StockItem.js';
 import { createStockItem } from '../domain/entity/StockItem.js';
+import { PantryRuleViolation } from '../domain/error/PantryRuleViolation.js';
 import type { StockItemRepository } from '../domain/repository/StockItemRepository.js';
 import type { StockItemId } from '../domain/value/StockItemId.js';
 import { stockItemIdOf } from '../domain/value/StockItemId.js';
@@ -39,8 +40,22 @@ export class StockItemRepositoryImpl implements StockItemRepository {
     return 見つかった行 === undefined ? null : 在庫品にする(見つかった行);
   }
 
-  findByHousehold(_householdId: HouseholdId): Promise<StockItem[]> {
-    throw new Error('未実装');
+  /**
+   * その世帯の在庫品をすべて返す。0行なら空の配列で、`null` にも例外にもしない。
+   *
+   * **引数の世帯で必ず絞る**（設計 規則3 / C-9）。クレームで見えている在庫品でも、
+   * 渡された世帯と食い違えば返さない。
+   *
+   * **並び順を約束しない**（設計 規則5）ので `order by` を足さない — 期限の近い順に
+   * 見せるのは画面の要求であり、並べ替えはユースケース層が行う（B-05）。
+   */
+  async findByHousehold(householdId: HouseholdId): Promise<StockItem[]> {
+    const 行たち = await this.tx
+      .select()
+      .from(stockItems)
+      .where(eq(stockItems.householdId, householdId));
+
+    return 行たち.map(在庫品にする);
   }
 
   /**
@@ -55,6 +70,13 @@ export class StockItemRepositoryImpl implements StockItemRepository {
    * 在庫品と id が衝突する保存は、RLS が更新の対象にできず失敗する（設計 規則13）。
    */
   async save(householdId: HouseholdId, stockItem: StockItem): Promise<void> {
+    if (stockItem.householdId !== householdId) {
+      throw new PantryRuleViolation(
+        'save.householdMismatch',
+        '引数の世帯と在庫品の世帯が食い違っている',
+      );
+    }
+
     await this.tx
       .insert(stockItems)
       .values({
@@ -76,8 +98,18 @@ export class StockItemRepositoryImpl implements StockItemRepository {
       });
   }
 
-  delete(_householdId: HouseholdId, _id: StockItemId): Promise<void> {
-    throw new Error('未実装');
+  /**
+   * 物理削除する（FR-06）。献立は材料を複製済みで在庫品を参照しないため、消しても
+   * 献立は壊れない（C-5）。
+   *
+   * `id` と `householdId` の**両方**で絞る（設計 規則3・12 / C-9）。**行が無くても
+   * 他世帯を指していても、何もせずに成功する** — 影響行数を見ず、例外にしない。
+   * 「無い」を利用者に断るのはユースケース層の役目である（ADR-027）。
+   */
+  async delete(householdId: HouseholdId, id: StockItemId): Promise<void> {
+    await this.tx
+      .delete(stockItems)
+      .where(and(eq(stockItems.id, id), eq(stockItems.householdId, householdId)));
   }
 }
 
