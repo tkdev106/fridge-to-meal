@@ -18,11 +18,6 @@
 
 ## 次にやること
 
-- [ ] **B-07d** ローカル Postgres と `pnpm test:db` の枠を置く。`docker-compose.yml`（Postgres）、初期化 SQL
-  （`authenticated` ロール・**非所有者のログインロール**・`auth.uid()` に相当する関数）、`vitest.db.config.ts`、
-  `pnpm test:db`、**`pnpm test` 側の `exclude`**（同じテストが2度走らないように）、CI に Postgres を足して両方を走らせる。
-  同じ周で `docs/testing.md` の「実 Supabase を要する」を直す。テストは煙テスト1本（`authenticated` として繋がり、
-  **クレーム無しでは0行**）。**Docker が無い環境では赤を CI で確かめる**（ADR-029 / docs/workflow.md 2章）
 - [ ] **B-07b** RLS の回帰テスト。他世帯の行が**見えない・書けない・消せない**ことを、**ローカル Postgres に対して**
   確かめる（実 Supabase ではなくなった）。**`insert` の `with check` と `update` の両側**を1件ずつ。
   **クレームを張り忘れた問い合わせが0行になることも確かめる** — これが3点セットの効きそのものである。
