@@ -48,7 +48,8 @@ Node 22 以上と pnpm が要ります。
 pnpm install
 git config commit.template .gitmessage   # 1度だけ
 git config core.hooksPath .githooks      # 1度だけ。main への push を止める
-pnpm verify     # 完了の定義。lint → typecheck → test → test:hooks → build
+pnpm verify     # 完了の定義の片方。format:check → lint → typecheck → test → test:hooks → build
+pnpm test:db    # もう片方。Docker のローカル Postgres に対するテスト（B-07d で置く）
 pnpm dev        # web (:5173) と api (:8787)
 pnpm test
 pnpm lint       # 依存ルールと禁止語の検査を含む

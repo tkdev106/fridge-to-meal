@@ -64,7 +64,8 @@
 
 - **`usecase/` は `domain/` の兄弟であって、下ではない。** `contexts/meal/usecase/` が正しく、`contexts/meal/domain/usecase/` は誤り。
 - **ユースケースの引数と戻り値にフレームワーク由来の型を入れない。** `Request` / `Response` / `Context` が1つでも現れたら、その層は Web に固定される（ADR-003）。DTO だけを受け渡す。
-- **`new DbMealRepository()` を書いてよいのは `apps/api/src/main.ts` だけ。** 他所で実装クラスを直接生成しない。
+- **`new MealRepositoryImpl()` を書いてよいのは `apps/api/src/main.ts` だけ。** 他所で実装クラスを直接生成しない。
+- **実装クラスは `<interface 名>Impl` と名づける。** `Db` / `Supabase` / `Drizzle` の接頭辞を付けない — 手段を名前に焼き付けると、差し替えるために interface を置いた意味が薄れる（ADR-029）。
 - **ドメイン層に LLM・プロンプト・JSON・モデル名・SQL という語を出さない。** 外部との変換は `infrastructure/` の腐敗防止層が担う（ADR-005）。
 - **`householdId` はリポジトリの全メソッドで必須引数。** 世帯をまたぐ取得を型として不可能にする（C-9）。
 
@@ -111,7 +112,8 @@
   **フラグを置くのは `apps/web` だけ。** サーバ側の未完成は隠さない — 止めたいなら
   `main.ts` で結線しなければ到達しない
 
-**完了の定義は `pnpm verify` が緑になること。** PR を出す条件であり、マージの条件でもある。
+**完了の定義は `pnpm verify` と `pnpm test:db` の両方が緑になること。** PR を出す条件であり、マージの条件でもある。
+**`pnpm test:db` を置くのは B-07d の周であり、それまでは `pnpm verify` の1本だけが条件になる。**
 **テストを skip・無効化して緑にしない。**
 
 **実装の前に設計書を書く。** `design-writer` が backlog のタスク1件を `z-ai/design/<ID>.md` に落とし、
@@ -140,13 +142,15 @@
 | --- | --- | --- |
 | フロントエンド | React + Vite（SPA・PWA） | ADR-014。Next.js は**採用しない** — サーバアクション類が ADR-003 と衝突するため |
 | サーバサイド | Hono on Cloudflare Workers | ADR-015。ドメイン層とユースケース層はここに置かれる |
-| DB・認証 | Supabase（Postgres + Auth） | ADR-020 |
+| DB・認証 | Supabase（Postgres + Auth）。**DB アクセスは Drizzle**（`drizzle-orm` + `postgres`）。**supabase-js は使わない** | ADR-029（ADR-020 を置き換え） |
 | LLM | **未決** | ADR-019 |
 
 実装上の必須事項:
 
-- **Supabase には利用者の JWT で問い合わせる。`service_role` キーを使わない。** RLS を迂回してしまい、Supabase を選んだ理由（世帯分離の安全網）が消える。
-- **Workers から Supabase へは supabase-js（HTTP 経由）で接続する。** Postgres への直接 TCP 接続はエッジ実行と相性が悪い。
+- **Supabase の Postgres には `authenticated` ロールで繋ぐ。`service_role` キーと、表の所有者ロールの接続文字列を使わない。** どちらも RLS を迂回してしまい、Supabase を選んだ理由（世帯分離の安全網）が消える。
+- **1リクエスト1トランザクションとし、その中で `set local role` と `set local request.jwt.claims` を張る。`local` を落とさない。** 接続プーラは接続を貸し回すため、セッションに残した設定は他人のリクエストに漏れる。**クレームを張り忘れた問い合わせは0行になる**（他世帯が見えるのではない）。
+- **受け取った JWT はサーバ側で検証してからクレームに張る。** PostgREST を通らなくなったため、署名と有効期限の検証はアプリの責務である。検証せずに `sub` を張ることは、任意の世帯になりすませることと同じ（ADR-029 の結果2）。
+- **Workers から Postgres へ直接繋ぐ形になったため、接続経路（Hyperdrive の要否）を実装初期に確かめる**（ADR-029 の結果3）。
 - **LLM の API キーはクライアントに置かない。** 生成の呼び出しは必ずサーバ経由（NFR-10）。
 - **Workers の実行時間・CPU 制限に LLM 呼び出しが収まるか、実装初期に確認する。** 収まらなければストリーミングか非同期化に切り替える。
 
@@ -189,7 +193,8 @@ packages/contract/         API の型定義。web と api で共有
 前提: **Node 22 以上**と **pnpm**。初回は `pnpm install`。
 
 ```
-pnpm verify       # 完了の定義。lint → typecheck → test → test:hooks → build
+pnpm verify       # 完了の定義の片方。**Docker を要さない**。format:check → lint → typecheck → test → test:hooks → build
+pnpm test:db      # もう片方。Docker のローカル Postgres に対する RLS とリポジトリ実装のテスト（**B-07d で置く**）
 pnpm dev          # web (:5173) と api (:8787) を同時起動
 pnpm test         # vitest。ドメイン層とユースケース層のテスト
 pnpm test:hooks   # .claude/hooks のガードの回帰テスト（node --test）
@@ -199,7 +204,7 @@ pnpm build        # contract → apps の順にビルド
 pnpm format       # prettier。docs/ と tools/ は対象外
 ```
 
-**`pnpm verify` が緑にならないものを PR にしない。** CI（`.github/workflows/ci.yml`）が
+**`pnpm verify` と `pnpm test:db` が緑にならないものを PR にしない。** CI（`.github/workflows/ci.yml`）が
 PR と `main` への push で同じものを走らせる。
 
 **`pnpm lint` は2つに分かれる。**
@@ -231,11 +236,15 @@ pnpm --filter @fridge-to-meal/web build
 `apps/api/.dev.vars`（gitignore 済み）に置く。**クライアント側には置かない。**
 
 ```
-SUPABASE_URL=...
-SUPABASE_ANON_KEY=...
+DATABASE_URL=...          # Postgres への接続。authenticated に切り替えられる非所有者ロール
+SUPABASE_URL=...          # 認証（Supabase Auth）用。DB アクセスには使わない
+SUPABASE_ANON_KEY=...     # 同上
+SUPABASE_JWT_SECRET=...   # 受け取った JWT の検証に使う（鍵の方式は B-07e で確かめる）
 ```
 
-**`service_role` キーは使わない**（RLS を迂回する）。**LLM の API キーもサーバ側だけ**（NFR-10）。
+**`service_role` キーと、表の所有者ロールの接続文字列を使わない**（どちらも RLS を迂回する）。**`DATABASE_URL` は秘密である** — クライアントにも `apps/web` のビルド環境にも置かない。**LLM の API キーもサーバ側だけ**（NFR-10）。
+
+**ローカル Postgres の接続先は秘密でない**ため `.dev.vars` に置かず、`docker-compose.yml` と CI から渡す。
 
 ## 作業の進め方
 
