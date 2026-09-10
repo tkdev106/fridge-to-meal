@@ -5,7 +5,7 @@ import { householdIdOf } from '../../../shared/domain/HouseholdId.js';
 import { IdentityRuleViolation } from '../domain/error/IdentityRuleViolation.js';
 
 /**
- * 資格の検証に使う設定（B-07e 設計書 5章）。
+ * アクセストークンの検証に使う設定（B-07e 設計書 5章）。
  *
  * `issuer` / `audience` は与えられていれば照合し、無ければ照合しない（規則6）。
  * 何を与えるかを決めるのは結線（B-09）であって、この層ではない。
@@ -39,16 +39,19 @@ export class HouseholdAuthenticatorImpl implements HouseholdAuthenticator {
    * 二度目以降に効かなくなる。
    */
   async authenticate(accessToken: string): Promise<HouseholdId> {
-    // 資格の正規化はこの層の仕事である（規則9）。ユースケースは受け取ったものを
+    // アクセストークンの正規化はこの層の仕事である（規則9）。ユースケースは受け取ったものを
     // 加工せずに渡してくるので、前後の空白はここで落とす。
-    const 資格 = accessToken.trim();
+    const 検証するもの = accessToken.trim();
 
-    const クレーム = await this.検証したクレーム(資格);
+    const クレーム = await this.検証したクレーム(検証するもの);
 
-    // hono の `verify` は `exp` が**あるときだけ**期限を見るため、持たない資格は素通りする
-    // （規則3）。無期限の資格を通すと失効の手段が消えるので、この層が明示的に断る。
+    // hono の `verify` は `exp` が**あるときだけ**期限を見るため、持たないアクセストークンは素通りする
+    // （規則3）。無期限のアクセストークンを通すと失効の手段が消えるので、この層が明示的に断る。
     if (クレーム.exp === undefined) {
-      throw new IdentityRuleViolation('accessToken.invalid', '資格が有効期限を持たない');
+      throw new IdentityRuleViolation(
+        'accessToken.invalid',
+        'アクセストークンが有効期限を持たない',
+      );
     }
 
     return 世帯にする(クレーム.sub);
@@ -61,9 +64,9 @@ export class HouseholdAuthenticatorImpl implements HouseholdAuthenticator {
    * 信用しない**（規則2 / ADR-031 決定2）。`issuer` / `audience` は与えられたときだけ渡す —
    * 渡さなければ hono は照合しない（規則6）。
    */
-  private async 検証したクレーム(資格: string): Promise<検証済みクレーム> {
+  private async 検証したクレーム(検証するもの: string): Promise<検証済みクレーム> {
     try {
-      return await verify(資格, this.verification.sharedSecret, {
+      return await verify(検証するもの, this.verification.sharedSecret, {
         alg: this.verification.algorithm,
         ...(this.verification.issuer === undefined ? {} : { iss: this.verification.issuer }),
         ...(this.verification.audience === undefined ? {} : { aud: this.verification.audience }),
@@ -97,9 +100,12 @@ function 断り方にした例外(投げられたもの: unknown): unknown {
   // トークン全体（`token (…) expired`）やペイロード全体（`aud` 無し）が載るので、
   // ここで包み直して捨てる。
   if (投げられたもの.name === 'JwtTokenExpired') {
-    return new IdentityRuleViolation('accessToken.expired', '資格の有効期限が切れている');
+    return new IdentityRuleViolation(
+      'accessToken.expired',
+      'アクセストークンの有効期限が切れている',
+    );
   }
-  return new IdentityRuleViolation('accessToken.invalid', '資格が検証を通らない');
+  return new IdentityRuleViolation('accessToken.invalid', 'アクセストークンが検証を通らない');
 }
 
 /**
@@ -111,12 +117,18 @@ function 断り方にした例外(投げられたもの: unknown): unknown {
  */
 function 世帯にする(sub: unknown): HouseholdId {
   if (typeof sub !== 'string') {
-    throw new IdentityRuleViolation('accessToken.subjectMissing', '資格が世帯を示していない');
+    throw new IdentityRuleViolation(
+      'accessToken.subjectMissing',
+      'アクセストークンが世帯を示していない',
+    );
   }
 
   const 世帯 = sub.trim();
   if (世帯 === '') {
-    throw new IdentityRuleViolation('accessToken.subjectMissing', '資格が世帯を示していない');
+    throw new IdentityRuleViolation(
+      'accessToken.subjectMissing',
+      'アクセストークンが世帯を示していない',
+    );
   }
 
   return householdIdOf(世帯);
