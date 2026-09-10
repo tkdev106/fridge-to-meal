@@ -56,6 +56,9 @@ pnpm --filter @fridge-to-meal/api db:generate --name create_stock_items
   実在する窓**ができる。あわせて `begin;` / `commit;` で囲む
 - **`create role` を書かない。** Supabase には `authenticated` が既に在り、ローカル側の役者は
   `supabase/local/init.sql` が用意する
+- **適用済みのファイルのコメントも直さない。** `20260910034508_create_stock_items.sql` の末尾は
+  「ローカル側は B-07d が用意する」と、置かれる前の言い方のまま残っている。**揃えたくなっても
+  直さない** — 上の「適用済みのファイルは書き換えない」が優先する。文言の正はこの README にある
 - **`service_role` で適用しない前提の内容にする。** 権限は `authenticated` にだけ与える（ADR-020 / NFR-09）
 
 ## 適用

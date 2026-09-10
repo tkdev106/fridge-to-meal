@@ -40,7 +40,7 @@ description: "backlog の先頭タスクを1件だけ、作業ブランチ1本 +
    画面に出せない段階でもマージを止めない。**表示は feature flag で隠す**（ADR-024）。
    **フラグを置くのは `apps/web` だけ** — サーバ側は `main.ts` で結線しなければ到達しない。
    フラグを足したら、`docs/backlog.md` に**それを消すタスクを同時に足す**。
-7. **`pnpm verify`**（および `pnpm test:db` が存在するなら、そちらも）が緑になるまで直す。
+7. **`pnpm verify` と `pnpm test:db`** の両方が緑になるまで直す。
    **Docker が無い環境では `test:db` を回せないため、CI の結果で見る**（ADR-029 の結果6）。**同じ失敗を2回直せなかったら止める**（下記）。
    **テストを skip・無効化して緑にしない。**
 8. **自己レビュー**: `git fetch origin main` の後、`design-reviewer` サブエージェントに
