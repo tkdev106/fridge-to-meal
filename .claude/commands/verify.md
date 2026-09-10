@@ -1,5 +1,5 @@
 ---
-description: "pnpm verify を走らせ、落ちた層だけを報告する"
+description: "pnpm verify（と test:db）を走らせ、落ちた層だけを報告する"
 ---
 
 # /verify — 完了の定義を機械的に確認する
@@ -8,8 +8,13 @@ description: "pnpm verify を走らせ、落ちた層だけを報告する"
 pnpm verify
 ```
 
-`lint`（ESLint + dependency-cruiser）→ `typecheck` → `test` → `test:hooks` → `build` の順に走る。
-これが緑であることが PR を出す条件であり、マージの条件でもある（`docs/workflow.md`）。
+`format:check` → `lint`（ESLint + dependency-cruiser）→ `typecheck` → `test` → `test:hooks` → `build`
+の順に走る。**Docker を要さない。**
+
+**完了の定義はもう1本ある** — `pnpm test:db`（Docker のローカル Postgres に対するテスト）。
+**B-07d の周で置く。それまでは存在しないので走らせない。** 置かれたあとは両方が緑であることが
+PR を出す条件であり、マージの条件になる（`docs/workflow.md` 2章）。Docker が無い環境では
+`test:db` を回せないため、**その場合は CI の結果をもって判断する**（ADR-029 の結果6）。
 
 ## 報告の形式
 

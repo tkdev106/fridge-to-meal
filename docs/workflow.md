@@ -24,7 +24,7 @@
 | 未完成の機能 | **マージを止めない。`main` に入れ、画面に出すかどうかだけを feature flag で制御する**（ADR-024） |
 
 **マージの条件は「完成したか」ではなく「壊していないか」。** 前者は人の判断を待つが、
-後者は `pnpm verify` で機械的に決まる。ループが自分で完了を判断できるのはこの形のときだけで、
+後者は `pnpm verify` と `pnpm test:db`（2章）で機械的に決まる。ループが自分で完了を判断できるのはこの形のときだけで、
 未完成をブランチで抱えると、判断がマージのたびに人へ戻ってしまう。
 
 **`main` を守る手段は2枚のフックだけである。** GitHub のブランチ保護は、この
@@ -96,6 +96,9 @@ pnpm test:db
 `pnpm test`（vitest）→ `pnpm test:hooks`（フックの回帰テスト）→ `pnpm build` の順。
 `pnpm test:db` は RLS とリポジトリ実装を実 DB に対して確かめる。CI（`.github/workflows/ci.yml`）は
 PR と `main` への push で両方を走らせる。
+
+**`pnpm test:db` を置くのは B-07d の周である。それまでは `pnpm verify` の1本だけが条件になる** —
+定義を先に書いたのは、置く前に方針を固めるためであり、**存在しないコマンドを条件にしない。**
 
 **`pnpm test:db` は Docker のローカル Postgres を要する。** Docker が無い環境では回せないため、
 **その場合は CI の結果をもって完了と判断する**（ADR-029 の結果6）。`pnpm verify` を Docker 無しで

@@ -18,7 +18,8 @@
 
 ## 次にやること
 
-- [ ] **B-07c** ORM の基盤を置き、B-07a の手書き SQL を**生成したマイグレーションに置き換える**（ADR-029）。
+- [ ] **B-07c** ORM の基盤を置き、`supabase/migrations/20260909154500_create_stock_items.sql`（手書き）を
+  **生成したマイグレーションに置き換える**（ADR-029）。
   `drizzle-orm` / `drizzle-kit` / `postgres` を足す（**2026-09-10 にユーザーが承認済み**）。`apps/api/drizzle.config.ts` と、
   drizzle スキーマを `contexts/pantry/infrastructure/db/` に置く。**RLS の有効化・`force row level security`・4ポリシー・
   権限は生成物に手で足し、表と同じ1ファイルに収める** — 分けると RLS の無い表が実在する窓が開く（ADR-028）。
