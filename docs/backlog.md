@@ -18,20 +18,32 @@
 
 ## 次にやること
 
-- [ ] **B-07a** `stock_items` のスキーマと RLS ポリシー（select / insert / update / delete の4種）を置く。
-  **`insert` の `with check` を落とさない** — `using` は見える行の条件であって、他世帯の行を作ることを止めない。
-  世帯の DB 表現は**`household_id = (select auth.uid())` から始める**（`household_members` は置かない）。着手時に ADR を起こし、
-  この方向の追認として書く。条件は2つ — **列名を `user_id` にしない**、**アプリは常に `householdId` を渡す**。
-  この2つを守る限り、共有が要件になった日の移行は**既存データを書き換えずポリシーの差し替えだけ**で済む
-  （`households` と `household_members` を足し、`household_id` の値をそのまま世帯 id にする）。
-  いま `household_members` を置くと、MVP では価値を生まないサインアップ時の書き込み経路が増え、そこが壊れると新規利用者が何もできない
-  （ADR-020 / NFR-09 / C-9 / requirements 8.1「世帯を最初から導入する」）
-- [ ] **B-07b** RLS の回帰テスト。他世帯の行が**見えない・書けない・消せない**ことを実 Supabase に対して確かめる。
-  **RLS は効いていないことに気づけない** — ポリシーを1行消してもアプリは正常に動き続ける。実 DB を使うため、
-  ドメイン層のテスト（ADR-002）とは別枠になる。**接続情報の置き場と CI で回すかは着手時に決める**（NFR-09）
-- [ ] **B-07** `pantry/infrastructure`: Supabase 実装。**利用者の JWT で問い合わせる。`service_role` は使わない**（ADR-020 / NFR-09）。
-  **クライアントはリクエストごとに作る** — Workers は同じ isolate で複数のリクエストを処理するため、
-  使い回すと他人の JWT で問い合わせる事故になる。テストでは再現しない
+- [ ] **B-07c** ORM の基盤を置き、B-07a の手書き SQL を**生成したマイグレーションに置き換える**（ADR-029）。
+  `drizzle-orm` / `drizzle-kit` / `postgres` を足す（**2026-09-10 にユーザーが承認済み**）。`apps/api/drizzle.config.ts` と、
+  drizzle スキーマを `contexts/pantry/infrastructure/db/` に置く。**RLS の有効化・`force row level security`・4ポリシー・
+  権限は生成物に手で足し、表と同じ1ファイルに収める** — 分けると RLS の無い表が実在する窓が開く（ADR-028）。
+  `wrangler.toml` と `supabase/migrations/README.md` のコメントを新しい接続方式に直す。**まだ DB に繋がない。
+  `pnpm verify` は緑のまま**（ADR-029 / ADR-028 / ADR-026）
+- [ ] **B-07d** ローカル Postgres と `pnpm test:db` の枠を置く。`docker-compose.yml`（Postgres）、初期化 SQL
+  （`authenticated` ロール・**非所有者のログインロール**・`auth.uid()` に相当する関数）、`vitest.db.config.ts`、
+  `pnpm test:db`、**`pnpm test` 側の `exclude`**（同じテストが2度走らないように）、CI に Postgres を足して両方を走らせる。
+  同じ周で `docs/testing.md` の「実 Supabase を要する」を直す。テストは煙テスト1本（`authenticated` として繋がり、
+  **クレーム無しでは0行**）。**Docker が無い環境では赤を CI で確かめる**（ADR-029 / docs/workflow.md 2章）
+- [ ] **B-07b** RLS の回帰テスト。他世帯の行が**見えない・書けない・消せない**ことを、**ローカル Postgres に対して**
+  確かめる（実 Supabase ではなくなった）。**`insert` の `with check` と `update` の両側**を1件ずつ。
+  **クレームを張り忘れた問い合わせが0行になることも確かめる** — これが3点セットの効きそのものである。
+  **RLS は効いていないことに気づけない** — ポリシーを1行消してもアプリは正常に動き続ける（ADR-029 / ADR-028 / NFR-09 / C-9）
+- [ ] **B-07** `pantry/infrastructure`: **`StockItemRepositoryImpl`**（Drizzle 実装）。**supabase-js は使わない。**
+  リクエストごとに**トランザクション**を作り、そこにクレームとロールを張った接続を渡す — **クライアントの使い回しではなく
+  トランザクションの寿命**が問題になる。`save` の上書きと `save.householdMismatch`、`findById` が他世帯を `null` に
+  することを実 DB で確かめる。**`StockItemRepository` の doc の「supabase-js で問い合わせる」の1文をここで直す**
+  （ADR-029 / ADR-002 / C-9 / NFR-09）
+- [ ] **B-07e** `identity`: 受け取った JWT を**サーバ側で検証**し、`sub` を取り出す。**検証せずにクレームを張ることは、
+  任意の世帯になりすませることと同じ**（ADR-029 の結果2）。PostgREST を通らなくなったことで生じた責務であり、
+  **これを置くまで DB の経路を本番に出さない。** **鍵の方式（共有秘密 / JWKS）を着手時に確かめ、依存の追加が要るなら止まる**（NFR-09）
+- [ ] **B-07f** **Workers から Postgres への接続経路を確かめる**（Hyperdrive の要否）。**このコンテナでは確かめられない** —
+  Cloudflare と Supabase の実環境が要る。結果しだいで **ADR-029 の承認が動き**、要れば設定の追加として新しい ADR を起こす。
+  **B-09（結線）の前に置く**（ADR-029 の結果3 / ADR-015 / ADR-020 の結果2）
 - [ ] **B-08** `pantry/api`: Hono のルート。やりとりは DTO だけで、ドメインの型を HTTP 層に出さない（ADR-003）。
   **`PantryRuleViolation.rule` から状態コードを引く表を設計書に持たせる** — B-06 の
   `update.notFound` と B-06a の `delete.notFound`（どちらも見つからない）を規則違反の

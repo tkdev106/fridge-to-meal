@@ -88,15 +88,21 @@ VITE_FEATURE_PANTRY_LIST=true pnpm --filter @fridge-to-meal/web dev
 
 ```
 pnpm verify
+pnpm test:db
 ```
 
-これが緑であることが、PR を出す条件であり、マージの条件でもある。中身は
-`pnpm lint`（ESLint + dependency-cruiser）→ `pnpm typecheck` → `pnpm test`（vitest）→
-`pnpm test:hooks`（フックの回帰テスト）→ `pnpm build` の順。CI（`.github/workflows/ci.yml`）は
-PR と `main` への push で同じものを走らせる。
+**この2本が緑であることが、PR を出す条件であり、マージの条件でもある。**
+`pnpm verify` の中身は `pnpm lint`（ESLint + dependency-cruiser）→ `pnpm typecheck` →
+`pnpm test`（vitest）→ `pnpm test:hooks`（フックの回帰テスト）→ `pnpm build` の順。
+`pnpm test:db` は RLS とリポジトリ実装を実 DB に対して確かめる。CI（`.github/workflows/ci.yml`）は
+PR と `main` への push で両方を走らせる。
 
-**テストを飛ばす・無効にする・`skip` するのは禁止。** 落ちたテストは直すか、直せない理由を
-PR に書いて止まる。
+**`pnpm test:db` は Docker のローカル Postgres を要する。** Docker が無い環境では回せないため、
+**その場合は CI の結果をもって完了と判断する**（ADR-029 の結果6）。`pnpm verify` を Docker 無しで
+通るままにしてあるのは、手元に速い経路を残すためである。
+
+**テストを飛ばす・無効にする・`skip` するのは禁止。どちらの2本にも同じく効く。** 落ちたテストは
+直すか、直せない理由を PR に書いて止まる。
 
 ### 実装はテストから作る
 
