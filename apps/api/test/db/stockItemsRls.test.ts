@@ -4,7 +4,7 @@ import { アプリの接続文字列 } from '../support/db/ConnectionStrings.js'
 import { トランザクションを張る } from '../support/db/WithTransaction.js';
 
 /**
- * ローカル Postgres に対する行レベルセキュリティの回帰（B-07b 設計 規則1〜14 /
+ * ローカル Postgres に対する行レベルセキュリティの回帰（B-07b 設計 規則1〜16 /
  * ADR-029 決定3(a)(b)(c)・理由(1)(4) / ADR-028 / NFR-09 / C-9）。
  * **`pnpm test:db` でだけ走る** — `pnpm test` は `apps/api/test/db/**` を除外する。
  *
@@ -56,23 +56,27 @@ afterAll(async () => {
   await 接続.end();
 });
 
-type ポリシーの行 = { policyname: string; qual: string | null; with_check: string | null };
+type ポリシーの行 = { cmd: string; qual: string | null; with_check: string | null };
 
 /**
- * `stock_items` に実際に入っているポリシー4本を、名前で引ける形にして返す
+ * `stock_items` に実際に入っているポリシーを、**操作（`cmd`）で引ける形**にして返す
  * （設計 規則16）。表全体を読む主張ではないので規則4 には当たらない — 対象は
  * `stock_items` のポリシーだけで、他のケースが在庫品を足しても増えない。
+ *
+ * **`policyname` ではなく `cmd` で引く。** 名前で引くと、振る舞いを変えない改名で
+ * `undefined` どうしの比較になり、**理由の読めない赤**になる。`apps/api/test/migrations/`
+ * の守りも `cmd` で解析しており、そちらと揃う。
  */
 async function 在庫品のポリシー(): Promise<Map<string, ポリシーの行>> {
   const 読めた行 = await トランザクションを張る(接続, 世帯_述語の読み手, (問い合わせ) => {
     return 問い合わせ<ポリシーの行[]>`
-      select policyname, qual, with_check
+      select cmd, qual, with_check
       from pg_policies
       where tablename = 'stock_items'
     `;
   });
 
-  return new Map(読めた行.map((行) => [行.policyname, 行]));
+  return new Map(読めた行.map((行) => [行.cmd, 行]));
 }
 
 describe('在庫品の行レベルセキュリティ', () => {
@@ -323,11 +327,20 @@ describe('在庫品の行レベルセキュリティ', () => {
   // **述語の文字列を期待値に書かない**（正規化の形は Postgres の版で変わりうる）。
   // 同じ正規化を通った者どうしを比べる。
 
+  it('4つの操作それぞれにポリシーが入っている', async () => {
+    const ポリシー = await 在庫品のポリシー();
+
+    // 1本に畳まれた（`for all`）・1本消えた場合に、下の3件が `undefined` どうしの
+    // 比較になる前に、**読める形**でここが落ちる。ADR-029 決定2 は4本を成果物として
+    // 固定している。
+    expect([...ポリシー.keys()].sort()).toEqual(['DELETE', 'INSERT', 'SELECT', 'UPDATE']);
+  });
+
   it('update ポリシーの using は select ポリシーと同じ述語である', async () => {
     const ポリシー = await 在庫品のポリシー();
 
-    const selectの述語 = ポリシー.get('stock_items_select')?.qual;
-    const updateの述語 = ポリシー.get('stock_items_update')?.qual;
+    const selectの述語 = ポリシー.get('SELECT')?.qual;
+    const updateの述語 = ポリシー.get('UPDATE')?.qual;
 
     // 比べる前に片方が取れていることを見る。取れていないとポリシーが1本も無くても
     // undefined どうしが等しくなり、緑のまま通る。
@@ -339,8 +352,8 @@ describe('在庫品の行レベルセキュリティ', () => {
   it('update ポリシーの with check は insert ポリシーと同じ述語である', async () => {
     const ポリシー = await 在庫品のポリシー();
 
-    const insertの述語 = ポリシー.get('stock_items_insert')?.with_check;
-    const updateの述語 = ポリシー.get('stock_items_update')?.with_check;
+    const insertの述語 = ポリシー.get('INSERT')?.with_check;
+    const updateの述語 = ポリシー.get('UPDATE')?.with_check;
 
     expect(insertの述語).toBeTruthy();
     // C-9: 自世帯の行を他世帯へ移せないこと。
@@ -350,8 +363,8 @@ describe('在庫品の行レベルセキュリティ', () => {
   it('delete ポリシーの using は select ポリシーと同じ述語である', async () => {
     const ポリシー = await 在庫品のポリシー();
 
-    const selectの述語 = ポリシー.get('stock_items_select')?.qual;
-    const deleteの述語 = ポリシー.get('stock_items_delete')?.qual;
+    const selectの述語 = ポリシー.get('SELECT')?.qual;
+    const deleteの述語 = ポリシー.get('DELETE')?.qual;
 
     expect(selectの述語).toBeTruthy();
     // C-9: 他世帯の行を消せないこと。
