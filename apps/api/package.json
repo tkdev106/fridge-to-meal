@@ -7,13 +7,12 @@
     "dev": "wrangler dev",
     "build": "tsc --build",
     "deploy": "wrangler deploy",
-    "db:generate": "drizzle-kit generate --name create_stock_items"
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "@fridge-to-meal/contract": "workspace:*",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.13.7",
-    "postgres": "^3.4.9"
+    "hono": "^4.13.7"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.10",

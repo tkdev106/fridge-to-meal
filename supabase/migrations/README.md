@@ -7,8 +7,8 @@
 
 ```sh
 # 1. スキーマ（.ts）を直す
-# 2. 生成する
-pnpm --filter @fridge-to-meal/api db:generate
+# 2. 生成する（--name は <動詞_対象>。ファイル名になる）
+pnpm --filter @fridge-to-meal/api db:generate --name create_stock_items
 # 3. 生成物に RLS の4点を手で足す（下記）
 # 4. SQL と meta/ をまとめてコミットする
 ```

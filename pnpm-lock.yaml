@@ -47,9 +47,6 @@ importers:
       hono:
         specifier: ^4.13.7
         version: 4.13.7
-      postgres:
-        specifier: ^3.4.9
-        version: 3.4.9
     devDependencies:
       drizzle-kit:
         specifier: ^0.31.10
@@ -5942,7 +5939,8 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  postgres@3.4.9: {}
+  postgres@3.4.9:
+    optional: true
 
   prelude-ls@1.2.1: {}
 
