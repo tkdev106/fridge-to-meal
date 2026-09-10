@@ -11,10 +11,10 @@ pnpm verify
 `format:check` → `lint`（ESLint + dependency-cruiser）→ `typecheck` → `test` → `test:hooks` → `build`
 の順に走る。**Docker を要さない。**
 
-**完了の定義はもう1本ある** — `pnpm test:db`（Docker のローカル Postgres に対するテスト）。
-**B-07d の周で置く。それまでは存在しないので走らせない。** 置かれたあとは両方が緑であることが
-PR を出す条件であり、マージの条件になる（`docs/workflow.md` 2章）。Docker が無い環境では
-`test:db` を回せないため、**その場合は CI の結果をもって判断する**（ADR-029 の結果6）。
+**完了の定義はもう1本ある** — `pnpm test:db`（ローカル Postgres に対するテスト。先に
+`pnpm db:up` が要る）。**両方が緑であることが** PR を出す条件であり、マージの条件になる
+（`docs/workflow.md` 2章）。Docker が無い環境では `test:db` を回せないため、
+**その場合は CI の結果をもって判断する。緑を装わない**（ADR-029 の結果6）。
 
 ## 報告の形式
 
