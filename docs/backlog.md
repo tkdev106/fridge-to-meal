@@ -18,11 +18,6 @@
 
 ## 次にやること
 
-- [ ] **B-07** `pantry/infrastructure`: **`StockItemRepositoryImpl`**（Drizzle 実装）。**supabase-js は使わない。**
-  リクエストごとに**トランザクション**を作り、そこにクレームとロールを張った接続を渡す — **クライアントの使い回しではなく
-  トランザクションの寿命**が問題になる。`save` の上書きと `save.householdMismatch`、`findById` が他世帯を `null` に
-  することを実 DB で確かめる。**`StockItemRepository` の doc の「supabase-js で問い合わせる」の1文をここで直す**
-  （ADR-029 / ADR-002 / C-9 / NFR-09）
 - [ ] **B-07e** `identity`: 受け取った JWT を**サーバ側で検証**し、`sub` を取り出す。**検証せずにクレームを張ることは、
   任意の世帯になりすませることと同じ**（ADR-029 の結果2）。PostgREST を通らなくなったことで生じた責務であり、
   **これを置くまで DB の経路を本番に出さない。** **鍵の方式（共有秘密 / JWKS）を着手時に確かめ、依存の追加が要るなら止まる**（NFR-09）
@@ -49,6 +44,11 @@
   `contexts/pantry/infrastructure/db/` から **`shared/` 側へ移す**。**2つ目のコンテキストが表を持つ日に着手する** —
   コンテキストをまたぐ import は禁止のため、そのままでは2つ目の実装が写しを作る。
   **移動であって決定の変更ではない**（B-07 設計 10章 / ADR-029 決定3(a)）
+- [ ] **B-18** **`docs/html/` が Markdown に追いついていない。** `adr.html` は
+  **v0.2 / ADR-001〜021** のままで、ADR-022 以降が丸ごと無い（`domain-model.html` も要確認）。
+  手で書き写すと次に同じことが起きるので、**Markdown から生成する手段を置く**か、
+  **閲覧用 HTML をやめる**かのどちらかを選ぶ。**正は Markdown**（CLAUDE.md）であり、
+  古い HTML が残っていること自体が読み手を誤らせる（docs/workflow.md）
 
 ## 判断待ち（着手しない）
 

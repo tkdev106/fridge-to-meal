@@ -193,7 +193,9 @@ packages/contract/         API の型定義。web と api で共有
 
 ```
 pnpm verify       # 完了の定義の片方。**Docker を要さない**。format:check → lint → typecheck → test → test:hooks → build
-pnpm test:db      # もう片方。Docker のローカル Postgres に対する RLS とリポジトリ実装のテスト
+pnpm test:db      # もう片方。ローカル Postgres に対する RLS とリポジトリ実装のテスト
+pnpm db:up        # その相手を Docker で立てる
+pnpm db:up:native # Docker が使えないときはこちら（素の PostgreSQL。ADR-030）
 pnpm dev          # web (:5173) と api (:8787) を同時起動
 pnpm test         # vitest。ドメイン層とユースケース層のテスト
 pnpm test:hooks   # .claude/hooks のガードの回帰テスト（node --test）

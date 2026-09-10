@@ -98,9 +98,12 @@ pnpm test:db
 CI（`.github/workflows/ci.yml`）は PR と `main` への push で両方を走らせる（**別のジョブ**であり、
 `verify` は Docker を要さないまま）。
 
-**`pnpm test:db` は Docker のローカル Postgres を要する。** Docker が無い環境では回せないため、
-**その場合は CI の結果をもって完了と判断する**（ADR-029 の結果6）。`pnpm verify` を Docker 無しで
-通るままにしてあるのは、手元に速い経路を残すためである。
+**`pnpm test:db` はローカル Postgres を要する。** Docker が使えるなら `pnpm db:up`、
+使えないなら **`pnpm db:up:native`**（素の PostgreSQL を同じ 55432 に立てる。ADR-030）。
+エージェントのコンテナでは**セッション開始のフックが自動で立てる**ので、そのまま回る。
+**どちらも駄目なときに限り、CI の結果をもって完了と判断する**（ADR-029 の結果6）。
+`pnpm verify` を Docker 無しで通るままにしてあるのは、手元に速い経路を残すためである。
+**ローカルは 16、CI は 17。正は CI である**（ADR-030 の結果1）。
 
 **テストを飛ばす・無効にする・`skip` するのは禁止。どちらの2本にも同じく効く。** 落ちたテストは
 直すか、直せない理由を PR に書いて止まる。
