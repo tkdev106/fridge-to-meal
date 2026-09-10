@@ -10,7 +10,7 @@ import type { StockItemId } from '../value/StockItemId.js';
  * 省いてよいのは実装が正しいときだけで、それは型では確かめられない。引数にあれば、
  * 世帯を渡し忘れた問い合わせはコンパイルを通らない。
  *
- * 実装（B-07）は Supabase に対して**利用者の JWT で問い合わせる**（ADR-020 / NFR-09）。
+ * 実装（B-07）は**利用者の世帯のクレームを張った接続で問い合わせる**（ADR-029 / NFR-09）。
  * RLS が二重の網になるが、**網があることを理由にこの引数を外さない。**
  */
 export interface StockItemRepository {
