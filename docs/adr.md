@@ -157,7 +157,7 @@ flowchart TD
 | ADR-025 | ドメイン層の例外型を `domain/error/` に置く | 承認 |
 | ADR-026 | 在庫品の識別子をドメイン層のポートで発行する | 承認 |
 | ADR-027 | 在庫品の削除を冪等にせず、消せなかったことを断る | 承認 |
-| ADR-028 | 世帯を `household_id = auth.uid()` から始め、`household_members` を置かない | **提案** |
+| ADR-028 | 世帯を `household_id = auth.uid()` から始め、`household_members` を置かない | 承認 |
 | ADR-029 | DB アクセスを Drizzle に寄せ、RLS をトランザクション単位のクレーム設定で効かせる | **提案** |
 | ADR-030 | エージェントのコンテナでは Docker を使わず素の PostgreSQL で `pnpm test:db` を回す | 承認 |
 
@@ -358,7 +358,7 @@ flowchart TD
 - **理由** — **(1) 覆ったときに安い。** 判定を消すのは `DeleteStockItem.ts` の数行で済み、リポジトリの interface・doc・契約テスト・記憶上の実装・まだ書いていない Supabase 実装（B-07）は動かない。`delete` の戻り値を「消した件数」に変える案は逆で、supabase-js で件数を得る形（`.select()` を伴う）に固定され、`select` の RLS ポリシー（B-07a）と結びつく。**(2) 非開示は保たれる。** `findById` は他の世帯の在庫品を「無い」として返す契約なので、1つの経路に畳めば、規則の識別子も文言も自然に同一になる。**(3) 更新と同じ形になる。** `update.notFound` と置き場所も形も揃い、B-08 は表の行が1つ増えるだけで済む。
 - **結果** — **削除が冪等でなくなる。** 応答を取りこぼしたクライアントが再送すると、**実際には消せていても 404 を受け取る。** B-11（在庫一覧の画面）は、この 404 を「すでに消えている」として扱うか、利用者に見せるかを決める必要がある。**競合は検出しない** — `findById` と `delete` の間に他のセッションが消した場合は成功として返る。取りこぼすのは「1件も消さずに成功した」場合だけで、逆向き（消したのに 404）は起きない。**確認のために1往復増える**（`findById` → `delete`）。
 
-### ADR-028　世帯を `household_id = auth.uid()` から始め、`household_members` を置かない　`提案`
+### ADR-028　世帯を `household_id = auth.uid()` から始め、`household_members` を置かない　`承認`
 
 - **状況** — `docs/requirements.md` 8.1 は「世帯を最初から導入する」と定め、C-9 は4つの集約すべてが `householdId` を持つと決めている。だが MVP に**世帯を共有する要件は無い**（招待も、複数人での利用も FR に無い）。素直に正規化すると `households` と `household_members` の2表を置き、サインアップ時に世帯を作って本人を所属させる書き込み経路が要る。**この経路は MVP では何の価値も生まないのに、壊れると新規利用者が何もできなくなる。**
 - **決定** — **`stock_items.household_id` に利用者の id をそのまま入れ、RLS の述語を `household_id = (select auth.uid())` にする。** `households` も `household_members` も置かない。条件は2つ — **列名を `user_id` にしない**、**アプリは常に `householdId` を渡す**（既定値 `auth.uid()` を DB に置かない）。
