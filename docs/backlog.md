@@ -18,13 +18,6 @@
 
 ## 次にやること
 
-- [ ] **B-07c** ORM の基盤を置き、`supabase/migrations/20260909154500_create_stock_items.sql`（手書き）を
-  **生成したマイグレーションに置き換える**（ADR-029）。
-  `drizzle-orm` / `drizzle-kit` / `postgres` を足す（**2026-09-10 にユーザーが承認済み**）。`apps/api/drizzle.config.ts` と、
-  drizzle スキーマを `contexts/pantry/infrastructure/db/` に置く。**RLS の有効化・`force row level security`・4ポリシー・
-  権限は生成物に手で足し、表と同じ1ファイルに収める** — 分けると RLS の無い表が実在する窓が開く（ADR-028）。
-  `wrangler.toml` と `supabase/migrations/README.md` のコメントを新しい接続方式に直す。**まだ DB に繋がない。
-  `pnpm verify` は緑のまま**（ADR-029 / ADR-028 / ADR-026）
 - [ ] **B-07d** ローカル Postgres と `pnpm test:db` の枠を置く。`docker-compose.yml`（Postgres）、初期化 SQL
   （`authenticated` ロール・**非所有者のログインロール**・`auth.uid()` に相当する関数）、`vitest.db.config.ts`、
   `pnpm test:db`、**`pnpm test` 側の `exclude`**（同じテストが2度走らないように）、CI に Postgres を足して両方を走らせる。
@@ -33,6 +26,9 @@
 - [ ] **B-07b** RLS の回帰テスト。他世帯の行が**見えない・書けない・消せない**ことを、**ローカル Postgres に対して**
   確かめる（実 Supabase ではなくなった）。**`insert` の `with check` と `update` の両側**を1件ずつ。
   **クレームを張り忘れた問い合わせが0行になることも確かめる** — これが3点セットの効きそのものである。
+  **あわせて「0行」が別の理由で起きていないことを確かめる** — B-07d の煙テストは、書いた行が
+  commit されずに消えていても同じ0行になり、**その場合も緑のまま通る。** クレームを張り直した
+  3つ目のトランザクションで同じ行がもう一度見えることを見る。
   **RLS は効いていないことに気づけない** — ポリシーを1行消してもアプリは正常に動き続ける（ADR-029 / ADR-028 / NFR-09 / C-9）
 - [ ] **B-07** `pantry/infrastructure`: **`StockItemRepositoryImpl`**（Drizzle 実装）。**supabase-js は使わない。**
   リクエストごとに**トランザクション**を作り、そこにクレームとロールを張った接続を渡す — **クライアントの使い回しではなく

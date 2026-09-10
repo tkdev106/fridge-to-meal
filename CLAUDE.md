@@ -113,7 +113,6 @@
   `main.ts` で結線しなければ到達しない
 
 **完了の定義は `pnpm verify` と `pnpm test:db` の両方が緑になること。** PR を出す条件であり、マージの条件でもある。
-**`pnpm test:db` を置くのは B-07d の周であり、それまでは `pnpm verify` の1本だけが条件になる。**
 **テストを skip・無効化して緑にしない。**
 
 **実装の前に設計書を書く。** `design-writer` が backlog のタスク1件を `z-ai/design/<ID>.md` に落とし、
@@ -194,7 +193,7 @@ packages/contract/         API の型定義。web と api で共有
 
 ```
 pnpm verify       # 完了の定義の片方。**Docker を要さない**。format:check → lint → typecheck → test → test:hooks → build
-pnpm test:db      # もう片方。Docker のローカル Postgres に対する RLS とリポジトリ実装のテスト（**B-07d で置く**）
+pnpm test:db      # もう片方。Docker のローカル Postgres に対する RLS とリポジトリ実装のテスト
 pnpm dev          # web (:5173) と api (:8787) を同時起動
 pnpm test         # vitest。ドメイン層とユースケース層のテスト
 pnpm test:hooks   # .claude/hooks のガードの回帰テスト（node --test）

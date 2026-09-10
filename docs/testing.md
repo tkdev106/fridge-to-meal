@@ -86,8 +86,15 @@ expect(生成器.呼ばれた回数).toBe(0); // C-15: 再利用が成立した�
 | `.claude/hooks` `.githooks` | ガードの**拒否側と許可側の両方**。`pnpm test:hooks`（`node --test`） | なし |
 
 **ドメイン層とユースケース層のテストは、実 DB も実 API も使わずに書ける**（ADR-002）。
-**それを実際に使うテストは `pnpm test` に入れない。** RLS の回帰テスト（B-07b）は
-実 Supabase を要するため別枠であり、その置き場は着手時に決める。
+**それを実際に使うテストは `pnpm test` に入れない。** 実 DB に対するテスト（RLS の回帰・
+リポジトリ実装）は **`apps/api/test/db/**` に置き、`pnpm test:db` で走らせる。** 相手は
+**ローカル Postgres（Docker Compose）であって実 Supabase ではない** — 実 Supabase を要した頃は
+ローカルでも CI でも回せなかった（ADR-029）。`pnpm test` 側は `apps/api/test/db/**` を
+`exclude` するので、**同じテストが2度走らない。**
+
+**Docker が無い環境では `pnpm test:db` を回せない。** その場合は**赤も緑も CI の結果で確かめる** —
+ドラフト PR を push し、期待した理由で落ちていることをログで見てから実装に入る（ADR-029 の結果6）。
+**緑を装わない。**
 
 **画面のテストはフラグを介さない。** feature flag があるのは `apps/web` だけで、
 ユースケース層とドメイン層はそれを知らないため（ADR-024）、フラグの有無に関わらず

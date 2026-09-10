@@ -1,0 +1,24 @@
+# テスト用のローカル Postgres（B-07d / ADR-029 決定4・結果5）。
+#
+# **ボリュームを置かない** — 使い捨てであり、状態は globalSetup が毎回作り直す。
+# 版は Supabase の実物と突き合わせる周（B-07f）まで固定する。
+#
+#   pnpm db:up   起き切るまで待って起動する
+#   pnpm db:down 消す
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - '55432:5432'
+    volumes:
+      # 役と auth.uid() を用意する。initdb で1度だけ走る。
+      - ./supabase/local/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      # 検査は TCP で行う。initdb 中の一時サーバは UNIX ソケットしか開かないため、
+      # ソケット越しに問うと**初期化の途中で成功してしまう**（設計 規則10）。
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U postgres -d postgres']
+      interval: 1s
+      timeout: 5s
+      retries: 60

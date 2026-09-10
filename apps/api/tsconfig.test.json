@@ -13,11 +13,15 @@
     "lib": ["ES2022"],
     // 本体の型は references 経由で入る。テスト自身は実行環境の型を必要としない。
     "types": [],
-    "rootDir": ".",
+    // ルート直下の vitest の設定を、`apps/api/test/environment/localPostgres.test.ts` が
+    // **モジュールとして** import する（B-07d 設計 規則14）。そのため rootDir は
+    // リポジトリのルートを指す。出力は dist-test/ の下に階層ごと落ちるだけで、git 管理外。
+    "rootDir": "../..",
     // 型検査だけが目的だが、composite なプロジェクトは emit を止められないため
     // 出力先を分ける。dist-test/ は git 管理外。
     "outDir": "./dist-test"
   },
-  "include": ["test/**/*.ts"],
+  // composite なプロジェクトは、プログラムに入るファイルをすべて列挙する必要がある。
+  "include": ["test/**/*.ts", "../../vitest.config.ts", "../../vitest.db.config.ts"],
   "references": [{ "path": "./tsconfig.json" }]
 }

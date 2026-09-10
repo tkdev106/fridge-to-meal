@@ -124,7 +124,7 @@ tools: Read, Grep, Glob, Bash, Write
 - 6章の規則と7章のエラーが、`test-designer` の一覧でそれぞれ1件以上のケースになっているか
 - リポジトリを触るなら、世帯の分離（C-9）の行があるか
 
-**完了の定義はここでは決めない。** それは `pnpm verify`（と、置かれたあとは `pnpm test:db`）が
+**完了の定義はここでは決めない。** それは `pnpm verify` と `pnpm test:db` の両方が
 緑になることであり、`docs/workflow.md` 2章の1か所にある。
 ````
 

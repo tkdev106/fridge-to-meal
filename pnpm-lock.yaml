@@ -51,6 +51,9 @@ importers:
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
+      postgres:
+        specifier: ^3.4.9
+        version: 3.4.9
       wrangler:
         specifier: ^4.129.1
         version: 4.129.1(@cloudflare/workers-types@5.20260908.1)
@@ -5939,8 +5942,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
-  postgres@3.4.9:
-    optional: true
+  postgres@3.4.9: {}
 
   prelude-ls@1.2.1: {}
 

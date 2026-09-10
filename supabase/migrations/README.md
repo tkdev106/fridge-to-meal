@@ -55,10 +55,29 @@ pnpm --filter @fridge-to-meal/api db:generate --name create_stock_items
 - **表の作成と RLS を同じファイルに置く。** 分けると、片方だけ適用された状態＝**RLS の無い表が
   実在する窓**ができる。あわせて `begin;` / `commit;` で囲む
 - **`create role` を書かない。** Supabase には `authenticated` が既に在り、ローカル側の役者は
-  B-07d の初期化 SQL が用意する
+  `supabase/local/init.sql` が用意する
+- **適用済みのファイルのコメントも直さない。** `20260910034508_create_stock_items.sql` の末尾は
+  「ローカル側は B-07d が用意する」と、置かれる前の言い方のまま残っている。**揃えたくなっても
+  直さない** — 上の「適用済みのファイルは書き換えない」が優先する。文言の正はこの README にある
 - **`service_role` で適用しない前提の内容にする。** 権限は `authenticated` にだけ与える（ADR-020 / NFR-09）
 
 ## 適用
 
-**Supabase CLI はまだ依存に入っていない。** 現状は Supabase の SQL エディタに貼って適用する。
-CLI の導入と CI での適用は **B-07d**（ローカル Postgres と `pnpm test:db` を置く周）で決める。
+| 相手 | 手段 |
+| --- | --- |
+| ローカル Postgres（テスト） | `pnpm test:db` の `globalSetup`（`apps/api/test/support/db/ApplyMigrations.ts`）が、このディレクトリの `*.sql` を**ファイル名順に、1ファイル = 1回**流す |
+| 本番 Supabase | **Supabase の SQL エディタに貼る。** Supabase CLI は依存に入れていない |
+
+**どちらも「ファイルの全文をそのまま1回で流す」形に揃えてある。** これが `begin;` / `commit;` を
+残す理由である — `drizzle-kit migrate` のような migrator は `--> statement-breakpoint` で文ごとに
+割るため、`begin;` が単独のトランザクションになり、**表と RLS が別トランザクションに割れる。**
+上の「1ファイルに置く」規約が守ろうとしている窓が、適用の側から開く。
+
+**CI での本番への適用は自動化していない。** 決めるのはデプロイを扱う周であり、
+先取りすると使われない経路が1本増える。
+
+## スキーマ修飾
+
+**無修飾のまま書く**（`drizzle-kit` の出力に合わせる。B-07c が残した宿題の決着）。
+解決を既定値に委ねないよう、**接続の側で `search_path` を `public` に明示する**
+（`apps/api/test/support/db/ConnectionStrings.ts`）。
