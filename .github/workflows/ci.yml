@@ -38,3 +38,34 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm verify
+
+  # 完了の定義のもう片方（ADR-029 決定4）。verify とは別ジョブにして、
+  # `pnpm verify` を Docker 無しで通るままにする。
+  test-db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # サービスコンテナではなく compose を使う。初期化 SQL のマウントが要るが、
+      # サービスコンテナは checkout より前に起動するためマウントできない（B-07d 設計 規則11）。
+      # --wait が healthcheck の通過まで待つ。sleep を書かない（設計 規則10）。
+      - run: pnpm db:up
+
+      - run: pnpm test:db
+
+      # 落ちたときに、起動と初期化のどちらで壊れたかを読めるようにする。
+      - if: failure()
+        run: docker compose logs db
+
+      - if: always()
+        run: pnpm db:down
