@@ -10,3 +10,6 @@ docs/
 
 # 試行ツールは使い捨てで、整形の対象にしない
 tools/
+
+# drizzle-kit の生成物。整形すると生成のたびに差分が出る
+supabase/migrations/meta/

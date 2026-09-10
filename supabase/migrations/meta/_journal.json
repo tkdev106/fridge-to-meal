@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1789011908267,
+      "tag": "20260910034508_create_stock_items",
+      "breakpoints": true
+    }
+  ]
+}

@@ -7,12 +7,20 @@ compatibility_flags = ["nodejs_compat"]
 # 無関係なエラーがログに混ざって原因の切り分けを妨げる。
 send_metrics = false
 
-# Supabase への接続情報は環境変数で渡す（ADR-020）。
-# 開発時は apps/api/.dev.vars（gitignore 済み）に置く。
-#   SUPABASE_URL="https://xxxx.supabase.co"
-#   SUPABASE_ANON_KEY="..."
+# 接続情報は環境変数で渡す（ADR-029）。開発時は apps/api/.dev.vars（gitignore 済み）に置く。
+#   DATABASE_URL="postgres://..."   Postgres への接続。authenticated に切り替えられる非所有者ロール
+#   SUPABASE_URL="https://xxxx.supabase.co"   認証（Supabase Auth）用。DB アクセスには使わない
+#   SUPABASE_ANON_KEY="..."                   同上
+#   SUPABASE_JWT_SECRET="..."                 受け取った JWT の検証に使う（鍵の方式は B-07e で確かめる）
 #
-# ⚠ service_role キーは置かない。RLS を迂回してしまい、Supabase を選んだ
-#   理由（世帯分離の安全網）が消える。利用者の JWT で問い合わせること。
+# ⚠ service_role キーと、表の所有者ロールの接続文字列を置かない。どちらも RLS を迂回してしまい、
+#   Supabase を選んだ理由（世帯分離の安全網）が消える。
+#
+# ⚠ 読み書きは 1リクエスト1トランザクションで行い、その中で set local role と
+#   set local request.jwt.claims を張る。local を落とさない — 接続プーラは接続を貸し回すため、
+#   セッションに残した設定は他人のリクエストに漏れる。
+#
+# ⚠ Workers から Postgres へ直接繋ぐ形になったため、接続経路（Hyperdrive の要否）は未確認。
+#   確かめるのは B-07f。
 #
 # ⚠ LLM の API キーもここに置く。クライアントには絶対に置かない（NFR-10）。

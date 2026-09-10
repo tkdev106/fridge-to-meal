@@ -6,13 +6,16 @@
   "scripts": {
     "dev": "wrangler dev",
     "build": "tsc --build",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "@fridge-to-meal/contract": "workspace:*",
+    "drizzle-orm": "^0.45.2",
     "hono": "^4.13.7"
   },
   "devDependencies": {
+    "drizzle-kit": "^0.31.10",
     "wrangler": "^4.129.1"
   }
 }
