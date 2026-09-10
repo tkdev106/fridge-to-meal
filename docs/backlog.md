@@ -22,7 +22,8 @@
   Cloudflare と Supabase の実環境が要る。結果しだいで **ADR-029 の承認が動き**、要れば設定の追加として新しい ADR を起こす。
   **B-09（結線）の前に置く**（ADR-029 の結果3 / ADR-015 / ADR-020 の結果2）。
   **同じ周で JWT の署名方式（共有秘密 / 非対称鍵）も確かめる** — B-07e は `.dev.vars` の雛形から
-  共有秘密（HS256）を採ったが、確かめるまで **ADR-031 は `提案` のまま**である（ADR-031 の結果2）
+  共有秘密（HS256）を採り、**ADR-031 は確認を待たず承認された**。実環境が非対称鍵だったときは
+  `HouseholdAuthenticatorImpl` を `verifyWithJwks` に替え、ADR-031 を置き換える ADR を起こす（ADR-031 の結果1・2）
 - [ ] **B-08** `pantry/api`: Hono のルート。やりとりは DTO だけで、ドメインの型を HTTP 層に出さない（ADR-003）。
   **`PantryRuleViolation.rule` から状態コードを引く表を設計書に持たせる** — B-06 の
   `update.notFound` と B-06a の `delete.notFound`（どちらも見つからない）を規則違反の
