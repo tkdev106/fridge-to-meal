@@ -18,13 +18,6 @@
 
 ## 次にやること
 
-- [ ] **B-07c** ORM の基盤を置き、`supabase/migrations/20260909154500_create_stock_items.sql`（手書き）を
-  **生成したマイグレーションに置き換える**（ADR-029）。
-  `drizzle-orm` / `drizzle-kit` / `postgres` を足す（**2026-09-10 にユーザーが承認済み**）。`apps/api/drizzle.config.ts` と、
-  drizzle スキーマを `contexts/pantry/infrastructure/db/` に置く。**RLS の有効化・`force row level security`・4ポリシー・
-  権限は生成物に手で足し、表と同じ1ファイルに収める** — 分けると RLS の無い表が実在する窓が開く（ADR-028）。
-  `wrangler.toml` と `supabase/migrations/README.md` のコメントを新しい接続方式に直す。**まだ DB に繋がない。
-  `pnpm verify` は緑のまま**（ADR-029 / ADR-028 / ADR-026）
 - [ ] **B-07d** ローカル Postgres と `pnpm test:db` の枠を置く。`docker-compose.yml`（Postgres）、初期化 SQL
   （`authenticated` ロール・**非所有者のログインロール**・`auth.uid()` に相当する関数）、`vitest.db.config.ts`、
   `pnpm test:db`、**`pnpm test` 側の `exclude`**（同じテストが2度走らないように）、CI に Postgres を足して両方を走らせる。
