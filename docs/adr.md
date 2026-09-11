@@ -162,7 +162,7 @@ flowchart TD
 | ADR-030 | エージェントのコンテナでは Docker を使わず素の PostgreSQL で `pnpm test:db` を回す | 承認 |
 | ADR-031 | アクセストークンの検証を共有秘密（HS256）で行い、JWKS は実環境を確かめるまで採らない | **提案** |
 | ADR-032 | api 層は世帯と識別子の型をユースケースから導出し、規則違反を `name` で見分ける | **提案** |
-| ADR-033 | コンテキストをまたぐ入力を、相手の型ではなく名称などのプリミティブで受け取る | **提案** |
+| ADR-033 | コンテキストをまたぐ入力を、相手の型ではなく名称などのプリミティブで受け取る | 承認 |
 
 ---
 
@@ -439,7 +439,7 @@ flowchart TD
 
 ---
 
-### ADR-033　コンテキストをまたぐ入力を、相手の型ではなく名称などのプリミティブで受け取る　`提案`
+### ADR-033　コンテキストをまたぐ入力を、相手の型ではなく名称などのプリミティブで受け取る　`承認`
 
 - **状況** — B-13 で最初のドメインサービス（`contexts/meal/domain/service/MealCoverageService.ts`）を置くにあたり、依存ルールと文書の記述が正面からぶつかった。`docs/domain-model.md` 第4章は `MealCoverageService` を「**献立と現在の在庫品リストを受け取り**」と書き、`docs/testing.md` 第2章は「`MealCoverageService` のテストで本物の `Meal` と本物の `StockItem` を使うのが正しい」と例示する。しかし **在庫品 `StockItem` は `contexts/pantry/domain/` にあり、コンテキストをまたぐ import は `usecase/` どうしだけに許されている**（A章の表 / `.dependency-cruiser.cjs`）。`meal/domain/` から在庫品の型を import する道は無い。同じことが 分量 `Amount` にも起きる — 用語表は 材料 を「食材と**分量**」と定めるが、`Amount` の実体も `contexts/pantry/domain/value/` にある。**これは B-13 限りの事故ではなく、献立と在庫という2つのコンテキストが触れるたびに起きる。** B-14（`CookableMealFinder`）も同じ選択を迫られる。
 - **決定** — 3つ。
