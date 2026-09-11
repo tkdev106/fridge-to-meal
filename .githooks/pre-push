@@ -1,9 +1,13 @@
 #!/usr/bin/env sh
-# main への直接 push を git の側で止める。
+# main への直接 push と、何をする枝か読めないブランチ名を git の側で止める。
 #
 # .claude/hooks/guard.mjs は Claude Code のエージェントしか止められない。
 # このリポジトリは private で、現在のプランでは GitHub のブランチ保護が効かない
 # （Team / Enterprise が要る）ため、git 側にもう1枚置く。
+#
+# ブランチ名の規則は guard.mjs の branchNameProblem と**同じものを2つの言語で書いている**。
+# main の禁止（TRUNK_REF）が両側にあるのと同じ構えで、片方を越えられても残る側が止める。
+# **片方の規則を変えたら、もう片方も変えること**（docs/workflow.md 1章）。
 #
 # 有効化（clone 後に1度だけ）:
 #   git config core.hooksPath .githooks
@@ -12,10 +16,70 @@
 # stdin: "<local ref> <local sha> <remote ref> <remote sha>" が push する参照の数だけ
 
 TRUNK_REF='refs/heads/main'
+ZERO='0000000000000000000000000000000000000000'
 
-while read -r _local_ref _local_sha remote_ref _remote_sha; do
+# ブランチ名が「何をする枝か」を名前だけで読めるか。読めない理由を stdout に出す。
+branch_name_problem() {
+  name=$1
+
+  if printf '%s' "$name" | grep -qiE 'claude'; then
+    echo '名前に claude を入れないでください。枝の名前は「誰が書いたか」ではなく「何をする枝か」を表します'
+    return
+  fi
+
+  case $name in
+    feat/*|fix/*|docs/*|refactor/*|test/*|chore/*) ;;
+    *)
+      echo '<type>/<slug> の形にしてください。type は feat / fix / docs / refactor / test / chore のいずれかです'
+      return
+      ;;
+  esac
+
+  slug=${name#*/}
+  if ! printf '%s' "$slug" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$'; then
+    echo 'slug は英小文字・数字・ハイフンだけで書いてください（連続するハイフンと前後のハイフンは不可）'
+    return
+  fi
+
+  # 語ごとに見るのは、生成された識別子（from-2d5wji など）を弾くため。
+  # 語は「英字だけ」「数字だけ」「英字1文字＋数字」に限り、そのうえで
+  # 3文字以上の英字の語が1つ以上あることを求める（feat/b-08 は通らない）。
+  meaningful_word=0
+  for word in $(printf '%s' "$slug" | tr '-' ' '); do
+    if printf '%s' "$word" | grep -qE '^[a-z]+$'; then
+      if [ "${#word}" -ge 3 ]; then meaningful_word=1; fi
+    elif printf '%s' "$word" | grep -qE '^([0-9]+|[a-z][0-9]+)$'; then
+      :
+    else
+      echo "slug の \"$word\" が何を指すのか名前から読めません。生成された識別子ではなく、変更の内容を語で書いてください"
+      return
+    fi
+  done
+
+  if [ "$meaningful_word" -eq 0 ]; then
+    echo 'slug に変更の内容がありません。タスクの番号だけでは何をする枝か読めないので、内容を表す語を足してください'
+  fi
+}
+
+while read -r _local_ref local_sha remote_ref _remote_sha; do
   if [ "$remote_ref" = "$TRUNK_REF" ]; then
     echo "pre-push: main への直接 push は禁止です。作業ブランチを切って PR にしてください（docs/workflow.md）。" >&2
+    exit 1
+  fi
+
+  # 枝の削除（送る側が全ゼロ）は名前を見ない。後片付けを止める理由がない。
+  [ "$local_sha" = "$ZERO" ] && continue
+
+  case $remote_ref in
+    refs/heads/*) ;;
+    *) continue ;;  # タグなどは対象外
+  esac
+
+  branch=${remote_ref#refs/heads/}
+  problem=$(branch_name_problem "$branch")
+  if [ -n "$problem" ]; then
+    echo "pre-push: ブランチ名 \"$branch\" は使えません。$problem（docs/workflow.md 1章）。" >&2
+    echo "pre-push: 付け替えは git branch -m <新しい名前> のあと、古い枝を git push origin --delete で消してください。" >&2
     exit 1
   fi
 done

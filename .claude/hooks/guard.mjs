@@ -12,8 +12,13 @@
 //   2. `;` `&&` `||` `|` 改行 で区切って、コマンドごとに見る
 //   3. 各区切りをトークンに割り、語の位置で判定する（部分一致で拾わない）
 //
-// ルールを足すときは「戻せない操作か」「trunk を壊すか」「秘密が漏れるか」の
-// どれかに当たることを確認する。作業を細かく縛るためのルールは入れない。
+// ルールを足すときは「戻せない操作か」「trunk を壊すか」「秘密が漏れるか」
+// 「後から直せない記録を汚すか」のどれかに当たることを確認する。
+// 作業を細かく縛るためのルールは入れない。
+//
+// 最後の1つはブランチ名のためにある。**枝の名前は squash merge のあとも PR の
+// 一覧に残り、後から改名できない。** 何をする枝か読めない名前は、その時点では
+// 書いた者だけが困らず、履歴を読む側がずっと困る（docs/workflow.md 1章）。
 
 import { execFileSync } from 'node:child_process';
 
@@ -59,12 +64,15 @@ function stripHeredocs(command) {
  * ガードの規則そのものに言及するコミット（このリポジトリでは普通に起きる）が
  * 書けなくなる。
  *
+ * **`git branch -m` の `-m` は落とさない。** そちらはメッセージではなく改名であり、
+ * 落とすと新しいブランチ名が検査から消える（branch-name が空文字を見ることになる）。
+ *
  * @param {string} command
  */
 function stripMessageArgs(command) {
   return command
-    .replace(/(^|\s)(-m|--message)(\s+|=)(['"])(?:\\.|(?!\4)[\s\S])*\4/g, '$1$2 ""')
-    .replace(/(^|\s)(-m|--message)(\s+|=)[^\s'"]+/g, '$1$2 ""');
+    .replace(/(^|\s)(?<!branch\s)(-m|--message)(\s+|=)(['"])(?:\\.|(?!\4)[\s\S])*\4/g, '$1$2 ""')
+    .replace(/(^|\s)(?<!branch\s)(-m|--message)(\s+|=)[^\s'"]+/g, '$1$2 ""');
 }
 
 /** `;` `&&` `||` `|` 改行 で区切る。区切りごとに独立したコマンドとして見る。 */
@@ -110,6 +118,90 @@ function targetsTrunk(args) {
       const dest = a.replace(/^\+/, '').split(':').pop();
       return dest === TRUNK || dest === `refs/heads/${TRUNK}`;
     });
+}
+
+/** `<type>/<slug>` の type に使える語。Conventional Commits と揃える（docs/workflow.md 1章）。 */
+const BRANCH_TYPES = ['feat', 'fix', 'docs', 'refactor', 'test', 'chore'];
+
+/**
+ * ブランチ名が「何をする枝か」を名前だけで読めるか。読めない理由を返す（読めるなら null）。
+ *
+ * 検査するのは3つ。**`<type>/<slug>` であること / `claude` を含まないこと /
+ * slug に意味のある語が1つ以上あること。**
+ *
+ * 語ごとに見るのは、**生成された識別子を弾くため**である。`from-2d5wji` のような
+ * 英数字の混ざった語は、書いた側にしか意味がない。語は「英字だけ」「数字だけ」
+ * 「英字1文字＋数字」（backlog の `b08`）のいずれかに限り、そのうえで
+ * **3文字以上の英字の語が1つ以上**あることを求める — `feat/b-08` は通らない。
+ * タスクの番号は何をする枝かを説明しない。
+ *
+ * @param {string} name
+ * @returns {string | null}
+ */
+function branchNameProblem(name) {
+  if (/claude/i.test(name)) {
+    return '名前に claude を入れないでください。枝の名前は「誰が書いたか」ではなく「何をする枝か」を表します';
+  }
+
+  const slash = name.indexOf('/');
+  const type = slash < 0 ? '' : name.slice(0, slash);
+  const slug = slash < 0 ? '' : name.slice(slash + 1);
+
+  if (!BRANCH_TYPES.includes(type)) {
+    return `<type>/<slug> の形にしてください。type は ${BRANCH_TYPES.join(' / ')} のいずれかです`;
+  }
+  if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)) {
+    return 'slug は英小文字・数字・ハイフンだけで書いてください（連続するハイフンと前後のハイフンは不可）';
+  }
+
+  const words = slug.split('-');
+  const 生成された語 = words.find((w) => !/^[a-z]+$|^[0-9]+$|^[a-z][0-9]+$/.test(w));
+  if (生成された語 !== undefined) {
+    return `slug の "${生成された語}" が何を指すのか名前から読めません。生成された識別子ではなく、変更の内容を語で書いてください`;
+  }
+  if (!words.some((w) => /^[a-z]{3,}$/.test(w))) {
+    return 'slug に変更の内容がありません。タスクの番号だけでは何をする枝か読めないので、内容を表す語を足してください';
+  }
+
+  return null;
+}
+
+/**
+ * 新しく作られる（または付け替えられる）ブランチ名を集める。
+ * **消すだけのもの（`-d` / `--delete`）と一覧は含めない。**
+ *
+ * @param {{ name: string, args: string[] } | null} git
+ * @returns {string[]}
+ */
+function createdBranchNames(git) {
+  if (git === null) return [];
+
+  if (git.name === 'switch' || git.name === 'checkout') {
+    const 作る指定 = git.args.findIndex(
+      (a) => a === '-c' || a === '-C' || a === '-b' || a === '-B' || a === '--create',
+    );
+    if (作る指定 < 0) return [];
+    const 名前 = git.args[作る指定 + 1];
+    return 名前 === undefined || isFlag(名前) ? [] : [名前];
+  }
+
+  if (git.name === 'branch') {
+    // 消す・一覧する・付け替える（branch-force が既に拒否している）ものは見ない。
+    if (
+      hasFlag(git.args, '--delete', '--list') ||
+      hasShortFlag(git.args, 'd') ||
+      hasShortFlag(git.args, 'D')
+    ) {
+      return [];
+    }
+    const 改名 = hasFlag(git.args, '--move') || hasShortFlag(git.args, 'm');
+    const 位置引数 = git.args.filter((a) => !isFlag(a));
+    if (位置引数.length === 0) return []; // 一覧
+    // 改名は `git branch -m <旧> <新>` か `git branch -m <新>`。新しい名前は末尾。
+    return 改名 ? [位置引数[位置引数.length - 1]] : [位置引数[0]];
+  }
+
+  return [];
 }
 
 // ---------------------------------------------------------------- ルール
@@ -276,6 +368,17 @@ for (const segment of splitSegments(command)) {
   // 「HEAD が main である」ことだけを理由に止めると、枝の後片付けができなくなる。
   // `HEAD` は現在のブランチに解決されるので、明示のうちに入らない。
   const git = gitSubcommand(tokens);
+
+  // 新しく作るブランチの名前を見る（docs/workflow.md 1章）。**RULES の外に置いてある**のは、
+  // 拒否の理由がブランチ名ごとに違い、固定の message に収まらないためである。
+  // push される名前は `.githooks/pre-push` がもう1枚で見る — main への push と同じ2枚の構えで、
+  // どちらも越えられることを前提にしている。
+  for (const 名前 of createdBranchNames(git)) {
+    const 理由 = branchNameProblem(名前);
+    if (理由 !== null)
+      deny('branch-name', `ブランチ名 "${名前}" は使えません。${理由}（docs/workflow.md 1章）。`);
+  }
+
   const explicitRef =
     git?.name === 'push' &&
     git.args
