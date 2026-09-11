@@ -7,6 +7,8 @@
 // 用語は `docs/domain-model.md` 第3章のユビキタス言語に合わせる。
 // 禁止語（レシピ / メニュー / 候補 / 料理 / ストック / アイテム / フード）を使わない。
 
+export type { ErrorResponseDto } from './error.js';
+
 export type {
   ListStockItemsOutput,
   RegisterStockItemInput,
