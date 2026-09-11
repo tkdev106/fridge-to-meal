@@ -161,6 +161,7 @@ flowchart TD
 | ADR-029 | DB アクセスを Drizzle に寄せ、RLS をトランザクション単位のクレーム設定で効かせる | **提案** |
 | ADR-030 | エージェントのコンテナでは Docker を使わず素の PostgreSQL で `pnpm test:db` を回す | 承認 |
 | ADR-031 | アクセストークンの検証を共有秘密（HS256）で行い、JWKS は実環境を確かめるまで採らない | **提案** |
+| ADR-032 | api 層は世帯と識別子の型をユースケースから導出し、規則違反を `name` で見分ける | **提案** |
 
 ---
 
@@ -418,3 +419,19 @@ flowchart TD
   2. **確かめるまでこの ADR は `提案` のままとする。** 承認の判断は、実 Supabase の署名方式を見た結果を含む。**B-07f と同じ周で確かめるのが安い。**
   3. **共有秘密は署名鍵そのものである。** 公開鍵と違い、漏れれば任意のトークンを**発行**できる。`SUPABASE_JWT_SECRET` はサーバ側だけに置き、クライアントにも `apps/web` のビルド環境にも渡さない（NFR-10 と同じ扱い）。**JWKS に替えればこの危険は消える**ので、替える動機はここにもある。
   4. **検証の失敗を握りつぶさない。** 署名・アルゴリズム・有効期限・`sub` のどれか1つでも通らなければ世帯を作らない。**`exp` を持たないトークンも通さない** — 失効の手段が無い資格を受け入れることになるためである。
+
+---
+
+### ADR-032　api 層は世帯と識別子の型をユースケースから導出し、規則違反を `name` で見分ける　`提案`
+
+- **状況** — B-08 で最初の api 層（`contexts/pantry/api/`）を置くにあたり、依存ルールと型の要求が正面からぶつかった。**依存ルールは `api/` → `domain/` を禁じている**（ADR-003 / A章の表 / `.dependency-cruiser.cjs` の `api-はdomainとinfraをimportしない`）。一方で **ユースケースのシグネチャは branded 型を要求する** — `ListStockItems` は `HouseholdId`、`DeleteStockItem` は `StockItemId` を取り、どちらも `domain/value/`（と `shared/domain/`）にある。**例外の見分けも同じ形でぶつかる** — どの状態コードに写すかは `PantryRuleViolation.rule` / `IdentityRuleViolation.rule` から引くが、`instanceof` で判別するには `domain/error/` のクラスを import することになる。さらに `identity` のユースケースを呼ぶ必要があるが、**コンテキストをまたいでよいのは `usecase/` どうしだけ**であり、`pantry/api/` から `identity/usecase/` を呼ぶ道は無い。
+- **決定** — 3つ。
+  1. **世帯と在庫品の識別子の型を、ユースケースのシグネチャから導出する。** `type 世帯 = Parameters<ListStockItems>[0]` の形で引き、`domain/` も `shared/domain/` も import しない。**`householdIdOf` / `stockItemIdOf` を呼ばない** — 経路から受け取った文字列は、導出した型への型アサーションで渡す。api 層は**中身を見ない値**として扱い、書式も検査しない。
+  2. **規則違反の判別を `name` の文字列で行う。** `thrown.name === 'PantryRuleViolation'` を見る。例外クラスを import せず、`instanceof` も使わない。
+  3. **失敗の応答本体には `rule` だけを載せる**（`ErrorResponseDto`）。状態コードへの写像は api 層が表として持ち、**ドメインは HTTP を知らない**（ADR-003 / ADR-025）。例外の `message` は開発者向けであり、応答に出さない。
+- **理由** — **(1) 依存の向きを曲げずに済む唯一の手立てである。** 型を導出する形なら、api が知るのは「ユースケースが受け取る型」だけで、その型が何と名づけられ、どこに定義されているかを知らない。ユースケースの引数が変われば api の型も自動で追随する。**branded 型の作り手（`householdIdOf` / `stockItemIdOf`）は実体が型アサーション1行であり**、呼べても検査は1つも増えない — import を1つ増やして得るものが無い。**(2) `name` による判別に先行がある。** `identity/infrastructure/HouseholdAuthenticatorImpl.ts` が `hono/jwt` の例外を `name.startsWith('Jwt')` で見分けている。層をまたぐ例外の判別を文字列で行うのは、このリポジトリで初めての形ではない。**(3) `name` は `instanceof` より壊れにくい。** `instanceof` はクラスの同一性に依る — 同じクラスが2つの実体で読み込まれると静かに外れる。`name` はコンストラクタが固定文字列で設定しており（`this.name = 'PantryRuleViolation'`）、**ADR-025 が「失敗の区別は例外クラスを増やさず `rule` で表す」と決めている以上、クラスの同一性には元から意味が薄い。** **(4) `identity` を関数として受け取れば境界が立つ。** `identifyHousehold` を `(accessToken: string) => Promise<世帯>` という形で引数に取れば、`pantry/api/` は `identity` の存在自体を知らない。結線するのは `main.ts`（B-09）であり、コンテキストをまたぐ import は1つも生まれない。
+- **結果** — 4つの帰結を引き受ける。
+  1. **型アサーションが api 層に現れる。** 経路の `:id` は `string` で届き、導出した型へ `as` で渡す。**これは検査の省略ではない** — 通り道の `stockItemIdOf` も中身は同じアサーションであり、**書式を決めるのは識別子を発行する側**（ADR-026）である。api で形を決めれば、発行側とずれた日に登録が止まる。
+  2. **`name` を書き換えると判別が静かに外れる。** 例外クラスの `name` は**外向きの契約になった。** 改名するときは api 層の写像を一緒に直す。`rule` の綴りも同じ性質を持つ（表に無い `rule` は既定の状態コードに落ちる）。
+  3. **`Parameters<...>` の導出は、ユースケースの引数の順序に依る。** `HouseholdId` が第1引数であることは C-9 が決めているため、この依存は規則に裏打ちされている。**順序を変えるなら C-9 を変えることになる。**
+  4. **献立側の api がこの形を写す。** 型の導出・`name` による判別・`{ rule }` だけの応答は、`contexts/meal/api/` でも同じになる。**最初の1件で決めたのはそのためである** — 2つ目で別の形を採ると、どちらが規約なのか読めなくなる。
