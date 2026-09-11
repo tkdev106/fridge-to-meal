@@ -25,7 +25,19 @@
   共有秘密（HS256）を採ったが、確かめるまで **ADR-031 は `提案` のまま**である（ADR-031 の結果2）
 - [ ] **B-09** `apps/api/src/main.ts`: composition root で結線する。実装クラスの生成をここだけに閉じる
 - [ ] **B-12** `apps/web`: 在庫登録の画面。1件を10秒以内、片手で完結（FR-01 / FR-03 / NFR-14 / NFR-15）
-- [ ] **B-14** `meal/domain/service`: `CookableMealFinder`。不足0件のみ、並びは決定的（C-10 / C-12 / C-13）
+- [ ] **B-14a** `meal/domain/entity`: 献立集約 `Meal`。`MealId` / `CookingStep` / `CookingRecord` を置き、
+  不変条件（`title` は空でない / `ingredients` は1件以上でうち主材料1件以上 / `steps` は1件以上 /
+  `cookingRecords` は追加のみ）を生成時に見る。生成後は `title` / `ingredients` / `steps` を変えない。
+  **材料に 分量 を持たせるかをこの周で決める** — 持たせるには `Amount` を `shared/domain` へ移す判断（B-17 と同種）が
+  要り、ADR-033 が「献立集約を作る周で決める」と宿題にしている
+  （domain-model 4章 / C-3 / C-16 / ADR-008 / ADR-033 の結果3）
+- [ ] **B-14b** `meal/domain/service`: `CookableMealFinder`。不足0件のみ、並びは決定的。**B-14a の後。**
+  **着手の前に ADR を1本起こす** — C-12 の「期限の近い在庫をより多く使う」の量り方がどの文書にも無い
+  （FR-12 の「3日以内」は画面の帯、prompt-design 12章の「残日数1日以内」は生成品質の評価であって、
+  どちらも並び順のための線ではない）。同じ ADR で、期限を見るために在庫を何で渡すか
+  （ADR-033 の結果4 の branded 型。同名で期限の違う在庫品をどう数えるかも含む）と、
+  上位3件を切るのが finder か呼ぶ側か（domain-model 4章は「選び出す」、6章は切り取りを提案側に描く）も決まる
+  （C-10 / C-12 / C-13 / FR-34 / NFR-C1b / ADR-033）
 - [ ] **B-15** `meal/domain/port`: `MealGenerator` ポートの定義。プロバイダ未決のまま進める（ADR-019 / NFR-18）
 - [ ] **B-16** 置き換え済みの **ADR-020 への参照を掃除する**。`apps/api/src/shared/domain/HouseholdId.ts` と
   `packages/contract/src/pantry.ts` に残っている。B-07 で直したのは backlog が名指しした
