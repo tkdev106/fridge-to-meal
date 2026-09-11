@@ -14,7 +14,6 @@
 import type { StockItemDto } from '@fridge-to-meal/contract';
 import type { ExpirySection, ListedStockItem } from './PantrySections.js';
 import { pantrySectionsOf } from './PantrySections.js';
-import { todayOf } from './RemainingDays.js';
 
 /**
  * 帯の見出し。**見出し自体がテキストの警告**になっていることで、色を使わなくても
@@ -58,13 +57,14 @@ function StockItemRow({ row }: { row: ListedStockItem }) {
 export type PantryListProps = {
   stockItems: readonly StockItemDto[];
   /**
-   * 残日数を数える基準日（`YYYY-MM-DD`）。既定は実行環境の暦日（規則12）。
-   * 現在時刻を読むのを既定値の1か所に留め、渡せる形にしておく（docs/testing.md 5章）。
+   * 残日数を数える基準日（`YYYY-MM-DD`）。**呼び出し側が渡す。**
+   * ここで `new Date()` を読むと、現在時刻が本体に埋まる（docs/testing.md 5章）。
+   * 実行環境の暦日を作るのは `todayOf` の仕事で、それを呼ぶのは `App.tsx` である。
    */
-  today?: string;
+  today: string;
 };
 
-export function PantryList({ stockItems, today = todayOf(new Date()) }: PantryListProps) {
+export function PantryList({ stockItems, today }: PantryListProps) {
   const sections = pantrySectionsOf(stockItems, today);
 
   // 在庫品が0件なら帯を1つも出さない（規則11）。

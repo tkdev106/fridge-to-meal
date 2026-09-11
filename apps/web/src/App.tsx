@@ -6,6 +6,7 @@
  */
 import { features } from './features.js';
 import { PantryList } from './features/pantry/PantryList.js';
+import { todayOf } from './features/pantry/RemainingDays.js';
 
 export function App() {
   // feature flag の分岐はここ1か所だけに置く（ADR-024 決定3 / B-11 設計 規則13）。
@@ -16,7 +17,7 @@ export function App() {
   if (features.pantryList) {
     return (
       <main>
-        <PantryList stockItems={[]} />
+        <PantryList stockItems={[]} today={todayOf(new Date())} />
       </main>
     );
   }
