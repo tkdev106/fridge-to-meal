@@ -17,7 +17,7 @@
 | --- | --- |
 | 幹 | `main` の1本のみ。`develop` / `release/*` は作らない |
 | 枝 | 作業ブランチ1本 = 1 PR = 1タスク。**寿命に上限は設けない** |
-| 命名 | `<type>/<slug>`。type は Conventional Commits と揃える（`feat/` `fix/` `docs/` `refactor/` `test/` `chore/`）。**変更の内容で選ぶ。機能追加に限らない** |
+| 命名 | `<type>/<slug>`。type は Conventional Commits と揃える（`feat/` `fix/` `docs/` `refactor/` `test/` `chore/`）。**変更の内容で選ぶ。機能追加に限らない。** 規則は下の「ブランチ名」に置き、2枚のフックが機械的に検査する |
 | 統合 | PR → CI グリーン → **squash merge**。マージ後にブランチを削除する |
 | 直接 push | **禁止。** `.claude/hooks/guard.mjs`（エージェント側）と `.githooks/pre-push`（git 側）の2枚で止める |
 | 同期 | 枝が古くなったら `main` を取り込む（`/sync`）。取り込みは普通の作業であって、失敗の合図ではない |
@@ -45,6 +45,32 @@ GitHub のブランチ保護（直接 push の禁止 / `verify` 必須）を有�
 
 **コンフリクトが出たら:** `main` を取り込んで解消する。他人（自分の別セッションを含む）の
 ブランチで履歴を書き換えない。`pnpm-lock.yaml` は手で直さず `pnpm install` で作り直す。
+
+### ブランチ名: 名前だけで「何をする枝か」読めること
+
+**枝の名前は squash merge のあとも PR の一覧に残り、後から改名できない。**
+何をする枝か読めない名前は、付けた時点では誰も困らず、**履歴を読む側がずっと困る。**
+そこで規則にして、`.claude/hooks/guard.mjs`（枝を切るとき・改名するとき）と
+`.githooks/pre-push`（push するとき）の**2枚で機械的に断る。**
+
+| 決めごと | 内容 |
+| --- | --- |
+| 形 | `<type>/<slug>`。type は `feat` `fix` `docs` `refactor` `test` `chore` のいずれか |
+| slug | 英小文字・数字・ハイフンのみ。連続するハイフンと前後のハイフンは不可 |
+| **`claude` を含めない** | 枝の名前は「**誰が書いたか**」ではなく「**何をする枝か**」を表す。書き手で分けると、枝が何本あっても名前から内容が読めない |
+| **生成された識別子を入れない** | `from-2d5wji` のような英数字混じりの語は、付けた側にしか意味がない。語は「英字だけ」「数字だけ」「英字1文字＋数字」（`b08`）のいずれかに限る |
+| **タスクの番号だけにしない** | `feat/b-08` は通らない。**3文字以上の英字の語が1つ以上**要る — 番号は何をする枝かを説明しない。番号を入れたいなら `feat/b-08-stock-item-routes` のように内容と並べる |
+
+```
+✅ feat/pantry-stock-item-routes    ✅ feat/b-08-stock-item-routes    ✅ docs/adr
+✅ refactor/household-transaction-move                               ✅ chore/db-up-native
+❌ claude/b-08-from-2d5wji（claude / 生成された識別子）   ❌ feat/b-08（番号だけ）
+❌ wip/pantry-routes（type が規則外）                     ❌ feat/PantryRoutes（大文字）
+```
+
+**規則は2つの言語で2度書いてある**（`guard.mjs` の `branchNameProblem` と `pre-push` の
+`branch_name_problem`）。`main` の禁止と同じ構えで、**片方を越えられても残る側が止める。**
+**片方を変えたらもう片方も変えること。** 回帰テストは `pnpm test:hooks` にある。
 
 ### 未完成の機能は feature flag で隠す（ADR-024）
 

@@ -95,6 +95,21 @@ const DENIED = [
   ],
   ['ヒアドキュメントで .env を作る', "cat > .env << 'EOF'\nSUPABASE_URL=x\nEOF", 'secret-files'],
   ['終端の無い << に隠した操作', 'echo "<< EOF"\ngit push --force origin main', 'force-push'],
+  // ---- ブランチ名（docs/workflow.md 1章）----
+  ['名前に claude', 'git switch -c claude/b-08-from-2d5wji', 'branch-name'],
+  ['名前に Claude（大文字混じり）', 'git switch -c feat/Claude-routes', 'branch-name'],
+  ['type が無い', 'git switch -c pantry-routes', 'branch-name'],
+  ['知らない type', 'git switch -c wip/pantry-routes', 'branch-name'],
+  ['タスクの番号だけ', 'git switch -c feat/b-08', 'branch-name'],
+  ['1文字の slug', 'git switch -c feat/x', 'branch-name'],
+  ['生成された識別子', 'git switch -c feat/pantry-routes-2d5wji', 'branch-name'],
+  ['大文字の slug', 'git switch -c feat/PantryRoutes', 'branch-name'],
+  ['連続するハイフン', 'git switch -c feat/pantry--routes', 'branch-name'],
+  ['checkout -b でも同じ', 'git checkout -b claude/x-1', 'branch-name'],
+  ['checkout -B でも同じ', 'git checkout -B feat/b-08', 'branch-name'],
+  ['branch で直に作る', 'git branch feat/b-08', 'branch-name'],
+  ['branch -m による改名', 'git branch -m feat/oops-2d5wji', 'branch-name'],
+  ['branch -m の新しい名前を見る', 'git branch -m feat/pantry-routes claude/x-1', 'branch-name'],
 ];
 
 /** [ケース名, コマンド] */
@@ -119,6 +134,16 @@ const ALLOWED = [
     'ルールに言及するコミット（ヒアドキュメント）',
     "git commit -F - << 'MSG'\nchore: git add -A を禁止する\n\ngit push --force も止める\nMSG",
   ],
+  // ---- ブランチ名: 通すべき側（docs/workflow.md 1章）----
+  ['内容のわかる枝を切る', 'git switch -c feat/pantry-stock-item-routes'],
+  ['番号と内容の両方', 'git switch -c feat/b-08-stock-item-routes'],
+  ['短い語でも内容があれば通す', 'git switch -c docs/adr'],
+  ['数字を含む語', 'git switch -c chore/node-22-upgrade'],
+  ['機能追加以外の type', 'git switch -c refactor/household-transaction-move'],
+  ['既存の枝への切り替え（名前を見ない）', 'git switch feat/x'],
+  ['枝の削除（名前を見ない）', 'git branch -d feat/x'],
+  ['枝の一覧', 'git branch --list'],
+  ['ブランチ名に言及するコミット', 'git commit -m "chore: claude/ 始まりのブランチ名を禁止する"'],
 ];
 
 for (const [name, command, rule] of DENIED) {
