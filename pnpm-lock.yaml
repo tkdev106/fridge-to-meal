@@ -60,6 +60,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@fridge-to-meal/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
       react:
         specifier: ^19.2.8
         version: 19.2.8
