@@ -1,0 +1,22 @@
+{
+  // テストを型検査の対象に入れるためのプロジェクト（apps/api/tsconfig.test.json と同じ形）。
+  //
+  // 本体（tsconfig.json）の include は src/** だけである。rootDir を src に固定して
+  // ビルド成果物の形を保つためで、ここに test/** を足すと出力の配置が変わる。そこで
+  // テストは別プロジェクトにし、本体を references で参照する。
+  //
+  // api と違い rootDir は . のままでよい。ルート直下の vitest の設定を
+  // モジュールとして import するテストが apps/web には無いため。
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    // 本体の型は references 経由で入る。テスト自身は実行環境の型を必要としない。
+    "types": [],
+    "rootDir": ".",
+    // 型検査だけが目的だが、composite なプロジェクトは emit を止められないため
+    // 出力先を分ける。dist-test/ は git 管理外。
+    "outDir": "./dist-test"
+  },
+  "include": ["test/**/*.ts"],
+  "references": [{ "path": "./tsconfig.json" }]
+}
