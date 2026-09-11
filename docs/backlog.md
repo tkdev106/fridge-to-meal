@@ -24,11 +24,8 @@
   **同じ周で JWT の署名方式（共有秘密 / 非対称鍵）も確かめる** — B-07e は `.dev.vars` の雛形から
   共有秘密（HS256）を採ったが、確かめるまで **ADR-031 は `提案` のまま**である（ADR-031 の結果2）
 - [ ] **B-09** `apps/api/src/main.ts`: composition root で結線する。実装クラスの生成をここだけに閉じる
-- [ ] **B-10** `apps/web`: feature flag の仕組み。`features.ts` の1か所で `VITE_FEATURE_*` を読み、既定は無効（ADR-024 / docs/workflow.md）
 - [ ] **B-11** `apps/web`: 在庫一覧の画面。残日数を出し、期限が近いものを区別する。**色だけで表さない**（FR-04 / FR-11 / FR-12 / NFR-17）
 - [ ] **B-12** `apps/web`: 在庫登録の画面。1件を10秒以内、片手で完結（FR-01 / FR-03 / NFR-14 / NFR-15）
-- [ ] **B-13** `meal/domain/service`: `MealCoverageService`。**主材料だけを名称の完全一致で突き合わせる**（C-6 / C-16）。
-  **突き合わせる前に両側の前後空白を落とす** — 在庫品の名称は登録時に落としてあり、片側だけ正規化すると一致が静かにずれる
 - [ ] **B-14** `meal/domain/service`: `CookableMealFinder`。不足0件のみ、並びは決定的（C-10 / C-12 / C-13）
 - [ ] **B-15** `meal/domain/port`: `MealGenerator` ポートの定義。プロバイダ未決のまま進める（ADR-019 / NFR-18）
 - [ ] **B-16** 置き換え済みの **ADR-020 への参照を掃除する**。`apps/api/src/shared/domain/HouseholdId.ts` と
@@ -43,6 +40,14 @@
   手で書き写すと次に同じことが起きるので、**Markdown から生成する手段を置く**か、
   **閲覧用 HTML をやめる**かのどちらかを選ぶ。**正は Markdown**（CLAUDE.md）であり、
   古い HTML が残っていること自体が読み手を誤らせる（docs/workflow.md）
+- [ ] **B-19** `apps/web`: feature flag `pantryList` を消す。在庫一覧（B-11）を既定で出すと決めた時点で、
+  `features.ts` の行・`VITE_FEATURE_PANTRY_LIST`・プレゼンテーション層の分岐を同時に削る。
+  **放置されたフラグは死んだ分岐になり、次の実装の判断を狂わせる**（ADR-024 結果2 / docs/workflow.md 1章）
+- [ ] **B-20** `import.meta.env` の読み出しが `apps/web/src/features.ts` の1か所に閉じていることを
+  **ESLint で機械的に止める**。`eslint.config.js` に `no-restricted-syntax` を1本足し、`features.ts` だけ
+  `files` で除く（禁止語の規則と同じ形。**依存の追加は要らない**）。**いまは設計レビューだけが守っている** —
+  読み出しが増えても `features.pantryList` の値は変わらないため、振る舞いのテストでは赤にできない
+  （ADR-024 決定2 / docs/workflow.md 1章 / CLAUDE.md「依存ルールは lint での機械的な強制を推奨」）
 
 ## 判断待ち（着手しない）
 
