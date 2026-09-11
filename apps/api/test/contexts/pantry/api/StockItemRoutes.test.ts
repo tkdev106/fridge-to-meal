@@ -1,9 +1,12 @@
 import type { ListStockItemsOutput, StockItemDto } from '@fridge-to-meal/contract';
 import { describe, expect, it } from 'vitest';
 import { createStockItemRoutes } from '../../../../src/contexts/pantry/api/StockItemRoutes.js';
+import { IdentityRuleViolation } from '../../../../src/contexts/identity/domain/error/IdentityRuleViolation.js';
+import { PantryRuleViolation } from '../../../../src/contexts/pantry/domain/error/PantryRuleViolation.js';
 import { stockItemIdOf } from '../../../../src/contexts/pantry/domain/value/StockItemId.js';
 import { householdIdOf } from '../../../../src/shared/domain/HouseholdId.js';
 import { 記憶上の世帯の特定 } from '../../../support/identity/FixedIdentifyHousehold.js';
+import type { 削除の応答 } from '../../../support/pantry/FixedStockItemUsecases.js';
 import {
   記憶上の在庫品の一覧,
   記憶上の在庫品の削除,
@@ -36,19 +39,46 @@ function 在庫品のDTO(overrides: Partial<StockItemDto> = {}): StockItemDto {
 /**
  * 4つのユースケースと世帯の特定を代役で組み、経路を1つ作る。
  * テストの本題でない結線をここに隠す（`docs/testing.md` 6章）。
+ *
+ * 失敗の写像（B-08 7章）を見るときは `〜が投げる例外` を渡す。**投げる例外と返す値は
+ * 同時に渡せない** — 代役の応答がどちらか一方であるため。削除だけは応答を順に持てる
+ * （冪等でないこと＝規則13 を、2度目の違いとして見るため）。
  */
 function 準備(
   overrides: {
     登録の結果?: StockItemDto;
     一覧の出力?: ListStockItemsOutput;
     更新の結果?: StockItemDto;
+    世帯の特定が投げる例外?: Error;
+    登録が投げる例外?: Error;
+    一覧が投げる例外?: Error;
+    更新が投げる例外?: Error;
+    削除の応答たち?: readonly 削除の応答[];
   } = {},
 ) {
-  const 世帯の特定 = new 記憶上の世帯の特定(我が家);
-  const 登録 = new 記憶上の在庫品の登録(overrides.登録の結果 ?? 在庫品のDTO());
-  const 一覧 = new 記憶上の在庫品の一覧(overrides.一覧の出力 ?? { stockItems: [在庫品のDTO()] });
-  const 更新 = new 記憶上の在庫品の更新(overrides.更新の結果 ?? 在庫品のDTO());
-  const 削除 = new 記憶上の在庫品の削除();
+  const 削除の応答たち: readonly 削除の応答[] = overrides.削除の応答たち ?? [{ 成功: true }];
+
+  const 世帯の特定 = new 記憶上の世帯の特定(
+    overrides.世帯の特定が投げる例外 === undefined
+      ? { 返す世帯: 我が家 }
+      : { 投げる例外: overrides.世帯の特定が投げる例外 },
+  );
+  const 登録 = new 記憶上の在庫品の登録(
+    overrides.登録が投げる例外 === undefined
+      ? { 返す在庫品: overrides.登録の結果 ?? 在庫品のDTO() }
+      : { 投げる例外: overrides.登録が投げる例外 },
+  );
+  const 一覧 = new 記憶上の在庫品の一覧(
+    overrides.一覧が投げる例外 === undefined
+      ? { 返す出力: overrides.一覧の出力 ?? { stockItems: [在庫品のDTO()] } }
+      : { 投げる例外: overrides.一覧が投げる例外 },
+  );
+  const 更新 = new 記憶上の在庫品の更新(
+    overrides.更新が投げる例外 === undefined
+      ? { 返す在庫品: overrides.更新の結果 ?? 在庫品のDTO() }
+      : { 投げる例外: overrides.更新が投げる例外 },
+  );
+  const 削除 = new 記憶上の在庫品の削除(...削除の応答たち);
 
   const 経路 = createStockItemRoutes({
     identifyHousehold: 世帯の特定.世帯を定める,
@@ -73,6 +103,51 @@ function JSONの要求(method: string, 本体: unknown, ヘッダ = 認証ヘッ
     headers: { ...ヘッダ, 'content-type': 'application/json' },
     body: JSON.stringify(本体),
   };
+}
+
+/**
+ * 本体を文字列のまま送る要求。**JSON として読めない本体**を渡すときに使う
+ * （`JSON.stringify` を通すと必ず読める本体になってしまう）。
+ */
+function 生の本体の要求(method: string, 本体: string, ヘッダ = 認証ヘッダ()) {
+  return {
+    method,
+    headers: { ...ヘッダ, 'content-type': 'application/json' },
+    body: 本体,
+  };
+}
+
+/**
+ * JSON として読めればその値、**読めなければ読めた文字列そのもの**を返す。構文エラーで
+ * 落とすと、`{ rule }` の代わりに何が返ったのかが読めなくなるため。
+ */
+function 読める本体(テキスト: string): unknown {
+  try {
+    return JSON.parse(テキスト) as unknown;
+  } catch {
+    return テキスト;
+  }
+}
+
+/**
+ * 失敗の応答本体。`{ rule }` のはずのものを読む。
+ *
+ * 引数の型を `Response` と書かないのは、**このテストのプロジェクトが実行環境の型を
+ * 入れていない**ためである（`apps/api/tsconfig.test.json` の `lib` は ES2022、`types` は空）。
+ * 本文が読めることだけを求めれば、グローバルに依らずに書ける。
+ */
+async function 失敗の本体(応答: { text(): Promise<string> }): Promise<unknown> {
+  return 読める本体(await 応答.text());
+}
+
+/**
+ * 規則違反に似せた別の例外。`name` が違うものを規則違反として扱わないことを確かめるのに使う
+ * （ADR-032 の決定2 / 結果2 — `name` は外向きの契約である）。
+ */
+function 規則違反に似せた例外(rule: string, message: string): Error {
+  const 例外 = new Error(message);
+  例外.name = 'OtherRuleViolation';
+  return Object.assign(例外, { rule });
 }
 
 describe('在庫品の経路 StockItemRoutes', () => {
@@ -468,6 +543,475 @@ describe('在庫品の経路 StockItemRoutes', () => {
       await 経路.request('/stock-items/s-1', { method: 'DELETE', headers: 認証ヘッダ() });
 
       expect(削除.受け取った識別子).toBe(stockItemIdOf('s-1'));
+    });
+  });
+
+  describe('在庫の規則違反の写像', () => {
+    it('名称が空だと断られた登録は 400 を返す', async () => {
+      // 7章の表: `name.empty` は入力の誤り（`StockItem` の不変条件）。
+      const { 経路 } = 準備({
+        登録が投げる例外: new PantryRuleViolation('name.empty', '名称が空である'),
+      });
+
+      const 応答 = await 経路.request('/stock-items', JSONの要求('POST', { name: '' }));
+
+      expect(応答.status).toBe(400);
+      await expect(失敗の本体(応答)).resolves.toEqual({ rule: 'name.empty' });
+    });
+
+    it('期限の書式が違うと断られた登録は 400 を返す', async () => {
+      // 7章の表: `expiryDate.format` は入力の誤り（`ExpiryDate`）。
+      const { 経路 } = 準備({
+        登録が投げる例外: new PantryRuleViolation('expiryDate.format', '期限の書式が違う'),
+      });
+
+      const 応答 = await 経路.request(
+        '/stock-items',
+        JSONの要求('POST', { name: 'にんじん', expiryDate: '2026/10/01' }),
+      );
+
+      expect(応答.status).toBe(400);
+    });
+
+    it('暦に無い日付だと断られた更新は 400 を返す', async () => {
+      // 7章の表: `expiryDate.notACalendarDate` も入力の誤りである。
+      const { 経路 } = 準備({
+        更新が投げる例外: new PantryRuleViolation(
+          'expiryDate.notACalendarDate',
+          '暦に無い日付である',
+        ),
+      });
+
+      const 応答 = await 経路.request(
+        '/stock-items/s-1',
+        JSONの要求('PUT', { amount: '1本', expiryDate: '2026-02-30' }),
+      );
+
+      expect(応答.status).toBe(400);
+    });
+
+    it('更新する在庫品が見つからないときは 404 を返す', async () => {
+      // 7章の表 / B-06 規則8 / C-9: 見つからない。**表が無いと 400 になる行である。**
+      const { 経路 } = 準備({
+        更新が投げる例外: new PantryRuleViolation('update.notFound', '在庫品が見つからない'),
+      });
+
+      const 応答 = await 経路.request(
+        '/stock-items/s-1',
+        JSONの要求('PUT', { amount: '1本', expiryDate: null }),
+      );
+
+      expect(応答.status).toBe(404);
+    });
+
+    it('削除する在庫品が見つからないときは 404 を返す', async () => {
+      // 7章の表 / ADR-027: `update.notFound` と同じく 404 である。
+      const { 経路 } = 準備({
+        削除の応答たち: [
+          { 投げる例外: new PantryRuleViolation('delete.notFound', '在庫品が見つからない') },
+        ],
+      });
+
+      const 応答 = await 経路.request('/stock-items/s-1', {
+        method: 'DELETE',
+        headers: 認証ヘッダ(),
+      });
+
+      expect(応答.status).toBe(404);
+    });
+
+    it('世帯の食い違いで保存を拒まれたときは 500 を返す', async () => {
+      // 7章の表: 呼び出し側の誤りであり、要求を直しても通らないので 4xx にしない。
+      const { 経路 } = 準備({
+        登録が投げる例外: new PantryRuleViolation('save.householdMismatch', '世帯が食い違う'),
+      });
+
+      const 応答 = await 経路.request('/stock-items', JSONの要求('POST', { name: 'にんじん' }));
+
+      expect(応答.status).toBe(500);
+      // 本体まで見る。状態コードだけだと、**写像が無くても**（例外が素通りして
+      // 既定の 500 になるだけで）緑になってしまい、この行が何も守らない。
+      await expect(失敗の本体(応答)).resolves.toEqual({ rule: 'save.householdMismatch' });
+    });
+
+    it('表に無い規則違反は 400 を返す', async () => {
+      // 7章の表の最後の行: 規則違反は入力の誤りが既定である（列挙漏れを 200 に化けさせない）。
+      const { 経路 } = 準備({
+        登録が投げる例外: new PantryRuleViolation('stockItem.unknownRule', '表に無い規則違反'),
+      });
+
+      const 応答 = await 経路.request('/stock-items', JSONの要求('POST', { name: 'にんじん' }));
+
+      expect(応答.status).toBe(400);
+      await expect(失敗の本体(応答)).resolves.toEqual({ rule: 'stockItem.unknownRule' });
+    });
+  });
+
+  describe('認証の規則違反の写像', () => {
+    it('アクセストークンが提示されていないときは 401 を返す', async () => {
+      // 7章の表 / NFR-09: 認証を通っていない。
+      const { 経路 } = 準備({
+        世帯の特定が投げる例外: new IdentityRuleViolation(
+          'accessToken.missing',
+          'アクセストークンが提示されていない',
+        ),
+      });
+
+      const 応答 = await 経路.request('/stock-items', { headers: 認証ヘッダ() });
+
+      expect(応答.status).toBe(401);
+    });
+
+    it('アクセストークンが検証を通らないときは 401 を返す', async () => {
+      // 7章の表 / NFR-09: 期限切れもこの `rule` に畳まれている。
+      const { 経路 } = 準備({
+        世帯の特定が投げる例外: new IdentityRuleViolation(
+          'accessToken.invalid',
+          'アクセストークンが検証を通らない',
+        ),
+      });
+
+      const 応答 = await 経路.request('/stock-items', { headers: 認証ヘッダ() });
+
+      expect(応答.status).toBe(401);
+    });
+
+    it('表に無い認証の規則違反も 401 を返す', async () => {
+      // 7章の表の最後の行: 列挙漏れを 200 や 500 に化けさせない。
+      const { 経路 } = 準備({
+        世帯の特定が投げる例外: new IdentityRuleViolation(
+          'accessToken.unknownRule',
+          '表に無い規則違反',
+        ),
+      });
+
+      const 応答 = await 経路.request('/stock-items', { headers: 認証ヘッダ() });
+
+      expect(応答.status).toBe(401);
+    });
+
+    it('認証の失敗でない失敗は 401 に化けない', async () => {
+      // ADR-032 の決定2: 401 に写すのは `IdentityRuleViolation` だけである。
+      // 設定の誤りを 401 に写すと、直す先を利用者に探させることになる。
+      const { 経路 } = 準備({ 世帯の特定が投げる例外: new Error('鍵の設定が無い') });
+
+      const 応答 = await 経路.request('/stock-items', { headers: 認証ヘッダ() });
+
+      expect(応答.status).toBe(500);
+      await expect(失敗の本体(応答)).resolves.toEqual({ rule: 'unexpected' });
+    });
+  });
+
+  describe('api が自分で断るもの', () => {
+    it('登録の本体が JSON として読めないときは 400 を返す', async () => {
+      // 7章: `request.notJson`。ドメインの `rule` と衝突させないため `request.` で始める。
+      const { 経路 } = 準備();
+
+      const 応答 = await 経路.request('/stock-items', 生の本体の要求('POST', '{ not json'));
+
+      expect(応答.status).toBe(400);
+      await expect(失敗の本体(応答)).resolves.toEqual({ rule: 'request.notJson' });
+    });
+
+    it('更新の本体が JSON として読めないときは 400 を返す', async () => {
+      // 7章: 登録と同じ扱いを更新でも守る。
+      const { 経路 } = 準備();
+
+      const 応答 = await 経路.request('/stock-items/s-1', 生の本体の要求('PUT', '{ not json'));
+
+      expect(応答.status).toBe(400);
+    });
+
+    it('登録の本体がオブジェクトでないときは 400 を返す', async () => {
+      // 規則8 / 7章: `request.invalidBody`。オブジェクトであることは形の検査である。
+      const { 経路 } = 準備();
+
+      const 応答 = await 経路.request('/stock-items', 生の本体の要求('POST', '"にんじん"'));
+
+      expect(応答.status).toBe(400);
+      await expect(失敗の本体(応答)).resolves.toEqual({ rule: 'request.invalidBody' });
+    });
+
+    it('登録の本体が JSON の null のときは 400 を返す', async () => {
+      // 規則8: `null` は JSON として読めるが形が合わない。**500 にしない** —
+      // 項目を読もうとして落ちるのではなく、形の検査で断る。
+      const { 経路 } = 準備();
+
+      const 応答 = await 経路.request('/stock-items', 生の本体の要求('POST', 'null'));
+
+      expect(応答.status).toBe(400);
+      await expect(失敗の本体(応答)).resolves.toEqual({ rule: 'request.invalidBody' });
+    });
+
+    it('登録の本体に name が無いときは 400 を返す', async () => {
+      // 規則8 / `RegisterStockItemInput`: `name` は文字列で必ず要る。
+      const { 経路 } = 準備();
+
+      const 応答 = await 経路.request('/stock-items', JSONの要求('POST', { amount: '2本' }));
+
+      expect(応答.status).toBe(400);
+    });
+
+    it('登録の name が文字列でないときは 400 を返す', async () => {
+      // 規則8: 見るのは**型の形だけ**である（空かどうかはドメインが見る＝規則7）。
+      const { 経路 } = 準備();
+
+      const 応答 = await 経路.request('/stock-items', JSONの要求('POST', { name: 123 }));
+
+      expect(応答.status).toBe(400);
+    });
+
+    it('登録の ingredientId が文字列でも null でもないときは 400 を返す', async () => {
+      // 規則8: `ingredientId` は文字列・`null`・省略のいずれかである。
+      const { 経路 } = 準備();
+
+      const 応答 = await 経路.request(
+        '/stock-items',
+        JSONの要求('POST', { name: 'にんじん', ingredientId: 1 }),
+      );
+
+      expect(応答.status).toBe(400);
+    });
+
+    it('更新の本体から amount が省略されていたら 400 を返す', async () => {
+      // 規則9 / `UpdateStockItemInput`: 更新は常に置き換えであり、省略を許さない。
+      const { 経路 } = 準備();
+
+      const 応答 = await 経路.request('/stock-items/s-1', JSONの要求('PUT', { expiryDate: null }));
+
+      expect(応答.status).toBe(400);
+    });
+
+    it('更新の本体から expiryDate が省略されていたら 400 を返す', async () => {
+      // 規則9 / FR-13: `null` が「消す」を表すので、省略と `null` は同義にならない。
+      const { 経路 } = 準備();
+
+      const 応答 = await 経路.request('/stock-items/s-1', JSONの要求('PUT', { amount: '1本' }));
+
+      expect(応答.status).toBe(400);
+    });
+
+    it('更新の amount が文字列でも null でもないときは 400 を返す', async () => {
+      // 規則9 / ADR-010: 分量は自由文字列である。数値を文字列に直して通さない。
+      const { 経路 } = 準備();
+
+      const 応答 = await 経路.request(
+        '/stock-items/s-1',
+        JSONの要求('PUT', { amount: 1, expiryDate: null }),
+      );
+
+      expect(応答.status).toBe(400);
+    });
+
+    it('更新の本体が JSON の null のときは 400 を返す', async () => {
+      // 規則9: 登録と同じく、形の検査で断る。
+      const { 経路 } = 準備();
+
+      const 応答 = await 経路.request('/stock-items/s-1', 生の本体の要求('PUT', 'null'));
+
+      expect(応答.status).toBe(400);
+    });
+
+    it('知らない項目が更新の本体にあっても断らずに更新する', async () => {
+      // 規則10: 断ると版の前後で更新が止まる。利用者に見える違いも無い。
+      const { 経路 } = 準備();
+
+      const 応答 = await 経路.request(
+        '/stock-items/s-1',
+        JSONの要求('PUT', { amount: '1本', expiryDate: null, memo: '半分' }),
+      );
+
+      expect(応答.status).toBe(200);
+    });
+
+    it('規則違反でない失敗は 500 を返す', async () => {
+      // 7章: DB 障害や設定の誤りは利用者の入力の誤りではない。
+      const { 経路 } = 準備({ 一覧が投げる例外: new Error('接続に失敗') });
+
+      const 応答 = await 経路.request('/stock-items', { headers: 認証ヘッダ() });
+
+      expect(応答.status).toBe(500);
+      await expect(失敗の本体(応答)).resolves.toEqual({ rule: 'unexpected' });
+    });
+
+    it('規則違反に似せた別の例外を規則違反として扱わない', async () => {
+      // ADR-032 の決定2 / 結果2: 見分けるのは `name` である。`rule` を持っていても
+      // `name` が違えば写さない — 404 に化けさせない。
+      const { 経路 } = 準備({
+        更新が投げる例外: 規則違反に似せた例外('update.notFound', '在庫品が見つからない'),
+      });
+
+      const 応答 = await 経路.request(
+        '/stock-items/s-1',
+        JSONの要求('PUT', { amount: '1本', expiryDate: null }),
+      );
+
+      expect(応答.status).toBe(500);
+      await expect(失敗の本体(応答)).resolves.toEqual({ rule: 'unexpected' });
+    });
+  });
+
+  describe('検査の順序', () => {
+    it('認証を通らない登録は、本体が JSON として読めなくても 401 を返す', async () => {
+      // 規則5 / NFR-09: 世帯を定めるのが常に先。認証を通らない呼び出しに検証結果を返さない。
+      const { 経路 } = 準備({
+        世帯の特定が投げる例外: new IdentityRuleViolation(
+          'accessToken.invalid',
+          'アクセストークンが検証を通らない',
+        ),
+      });
+
+      const 応答 = await 経路.request('/stock-items', 生の本体の要求('POST', '{ not json'));
+
+      expect(応答.status).toBe(401);
+    });
+
+    it('認証を通らない更新は、本体の形が DTO と合わなくても 401 を返す', async () => {
+      // 規則5: 本体の形の検査も、世帯が定まってから見る。
+      const { 経路 } = 準備({
+        世帯の特定が投げる例外: new IdentityRuleViolation(
+          'accessToken.invalid',
+          'アクセストークンが検証を通らない',
+        ),
+      });
+
+      const 応答 = await 経路.request('/stock-items/s-1', JSONの要求('PUT', {}));
+
+      expect(応答.status).toBe(401);
+    });
+
+    it('認証を通らない削除はユースケースに到達しない', async () => {
+      // 規則5 / NFR-09: **呼ばれないこと自体が要件**である（`docs/testing.md` 2章の例外）。
+      // 記憶上の実装に持たせた回数を状態として見る。
+      const { 経路, 削除 } = 準備({
+        世帯の特定が投げる例外: new IdentityRuleViolation(
+          'accessToken.missing',
+          'アクセストークンが提示されていない',
+        ),
+      });
+
+      const 応答 = await 経路.request('/stock-items/s-1', {
+        method: 'DELETE',
+        headers: 認証ヘッダ(),
+      });
+
+      expect(応答.status).toBe(401);
+      expect(削除.呼ばれた回数).toBe(0);
+    });
+  });
+
+  describe('認証ヘッダの入口', () => {
+    it('Authorization ヘッダが無い一覧の要求は 401 を返す', async () => {
+      // 規則3 / NFR-09: api は独自に断らず空文字を渡し、断るのは世帯を定める側である。
+      // 外から見えるのは 401 という応答だけである。
+      const { 経路 } = 準備();
+
+      const 応答 = await 経路.request('/stock-items');
+
+      expect(応答.status).toBe(401);
+      await expect(失敗の本体(応答)).resolves.toEqual({ rule: 'accessToken.missing' });
+    });
+
+    it('方式が Bearer でない要求は 401 を返す', async () => {
+      // 規則3: 方式が違えば空文字を渡す。
+      const { 経路 } = 準備();
+
+      const 応答 = await 経路.request('/stock-items', { headers: 認証ヘッダ('Basic YWJj') });
+
+      expect(応答.status).toBe(401);
+    });
+
+    it('方式名だけで値の無いヘッダの要求は 401 を返す', async () => {
+      // 規則3: 値が無ければ空文字を渡す。
+      const { 経路 } = 準備();
+
+      const 応答 = await 経路.request('/stock-items', { headers: 認証ヘッダ('Bearer') });
+
+      expect(応答.status).toBe(401);
+    });
+  });
+
+  describe('応答本体に載せないもの', () => {
+    it('失敗の応答本体は rule だけを持つ', async () => {
+      // 規則14 / ADR-032 の決定3: 文言は載せない — 画面が `rule` から選ぶ。
+      const { 経路 } = 準備({
+        登録が投げる例外: new PantryRuleViolation('name.empty', '名称が空である'),
+      });
+
+      const 応答 = await 経路.request('/stock-items', JSONの要求('POST', { name: '' }));
+
+      const 本体 = (await 失敗の本体(応答)) as Record<string, unknown>;
+      expect(Object.keys(本体)).toEqual(['rule']);
+    });
+
+    it('500 の応答本体に例外の message を載せない', async () => {
+      // 規則14 / 7章: `message` は開発者向けであり、接続先が応答に出てはならない。
+      const { 経路 } = 準備({
+        一覧が投げる例外: new Error('postgres://user:pw@host に繋がらない'),
+      });
+
+      const 応答 = await 経路.request('/stock-items', { headers: 認証ヘッダ() });
+
+      const テキスト = await 応答.text();
+      expect(読める本体(テキスト)).toEqual({ rule: 'unexpected' });
+      expect(テキスト).not.toContain('postgres');
+    });
+
+    it('見つからない更新の応答本体に指した識別子を載せない', async () => {
+      // 規則14: 識別子を載せない。`message` に入っていても応答には出さない。
+      const { 経路 } = 準備({
+        更新が投げる例外: new PantryRuleViolation('update.notFound', 's-1 の在庫品が見つからない'),
+      });
+
+      const 応答 = await 経路.request(
+        '/stock-items/s-1',
+        JSONの要求('PUT', { amount: '1本', expiryDate: null }),
+      );
+
+      const テキスト = await 応答.text();
+      expect(読める本体(テキスト)).toEqual({ rule: 'update.notFound' });
+      expect(テキスト).not.toContain('s-1');
+    });
+
+    it('認証の失敗の応答本体に世帯を載せない', async () => {
+      // 規則14 / C-9 / NFR-09: 世帯は応答に出さない。
+      const { 経路 } = 準備({
+        世帯の特定が投げる例外: new IdentityRuleViolation(
+          'accessToken.invalid',
+          'アクセストークンが検証を通らない',
+        ),
+      });
+
+      const 応答 = await 経路.request('/stock-items', { headers: 認証ヘッダ() });
+
+      // 状態コードも見る。「無いこと」だけを見る検証は、写像が無くても緑になる。
+      expect(応答.status).toBe(401);
+      const 本体 = (await 失敗の本体(応答)) as Record<string, unknown>;
+      expect(Object.keys(本体)).not.toContain('householdId');
+    });
+  });
+
+  describe('削除の冪等性', () => {
+    it('同じ在庫品を2度削除すると2度目は 404 になる', async () => {
+      // 規則13 / ADR-027: 削除は冪等でない。2度目は見つからない。
+      const { 経路 } = 準備({
+        削除の応答たち: [
+          { 成功: true },
+          { 投げる例外: new PantryRuleViolation('delete.notFound', '在庫品が見つからない') },
+        ],
+      });
+
+      const 一度目 = await 経路.request('/stock-items/s-1', {
+        method: 'DELETE',
+        headers: 認証ヘッダ(),
+      });
+      const 二度目 = await 経路.request('/stock-items/s-1', {
+        method: 'DELETE',
+        headers: 認証ヘッダ(),
+      });
+
+      expect([一度目.status, 二度目.status]).toEqual([204, 404]);
+      await expect(失敗の本体(二度目)).resolves.toEqual({ rule: 'delete.notFound' });
     });
   });
 });
