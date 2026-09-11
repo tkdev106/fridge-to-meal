@@ -5,8 +5,11 @@
 // 指定を忘れた環境が「未完成が見えている」側に倒れないため（同 結果4）。
 //
 // 値はこのモジュールの読み込み時に1度だけ決まり、以後変わらない。実行時に切り替える
-// 手段は置かない（同 結果3）。vite build が import.meta.env.VITE_FEATURE_* を定数へ畳み、
-// 無効側の分岐を成果物から落とすため、切り替えには再ビルドが要る。
+// 手段は置かない（同 結果3）。切り替えには再ビルドが要る。
+//
+// vite build が import.meta.env.VITE_FEATURE_* を定数へ畳み、無効側の分岐を成果物から
+// 落とすことを前提にしている。畳まれなければ未完成のコードが配信物に残るが、分岐を持つ
+// 消費者がまだ居ないため確かめられていない。最初の消費者（B-11）で確かめる。
 export const features = {
   pantryList: import.meta.env.VITE_FEATURE_PANTRY_LIST === 'true',
 } as const;
