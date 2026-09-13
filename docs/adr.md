@@ -161,7 +161,7 @@ flowchart TD
 | ADR-029 | DB アクセスを Drizzle に寄せ、RLS をトランザクション単位のクレーム設定で効かせる | **提案** |
 | ADR-030 | エージェントのコンテナでは Docker を使わず素の PostgreSQL で `pnpm test:db` を回す | 承認 |
 | ADR-031 | アクセストークンの検証を共有秘密（HS256）で行い、JWKS は実環境を確かめるまで採らない | **提案** |
-| ADR-032 | api 層は世帯と識別子の型をユースケースから導出し、規則違反を `name` で見分ける | **提案** |
+| ADR-032 | api 層は世帯と識別子の型をユースケースから導出し、規則違反を `name` で見分ける | 承認 |
 | ADR-033 | コンテキストをまたぐ入力を、相手の型ではなく名称などのプリミティブで受け取る | 承認 |
 | ADR-034 | 材料の分量を献立コンテキストに起こし、共有カーネルへ移さない | 承認 |
 | ADR-035 | 献立から由来 `provenance` を外す | 承認 |
@@ -419,7 +419,7 @@ flowchart TD
 
 ---
 
-### ADR-032　api 層は世帯と識別子の型をユースケースから導出し、規則違反を `name` で見分ける　`提案`
+### ADR-032　api 層は世帯と識別子の型をユースケースから導出し、規則違反を `name` で見分ける　`承認`
 
 - **状況** — B-08 で最初の api 層（`contexts/pantry/api/`）を置くにあたり、依存ルールと型の要求が正面からぶつかった。**依存ルールは `api/` → `domain/` を禁じている**（ADR-003 / A章の表 / `.dependency-cruiser.cjs` の `api-はdomainとinfraをimportしない`）。一方で **ユースケースのシグネチャは branded 型を要求する** — `ListStockItems` は `HouseholdId`、`DeleteStockItem` は `StockItemId` を取り、どちらも `domain/value/`（と `shared/domain/`）にある。**例外の見分けも同じ形でぶつかる** — どの状態コードに写すかは `PantryRuleViolation.rule` / `IdentityRuleViolation.rule` から引くが、`instanceof` で判別するには `domain/error/` のクラスを import することになる。さらに `identity` のユースケースを呼ぶ必要があるが、**コンテキストをまたいでよいのは `usecase/` どうしだけ**であり、`pantry/api/` から `identity/usecase/` を呼ぶ道は無い。
 - **決定** — 3つ。
