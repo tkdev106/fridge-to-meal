@@ -25,7 +25,28 @@
   共有秘密（HS256）を採ったが、確かめるまで **ADR-031 は `提案` のまま**である（ADR-031 の結果2）
 - [ ] **B-09** `apps/api/src/main.ts`: composition root で結線する。実装クラスの生成をここだけに閉じる
 - [ ] **B-12** `apps/web`: 在庫登録の画面。1件を10秒以内、片手で完結（FR-01 / FR-03 / NFR-14 / NFR-15）
-- [ ] **B-14** `meal/domain/service`: `CookableMealFinder`。不足0件のみ、並びは決定的（C-10 / C-12 / C-13）
+- [ ] **B-14a** `meal/domain`: 献立集約 `Meal`（`entity`）と `MealId` / `CookingStep` / `CookingRecord`（`value`）。
+  不変条件は **domain-model 4章の表がすべて**であり、生成時に見る（`title` は空でない / `ingredients` は
+  1件以上でうち主材料1件以上 / `steps` は1件以上で順序を持つ / ちょうど1つの世帯に属し所属は変わらない /
+  `cookingRecords` は追加のみ / 生成後 `title` `ingredients` `steps` は不変）。**`generatedAt` と
+  `provenance` を落とさない** — C-12 の第3の鍵（生成日時の新しい順）と C-1 がこれに依る。
+  **材料に 分量 をどう届かせるかをこの周で決める** — 持つことは用語表（domain-model 3章。`Amount` の
+  コンテキストは「在庫・献立」）で既に決まっており、未決なのは `Amount` が
+  `contexts/pantry/domain/value/` にあって `meal/domain/` から届かないことの解き方（`shared/domain` へ移すか、
+  献立側に起こすか）である。ADR-033 が「献立集約を作る周で決める」と宿題にしている。
+  **決めるところまでをこの周に入れ、`Amount` の移動が要ると決まったら B-17 の隣に行を足す** —
+  移動は `StockItem` / リポジトリ / ユースケースとそのテストに及び、集約の新規実装と同じ PR には収まらない
+  （domain-model 3章・4章 / C-1 / C-3 / C-16 / FR-17 / ADR-008 / ADR-033 の結果3）
+- [ ] **B-14b** `meal/domain`: 作れる献立 `CookableMeal`（`value`）と `CookableMealFinder`（`service`）。
+  不足0件のみ、並びは決定的。**B-14a の後。**
+  **どちらも設計の決定なので、実装の前に ADR を起こして相談する**（B-21 と同じ扱い） —
+  C-12 の「期限の近い在庫をより多く使う」の量り方がどの文書にも無い（FR-12 の「3日以内」は画面の帯、
+  prompt-design 9.2 の「残日数1日以内」は生成品質の評価であって、どちらも並び順のための線ではない）。
+  同じ ADR で、期限を見るために在庫を何で渡すか（ADR-033 の結果4 の branded 型。同名で期限の違う
+  在庫品をどう数えるかも含む）と、上位3件を切るのが finder か呼ぶ側か（domain-model 4章は「選び出す」、
+  6章は切り取りを提案側に描く）も決まる。**ADR-033 が結果1 で自分の書き換え先を挙げたのと同じ形で、
+  domain-model 4章・6章・7章（C-12）の追随も同じ周で行う**
+  （C-10 / C-12 / C-13 / FR-34 / NFR-C1b / ADR-033）
 - [ ] **B-15** `meal/domain/port`: `MealGenerator` ポートの定義。プロバイダ未決のまま進める（ADR-019 / NFR-18）
 - [ ] **B-16** 置き換え済みの **ADR-020 への参照を掃除する**。`apps/api/src/shared/domain/HouseholdId.ts` と
   `packages/contract/src/pantry.ts` に残っている。B-07 で直したのは backlog が名指しした
