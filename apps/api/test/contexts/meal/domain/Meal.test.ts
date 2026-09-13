@@ -33,8 +33,6 @@ function 献立(overrides: Partial<Parameters<typeof createMeal>[0]> = {}) {
     title: '肉じゃが',
     ingredients: [主材料('牛肉')],
     steps: [cookingStepOf('煮る')],
-    // B-14a 規則9: 由来は組み立てる側が渡す。既定値をここで補わない。
-    provenance: 'llm',
     generatedAt: 生成日時,
     // B-14a 規則13: 生成直後は調理記録が0件。
     cookingRecords: [],
@@ -58,12 +56,6 @@ describe('献立 Meal', () => {
     expect(meal.ingredients.length).toBe(1);
     expect(meal.steps.length).toBe(1);
     expect(meal.generatedAt).toBe('2026-09-13T12:00:00.000Z');
-  });
-
-  it('由来は呼ぶ側が渡したものをそのまま持つ', () => {
-    // B-14a 規則9 / domain-model 4章 / prompt-design 2.2: 生成の由来は値であり、
-    // 組み立てる側が渡す。
-    expect(献立({ provenance: 'llm' }).provenance).toBe('llm');
   });
 
   it('名称の前後の空白は落とす', () => {
@@ -282,8 +274,8 @@ describe('献立 Meal', () => {
     ]);
   });
 
-  it('調理記録を足した献立は、識別子・世帯・名称・材料・手順・由来・生成日時を元から引き継ぐ', () => {
-    // B-14a 規則12 / C-9 / C-3: 引き継ぐ7つを引数に取らないので、世帯の所属を
+  it('調理記録を足した献立は、識別子・世帯・名称・材料・手順・生成日時を元から引き継ぐ', () => {
+    // B-14a 規則12 / C-9 / C-3: 引き継ぐ6つを引数に取らないので、世帯の所属を
     // 変える経路が型として起こせない。
     const 元の献立 = 献立({
       title: '肉じゃが',
@@ -302,7 +294,6 @@ describe('献立 Meal', () => {
     expect(足したもの.title).toBe('肉じゃが');
     expect(足したもの.ingredients).toEqual(元の献立.ingredients);
     expect(足したもの.steps).toEqual(元の献立.steps);
-    expect(足したもの.provenance).toBe('llm');
     expect(足したもの.generatedAt).toBe('2026-09-13T12:00:00.000Z');
   });
 });

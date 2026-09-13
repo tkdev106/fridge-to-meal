@@ -24,8 +24,6 @@ export type Meal = {
   readonly title: string;
   readonly ingredients: readonly MealIngredient[];
   readonly steps: readonly CookingStep[];
-  /** 生成の由来。組み立てる側が渡す（B-14a 規則9）。 */
-  readonly provenance: 'llm';
   readonly generatedAt: DateTime;
   /** 調理記録。追加のみ（C-3 / B-14a 規則11）。 */
   readonly cookingRecords: readonly CookingRecord[];
@@ -42,7 +40,6 @@ export function createMeal(props: {
   title: string;
   ingredients: readonly MealIngredient[];
   steps: readonly CookingStep[];
-  provenance: 'llm';
   generatedAt: DateTime;
   cookingRecords: readonly CookingRecord[];
 }): Meal {
@@ -82,7 +79,6 @@ export function createMeal(props: {
     // 並べ替えも番号の付与もしない。順序は配列の並びそのものが持つ（B-14a 規則4）。
     ingredients: Object.freeze([...props.ingredients]),
     steps: Object.freeze([...props.steps]),
-    provenance: props.provenance,
     generatedAt: props.generatedAt,
     cookingRecords: Object.freeze([...props.cookingRecords]),
   });
@@ -90,7 +86,7 @@ export function createMeal(props: {
 
 /** 調理記録を1件足した献立を作り直す。増やす入口はこれだけ（追加のみ）。 */
 export function withCookingRecord(meal: Meal, cookingRecord: CookingRecord): Meal {
-  // createMeal を通すことで、作り直したものも同じ不変条件を通る。引き継ぐ7つを
+  // createMeal を通すことで、作り直したものも同じ不変条件を通る。引き継ぐ6つを
   // 引数に取らないので、世帯の所属を変える経路が型として起こせない（C-9 / B-14a 規則12）。
   return createMeal({
     id: meal.id,
@@ -98,7 +94,6 @@ export function withCookingRecord(meal: Meal, cookingRecord: CookingRecord): Mea
     title: meal.title,
     ingredients: meal.ingredients,
     steps: meal.steps,
-    provenance: meal.provenance,
     generatedAt: meal.generatedAt,
     // 末尾に足すだけで、並べ替えも取り除きもしない。記録された順が事実である
     // （B-14a 規則11）。

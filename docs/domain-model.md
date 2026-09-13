@@ -1,6 +1,7 @@
 # ドメインモデル
 
-> ドラフト v0.7 / 2026-09-10 / 要件定義書 v0.6 に対応
+> ドラフト v0.8 / 2026-09-13 / 要件定義書 v0.6 に対応
+> v0.8: 献立 `Meal` の構成から `provenance` を外した（ADR-035）。
 > v0.7: 用語表に「アクセストークン / `accessToken`」を足した（B-07e / ADR-031）。
 > v0.6: C-4 の `origin` の扱いを訂正。生成の経路で既存を参照しても `'generated'` のままとする。
 > v0.5: 材料に種別を持たせ、充足判定の対象を主材料に限った（ADR-023）。
@@ -88,7 +89,7 @@ LLM は形式の揺れた出力を返しうる。ACL は「LLM の応答 JSON」
 
 | 構成 | 不変条件 |
 | --- | --- |
-| `id: MealId`<br>`householdId: HouseholdId`<br>`title: string`<br>`ingredients: MealIngredient[]`<br>`steps: CookingStep[]`<br>`provenance: 'llm'`<br>`generatedAt: DateTime`<br>`cookingRecords: CookingRecord[]` | `title` は空文字を許さない<br>`ingredients` は1件以上。**うち主材料が1件以上**（C-16）<br>`steps` は1件以上、順序を持つ<br>ちょうど1つの世帯に属し、所属は変わらない<br>`cookingRecords` は**追加のみ**。削除・更新しない<br>生成後、`title` / `ingredients` / `steps` は不変 |
+| `id: MealId`<br>`householdId: HouseholdId`<br>`title: string`<br>`ingredients: MealIngredient[]`<br>`steps: CookingStep[]`<br>`generatedAt: DateTime`<br>`cookingRecords: CookingRecord[]` | `title` は空文字を許さない<br>`ingredients` は1件以上。**うち主材料が1件以上**（C-16）<br>`steps` は1件以上、順序を持つ<br>ちょうど1つの世帯に属し、所属は変わらない<br>`cookingRecords` は**追加のみ**。削除・更新しない<br>生成後、`title` / `ingredients` / `steps` は不変 |
 
 ### 提案 `Suggestion`（コア・集約ルート）
 
