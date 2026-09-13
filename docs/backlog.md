@@ -5,7 +5,7 @@
 
 - 完了した行は**消す**。何をやったかの履歴は `git log` にあり、ここに二重に持たない
 - 1 PR で説明できる大きさに収める。収まらないなら、実装より先に**分割する PR** を出す
-- 画面に出せない段階でもマージする。表示は feature flag で止める（ADR-024）
+- 画面に出せない段階でもマージする。**隠さない** — 本番の配信先がまだ無い（`CLAUDE.md`）
 - ここに無いものを勝手に足さない。必要になったら、まず backlog に行を足す提案をする
 - 各行の括弧内は根拠（FR / NFR は `docs/requirements.md`、C-n は `docs/domain-model.md` 第7章、
   ADR-n は `docs/adr.md`）。運用由来のものは `docs/workflow.md` でよい。
@@ -39,20 +39,6 @@
   手で書き写すと次に同じことが起きるので、**Markdown から生成する手段を置く**か、
   **閲覧用 HTML をやめる**かのどちらかを選ぶ。**正は Markdown**（CLAUDE.md）であり、
   古い HTML が残っていること自体が読み手を誤らせる（docs/workflow.md）
-- [ ] **B-19** `apps/web`: feature flag `pantryList` を消す。在庫一覧（B-11）を既定で出すと決めた時点で、
-  `features.ts` の行・`VITE_FEATURE_PANTRY_LIST`・プレゼンテーション層の分岐を同時に削る。
-  **放置されたフラグは死んだ分岐になり、次の実装の判断を狂わせる**（ADR-024 結果2 / docs/workflow.md 1章）
-- [ ] **B-20** `import.meta.env` の読み出しが `apps/web/src/features.ts` の1か所に閉じていることを
-  **ESLint で機械的に止める**。`eslint.config.js` に `no-restricted-syntax` を1本足し、`features.ts` だけ
-  `files` で除く（禁止語の規則と同じ形。**依存の追加は要らない**）。**いまは設計レビューだけが守っている** —
-  読み出しが増えても `features.pantryList` の値は変わらないため、振る舞いのテストでは赤にできない
-  （ADR-024 決定2 / docs/workflow.md 1章 / CLAUDE.md「依存ルールは lint での機械的な強制を推奨」）
-- [ ] **B-21** `apps/web`: **feature flag の無効側が配信物から落ちていない。** `features` がオブジェクト1つで
-  あるため `vite build` は `features.pantryList` を定数に畳めず、フラグを無効にしてビルドしても
-  `PantryList` の文言が成果物に残る（**B-11 で実測**）。落とすなら `features.ts` の形を変えることになり、
-  **ADR-024 決定2「読み出しは1か所」と `apps/web/test/features.test.ts` に触れる**。落とさないと決めるなら
-  その旨を ADR-024 に結果として追記する。**どちらも設計の決定なので、実装の前に ADR を起こして相談する**
-  （ADR-024 決定2・結果1 / `apps/web/src/features.ts` の doc が B-11 に課していた確認）
 - [ ] **B-22** `apps/web`: **在庫一覧をサーバから取得する。** `ListStockItems` の `GET` を叩く薄い層を置き、
   `PantryList` に渡す。**いまは `App.tsx` が常に0件を渡しており、フラグを有効にしても在庫は出ない**
   （B-11 は画面だけを作り、取得は範囲外とした）。テストは `fetch` を差し替える。**B-09（結線）の後**
