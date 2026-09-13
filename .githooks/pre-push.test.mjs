@@ -31,12 +31,17 @@ const line = (remoteRef, remoteSha = 'b384b2f') =>
 /** 参照の削除。送る側が 0 の並びになる。 */
 const deleteLine = (remoteRef) => `(delete) ${ZERO} ${remoteRef} b384b2f\n`;
 
-/** @param {string} input */
-function run(input) {
-  const result = spawnSync(HOOK, ['origin', 'https://github.com/tkdev106/fridge-to-meal'], {
-    input,
-    encoding: 'utf8',
-  });
+/** このリポジトリ（private の開発用コピー）。push してよい唯一のリモート */
+const ORIGIN_URL = 'https://github.com/tatsuro-kawakami-lvgs/fridge-to-meal';
+/** 元リポジトリ（public）。読み取り専用 */
+const UPSTREAM_URL = 'https://github.com/tkdev106/fridge-to-meal.git';
+
+/**
+ * @param {string} input stdin に渡す参照の行
+ * @param {[string, string]} [remote] git が渡す引数（リモート名, URL）
+ */
+function run(input, remote = ['origin', ORIGIN_URL]) {
+  const result = spawnSync(HOOK, remote, { input, encoding: 'utf8' });
   return { status: result.status, stderr: result.stderr };
 }
 
@@ -112,5 +117,48 @@ test('許可: タグの push は名前を見ない', () => {
 
 test('許可: push する参照が無い', () => {
   const { status, stderr } = run('');
+  assert.equal(status, 0, stderr);
+});
+
+// ---- 元リポジトリ（CLAUDE.md「このリポジトリの位置づけ」）----
+
+test('拒否: 元リポジトリへの作業ブランチの push', () => {
+  const { status, stderr } = run(line('refs/heads/feat/pantry-stock-item'), [
+    'upstream',
+    UPSTREAM_URL,
+  ]);
+  assert.equal(status, 1);
+  assert.match(stderr, /pre-push: 元リポジトリ（tkdev106\/fridge-to-meal）は読み取り専用です/);
+});
+
+test('拒否: 元リポジトリへのタグの push（枝でなくても届けば誤り）', () => {
+  const { status } = run(`refs/tags/v0.1.0 9d2176b refs/tags/v0.1.0 ${ZERO}\n`, [
+    'upstream',
+    UPSTREAM_URL,
+  ]);
+  assert.equal(status, 1);
+});
+
+test('拒否: 元リポジトリの枝の削除', () => {
+  const { status } = run(deleteLine('refs/heads/feat/x'), ['upstream', UPSTREAM_URL]);
+  assert.equal(status, 1);
+});
+
+test('拒否: 別名で登録し直した元リポジトリ（URL で見る）', () => {
+  const { status, stderr } = run(line('refs/heads/feat/x'), [
+    'public',
+    'git@github.com:tkdev106/fridge-to-meal.git',
+  ]);
+  assert.equal(status, 1);
+  assert.match(stderr, /読み取り専用/);
+});
+
+test('拒否: 元リポジトリへは push する参照が無くても断る', () => {
+  const { status } = run('', ['upstream', UPSTREAM_URL]);
+  assert.equal(status, 1);
+});
+
+test('許可: origin へは元リポジトリの規則が効かない（URL に upstream の文字列が無い）', () => {
+  const { status, stderr } = run(line('refs/heads/feat/pantry-stock-item'));
   assert.equal(status, 0, stderr);
 });

@@ -13,7 +13,8 @@
 //   3. 各区切りをトークンに割り、語の位置で判定する（部分一致で拾わない）
 //
 // ルールを足すときは「戻せない操作か」「trunk を壊すか」「秘密が漏れるか」
-// 「後から直せない記録を汚すか」のどれかに当たることを確認する。
+// 「後から直せない記録を汚すか」「元リポジトリ（public）に出てしまうか」のどれかに
+// 当たることを確認する。
 // 作業を細かく縛るためのルールは入れない。
 //
 // 最後の1つはブランチ名のためにある。**枝の名前は squash merge のあとも PR の
@@ -23,6 +24,14 @@
 import { execFileSync } from 'node:child_process';
 
 const TRUNK = 'main';
+
+/**
+ * 元リポジトリ（public）。このリポジトリはその非公開の開発用コピーであり、
+ * 元は**読み取り専用**として扱う（CLAUDE.md「このリポジトリの位置づけ」）。
+ * リモート名と URL の両方で見るのは、別名で登録し直されても止めるため。
+ */
+const UPSTREAM_REMOTE = 'upstream';
+const UPSTREAM_REPO = /tkdev106\/fridge-to-meal/;
 
 // ---------------------------------------------------------------- 前処理
 
@@ -230,6 +239,18 @@ const RULES = [
       return git?.name === 'push' && targetsTrunk(git.args);
     },
     message: `${TRUNK} への直接 push は禁止です。作業ブランチを切って PR にしてください（docs/workflow.md）。`,
+  },
+  // ---- 元リポジトリに触らない（CLAUDE.md「このリポジトリの位置づけ」） ----
+  {
+    name: 'push-to-upstream',
+    test: (tokens) => {
+      const git = gitSubcommand(tokens);
+      if (git?.name !== 'push') return false;
+      const remote = git.args.find((a) => !isFlag(a)); // 先頭の位置引数がリモート名か URL
+      return remote !== undefined && (remote === UPSTREAM_REMOTE || UPSTREAM_REPO.test(remote));
+    },
+    message:
+      '元リポジトリ（upstream = tkdev106/fridge-to-meal）は読み取り専用です。push 先は origin だけにしてください（CLAUDE.md「このリポジトリの位置づけ」）。',
   },
   // ---- 戻せない操作 ----
   {

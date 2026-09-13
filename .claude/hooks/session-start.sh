@@ -25,4 +25,9 @@ pnpm install
 # **落ちても続行する** — DB が無くても pnpm verify 側は動くので、ここで setup ごと倒さない。
 bash tools/start-local-postgres.sh || echo "local postgres: 立てられなかった。test:db は CI で見る" >&2
 
+# コミットの作者を固定する（CLAUDE.md「このリポジトリの位置づけ」）。
+# ローカルの git 設定はコンテナと一緒に消えるため、開始のたびに入れ直す。
+git config user.name "tkdev106"
+git config user.email "178723293+tkdev106@users.noreply.github.com"
+
 echo "setup done: $(node -v) / pnpm $(pnpm -v)"

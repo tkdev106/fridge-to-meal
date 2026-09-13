@@ -172,11 +172,11 @@ CI（`.github/workflows/ci.yml`）は PR と `main` への push で両方を走�
 
 | 場所 | 役割 |
 | --- | --- |
-| `.claude/hooks/guard.mjs` | `PreToolUse(Bash)`。`main` への直接 push（`+main` や `HEAD:refs/heads/main` の形も）・force push・`reset --hard`・`checkout -f`・`clean -f`・`branch -D`／`-f`・`stash drop`・一括 stage・`.dev.vars` や `.env` の読み出し・環境変数のダンプを拒否する。**ヒアドキュメントとコミットメッセージの中身は検査しない**（実行されないデータのため） |
+| `.claude/hooks/guard.mjs` | `PreToolUse(Bash)`。`main` への直接 push（`+main` や `HEAD:refs/heads/main` の形も）・**元リポジトリ（`upstream`）への push**・force push・`reset --hard`・`checkout -f`・`clean -f`・`branch -D`／`-f`・`stash drop`・一括 stage・`.dev.vars` や `.env` の読み出し・環境変数のダンプを拒否する。**ヒアドキュメントとコミットメッセージの中身は検査しない**（実行されないデータのため） |
 | `.claude/hooks/guard.test.mjs` | 上の回帰テスト。`pnpm test:hooks` で走る。ガードが黙って効かなくなるのが最悪のため、拒否側と許可側の両方を固定している |
 | `.claude/settings.json` | `permissions.deny` で秘密ファイルの Read/Edit を止め、`allow` に検証・git の常用コマンドを並べてプロンプトを消している |
-| `.claude/hooks/session-start.sh` | Claude Code on the web のセッション開始時に `pnpm install`。依存が無いと検証が動かないため |
-| `.githooks/pre-push` | git の pre-push。`main` への push を、エージェント以外の操作も含めて止める。`.githooks/pre-push.test.mjs` が回帰テスト |
+| `.claude/hooks/session-start.sh` | Claude Code on the web のセッション開始時に `pnpm install`・ローカル Postgres の起動・コミット作者の設定。依存が無いと検証が動かず、ローカルの git 設定はコンテナと一緒に消えるため |
+| `.githooks/pre-push` | git の pre-push。`main` への push と、**元リポジトリ（`upstream` = `tkdev106/fridge-to-meal`）への push** を、エージェント以外の操作も含めて止める。`.githooks/pre-push.test.mjs` が回帰テスト |
 
 一括 stage を禁じているのは、`.dev.vars` や生成物の混入が **push されるまで気づけない**ため。
 コミットに入れるファイルは毎回明示する。
@@ -227,5 +227,12 @@ CI（`.github/workflows/ci.yml`）は PR と `main` への push で両方を走�
 
 ```sh
 git config commit.template .gitmessage   # コミットの形式
-git config core.hooksPath .githooks      # main への直接 push を止める
+git config core.hooksPath .githooks      # main と元リポジトリへの push を止める
+git remote add upstream https://github.com/tkdev106/fridge-to-meal.git   # 元リポジトリ（読み取り専用）
+git remote set-url --push upstream no_push                                # 誤 push を物理的に不可能にする
+git config user.name "tkdev106"                                           # コミットの作者
+git config user.email "178723293+tkdev106@users.noreply.github.com"
 ```
+
+**このリポジトリは public の `tkdev106/fridge-to-meal` の非公開コピーであり、元は読み取り専用。**
+リモートの扱いと取り込みの手順は `CLAUDE.md` の「このリポジトリの位置づけ」。
