@@ -22,6 +22,7 @@ pnpm verify
 ```
 | 層 | 結果 |
 | --- | --- |
+| format:check | ✅ / ❌ |
 | lint:code / lint:deps | ✅ / ❌ |
 | typecheck | ✅ / ❌ |
 | test | ✅ / ❌ |
@@ -37,4 +38,5 @@ pnpm verify
 - `lint:deps` が落ちたら、**まず `docs/adr.md` A章の表を読む。** 規則を緩めて表を放置しない
   （`.dependency-cruiser.cjs` と表は1対1で対応している）
 - `lint:code` の禁止語エラーは、設定の除外ではなく**語の言い換え**で直す（`docs/domain-model.md` 第3章）
+- `format:check` が落ちたら `pnpm format` で直す。`.prettierignore` を広げて緑にしない
 - 同じ失敗を2回直せなかったら止めて報告する

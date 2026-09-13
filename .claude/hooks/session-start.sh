@@ -29,5 +29,8 @@ bash tools/start-local-postgres.sh || echo "local postgres: 立てられなか�
 # ローカルの git 設定はコンテナと一緒に消えるため、開始のたびに入れ直す。
 git config user.name "tkdev106"
 git config user.email "178723293+tkdev106@users.noreply.github.com"
+# コミットメッセージの形式（docs/workflow.md 7章）。core.hooksPath は web では設定しない —
+# ハーネスが割り当てる claude/… の枝への push が止まる（CLAUDE.md「Claude Code on the web で作業するとき」）。
+git config commit.template .gitmessage
 
 echo "setup done: $(node -v) / pnpm $(pnpm -v)"

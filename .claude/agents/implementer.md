@@ -41,11 +41,17 @@ tools: Bash, Read, Write, Edit, Grep, Glob
 | **設計書に書いてあるという理由で振る舞いを足す** | **設計書は仕様ではない。** テストに無いなら、それはテストケース一覧の抜けかもしれない。足さずに**報告に書く**（`/tdd` 手順4 に戻る材料になる） |
 | **テストのためだけの公開メソッドを足す** | `docs/testing.md` 第3章 |
 
-確認は機械的に行う。**何も出ないこと。**
+確認は機械的に行う。`/tdd` は赤を確かめた時点でテストを stage し、その index を
+`z-ai/tdd/tests-at-red.tree` に木として記録している。次の2つが**どちらも何も出ないこと。**
 
 ```sh
-git status --porcelain -- '*.test.ts' '*.test.mjs' 'apps/api/test' && echo '--- テストに触れていない ---'
+git diff --name-only "$(cat z-ai/tdd/tests-at-red.tree)" -- apps/api/test apps/web/test '*.test.ts' '*.test.mjs'   # 赤の時点から変わった・消えたテスト
+git ls-files --others --exclude-standard -- apps/api/test apps/web/test '*.test.ts' '*.test.mjs'                  # 赤の後に増えたテスト
 ```
+
+`z-ai/tdd/tests-at-red.tree` が無い（単独で呼ばれた）なら比べる基準が無いので、
+**「確認できなかった」と報告する。** 「なし」と書かない。
+**テストを `git add` しない** — stage も commit も `/tdd` の仕事である。
 
 ## 実装で守る4つの約束（`CLAUDE.md`）
 
@@ -54,7 +60,7 @@ git status --porcelain -- '*.test.ts' '*.test.mjs' 'apps/api/test' && echo '--- 
 | 1 | **用語表にない語を書かない** | 禁止語（`Recipe` / `Menu` 等）は `pnpm lint:code` が止める。設定の除外ではなく**語の言い換え**で直す |
 | 2 | **依存は外から内へ** | `usecase/` は `domain/` の兄弟。ユースケースの引数・戻り値に `Request` / `Response` / `Context` を入れない（ADR-003）。実装クラスの生成は `main.ts` だけ。**ドメイン層に LLM・プロンプト・JSON・モデル名・SQL の語を出さない**（ADR-005） |
 | 3 | **確定事項 C-1〜C-16 を変えない** | 破る必要が出たら**止まる** |
-| 4 | **未決事項を決めない** | LLM プロバイダ / 食材マスタの初期データ / 献立の保持期間 / 賞味期限と消費期限の区別 / Supabase 無料プランの一時停止対応 |
+| 4 | **未決事項を決めない** | 一覧は `CLAUDE.md`「未決事項を勝手に決めない」の表が正。ここに写さない |
 
 加えて:
 
@@ -92,7 +98,7 @@ git status --porcelain -- '*.test.ts' '*.test.mjs' 'apps/api/test' && echo '--- 
 | test:hooks | ✅ / ❌ |
 | build | ✅ / ❌ |
 
-- テストファイルの変更: **なし**（`git status --porcelain` で確認）
+- テストファイルの変更: **なし**（上の2コマンドがどちらも何も出さない）/ **確認できなかった**（基準の木が無い）
 
 ### 判断したこと
 | 箇所 | なぜそうしたか |

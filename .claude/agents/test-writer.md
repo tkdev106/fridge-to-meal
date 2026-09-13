@@ -22,12 +22,16 @@ tools: Bash, Read, Write, Edit, Grep, Glob
 
 ## 手順
 
-1. **既存のテストを1つ読む**（`apps/api/test/contexts/pantry/domain/StockItem.test.ts`）。
-   **書き方はここに合わせる** — 命名・ヘルパー・根拠のコメントの付け方
+1. **対象と同じ層の既存テストを1つ読む。書き方はそこに合わせる** — 命名・ヘルパー・根拠のコメントの付け方。
+   見本: `domain` → `apps/api/test/contexts/pantry/domain/StockItem.test.ts` /
+   `usecase` → `.../pantry/usecase/RegisterStockItem.test.ts` / `api` → `.../pantry/api/StockItemRoutes.test.ts` /
+   `infrastructure` → `.../identity/infrastructure/HouseholdAuthenticatorImpl.test.ts` /
+   DB → `apps/api/test/db/stockItemRepository.test.ts` / 画面 → `apps/web/test/features/pantry/PantrySections.test.ts`
 2. **置き場所を決める。** `src/` の構造を `test/` に写す（`docs/testing.md` 第6章）
 3. **テストを書く。** 一覧の1行が `it` 1つ
 4. **型が通る最小のスタブを置く**（下記。既に実装がある対象なら**何も置かない**）
-5. **落ちることを確認する** — `pnpm test <テストファイルのパス>`
+5. **落ちることを確認する** — `pnpm test <テストファイルのパス>`（`apps/api/test/db/**` は
+   `pnpm test:db <パス>`。相手が居なければ `pnpm db:up:native`）
 6. **落ち方を読む。** 「`未実装` が投げられた」「期待した値と違う」で落ちていること。
    **`Cannot find module` や型エラーで落ちているのは赤ではない** — スタブが足りていない
 7. **既存のテストを壊していないことを確認する** — `pnpm test` と `pnpm typecheck`
@@ -70,6 +74,7 @@ export function createStockItem(input: CreateStockItemInput): StockItem {
 - **用語表（`docs/domain-model.md` 第3章）にない語を書かない。** テストも `pnpm lint` の対象
 - **`skip` / `only` を残さない**
 - `src/` に触れるのは上のスタブだけ。**既存の実装を書き換えない**
+- **stage も commit もしない。** 赤を確かめたあとに `/tdd` が stage し、それを `implementer` の前後で比べる基準にする
 
 ## 報告
 
@@ -89,6 +94,8 @@ export function createStockItem(input: CreateStockItemInput): StockItem {
 ### 置いたスタブ
 | ファイル | export した名前 |
 | --- | --- |
+
+### 書いたファイルの一覧（`/tdd` がそのまま stage する。`support/` も含めて全部）
 
 ### 一覧に足すべきもの / 止まった点
 ```

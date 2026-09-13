@@ -1,0 +1,61 @@
+name: Cleanup assigned branches
+
+# Claude Code on the web は、セッションごとに `claude/<slug>-<識別子>` の枝を origin に作る
+# （CLAUDE.md「Claude Code on the web で作業するとき」）。PR は <type>/<slug> から出すので、
+# この枝は成果の退避先にしかならず、PR の head ではないためマージ時の自動削除でも消えない。
+# 放っておくと「何をする枝か読めない枝」が一覧に積もるので、ここで機械的に掃除する。
+#
+# 消す条件は2つとも満たすこと:
+#   - 先端のコミットが MAX_AGE_DAYS 日より古い（セッションが終わって十分たっている）
+#   - その枝を head にした開いている PR が無い
+# 先端が main のまま（一度も push されていない）枝も対象になる。動いているセッションの枝を
+# 消してしまっても、次の `git push -u origin claude/…` が作り直すだけで失うものは無い。
+#
+# `claude/` で始まる枝以外には触らない。main と <type>/<slug> はここでは消さない。
+
+on:
+  schedule:
+    - cron: '0 18 * * *' # 毎日 03:00 JST
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 先端が古く、開いている PR の無い claude/* を消す
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          MAX_AGE_DAYS: 7
+        run: |
+          set -euo pipefail
+          cutoff=$(date -u -d "$MAX_AGE_DAYS days ago" +%s)
+
+          # 「名前 先端の sha」を1行ずつ。claude/ 以外はここで落とす
+          gh api --paginate "repos/$REPO/branches?per_page=100" \
+            --jq '.[] | "\(.name) \(.commit.sha)"' \
+            | { grep '^claude/' || true; } > branches.txt
+
+          while read -r branch sha; do
+            [ -n "$branch" ] || continue
+
+            tip_date=$(gh api "repos/$REPO/commits/$sha" --jq '.commit.committer.date')
+            if [ "$(date -u -d "$tip_date" +%s)" -ge "$cutoff" ]; then
+              echo "keep   $branch  先端が新しい: $tip_date"
+              continue
+            fi
+
+            open_prs=$(gh pr list --repo "$REPO" --head "$branch" --state open --json number --jq 'length')
+            if [ "$open_prs" != "0" ]; then
+              echo "keep   $branch  開いている PR がある"
+              continue
+            fi
+
+            gh api -X DELETE "repos/$REPO/git/refs/heads/$branch"
+            echo "delete $branch  先端: $tip_date"
+          done < branches.txt

@@ -18,7 +18,7 @@
 | 幹 | `main` の1本のみ。`develop` / `release/*` は作らない |
 | 枝 | 作業ブランチ1本 = 1 PR = 1タスク。**寿命に上限は設けない** |
 | 命名 | `<type>/<slug>`。type は Conventional Commits と揃える（`feat/` `fix/` `docs/` `refactor/` `test/` `chore/`）。**変更の内容で選ぶ。機能追加に限らない。** 規則は下の「ブランチ名」に置き、2枚のフックが機械的に検査する |
-| 統合 | PR → CI グリーン → **squash merge**。マージ後にブランチを削除する |
+| 統合 | PR → CI グリーン → **squash merge** |
 | 直接 push | **禁止。** `.claude/hooks/guard.mjs`（エージェント側）と `.githooks/pre-push`（git 側）の2枚で止める |
 | 同期 | 枝が古くなったら `main` を取り込む（`/sync`）。取り込みは普通の作業であって、失敗の合図ではない |
 | 未完成の機能 | **マージを止めない。`main` に入れる。隠さない** — 本番の配信先がまだ無いため（`CLAUDE.md`） |
@@ -37,7 +37,8 @@
 | `.githooks/pre-push` | **この作業ツリーからの `main` への push すべて**（人の手も含む） | `--no-verify`、別の clone、GitHub の Web UI |
 | `.github/workflows/ci.yml` | 何も止めない。**壊れたことを後から知らせる** | — |
 
-git 側のフックは clone ごとに1度有効化する（`git config core.hooksPath .githooks`）。
+git 側のフックは clone ごとに1度有効化する（`git config core.hooksPath .githooks`。**Claude Code on the web の
+コンテナは例外** — 7章）。
 **どれも越えられる。** 越えたいときに越えられることは承知のうえで、
 **うっかり越えないため**に置いている。リポジトリを public にするか Team に上げたときは、
 GitHub のブランチ保護（直接 push の禁止 / `verify` 必須）を有効にして、そちらを一次の
@@ -99,8 +100,8 @@ pnpm test:db
 ```
 
 **この2本が緑であることが、PR を出す条件であり、マージの条件でもある。**
-`pnpm verify` の中身は `pnpm lint`（ESLint + dependency-cruiser）→ `pnpm typecheck` →
-`pnpm test`（vitest）→ `pnpm test:hooks`（フックの回帰テスト）→ `pnpm build` の順。
+`pnpm verify` の中身は `pnpm format:check`（Prettier）→ `pnpm lint`（ESLint + dependency-cruiser）→
+`pnpm typecheck` → `pnpm test`（vitest）→ `pnpm test:hooks`（フックの回帰テスト）→ `pnpm build` の順。
 `pnpm test:db` は RLS とリポジトリ実装を**ローカル Postgres（Docker Compose）**に対して確かめる。
 CI（`.github/workflows/ci.yml`）は PR と `main` への push で両方を走らせる（**別のジョブ**であり、
 `verify` は Docker を要さないまま）。
@@ -155,8 +156,8 @@ CI（`.github/workflows/ci.yml`）は PR と `main` への push で両方を走�
 **ループを止める条件**（勝手に決めずユーザーに投げる）:
 
 - 確定事項 **C-1〜C-16**（`docs/domain-model.md` 第7章）を破る必要が出た
-- **未決事項**の決定が必要になった（LLM プロバイダ / 食材マスタの初期データ / 献立の保持期間 /
-  賞味期限と消費期限の区別 / Supabase 無料プランの一時停止対応）
+- **未決事項**の決定が必要になった。一覧は `CLAUDE.md`「未決事項を勝手に決めない」の表が正であり、
+  ここには写さない（写すと2か所がずれる）
 - `docs/requirements.md` の FR / NFR に無い機能が必要になった
 - 依存パッケージの追加が必要になった
 - **同じ検証失敗を2回直せなかった**
@@ -175,8 +176,9 @@ CI（`.github/workflows/ci.yml`）は PR と `main` への push で両方を走�
 | `.claude/hooks/guard.mjs` | `PreToolUse(Bash)`。`main` への直接 push（`+main` や `HEAD:refs/heads/main` の形も）・**元リポジトリ（`upstream`）への push**・force push・`reset --hard`・`checkout -f`・`clean -f`・`branch -D`／`-f`・`stash drop`・一括 stage・`.dev.vars` や `.env` の読み出し・環境変数のダンプを拒否する。**ヒアドキュメントとコミットメッセージの中身は検査しない**（実行されないデータのため） |
 | `.claude/hooks/guard.test.mjs` | 上の回帰テスト。`pnpm test:hooks` で走る。ガードが黙って効かなくなるのが最悪のため、拒否側と許可側の両方を固定している |
 | `.claude/settings.json` | `permissions.deny` で秘密ファイルの Read/Edit を止め、`allow` に検証・git の常用コマンドを並べてプロンプトを消している |
-| `.claude/hooks/session-start.sh` | Claude Code on the web のセッション開始時に `pnpm install`・ローカル Postgres の起動・コミット作者の設定。依存が無いと検証が動かず、ローカルの git 設定はコンテナと一緒に消えるため |
+| `.claude/hooks/session-start.sh` | Claude Code on the web のセッション開始時に `pnpm install`・ローカル Postgres の起動・コミット作者と `commit.template` の設定。依存が無いと検証が動かず、ローカルの git 設定はコンテナと一緒に消えるため |
 | `.githooks/pre-push` | git の pre-push。`main` への push と、**元リポジトリ（`upstream` = `tkdev106/fridge-to-meal`）への push** を、エージェント以外の操作も含めて止める。`.githooks/pre-push.test.mjs` が回帰テスト |
+| `.github/workflows/cleanup-assigned-branches.yml` | Claude Code on the web がセッションごとに `origin` に作る `claude/<slug>-<識別子>` の枝を毎日掃除する。**先端が7日より古く、開いている PR が無い**ものだけを消し、`claude/` 以外には触らない。この枝は PR の head ではないため、マージ時の自動削除では消えない（`CLAUDE.md`「Claude Code on the web で作業するとき」） |
 
 一括 stage を禁じているのは、`.dev.vars` や生成物の混入が **push されるまで気づけない**ため。
 コミットに入れるファイルは毎回明示する。
@@ -224,6 +226,9 @@ CI（`.github/workflows/ci.yml`）は PR と `main` への push で両方を走�
 ## 7. clone 後に1度だけやること
 
 **どちらもローカル設定であり、git に入らない。** 新しい作業ツリーを作るたびに必要になる。
+**Claude Code on the web のコンテナは例外** — `core.hooksPath` を設定しない（ハーネスが割り当てる枝への
+push が止まる。`CLAUDE.md`「Claude Code on the web で作業するとき」）。`upstream` も登録しない。
+残りは `.claude/hooks/session-start.sh` が開始のたびに入れる。
 
 ```sh
 git config commit.template .gitmessage   # コミットの形式

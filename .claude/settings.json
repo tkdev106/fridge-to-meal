@@ -16,6 +16,8 @@
       "Bash(pnpm --filter:*)",
       "Bash(node:*)",
       "Bash(git status:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git write-tree:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git show:*)",

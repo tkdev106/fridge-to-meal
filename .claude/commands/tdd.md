@@ -51,13 +51,29 @@ test-designer（洗い出し） → test-writer（赤） → implementer（緑�
      を確かめる。足りなければ `test-designer` に差し戻す
    - 「判断が要るもの」に行があれば、**そこで止まる**（下記）
 5. **`test-writer` を呼ぶ。** 渡すのは**検分後の一覧**
-6. **赤を自分で確かめる。** 報告を信じず `pnpm test <パス>` を走らせ、
-   **落ち方が `未実装` か期待値の不一致であること**を見る。
-   `Cannot find module` や型エラーで落ちているなら赤ではない — `test-writer` に差し戻す
+6. **赤を自分で確かめる。** 報告を信じず `pnpm test <パス>`（`apps/api/test/db/**` なら
+   `pnpm test:db <パス>`）を走らせ、**落ち方が `未実装` か期待値の不一致であること**を見る。
+   `Cannot find module` や型エラーで落ちているなら赤ではない — `test-writer` に差し戻す。
+   **確かめたら、テストファイル（`support/` も含む）を明示して stage し、index を木として記録する。**
+   これが 8 で「テストが動いていない」ことを比べる基準になる — 未コミットのテストは
+   `git status` では常に「変更あり」に見えるため、`status` では比べられない。
+
+   ```sh
+   git add <test-writer が書いたファイル>                      # 明示する。一括 stage は guard が断る
+   mkdir -p z-ai/tdd && git write-tree > z-ai/tdd/tests-at-red.tree
+   ```
+
 7. **`implementer` を呼ぶ。**
-8. **緑を自分で確かめる。** `pnpm verify` を走らせる（`/verify`）。
-   `git status --porcelain -- '*.test.ts' 'apps/api/test'` が**空**であることも見る —
-   **テストが書き換わっていたら、緑は意味を持たない**
+8. **緑を自分で確かめる。** `pnpm verify` を走らせる（`/verify`）。`infrastructure/` や移行 SQL に
+   触る周は `pnpm test:db` も。
+   **テストが動いていないことを機械的に見る** — 次の2つが**どちらも何も出ない**こと。
+   出たら `implementer` に差し戻す。**テストが書き換わっていたら、緑は意味を持たない**
+
+   ```sh
+   git diff --name-only "$(cat z-ai/tdd/tests-at-red.tree)" -- apps/api/test apps/web/test '*.test.ts' '*.test.mjs'   # 赤の時点から変わった・消えたテスト
+   git ls-files --others --exclude-standard -- apps/api/test apps/web/test '*.test.ts' '*.test.mjs'                  # 赤の後に増えたテスト
+   ```
+
 9. **`design-reviewer` を呼ぶ**（`git fetch origin main` の後）。指摘は直すか、直さない理由を残す
 10. **コミットする。** テストと実装を**同じコミットに入れる** — 片方だけの状態は `main` で緑にならない。
     メッセージは `git diff --staged` から書く（`.gitmessage` が形式）。
@@ -83,8 +99,7 @@ test-designer（洗い出し） → test-writer（赤） → implementer（緑�
 「何が決まれば進むか」を**1つの質問**にまとめて終える。黙って止まらない。黙って進めない。
 
 - テストケースの洗い出しで、確定事項 C-1〜C-16 を破る必要が出た
-- 未決事項の決定が必要になった（LLM プロバイダ / 食材マスタの初期データ / 献立の保持期間 /
-  賞味期限と消費期限の区別 / Supabase 無料プランの一時停止対応）
+- 未決事項の決定が必要になった（一覧は `CLAUDE.md`「未決事項を勝手に決めない」の表。ここに写さない）
 - `docs/requirements.md` の FR / NFR に無い機能が必要になった
 - 依存パッケージの追加が必要になった
 - 同じ検証失敗を2回直せなかった

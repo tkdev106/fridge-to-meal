@@ -19,7 +19,7 @@ description: "backlog の先頭タスクを1件だけ、作業ブランチ1本 +
    「判断待ち」の行には着手しない。1 PR で説明できる大きさに収まらないなら、**実装ではなく
    backlog を分割する PR** を出す。それが今周の成果でよい。
 3. **枝を切る**: `git switch -c <type>/<slug>`（type は Conventional Commits と揃える）。
-   **設計より先に切る** — 4 で止まったときに、`main` の上に居ると push 先が無い
+   **設計より先に切る** — 5 以降で止まったときに、`main` の上に居るとドラフト PR の push 先が無い
 4. **設計書を書かせる**（実装より前）
    `design-writer` サブエージェントにタスクの ID（または指定）を渡し、`z-ai/design/<ID>.md` を
    書かせる。**自分で設計してから呼ばない** — 読むべき文書（`docs/domain-model.md` の該当集約と
@@ -51,10 +51,27 @@ description: "backlog の先頭タスクを1件だけ、作業ブランチ1本 +
    指摘は直すか、直さない理由を PR に書く。
 9. **コミット**: 入れるファイルを明示して stage し、`git diff --staged` からメッセージを書く。
    1コミット1目的。型を混ぜない。`.gitmessage` が形式。
-10. **PR**: `git push -u origin <branch>` → `.github/PULL_REQUEST_TEMPLATE.md` に沿って作成。
-11. **CI を待つ**（`gh pr checks --watch`）。赤なら直して push する。PR は開いたままでよい。
-12. **squash merge** → `main` に戻る → `docs/backlog.md` の完了行を消す
-    （次の周の最初のコミットに含めてよい）。
+   **`docs/backlog.md` の完了行はこの PR で消す**（実装とは別のコミットでよいが、PR には必ず含める）。
+   マージ直後の `main` の backlog が現状と食い違うと、次の周 — 別のセッションかもしれない — が
+   済んだ件をもう一度取る。
+10. **PR**: `git push -u origin <branch>` → `.github/PULL_REQUEST_TEMPLATE.md` に沿って作成する
+    （`gh pr create`。`gh` が無い環境では GitHub の MCP ツール `create_pull_request`）。
+11. **CI を待つ**（`gh pr checks --watch`。`gh` が無い環境では GitHub の MCP ツールで PR の check の
+    結果を読み、赤ならジョブのログを取る。**`sleep` を回して待たない**）。赤なら直して push する。
+    PR は開いたままでよい。
+12. **squash merge**（`gh pr merge --squash`。`gh` が無い環境では MCP ツール `merge_pull_request` の
+    squash）→ `git switch main && git pull --ff-only` で `main` に戻る。枝の後片付けは要らない。
+
+## Claude Code on the web で回すとき
+
+ハーネスが割り当てた `claude/<slug>-<識別子>` の枝の上でセッションが始まる
+（`CLAUDE.md`「Claude Code on the web で作業するとき」）。
+
+- **その枝の上で作業しない。** 手順1で `main` に移り、手順3で `<type>/<slug>` を切る。
+  割り当て枝は既にあるので checkout はできるが、`guard.mjs` はその形の名前を**新しく切る**ことを断る
+- PR は `<type>/<slug>` から出す。**セッションの指示が割り当て枝への push を求めるなら、同じコミットを
+  そちらにも push してよい**（`git push -u origin HEAD:claude/…`）。それは成果の退避であって PR の元ではない
+- `gh` は無い。PR の作成・check の確認・マージは GitHub の MCP ツール（手順10〜12 に併記）で行う
 
 ## 止まる条件
 
@@ -62,7 +79,8 @@ description: "backlog の先頭タスクを1件だけ、作業ブランチ1本 +
 「何が決まれば進むか」を**1つの質問**にまとめて終える。
 
 - 確定事項 C-1〜C-16 を破る必要が出た
-- 未決事項の決定が必要になった（`docs/backlog.md` の「判断待ち」）
+- 未決事項の決定が必要になった（一覧は `CLAUDE.md`「未決事項を勝手に決めない」の表。
+  それに懸かるタスクは `docs/backlog.md` の「判断待ち」）
 - `docs/requirements.md` の FR / NFR に無い機能が必要になった
 - 依存パッケージの追加が必要になった
 - 同じ検証失敗を2回直せなかった

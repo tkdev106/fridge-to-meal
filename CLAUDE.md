@@ -41,9 +41,15 @@ git push --no-verify origin main                        # pre-push を意図的�
 **origin から upstream への反映（public に戻す方法）は未決。** 決めるまでは、このリポジトリで
 起きたことは public に出ないものとして扱う。
 
-**コミットの作者は `tkdev106` に固定する**（メールは `178723293+tkdev106@users.noreply.github.com`）。
+**枝のコミットの作者は `tkdev106` に固定する**（メールは `178723293+tkdev106@users.noreply.github.com`）。
 リポジトリローカルの設定で行い、エージェントのコンテナでは `.claude/hooks/session-start.sh` が
 セッション開始のたびに入れ直す。
+
+**これは枝のコミットにしか効かない。** GitHub の squash merge が `main` に作るコミットの作者は
+**PR を開いたアカウント**になり、`git config` では変えられない（PR #1 で確認済み。枝は `tkdev106`、
+`main` は `tatsuro-kawakami-lvgs`）。**これは受け入れる。** `main` の作者を揃える必要があるかは、
+上の「origin から upstream への反映」を決めるときに一緒に決める — それまで、マージ方法を変えたり
+PR を開くアカウントを持ち替えたりしない。
 
 ### Claude Code on the web で作業するとき
 
@@ -53,10 +59,15 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 
 - **PR は `<type>/<slug>` の枝から出す。** `/next` の手順どおり `git switch -c <type>/<slug>` で
   切り直し、そちらを `origin` に push して PR にする。割り当てられた `claude/…` の枝から PR を出さない
-- 割り当てられた枝は、セッションの指示に従って成果を退避する先としてだけ使う。
-  **マージ後は消す** — 残すと「何をする枝か読めない枝」が一覧に積もる
+- 割り当てられた枝は、セッションの指示に従って成果を退避する先としてだけ使う。**PR の head ではないので
+  マージ時の自動削除では消えない。** `.github/workflows/cleanup-assigned-branches.yml` が毎日、先端が
+  7日より古く、開いている PR の無い `claude/*` を消す。エージェントが消す必要はない
 - web のコンテナでは `core.hooksPath` を設定しない（設定すると割り当て枝への push が止まり、
   セッションが成果を出せなくなる）。`main` と upstream は `guard.mjs` が守る
+- web のコンテナには `upstream` リモートが無い（`git remote -v` で確かめられる）。無いものに push は
+  できないので、`no_push` の設定はここでは要らない
+- web のコンテナには **`gh` が無い。** PR の作成・CI の結果の確認・squash merge は
+  GitHub の MCP ツール（`mcp__github__*`）で行う。`/next` の手順にどちらの書き方も置いてある
 
 ## 迷ったらここを見る
 
@@ -195,7 +206,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 
 - 作業ブランチ1本 = 1 PR = 1タスク。**寿命に上限は設けない。** `develop` / `release/*` は作らない
 - 種別は変更の内容で選ぶ（`feat/` `fix/` `docs/` …）。**機能追加のブランチに限る運用ではない**
-- `<type>/<slug>` で切り、**squash merge** で入れる。マージしたら枝を消す
+- `<type>/<slug>` で切り、**squash merge** で入れる
 - **ブランチ名は名前だけで「何をする枝か」読めること。** `claude` を含めない（枝は「誰が書いたか」
   ではなく「何をする枝か」を表す）。生成された識別子（`from-2d5wji`）を入れない。
   タスクの番号だけ（`feat/b-08`）にしない — 3文字以上の英字の語が1つ以上要る。
@@ -259,7 +270,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 .claude/                   エージェントの作業環境
   settings.json            許可・拒否とフックの登録（settings.local.json は各自のもので git 管理外）
   hooks/guard.mjs          戻せない操作・main と upstream への push の拒否。guard.test.mjs が回帰テスト
-  hooks/session-start.sh   web セッション開始時の pnpm install・ローカル Postgres の起動・コミット作者の設定
+  hooks/session-start.sh   web セッション開始時の pnpm install・ローカル Postgres の起動・コミット作者とメッセージ形式の設定
   commands/                /next（ループ1周）/tdd（テスト駆動で1件）/verify /sync /address
   agents/design-writer     タスク1件を設計書に落とす。実装の3段はこれを入力に取る
   agents/test-designer     観察可能な振る舞いを洗い出し、テストケース一覧を作る
@@ -268,6 +279,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
   agents/design-reviewer   差分を設計文書と突き合わせる読み手
 .githooks/pre-push         main と upstream への push を git の側で止める（要 core.hooksPath）。pre-push.test.mjs が回帰テスト
 .github/workflows/ci.yml   PR と main への push で pnpm verify と pnpm test:db を別ジョブで回す
+.github/workflows/cleanup-assigned-branches.yml  web セッションが残す claude/* の枝を毎日掃除する
 apps/web/                  React + Vite（PWA）— API のクライアント
   src/features/pantry/     画面もコンテキスト単位で切る（PantryList / PantrySections / RemainingDays）
   src/features/meal/
