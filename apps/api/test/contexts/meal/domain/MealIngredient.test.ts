@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { createMealIngredient } from '../../../../src/contexts/meal/domain/value/MealIngredient.js';
 import { MealRuleViolation } from '../../../../src/contexts/meal/domain/error/MealRuleViolation.js';
+import { amountOf } from '../../../../src/contexts/meal/domain/value/Amount.js';
 
-/** 名称と種別だけ変えて材料を作る。テストの本題以外を書かないためのもの。 */
+/** 名称と種別と分量だけ変えて材料を作る。テストの本題以外を書かないためのもの。 */
 function 材料(overrides: Partial<Parameters<typeof createMealIngredient>[0]> = {}) {
   return createMealIngredient({
     name: 'にんじん',
     kind: 'main',
+    // B-14a 規則7: amount は必須引数（値は null を許す）。本題でない分はここに隠す。
+    amount: null,
     ...overrides,
   });
 }
@@ -67,6 +70,18 @@ describe('材料 MealIngredient', () => {
     expect(() => {
       (ingredient as { name: string }).name = 'たまねぎ';
     }).toThrow();
+  });
+
+  it('分量を持つ', () => {
+    // FR-17 / B-14a 規則6・規則7 / ADR-034: 材料は分量を持ち、画面にも並べて出す。
+    const ingredient = 材料({ name: 'にんじん', kind: 'main', amount: amountOf('200g') });
+
+    expect(ingredient.amount).toBe('200g');
+  });
+
+  it('分量なしの材料を作れる', () => {
+    // B-14a 規則6 / prompt-design 6.2: 分量は任意であり、無いことを null で表す。
+    expect(材料({ amount: null }).amount).toBeNull();
   });
 
   it('全角の空白も前後なら落とす', () => {

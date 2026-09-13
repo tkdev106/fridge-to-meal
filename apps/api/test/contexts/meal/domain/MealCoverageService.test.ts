@@ -4,15 +4,16 @@ import {
   createMealIngredient,
   type MealIngredient,
 } from '../../../../src/contexts/meal/domain/value/MealIngredient.js';
+import { amountOf, type Amount } from '../../../../src/contexts/meal/domain/value/Amount.js';
 
-/** 主材料。突き合わせの対象になる側（C-16）。 */
-function 主材料(name: string) {
-  return createMealIngredient({ name, kind: 'main' });
+/** 主材料。突き合わせの対象になる側（C-16）。分量は本題のときだけ渡す。 */
+function 主材料(name: string, amount: Amount | null = null) {
+  return createMealIngredient({ name, kind: 'main', amount });
 }
 
 /** 調味料。常備されている前提なので突き合わせに載せない（C-16 / ADR-023）。 */
 function 調味料(name: string) {
-  return createMealIngredient({ name, kind: 'seasoning' });
+  return createMealIngredient({ name, kind: 'seasoning', amount: null });
 }
 
 /** 検証の本題は名称の並びなので、材料の列を名称の列にして見る。 */
@@ -140,6 +141,14 @@ describe('充足 MealCoverage', () => {
     );
 
     expect(名称の並び(coverage.missing)).toEqual(['豚こま肉', 'たまねぎ']);
+  });
+
+  it('分量を持つ主材料でも、賄えるかどうかは名称の一致だけで決まる', () => {
+    // ADR-010 / C-6 / B-14a 設計11章: 材料が分量を持っても、充足は分量を見ない。
+    const coverage = mealCoverageOf([主材料('にんじん', amountOf('200g'))], ['にんじん']);
+
+    expect(名称の並び(coverage.covered)).toEqual(['にんじん']);
+    expect(coverage.missing).toEqual([]);
   });
 
   it('受け取った材料の配列を書き換えない', () => {

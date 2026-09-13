@@ -24,20 +24,8 @@
   **同じ周で JWT の署名方式（共有秘密 / 非対称鍵）も確かめる** — B-07e は `.dev.vars` の雛形から
   共有秘密（HS256）を採ったが、確かめるまで **ADR-031 は `提案` のまま**である（ADR-031 の結果2）
 - [ ] **B-09** `apps/api/src/main.ts`: composition root で結線する。実装クラスの生成をここだけに閉じる
-- [ ] **B-14a** `meal/domain`: 献立集約 `Meal`（`entity`）と `MealId` / `CookingStep` / `CookingRecord`（`value`）。
-  不変条件は **domain-model 4章の表がすべて**であり、生成時に見る（`title` は空でない / `ingredients` は
-  1件以上でうち主材料1件以上 / `steps` は1件以上で順序を持つ / ちょうど1つの世帯に属し所属は変わらない /
-  `cookingRecords` は追加のみ / 生成後 `title` `ingredients` `steps` は不変）。**`generatedAt` と
-  `provenance` を落とさない** — C-12 の第3の鍵（生成日時の新しい順）と C-1 がこれに依る。
-  **材料に 分量 をどう届かせるかをこの周で決める** — 持つことは用語表（domain-model 3章。`Amount` の
-  コンテキストは「在庫・献立」）で既に決まっており、未決なのは `Amount` が
-  `contexts/pantry/domain/value/` にあって `meal/domain/` から届かないことの解き方（`shared/domain` へ移すか、
-  献立側に起こすか）である。ADR-033 が「献立集約を作る周で決める」と宿題にしている。
-  **決めるところまでをこの周に入れ、`Amount` の移動が要ると決まったら B-17 の隣に行を足す** —
-  移動は `StockItem` / リポジトリ / ユースケースとそのテストに及び、集約の新規実装と同じ PR には収まらない
-  （domain-model 3章・4章 / C-1 / C-3 / C-16 / FR-17 / ADR-008 / ADR-033 の結果3）
 - [ ] **B-14b** `meal/domain`: 作れる献立 `CookableMeal`（`value`）と `CookableMealFinder`（`service`）。
-  不足0件のみ、並びは決定的。**B-14a の後。**
+  不足0件のみ、並びは決定的。
   **どちらも設計の決定なので、実装の前に ADR を起こして相談する**（B-21 と同じ扱い） —
   C-12 の「期限の近い在庫をより多く使う」の量り方がどの文書にも無い（FR-12 の「3日以内」は画面の帯、
   prompt-design 9.2 の「残日数1日以内」は生成品質の評価であって、どちらも並び順のための線ではない）。
