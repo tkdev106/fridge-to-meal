@@ -24,13 +24,6 @@
   **同じ周で JWT の署名方式（共有秘密 / 非対称鍵）も確かめる** — B-07e は `.dev.vars` の雛形から
   共有秘密（HS256）を採ったが、確かめるまで **ADR-031 は `提案` のまま**である（ADR-031 の結果2）
 - [ ] **B-09** `apps/api/src/main.ts`: composition root で結線する。実装クラスの生成をここだけに閉じる
-- [ ] **B-14b** `meal/domain`: 作れる献立 `CookableMeal`（`value`）と `CookableMealFinder`（`service`）。
-  **相談のための ADR-036 は起こし、domain-model の追随（用語表・4章・6章・C-12）も済んでいる。残るのは実装である。**
-  置くのは ADR-036 の決定そのまま — 不足0件だけを C-12 の順（期限の列の辞書式比較 → 調理記録の有無 →
-  生成日時の新しい順 → `MealId` の昇順）に並べて**全件**返し、上位3件には切らない。在庫は献立側に起こす
-  `StockItem`（名称と期限だけを持つ値）と `ExpiryDate` の列で受け取る。C-11 の除外と切り取りは呼ぶ側の仕事で、
-  ここには入らない。**ADR-036 が `承認` になってから着手する** — 決定が動けば並び順のコードごと捨てることになる
-  （C-6 / C-10 / C-12 / C-13 / C-16 / FR-34 / NFR-C1b / ADR-033 / **ADR-036**）
 - [ ] **B-15** `meal/domain/port`: `MealGenerator` ポートの定義。プロバイダ未決のまま進める（ADR-019 / NFR-18）
 - [ ] **B-16** 置き換え済みの **ADR-020 への参照を掃除する**。`apps/api/src/shared/domain/HouseholdId.ts` と
   `packages/contract/src/pantry.ts` に残っている。B-07 で直したのは backlog が名指しした
