@@ -1,7 +1,7 @@
 # ドメインモデル
 
 > ドラフト v0.10 / 2026-09-14 / 要件定義書 v0.6 に対応
-> v0.10: 献立側の在庫品に分量を足し、C-7 の一致比較を多重集合と読むことにした（ADR-037）。
+> v0.10: 献立側の在庫品に分量を足し、C-7 の一致比較を多重集合と読むことにした（ADR-037）。4章 `Suggestion` の不変条件に C-15 の「混ぜない」を書き足した。
 > v0.9: C-12 の並び順の量り方を定め、在庫品と期限を献立コンテキストにも起こした。6章の図に C-11 の除外を描いた（ADR-036）。
 > v0.8: 献立 `Meal` の構成から `provenance` を外した（ADR-035）。
 > v0.7: 用語表に「アクセストークン / `accessToken`」を足した（B-07e / ADR-031）。
@@ -61,6 +61,8 @@ LLM は形式の揺れた出力を返しうる。ACL は「LLM の応答 JSON」
 | --- | --- | --- | --- |
 | **献立** | `Meal` | 生成された1つの献立。名称・材料・手順を持ち、永続化される。「以前見た献立」「つくった献立」として再表示される実体はこれ | 献立 |
 | **提案** | `Suggestion` | 1回の提案でまとめて得られた献立の束（1〜3件。C-15）と、そのときの在庫スナップショット | 献立 |
+| **提案の1件** | `SuggestionEntry` | 1つの提案に並ぶ献立1件ぶん。**献立そのものではなく識別子と由来だけ**を抱える（ADR-008） | 献立 |
+| **由来** | `SuggestionEntryOrigin` | 提案の1件が**再利用**（`'reused'`）と**生成**（`'generated'`）のどちらの経路から来たか。**1つの提案の中では全件が同じ値**（C-15 / C-4c） | 献立 |
 | **材料** | `MealIngredient` | 献立が必要とする食材と分量。献立の一部として複製され、以後は在庫の変化に影響されない | 献立 |
 | **材料の種別** | `MealIngredientKind` | 材料が**主材料**（`'main'`）か**調味料**（`'seasoning'`）か。**充足判定の対象を決める**（C-16） | 献立 |
 | **手順** | `CookingStep` | 調理の1ステップ。順序を持つ | 献立 |
@@ -97,7 +99,7 @@ LLM は形式の揺れた出力を返しうる。ACL は「LLM の応答 JSON」
 
 | 構成 | 不変条件 |
 | --- | --- |
-| `id: SuggestionId`<br>`householdId: HouseholdId`<br>`entries: SuggestionEntry[]`<br>　各要素は `{ mealId, origin }`<br>　`origin: 'generated' \| 'reused'`<br>`pantrySnapshot: PantrySnapshot`<br>`generatedAt: DateTime` | `entries` は1件以上3件以下（**C-15**）<br>参照する献立は同じ世帯に属する<br>同じ `mealId` を2つ以上含まない<br>生成後は完全に不変（追記も削除もしない）<br>`pantrySnapshot` は生成時点の複製であり、以後の在庫変更を反映しない |
+| `id: SuggestionId`<br>`householdId: HouseholdId`<br>`entries: SuggestionEntry[]`<br>　各要素は `{ mealId, origin }`<br>　`origin: 'generated' \| 'reused'`<br>`pantrySnapshot: PantrySnapshot`<br>`generatedAt: DateTime` | `entries` は1件以上3件以下（**C-15**）<br>`entries` の `origin` は全件が同じ値。**1つの提案の中で再利用と生成を混ぜない**（**C-15** / ADR-022）<br>参照する献立は同じ世帯に属する（**集約は確かめない** — 抱えるのは識別子だけで型としても実行時としても確かめる手立てが無い。守るのは呼ぶ側。ADR-008 / ADR-033 の結果2）<br>同じ `mealId` を2つ以上含まない<br>生成後は完全に不変（追記も削除もしない）<br>`pantrySnapshot` は生成時点の複製であり、以後の在庫変更を反映しない |
 
 ### 在庫品 `StockItem`（集約ルート）
 

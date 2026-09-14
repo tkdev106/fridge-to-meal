@@ -3,6 +3,7 @@ import { cookableMealsOf } from '../../../../src/contexts/meal/domain/service/Co
 import type { CookableMeal } from '../../../../src/contexts/meal/domain/value/CookableMeal.js';
 import { createStockItem } from '../../../../src/contexts/meal/domain/value/StockItem.js';
 import { expiryDateOf } from '../../../../src/contexts/meal/domain/value/ExpiryDate.js';
+import { amountOf } from '../../../../src/contexts/meal/domain/value/Amount.js';
 import { createMeal } from '../../../../src/contexts/meal/domain/entity/Meal.js';
 import { createMealIngredient } from '../../../../src/contexts/meal/domain/value/MealIngredient.js';
 import { cookingStepOf } from '../../../../src/contexts/meal/domain/value/CookingStep.js';
@@ -42,9 +43,14 @@ function 献立(overrides: Partial<Parameters<typeof createMeal>[0]> = {}) {
   });
 }
 
-/** 献立側の在庫品。期限は本題のときだけ渡す。 */
-function 在庫品(name: string, expiryDate: string | null = null) {
-  return createStockItem({ name, expiryDate: expiryDateOf(expiryDate) });
+/**
+ * 献立側の在庫品。引数は **(名称, 期限, 分量)** の順で、期限と分量は本題のときだけ渡す。
+ *
+ * **`PantrySnapshot.test.ts` の同名のヘルパーは (名称, 分量, 期限) の順である。**
+ * こちらは期限が本題（C-12 の並び）で、向こうは分量が本題（C-7 の一致）だからである。
+ */
+function 在庫品(name: string, expiryDate: string | null = null, amount: string | null = null) {
+  return createStockItem({ name, amount: amountOf(amount), expiryDate: expiryDateOf(expiryDate) });
 }
 
 /** この周は並びを問わない（並びは2周目）。返った献立の名称を集合にして見る。 */
@@ -152,6 +158,16 @@ describe('作れる献立の絞り込み CookableMealFinder', () => {
     const 献立2 = 献立({ id: 識別子(2), title: 'カレー' });
 
     expect(cookableMealsOf([献立1, 献立2], [])).toEqual([]);
+  });
+
+  it('在庫品が分量を持っていても主材料を賄える', () => {
+    // B-26 規則12 / C-6 / ADR-037 結果1: 突き合わせは名称の完全一致で行う。
+    // 分量は受け取るが読まない。読むと「200g のにんじん」が「にんじん」を賄えなくなる。
+    const meal = 献立({ ingredients: [主材料('にんじん')] });
+
+    const cookableMeals = cookableMealsOf([meal], [在庫品('にんじん', null, '1本')]);
+
+    expect(名称の並び(cookableMeals)).toEqual(['肉じゃが']);
   });
 });
 
@@ -583,5 +599,24 @@ describe('作れる献立の並び CookableMealFinder', () => {
     );
 
     expect(cookableMeals.length).toBe(4);
+  });
+
+  it('在庫品の分量は作れる献立の並び順に効かない', () => {
+    // B-26 規則12 / ADR-036 決定1: 並びの第1段に入るのは期限だけ。分量が列に入ると、
+    // 買い置きの量が順位を動かしてしまう。
+    const 肉じゃが = 献立({ id: 識別子(1), title: '肉じゃが', ingredients: [主材料('にんじん')] });
+    const カレー = 献立({ id: 識別子(2), title: 'カレー', ingredients: [主材料('たまねぎ')] });
+
+    const 分量なしの在庫 = cookableMealsOf(
+      [肉じゃが, カレー],
+      [在庫品('にんじん', '2026-09-20'), 在庫品('たまねぎ', '2026-09-14')],
+    );
+    const 分量ありの在庫 = cookableMealsOf(
+      [肉じゃが, カレー],
+      [在庫品('にんじん', '2026-09-20', '1本'), 在庫品('たまねぎ', '2026-09-14', '3個')],
+    );
+
+    expect(名称の並び(分量なしの在庫)).toEqual(['カレー', '肉じゃが']);
+    expect(名称の並び(分量ありの在庫)).toEqual(['カレー', '肉じゃが']);
   });
 });

@@ -24,21 +24,11 @@
   **同じ周で JWT の署名方式（共有秘密 / 非対称鍵）も確かめる** — B-07e は `.dev.vars` の雛形から
   共有秘密（HS256）を採ったが、確かめるまで **ADR-031 は `提案` のまま**である（ADR-031 の結果2）
 - [ ] **B-09** `apps/api/src/main.ts`: composition root で結線する。実装クラスの生成をここだけに閉じる
-- [ ] **B-26** `meal/domain`: 提案 `Suggestion` 集約と、それを組む値（`SuggestionEntry` / `PantrySnapshot`）。
-  **相談のための ADR-037 は起こし、domain-model の追随（用語表・4章・C-7）も済んでいる。残るのは実装である。**
-  置くのは ADR-037 の決定そのまま — 献立側の `StockItem` に分量 `Amount` を足して3項目にし、
-  `PantrySnapshot` はその列を包む。一致の述語は `(name, amount, expiryDate)` の**多重集合**で比べ、
-  **「生成を呼ばない」の判断は持たない**（それは B-28）。`Suggestion` は `entries` が1件以上3件以下で、
-  同じ `mealId` を2つ含めず、`origin` は全件が同じ（C-15 は再利用と生成を混ぜない）。生成後は完全に不変で
-  `with*` を置かない。献立は識別子で参照する。**B-15 の入力 `PantrySnapshot` を起こす周なので B-15 の前に出した**
-  （ADR-037 の結果5）。**ADR-037 が `承認` になってから着手する** —
-  決定が動けば `StockItem` の形ごと捨てることになる
-  （C-4c / C-7 / C-13 / C-14 / C-15 / FR-16 / ADR-007 / ADR-008 / ADR-025 / ADR-034 / ADR-036 の結果9 / **ADR-037** / domain-model 4章）
 - [ ] **B-15** `meal/domain/port`: `MealGenerator` ポートの定義。プロバイダ未決のまま進める（ADR-019 / NFR-18）。
-  **入力4つのうち1つが `PantrySnapshot` であり**（prompt-design 2.1）、その型を起こすのは B-26 である。
+  **入力4つのうち1つが `PantrySnapshot` であり**（prompt-design 2.1）、**その型は B-26 で置いた**（`meal/domain/value/`）。
   残る3つ（`requiredCount` / `avoidTitles` / `asOf`）と戻り値 `GeneratedMeal`、0件のときだけ投げること、
   `householdId` を取らないことは文書から決まるが、**引数の受け取り方など新しく決めた前提が4件ある** —
-  着手する周は設計書の前提の章を確かめること。**B-26 の後**
+  着手する周は設計書の前提の章を確かめること。**前提はこれで揃った**
   （NFR-11 / NFR-18 / ADR-005 / ADR-019 / ADR-021 / ADR-022 / **ADR-037** / prompt-design 2章）
 - [ ] **B-16** 置き換え済みの **ADR-020 への参照を掃除する**。`apps/api/src/shared/domain/HouseholdId.ts` と
   `packages/contract/src/pantry.ts` に残っている。B-07 で直したのは backlog が名指しした
@@ -75,11 +65,12 @@
 - [ ] **B-27** `meal/usecase`: `SuggestMeals` の**再利用だけの経路**。在庫を名称と期限に落として
   `CookableMealFinder` に渡し、**C-11 の除外を通してから上位3件を採り**、`Suggestion` として保存する —
   ADR-036 の決定4 が「並べる → 除外する → 切る」の順をこの層の責務と決めており、**その呼ぶ側がまだ居ない。**
-  同じ周で `MealRepository`«if» と `SuggestionRepository`«if» を置く（`householdId` は全メソッドの必須引数。
-  先行は `StockItemRepository` を B-04 と同じ周に置いた形）。在庫は `pantry/usecase` から受け取る
+  同じ周で `MealRepository`«if» / `SuggestionRepository`«if» と、**`SuggestionIdGenerator`«if»** を置く
+  （`householdId` はリポジトリの全メソッドの必須引数。先行は `StockItemRepository` と `StockItemIdGenerator` を
+  B-04 と同じ周に置いた形）。**識別子を発行するポートはコンテキストごとに置く**（ADR-026）。在庫は `pantry/usecase` から受け取る
   （コンテキストをまたいでよいのは `usecase/` どうしだけ。ADR-033）。
   **作れる献立が0件のときの生成は B-28。この周は再利用で組めたときだけ提案を返す**
-  （FR-34 / FR-35 / NFR-C1b / C-9 / C-11 / C-14 / C-15 / ADR-002 / ADR-033 / ADR-036 の決定4 / **B-26 の後**）
+  （FR-34 / FR-35 / NFR-C1b / C-9 / C-11 / C-14 / C-15 / ADR-002 / ADR-026 / ADR-033 / ADR-036 の決定4）
 - [ ] **B-28** `meal/usecase`: `SuggestMeals` の**生成の経路**。作れる献立が0件のときに `MealGenerator` を呼び、
   3件を求めて提案を組む。既存の献立名を避ける対象として渡し、通った件数でそのまま組む（生成が3件に満たなくても
   0件のときだけ失敗として扱う）。**C-7 の在庫スナップショットの一致による再生成の回避もここ。**

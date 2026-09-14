@@ -96,7 +96,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | コンテキスト | domain | usecase | infrastructure | api | 備考 |
 | --- | --- | --- | --- | --- | --- |
 | `pantry`（在庫） | `StockItem` 集約、`Amount` / `ExpiryDate` / `IngredientId` / `StockItemId`、`StockItemRepository`«if»、`StockItemIdGenerator`«if» | `RegisterStockItem` / `ListStockItems` / `UpdateStockItem` / `DeleteStockItem`、`StockItemDto` | `StockItemRepositoryImpl`（Drizzle）、`db/schema.ts`、`db/HouseholdTransaction.ts`（`set local role` とクレーム） | `StockItemRoutes`、`RuleViolationStatus` | **縦に一本通っている。** ただし `main.ts` に未結線（B-09） |
-| `meal`（献立） | `Meal` 集約、`MealIngredient` / `MealCoverage` / `CookableMeal` / `Amount` / `CookingStep` / `CookingRecord` / `DateTime` / `MealId` / `StockItem` / `ExpiryDate`（value）、`MealCoverageService` / `CookableMealFinder`、`MealRuleViolation` | — | — | — | **domain だけが厚い。** `MealGenerator` ポートはこれから（B-15）。在庫品と期限は献立側にも起こしてある（ADR-036） |
+| `meal`（献立） | `Meal` / `Suggestion` 集約、`MealIngredient` / `MealCoverage` / `CookableMeal` / `Amount` / `CookingStep` / `CookingRecord` / `DateTime` / `MealId` / `StockItem` / `ExpiryDate` / `PantrySnapshot` / `SuggestionEntry` / `SuggestionId`（value）、`MealCoverageService` / `CookableMealFinder`、`MealRuleViolation` | — | — | — | **domain だけが厚い。** `MealGenerator` ポートはこれから（B-15）。在庫品と期限は献立側にも起こしてあり、在庫品は名称・分量・期限の3項目（ADR-036 / ADR-037） |
 | `identity`（世帯） | `HouseholdAuthenticator`«if»、`IdentityRuleViolation` | `IdentifyHousehold` | `HouseholdAuthenticatorImpl`（JWT を HS256 で検証。ADR-031 `提案`） | — | 実環境の署名方式は未確認（B-07f） |
 | `catalog`（食材） | — | — | — | — | `.gitkeep` のみ。食材マスタの初期データが判断待ち |
 | `shared/domain` | `HouseholdId` | | | | |

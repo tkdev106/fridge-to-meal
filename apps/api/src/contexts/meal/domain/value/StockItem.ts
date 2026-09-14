@@ -1,20 +1,24 @@
 import { MealRuleViolation } from '../error/MealRuleViolation.js';
+import type { Amount } from './Amount.js';
 import type { ExpiryDate } from './ExpiryDate.js';
 
 /**
- * 在庫品。献立側は**名称と期限だけ**を持つ（ADR-036 決定3）。
+ * 在庫品。献立側は**名称・分量・期限の3つ**を持つ（ADR-036 決定3 + ADR-037 決定1）。
  *
  * 指しているものは在庫コンテキストの在庫品と同じ1件だが、集約ルートは向こうにあり、
- * こちらは**再利用の規則が見る2つだけ**を持つ射影である。分量も識別子も世帯も持たない
- * のは、規則が見ないものを引数に入れないためである（ADR-033 決定3）。
+ * こちらは**献立側の規則が見るものの総和だけ**を持つ射影である。C-6 と C-12 が名称と
+ * 期限を見、C-7 が加えて分量を見る。識別子も世帯もカタログ参照も持たないのは、
+ * どの規則も見ないものを持ち込まないためである（ADR-033 決定3 / ADR-037 理由(2)）。
  *
- * この形では在庫スナップショット `PantrySnapshot`（C-7）は組めない。一致比較には
- * 分量が要るためで、足りないのは意図した結果である（ADR-036 結果9）。
+ * この3項目で在庫スナップショット `PantrySnapshot`（C-7）が組める。分量は**運ぶだけの
+ * 項目**であり、充足にも並び順にも効かない — 判定が1つ増えたのではない（ADR-037 結果7）。
  */
 export type StockItem = {
   /** 生成の経路を1つに絞るための印。素のオブジェクトリテラルを StockItem として扱えなくする。 */
   readonly __brand: 'StockItem';
   readonly name: string;
+  /** C-7 の一致比較が見る3項目のうちの1つ（ADR-037 決定1）。 */
+  readonly amount: Amount | null;
   readonly expiryDate: ExpiryDate | null;
 };
 
@@ -25,6 +29,8 @@ export type StockItem = {
  */
 export function createStockItem(props: {
   name: string;
+  /** 必須引数。省略できると「分量なし」の表し方が2通りになる（先行 createMealIngredient の分量）。 */
+  amount: Amount | null;
   /** 必須引数。省略できると「期限なし」の表し方が2通りになる（先行 createMealIngredient の分量）。 */
   expiryDate: ExpiryDate | null;
 }): StockItem {
@@ -38,9 +44,12 @@ export function createStockItem(props: {
   }
 
   // 凍結する。可変にすると、規則を通らない名称を後から入れられる（先行 createMealIngredient）。
+  // 分量と期限は amountOf / expiryDateOf を通った値をそのまま抱える。ここで再び正規化すると
+  // 正規化の規則が2か所に散り、片方だけ変わったときに一致が静かにずれる（ADR-037 理由(3)）。
   return Object.freeze({
     __brand: 'StockItem' as const,
     name,
+    amount: props.amount,
     expiryDate: props.expiryDate,
   });
 }
