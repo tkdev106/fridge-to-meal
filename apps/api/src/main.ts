@@ -9,7 +9,7 @@ import { Hono } from 'hono';
 
 const app = new Hono();
 
-/** 疎通確認。Supabase 無料プランの一時停止よけにも使える（ADR-020 の結果3）。 */
+/** 疎通確認。Supabase 無料プランの一時停止よけにも使える（`docs/requirements.md` 11章 未決事項7）。 */
 app.get('/health', (c) => c.json({ status: 'ok' }));
 
 export default app;

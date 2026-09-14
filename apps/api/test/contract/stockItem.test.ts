@@ -153,7 +153,7 @@ describe('登録の入力 RegisterStockItemInput', () => {
   });
 
   it('登録の入力に世帯を含められない', () => {
-    // 規則1 / ADR-020: 世帯は JWT から定まる。
+    // 規則1 / ADR-028: 世帯は認証された利用者から定まる。
     const input: RegisterStockItemInput = {
       name: 'にんじん',
       // @ts-expect-error 世帯は契約に無い
