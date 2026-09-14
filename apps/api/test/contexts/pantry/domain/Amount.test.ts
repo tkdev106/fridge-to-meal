@@ -28,7 +28,7 @@ describe('分量 Amount', () => {
   it('長さも書式も制限しない', () => {
     // ADR-010: 分量を使うのは LLM への入力と画面表示だけで、演算をする要件が無い。
     // 上限は要件に無いので設けない（LLM 応答側の 30 字は腐敗防止層の規則であり、ここではない）。
-    const 長い分量 = 'よく熟したトマトを湯むきしてから'.repeat(10);
-    expect(amountOf(長い分量)).toBe(長い分量);
+    const longAmount = 'よく熟したトマトを湯むきしてから'.repeat(10);
+    expect(amountOf(longAmount)).toBe(longAmount);
   });
 });

@@ -11,17 +11,17 @@ import { PantryRuleViolation } from '../../../src/contexts/pantry/domain/error/P
  * `test/` に閉じてあるのは、`src/` に置くと Worker の成果物に載り、`infrastructure/` に
  * 置くと Supabase 実装と並んで結線の誤りに気づけなくなるためである（B-04 設計書 4章）。
  */
-export class 記憶上の在庫品リポジトリ implements StockItemRepository {
-  readonly #保存済み = new Map<string, StockItem>();
+export class InMemoryStockItemRepository implements StockItemRepository {
+  readonly #stored = new Map<string, StockItem>();
 
   async findById(householdId: HouseholdId, id: StockItemId) {
-    const 在庫品 = this.#保存済み.get(id);
+    const stockItem = this.#stored.get(id);
     // 世帯が違えば「無い」と答える。ここを緩めると世帯分離が破れる。
-    return 在庫品 !== undefined && 在庫品.householdId === householdId ? 在庫品 : null;
+    return stockItem !== undefined && stockItem.householdId === householdId ? stockItem : null;
   }
 
   async findByHousehold(householdId: HouseholdId) {
-    return [...this.#保存済み.values()].filter((在庫品) => 在庫品.householdId === householdId);
+    return [...this.#stored.values()].filter((stockItem) => stockItem.householdId === householdId);
   }
 
   async save(householdId: HouseholdId, stockItem: StockItem) {
@@ -31,11 +31,11 @@ export class 記憶上の在庫品リポジトリ implements StockItemRepository
         '引数の世帯と在庫品の世帯が食い違っている',
       );
     }
-    this.#保存済み.set(stockItem.id, stockItem);
+    this.#stored.set(stockItem.id, stockItem);
   }
 
   async delete(householdId: HouseholdId, id: StockItemId) {
-    const 在庫品 = await this.findById(householdId, id);
-    if (在庫品 !== null) this.#保存済み.delete(id);
+    const stockItem = await this.findById(householdId, id);
+    if (stockItem !== null) this.#stored.delete(id);
   }
 }

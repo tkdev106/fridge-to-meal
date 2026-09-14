@@ -31,10 +31,10 @@ describe('手順 CookingStep', () => {
   it('長さの上限を設けない', () => {
     // B-14a 規則14 / prompt-design 6.2: 150字の上限は腐敗防止層の検証の規則であって、
     // ドメインの不変条件ではない（domain-model 4章の表に無い）。
-    const 長い手順 = 'にんじんを乱切りにして鍋に入れ、水をひたひたに注いで中火にかける。'.repeat(
+    const longStep = 'にんじんを乱切りにして鍋に入れ、水をひたひたに注いで中火にかける。'.repeat(
       10,
     );
 
-    expect(cookingStepOf(長い手順)).toBe(長い手順);
+    expect(cookingStepOf(longStep)).toBe(longStep);
   });
 });

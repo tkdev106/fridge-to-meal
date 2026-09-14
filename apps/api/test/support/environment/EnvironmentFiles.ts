@@ -12,31 +12,31 @@
  */
 
 /** `import.meta.glob` は vite が変換時に解決する。呼び出しは直書きでないと展開されない。 */
-type グロブできるimportMeta = {
+type GlobbableImportMeta = {
   glob(
-    パターン: string,
-    設定: { query: '?raw'; import: 'default'; eager: true },
+    pattern: string,
+    options: { query: '?raw'; import: 'default'; eager: true },
   ): Record<string, string>;
 };
 
 // 第2引数は**オブジェクトリテラルでないと** vite が展開しない（定数に括り出せない）。
-const 読み込んだcompose = (import.meta as unknown as グロブできるimportMeta).glob(
+const loadedCompose = (import.meta as unknown as GlobbableImportMeta).glob(
   '../../../../../docker-compose.yml',
   { query: '?raw', import: 'default', eager: true },
 );
 
-const 読み込んだ初期化SQL = (import.meta as unknown as グロブできるimportMeta).glob(
+const loadedInitSql = (import.meta as unknown as GlobbableImportMeta).glob(
   '../../../../../supabase/local/*.sql',
   { query: '?raw', import: 'default', eager: true },
 );
 
-function 最初の中身(読み込んだもの: Record<string, string>): string | null {
-  const 中身 = Object.entries(読み込んだもの).sort(([左], [右]) => 左.localeCompare(右))[0];
-  return 中身 === undefined ? null : 中身[1];
+function firstContent(loaded: Record<string, string>): string | null {
+  const content = Object.entries(loaded).sort(([left], [right]) => left.localeCompare(right))[0];
+  return content === undefined ? null : content[1];
 }
 
 /** `docker-compose.yml` の全文。無ければ `null`。 */
-export const composeのYAML: string | null = 最初の中身(読み込んだcompose);
+export const composeYaml: string | null = firstContent(loadedCompose);
 
 /** `supabase/local/init.sql` の全文。無ければ `null`。 */
-export const 初期化SQL: string | null = 最初の中身(読み込んだ初期化SQL);
+export const initSql: string | null = firstContent(loadedInitSql);

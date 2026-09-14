@@ -8,28 +8,28 @@
  * 純関数にしてあるのは、テスト自身がこの読み取りを検分できるようにするため（規則9b）。
  */
 
-export type 操作 = 'select' | 'insert' | 'update' | 'delete';
+export type Operation = 'select' | 'insert' | 'update' | 'delete';
 
-export type ポリシーの検分 = {
-  readonly 操作: 操作;
+export type PolicyInspection = {
+  readonly operation: Operation;
   /** `to` に並んだロール。 */
-  readonly 対象ロール: readonly string[];
-  readonly usingを持つ: boolean;
-  readonly withCheckを持つ: boolean;
+  readonly targetRoles: readonly string[];
+  readonly hasUsing: boolean;
+  readonly hasWithCheck: boolean;
 };
 
-export type マイグレーションの検分 = {
-  readonly 表を作る: boolean;
-  readonly 行レベルセキュリティを有効にする: boolean;
-  readonly 行レベルセキュリティを強制する: boolean;
-  readonly ポリシー: { readonly [K in 操作]: ポリシーの検分 | null };
-  readonly anonから全権限を取り上げる: boolean;
-  readonly authenticatedに許す操作: readonly 操作[];
+export type MigrationInspection = {
+  readonly createsTable: boolean;
+  readonly enablesRowLevelSecurity: boolean;
+  readonly forcesRowLevelSecurity: boolean;
+  readonly policies: { readonly [K in Operation]: PolicyInspection | null };
+  readonly revokesAllFromAnon: boolean;
+  readonly operationsGrantedToAuthenticated: readonly Operation[];
   /** 足りない点の名前。空なら4点が揃っている。 */
-  readonly 不足: readonly string[];
+  readonly missing: readonly string[];
 };
 
-const 操作の並び: readonly 操作[] = ['select', 'insert', 'update', 'delete'];
+const OPERATIONS: readonly Operation[] = ['select', 'insert', 'update', 'delete'];
 
 /**
  * SQL コメント（`--` 以降）を落とし、小文字に揃える。
@@ -39,85 +39,88 @@ const 操作の並び: readonly 操作[] = ['select', 'insert', 'update', 'delet
  * 小文字化は `drizzle-kit` が `CREATE TABLE "stock_items"` と大文字で吐き、手書きが
  * 小文字であるため。どちらでも同じ判定になる。
  */
-function 照合できる形にする(sql: string): string {
+function normalize(sql: string): string {
   return sql.replace(/--[^\n]*/g, ' ').toLowerCase();
 }
 
-function ポリシーを読み取る(文: readonly string[], 対象: 操作): ポリシーの検分 | null {
-  const 該当 = 文.find(
-    (一文) => /\bcreate\s+policy\b/.test(一文) && new RegExp(`\\bfor\\s+${対象}\\b`).test(一文),
+function readPolicy(statements: readonly string[], operation: Operation): PolicyInspection | null {
+  const matched = statements.find(
+    (statement) =>
+      /\bcreate\s+policy\b/.test(statement) &&
+      new RegExp(`\\bfor\\s+${operation}\\b`).test(statement),
   );
-  if (該当 === undefined) return null;
+  if (matched === undefined) return null;
 
-  const ロール = /\bto\s+([a-z_]+(?:\s*,\s*[a-z_]+)*)/.exec(該当);
+  const rolesMatch = /\bto\s+([a-z_]+(?:\s*,\s*[a-z_]+)*)/.exec(matched);
   return {
-    操作: 対象,
-    対象ロール: ロール === null ? [] : (ロール[1] ?? '').split(',').map((名前) => 名前.trim()),
-    usingを持つ: /\busing\s*\(/.test(該当),
-    withCheckを持つ: /\bwith\s+check\s*\(/.test(該当),
+    operation,
+    targetRoles:
+      rolesMatch === null ? [] : (rolesMatch[1] ?? '').split(',').map((role) => role.trim()),
+    hasUsing: /\busing\s*\(/.test(matched),
+    hasWithCheck: /\bwith\s+check\s*\(/.test(matched),
   };
 }
 
 /** `grant ... on ... to authenticated` で許された操作。規則5(d)・7。 */
-function authenticatedに許された操作(文: readonly string[]): readonly 操作[] {
-  const 許可 = new Set<操作>();
+function readGrantedOperations(statements: readonly string[]): readonly Operation[] {
+  const granted = new Set<Operation>();
 
-  for (const 一文 of 文) {
-    if (!/\bgrant\b/.test(一文) || !/\bto\s+authenticated\b/.test(一文)) continue;
-    const 対象 = /\bgrant\b([\s\S]*?)\bon\b/.exec(一文)?.[1] ?? '';
-    for (const 操作 of 操作の並び) {
-      if (new RegExp(`\\b${操作}\\b`).test(対象)) 許可.add(操作);
+  for (const statement of statements) {
+    if (!/\bgrant\b/.test(statement) || !/\bto\s+authenticated\b/.test(statement)) continue;
+    const privilegeClause = /\bgrant\b([\s\S]*?)\bon\b/.exec(statement)?.[1] ?? '';
+    for (const operation of OPERATIONS) {
+      if (new RegExp(`\\b${operation}\\b`).test(privilegeClause)) granted.add(operation);
     }
   }
 
-  return 操作の並び.filter((操作) => 許可.has(操作));
+  return OPERATIONS.filter((operation) => granted.has(operation));
 }
 
-export function マイグレーションを検分する(sql: string): マイグレーションの検分 {
-  const 本文 = 照合できる形にする(sql);
-  const 文 = 本文.split(';');
+export function inspectMigrationSql(sql: string): MigrationInspection {
+  const normalizedSql = normalize(sql);
+  const statements = normalizedSql.split(';');
 
-  const ポリシー = {
-    select: ポリシーを読み取る(文, 'select'),
-    insert: ポリシーを読み取る(文, 'insert'),
-    update: ポリシーを読み取る(文, 'update'),
-    delete: ポリシーを読み取る(文, 'delete'),
+  const policies = {
+    select: readPolicy(statements, 'select'),
+    insert: readPolicy(statements, 'insert'),
+    update: readPolicy(statements, 'update'),
+    delete: readPolicy(statements, 'delete'),
   };
-  const 行レベルセキュリティを有効にする = /\benable\s+row\s+level\s+security\b/.test(本文);
-  const 行レベルセキュリティを強制する = /\bforce\s+row\s+level\s+security\b/.test(本文);
-  const anonから全権限を取り上げる = 文.some(
-    (一文) => /\brevoke\s+all\b/.test(一文) && /\bfrom\s+anon\b/.test(一文),
+  const enablesRowLevelSecurity = /\benable\s+row\s+level\s+security\b/.test(normalizedSql);
+  const forcesRowLevelSecurity = /\bforce\s+row\s+level\s+security\b/.test(normalizedSql);
+  const revokesAllFromAnon = statements.some(
+    (statement) => /\brevoke\s+all\b/.test(statement) && /\bfrom\s+anon\b/.test(statement),
   );
-  const 許された操作 = authenticatedに許された操作(文);
+  const grantedOperations = readGrantedOperations(statements);
 
-  const 不足: string[] = [];
-  if (!行レベルセキュリティを有効にする) 不足.push('enable row level security');
-  if (!行レベルセキュリティを強制する) 不足.push('force row level security');
-  for (const 操作 of 操作の並び) {
-    const 一件 = ポリシー[操作];
-    if (一件 === null || !一件.対象ロール.includes('authenticated')) {
-      不足.push(`${操作} ポリシー（to authenticated）`);
+  const missing: string[] = [];
+  if (!enablesRowLevelSecurity) missing.push('enable row level security');
+  if (!forcesRowLevelSecurity) missing.push('force row level security');
+  for (const operation of OPERATIONS) {
+    const policy = policies[operation];
+    if (policy === null || !policy.targetRoles.includes('authenticated')) {
+      missing.push(`${operation} ポリシー（to authenticated）`);
     }
   }
-  if (ポリシー.insert !== null && !ポリシー.insert.withCheckを持つ) {
-    不足.push('insert ポリシーの with check');
+  if (policies.insert !== null && !policies.insert.hasWithCheck) {
+    missing.push('insert ポリシーの with check');
   }
-  if (ポリシー.update !== null && !ポリシー.update.usingを持つ) {
-    不足.push('update ポリシーの using');
+  if (policies.update !== null && !policies.update.hasUsing) {
+    missing.push('update ポリシーの using');
   }
-  if (ポリシー.update !== null && !ポリシー.update.withCheckを持つ) {
-    不足.push('update ポリシーの with check');
+  if (policies.update !== null && !policies.update.hasWithCheck) {
+    missing.push('update ポリシーの with check');
   }
-  if (!anonから全権限を取り上げる) 不足.push('revoke all ... from anon');
-  if (許された操作.length !== 操作の並び.length) 不足.push('grant ... to authenticated');
+  if (!revokesAllFromAnon) missing.push('revoke all ... from anon');
+  if (grantedOperations.length !== OPERATIONS.length) missing.push('grant ... to authenticated');
 
   return {
-    表を作る: /\bcreate\s+table\b/.test(本文),
-    行レベルセキュリティを有効にする,
-    行レベルセキュリティを強制する,
-    ポリシー,
-    anonから全権限を取り上げる,
-    authenticatedに許す操作: 許された操作,
-    不足,
+    createsTable: /\bcreate\s+table\b/.test(normalizedSql),
+    enablesRowLevelSecurity,
+    forcesRowLevelSecurity,
+    policies,
+    revokesAllFromAnon,
+    operationsGrantedToAuthenticated: grantedOperations,
+    missing,
   };
 }

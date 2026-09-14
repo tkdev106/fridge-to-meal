@@ -12,15 +12,15 @@ import { mealIdOf } from '../../../src/contexts/meal/domain/value/MealId.js';
  * 発行を求められない周（再利用だけで組めた回）は、用意を空にしておけば
  * 「1件も発行しないこと」がそのまま守られる。
  */
-export function 記憶上の献立識別子発行器(発行する値: readonly string[]): MealIdGenerator {
-  let 発行済み = 0;
+export function fixedMealIdGenerator(idsToIssue: readonly string[]): MealIdGenerator {
+  let issuedCount = 0;
 
   return () => {
-    const 値 = 発行する値[発行済み];
-    if (値 === undefined) {
-      throw new Error(`発行できる識別子が尽きた（用意したのは ${発行する値.length} 件）`);
+    const id = idsToIssue[issuedCount];
+    if (id === undefined) {
+      throw new Error(`発行できる識別子が尽きた（用意したのは ${idsToIssue.length} 件）`);
     }
-    発行済み += 1;
-    return mealIdOf(値);
+    issuedCount += 1;
+    return mealIdOf(id);
   };
 }

@@ -48,9 +48,9 @@ C-15（再利用が成立したら LLM を呼ばない）は、外部への呼�
 状態として検証する。**
 
 ```ts
-const 生成器 = new 記憶上の献立生成器(生成結果1, 生成結果2); // 用意する生成結果は可変長で渡す
+const mealGenerator = new FixedMealGenerator(generatedMeal1, generatedMeal2); // 用意する生成結果は可変長で渡す
 // ...実行...
-expect(生成器.呼ばれた回数).toBe(0); // C-15: 再利用が成立したら生成しない
+expect(mealGenerator.callCount).toBe(0); // C-15: 再利用が成立したら生成しない
 ```
 
 **用意した生成結果をわざと渡すのが要点である。** 空のまま呼ばれると生成器は
@@ -178,12 +178,18 @@ vitest が拾うのは `.test.ts` だけなので、ここに置いたものは�
 **ヘルパー** — テストの本題でない値はヘルパー関数に隠す。**本題だけが `overrides` に現れる**形にする。
 
 ```ts
-function 在庫品(overrides: Partial<...> = {}) { ... }
+function stockItem(overrides: Partial<...> = {}) { ... }
 
 it('名称の前後の空白は落とす', () => {
-  expect(在庫品({ name: '  にんじん  ' }).name).toBe('にんじん');
+  expect(stockItem({ name: '  にんじん  ' }).name).toBe('にんじん');
 });
 ```
+
+**固定値の記法** — テストの標本（世帯の識別子 `ourHousehold` / `neighborHousehold`、識別子 `idA`、
+基準日時 `asOf`、アクセストークン）は、モジュール直下に置いても camelCase で書く。ADR-039 の決定4 が
+`SCREAMING_SNAKE` と定めるのは規則を表す定数（`src` の `MAX_ENTRIES`、`test/support` の接続先
+`ENDPOINT` や `RESET_SCHEMA_SQL`）であり、標本はその一部ではない。標本は `it` の中で作る値と同じもので、
+置き場所がファイルの上に寄っただけである。
 
 **根拠のコメント** — 「なぜこの振る舞いなのか」が要件・確定事項に由来するときは、
 **その番号を書く**（`// C-6: 充足判定は名称の完全一致`）。番号のないルールは、次の実装者が
@@ -192,7 +198,7 @@ it('名称の前後の空白は落とす', () => {
 **例外を期待するときは型を指定する。**
 
 ```ts
-expect(() => 在庫品({ name: '' })).toThrow(PantryRuleViolation);
+expect(() => stockItem({ name: '' })).toThrow(PantryRuleViolation);
 ```
 
 `toThrow()` を引数なしで書かない。未実装のスタブ（`throw new Error('未実装')`）でも

@@ -18,13 +18,13 @@ import type { HouseholdId } from '../../../src/shared/domain/HouseholdId.js';
  * 同じ識別子の提案でも置き換えない。提案は生成後に不変で（C-3 と同じ筋）、同じ識別子が
  * 2度発行されるのは発行器の誤りである。
  */
-export class 記憶上の提案リポジトリ implements SuggestionRepository {
-  readonly #保存済み: Suggestion[] = [];
-  readonly #直近の取得が投げる例外: Error | null;
-  readonly #最新の取得が投げる例外: Error | null;
+export class InMemorySuggestionRepository implements SuggestionRepository {
+  readonly #stored: Suggestion[] = [];
+  readonly #findRecentThrows: Error | null;
+  readonly #findLatestThrows: Error | null;
 
   /**
-   * `直近の取得が投げる例外` を渡すと `findRecentByHousehold` が、`最新の取得が投げる例外` を
+   * `findRecentThrows` を渡すと `findRecentByHousehold` が、`findLatestThrows` を
    * 渡すと `findLatestByHousehold` が、保存済みを返さずにそれを投げる。**取得の失敗を
    * 握りつぶさず呼び出し側へ伝えること**（B-27 7章2行目 / B-28 7章2行目）を確かめるための
    * 口である。省略すれば保存済みを返す（既定の振る舞い）。
@@ -33,29 +33,31 @@ export class 記憶上の提案リポジトリ implements SuggestionRepository {
    * 1つにまとめると、C-7 の短絡が最新の提案を引く時点で投げてしまい、その先にある
    * `findRecentByHousehold`（C-11 の除外の材料）の伝播を確かめられなくなる。
    */
-  constructor(props: { 直近の取得が投げる例外?: Error; 最新の取得が投げる例外?: Error } = {}) {
-    this.#直近の取得が投げる例外 = props.直近の取得が投げる例外 ?? null;
-    this.#最新の取得が投げる例外 = props.最新の取得が投げる例外 ?? null;
+  constructor(props: { findRecentThrows?: Error; findLatestThrows?: Error } = {}) {
+    this.#findRecentThrows = props.findRecentThrows ?? null;
+    this.#findLatestThrows = props.findLatestThrows ?? null;
   }
 
   async findRecentByHousehold(householdId: HouseholdId, limit: number): Promise<Suggestion[]> {
-    if (this.#直近の取得が投げる例外 !== null) throw this.#直近の取得が投げる例外;
+    if (this.#findRecentThrows !== null) throw this.#findRecentThrows;
 
     // 濾した結果は新しい配列なので、並べ替えても保存済みの並びは動かない。
-    return this.#保存済み
-      .filter((提案) => 提案.householdId === householdId)
-      .sort(新しい順)
+    return this.#stored
+      .filter((suggestion) => suggestion.householdId === householdId)
+      .sort(byNewestFirst)
       .slice(0, limit);
   }
 
   async findLatestByHousehold(householdId: HouseholdId): Promise<Suggestion | null> {
-    if (this.#最新の取得が投げる例外 !== null) throw this.#最新の取得が投げる例外;
+    if (this.#findLatestThrows !== null) throw this.#findLatestThrows;
 
     // 並べ方は `findRecentByHousehold` と同じ1つの述語に任せる。別に書くと、同じ生成日時の
     // 決着（`SuggestionId` の降順）が2か所に散り、片方だけ動いたときに C-7 と C-11 が
     // 別々の提案を見る（B-28 5章）。世帯で濾すのも同じである（C-9）。
     return (
-      this.#保存済み.filter((提案) => 提案.householdId === householdId).sort(新しい順)[0] ?? null
+      this.#stored
+        .filter((suggestion) => suggestion.householdId === householdId)
+        .sort(byNewestFirst)[0] ?? null
     );
   }
 
@@ -67,22 +69,25 @@ export class 記憶上の提案リポジトリ implements SuggestionRepository {
         '引数の世帯と提案の世帯が食い違っている',
       );
     }
-    this.#保存済み.push(suggestion);
+    this.#stored.push(suggestion);
   }
 }
 
 /** 生成日時の新しい順。同じ生成日時は `SuggestionId` の降順で閉じる（B-27 10章）。 */
-function 新しい順(左: Suggestion, 右: Suggestion): number {
+function byNewestFirst(leftSuggestion: Suggestion, rightSuggestion: Suggestion): number {
   // `DateTime` は UTC の正準形なので、文字列の大小がそのまま時刻の順になる。
-  const 生成日時の差 = コード単位で比べる(右.generatedAt, 左.generatedAt);
-  if (生成日時の差 !== 0) return 生成日時の差;
+  const generatedAtOrder = compareCodeUnits(
+    rightSuggestion.generatedAt,
+    leftSuggestion.generatedAt,
+  );
+  if (generatedAtOrder !== 0) return generatedAtOrder;
 
-  return コード単位で比べる(右.id, 左.id);
+  return compareCodeUnits(rightSuggestion.id, leftSuggestion.id);
 }
 
 /** コード単位の大小で比べる（照合順序が実行環境の ICU に依らないようにする）。 */
-function コード単位で比べる(左: string, 右: string): number {
-  if (左 < 右) return -1;
-  if (左 > 右) return 1;
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
   return 0;
 }

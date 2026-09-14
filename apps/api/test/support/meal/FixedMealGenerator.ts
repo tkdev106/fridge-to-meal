@@ -21,65 +21,65 @@ import { MealRuleViolation } from '../../../src/contexts/meal/domain/error/MealR
  *   （B-15 規則7 / prompt-design 6.1 段階5 / 6.4 が切るのは「検証を通った」ものだから）
  * - 並べ替えない。用意した並びのまま返す
  *
- * **`受け取った入力` を持つのは、生成に何を渡したかを観察する口が他に無いからである**
+ * **`receivedInput` を持つのは、生成に何を渡したかを観察する口が他に無いからである**
  * （B-28 規則3〜8）。渡した在庫スナップショット・件数・避けるべき名称・基準日時は出口の
  * 向こうへ行ってしまい、呼ぶ側の返り値からは見えない。持つのは**最後の1件**で、
  * 一度も呼ばれていなければ `null` である（B-28 5章）。
  *
- * **`呼ばれた回数` を持つのは、呼ばれないこと自体が要件だからである**（C-7 / C-15）。
+ * **`callCount` を持つのは、呼ばれないこと自体が要件だからである**（C-7 / C-15）。
  * `vi.fn()` で数えず、**記憶上の実装の状態として観察する**（`docs/testing.md` 2章 /
- * 先行 `記憶上の世帯認証器`）。呼び出しの回数を見てよいのはこの2つの規則のときだけで、
+ * 先行 `FixedHouseholdAuthenticator`）。呼び出しの回数を見てよいのはこの2つの規則のときだけで、
  * それ以外の回数は実装の都合である（同3章）。
  *
  * **`requiredCount` が1未満のときは契約の外である**（B-15 規則8）。この代役は切った結果が0件になり
  * `mealGenerator.empty` を投げるが、それは契約が定めた振る舞いではない — 呼ぶ側が誤って0を渡すと
  * 「生成できなかった」と区別がつかない。呼ぶ側は常に3を渡す（ADR-022）。
  */
-export class 記憶上の献立生成器 implements MealGenerator {
-  readonly #用意した生成結果たち: readonly GeneratedMeal[];
-  #呼ばれた回数 = 0;
-  #受け取った入力: MealGenerationInput | null = null;
+export class FixedMealGenerator implements MealGenerator {
+  readonly #preparedGeneratedMeals: readonly GeneratedMeal[];
+  #callCount = 0;
+  #receivedInput: MealGenerationInput | null = null;
 
-  constructor(...用意した生成結果たち: readonly GeneratedMeal[]) {
-    this.#用意した生成結果たち = 用意した生成結果たち;
+  constructor(...preparedGeneratedMeals: readonly GeneratedMeal[]) {
+    this.#preparedGeneratedMeals = preparedGeneratedMeals;
   }
 
   /** 何度呼ばれたか。**呼ばれないこと**が要件のときだけ見る（C-7 / C-15 / `docs/testing.md` 2章）。 */
-  get 呼ばれた回数(): number {
-    return this.#呼ばれた回数;
+  get callCount(): number {
+    return this.#callCount;
   }
 
   /** 最後に受け取った入力。まだ一度も呼ばれていなければ `null`（B-28 5章 / 規則3〜8）。 */
-  get 受け取った入力(): MealGenerationInput | null {
-    return this.#受け取った入力;
+  get receivedInput(): MealGenerationInput | null {
+    return this.#receivedInput;
   }
 
   async generate(input: MealGenerationInput): Promise<readonly GeneratedMeal[]> {
     // 数えるのは投げるより先である。**呼ばれたことは、投げても事実である**（B-28 規則18 /
-    // 先行 `記憶上の世帯認証器`）。後で数えると、用意した生成結果が0件の回に
+    // 先行 `FixedHouseholdAuthenticator`）。後で数えると、用意した生成結果が0件の回に
     // 「呼ばれていない」と見えてしまい、C-7 と C-15 の番人が務まらない。
-    this.#呼ばれた回数 += 1;
+    this.#callCount += 1;
     // 受け取った入力も同じ理由で投げるより先に控える。**何を渡したかは、投げても渡した事実で
     // ある**（B-28 規則18）。後で控えると、投げた回に「何も渡していない」と見えてしまう。
-    this.#受け取った入力 = input;
+    this.#receivedInput = input;
 
     // 読むのは `requiredCount` だけである。在庫スナップショット・避けるべき名称・基準日時は
     // 本物が生成の材料にするものであって、代役が返すものを変える根拠にはならない
     // （B-15 規則9・10。上限50件も在庫0件もここでは拒まない）。
-    const 名称の重ならない生成結果たち = 同じ名称を落とした(this.#用意した生成結果たち);
+    const distinctTitleGeneratedMeals = dropDuplicateTitles(this.#preparedGeneratedMeals);
 
     // 落としてから切る。逆にすると、同名を含む4件を `requiredCount: 3` で渡したときに
     // 先頭3件を採ってから重複が落ちて2件になり、通せたはずの1件を落とす（B-15 規則7）。
-    const 返す生成結果たち = 名称の重ならない生成結果たち.slice(0, input.requiredCount);
+    const toReturn = distinctTitleGeneratedMeals.slice(0, input.requiredCount);
 
-    if (返す生成結果たち.length === 0) {
+    if (toReturn.length === 0) {
       // 0件で返さない（B-15 規則5 / 7章1行目）。空の列で返すと、呼ぶ側が「生成が失敗した」と
       // 「生成するものが無かった」を見分けられない。**投げるのは0件のときだけ**であり、
       // `requiredCount` に満たないだけなら得られた件数で返す（B-15 規則4 / C-15）。
       throw new MealRuleViolation('mealGenerator.empty', '生成結果が1件もありません');
     }
 
-    return 返す生成結果たち;
+    return toReturn;
   }
 }
 
@@ -91,13 +91,13 @@ export class 記憶上の献立生成器 implements MealGenerator {
  * 契約に無い並びに寄りかかる）。名称は正規化せずそのまま比べる。`GeneratedMeal` が
  * 生成のときに前後の空白を落としているため、ここで畳み直すと二重の正規化になる。
  */
-function 同じ名称を落とした(生成結果たち: readonly GeneratedMeal[]): readonly GeneratedMeal[] {
-  const 出た名称たち = new Set<string>();
-  const 残った生成結果たち: GeneratedMeal[] = [];
-  for (const 生成結果 of 生成結果たち) {
-    if (出た名称たち.has(生成結果.title)) continue;
-    出た名称たち.add(生成結果.title);
-    残った生成結果たち.push(生成結果);
+function dropDuplicateTitles(generatedMeals: readonly GeneratedMeal[]): readonly GeneratedMeal[] {
+  const seenTitles = new Set<string>();
+  const remaining: GeneratedMeal[] = [];
+  for (const generatedMeal of generatedMeals) {
+    if (seenTitles.has(generatedMeal.title)) continue;
+    seenTitles.add(generatedMeal.title);
+    remaining.push(generatedMeal);
   }
-  return 残った生成結果たち;
+  return remaining;
 }

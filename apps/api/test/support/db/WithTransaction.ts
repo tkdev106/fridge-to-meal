@@ -10,21 +10,21 @@ import type { Sql, TransactionSql } from 'postgres';
  * クレームは `set local … = $1` ではなく `select set_config(…, true)` で張る
  * （`set local` はパラメータを取れない）。
  *
- * @param 世帯id `null` なら**クレームを張らない**（張らなければ何が見えるかを確かめるため）。
+ * @param householdId `null` なら**クレームを張らない**（張らなければ何が見えるかを確かめるため）。
  */
-export function トランザクションを張る<T>(
-  接続: Sql,
-  世帯id: string | null,
-  本体: (問い合わせ: TransactionSql) => Promise<T>,
+export function withTransaction<T>(
+  connection: Sql,
+  householdId: string | null,
+  body: (tx: TransactionSql) => Promise<T>,
 ): Promise<T> {
-  return 接続.begin(async (問い合わせ) => {
-    await 問い合わせ`set local role authenticated`;
+  return connection.begin(async (tx) => {
+    await tx`set local role authenticated`;
 
-    if (世帯id !== null) {
-      const クレーム = JSON.stringify({ sub: 世帯id });
-      await 問い合わせ`select set_config('request.jwt.claims', ${クレーム}, true)`;
+    if (householdId !== null) {
+      const claims = JSON.stringify({ sub: householdId });
+      await tx`select set_config('request.jwt.claims', ${claims}, true)`;
     }
 
-    return 本体(問い合わせ);
+    return body(tx);
   }) as Promise<T>;
 }

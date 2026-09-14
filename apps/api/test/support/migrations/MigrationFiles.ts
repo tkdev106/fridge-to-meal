@@ -10,33 +10,31 @@
  */
 
 /** `import.meta.glob` は vite が変換時に解決する。呼び出しは直書きでないと展開されない。 */
-type グロブできるimportMeta = {
+type GlobbableImportMeta = {
   glob(
-    パターン: string,
-    設定: { query: '?raw'; import: 'default'; eager: true },
+    pattern: string,
+    options: { query: '?raw'; import: 'default'; eager: true },
   ): Record<string, string>;
 };
 
-const 読み込んだSQL = (import.meta as unknown as グロブできるimportMeta).glob(
+const loadedSql = (import.meta as unknown as GlobbableImportMeta).glob(
   '../../../../../supabase/migrations/*.sql',
   { query: '?raw', import: 'default', eager: true },
 );
 
-const 読み込んだ生成の土台 = (import.meta as unknown as グロブできるimportMeta).glob(
+const loadedMeta = (import.meta as unknown as GlobbableImportMeta).glob(
   '../../../../../supabase/migrations/meta/*.json',
   { query: '?raw', import: 'default', eager: true },
 );
 
-function ファイル名(パス: string): string {
-  return パス.slice(パス.lastIndexOf('/') + 1);
+function fileNameOf(path: string): string {
+  return path.slice(path.lastIndexOf('/') + 1);
 }
 
 /** `[ファイル名, SQL の全文]` の一覧。並びはファイル名順で決定的。 */
-export const マイグレーションのSQL: [string, string][] = Object.entries(読み込んだSQL)
-  .map(([パス, 中身]): [string, string] => [ファイル名(パス), 中身])
-  .sort(([左], [右]) => 左.localeCompare(右));
+export const migrationSqlFiles: [string, string][] = Object.entries(loadedSql)
+  .map(([path, content]): [string, string] => [fileNameOf(path), content])
+  .sort(([left], [right]) => left.localeCompare(right));
 
 /** `supabase/migrations/meta/` に在る生成物のファイル名（規則8・9c）。 */
-export const 生成の土台のファイル名: string[] = Object.keys(読み込んだ生成の土台)
-  .map(ファイル名)
-  .sort();
+export const migrationMetaFileNames: string[] = Object.keys(loadedMeta).map(fileNameOf).sort();

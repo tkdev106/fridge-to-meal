@@ -10,12 +10,12 @@ import type {
 // 「契約に沿う値が組み立てられること」と「契約に反する値が型として通らないこと」である。
 // 後者は @ts-expect-error で押さえ、pnpm typecheck が赤を出す。
 
-const 在庫品識別子 = '22222222-2222-4222-8222-222222222222';
-const 別の在庫品識別子 = '44444444-4444-4444-8444-444444444444';
-const 食材識別子 = '33333333-3333-4333-8333-333333333333';
+const stockItemId = '22222222-2222-4222-8222-222222222222';
+const anotherStockItemId = '44444444-4444-4444-8444-444444444444';
+const ingredientId = '33333333-3333-4333-8333-333333333333';
 
 /** 一覧に並べる在庫品を作る。本題でない値をここに隠す。 */
-function 在庫品Dto(id: string, name: string, expiryDate: string | null): StockItemDto {
+function stockItemDto(id: string, name: string, expiryDate: string | null): StockItemDto {
   return { id, name, ingredientId: null, amount: null, expiryDate };
 }
 
@@ -23,9 +23,9 @@ describe('在庫品の表現 StockItemDto', () => {
   it('在庫品は識別子・名称・食材・分量・期限を持つ', () => {
     // FR-04: 一覧に出すのに要る5つ（設計書 5章）。
     const dto: StockItemDto = {
-      id: 在庫品識別子,
+      id: stockItemId,
       name: 'にんじん',
-      ingredientId: 食材識別子,
+      ingredientId: ingredientId,
       amount: '2本',
       expiryDate: '2026-09-30',
     };
@@ -38,7 +38,7 @@ describe('在庫品の表現 StockItemDto', () => {
   it('カタログにない食材・分量なし・期限なしを null で表せる', () => {
     // FR-03 / FR-13 / 規則3: 「無し」は null で表す。
     const dto: StockItemDto = {
-      id: 在庫品識別子,
+      id: stockItemId,
       name: '母のぬか床',
       ingredientId: null,
       amount: null,
@@ -54,7 +54,7 @@ describe('在庫品の表現 StockItemDto', () => {
     // 規則3: キーの省略を許すのは登録の入力だけ。返す側は必ず null を載せる。
     // @ts-expect-error 期限のキーが無い値は在庫品の表現ではない
     const dto: StockItemDto = {
-      id: 在庫品識別子,
+      id: stockItemId,
       name: 'にんじん',
       ingredientId: null,
       amount: null,
@@ -66,7 +66,7 @@ describe('在庫品の表現 StockItemDto', () => {
   it('期限に Date を渡せない', () => {
     // 規則6: 期限は YYYY-MM-DD の文字列。時刻もタイムゾーンも持たない。
     const dto: StockItemDto = {
-      id: 在庫品識別子,
+      id: stockItemId,
       name: 'にんじん',
       ingredientId: null,
       amount: null,
@@ -80,7 +80,7 @@ describe('在庫品の表現 StockItemDto', () => {
   it('分量を数値と単位に分けて渡せない', () => {
     // 規則7 / ADR-010: 分量は自由文字列。数値と単位に分解しない。
     const dto: StockItemDto = {
-      id: 在庫品識別子,
+      id: stockItemId,
       name: 'にんじん',
       ingredientId: null,
       // @ts-expect-error 数値は契約に無い
@@ -94,7 +94,7 @@ describe('在庫品の表現 StockItemDto', () => {
   it('在庫品の表現に世帯を持たせられない', () => {
     // 規則1 / C-9 / NFR-09: 世帯は認証された利用者から定まる。本文には書かせない。
     const dto: StockItemDto = {
-      id: 在庫品識別子,
+      id: stockItemId,
       name: 'にんじん',
       ingredientId: null,
       amount: null,
@@ -168,7 +168,7 @@ describe('登録の入力 RegisterStockItemInput', () => {
     const input: RegisterStockItemInput = {
       name: 'にんじん',
       // @ts-expect-error 識別子は契約に無い
-      id: 在庫品識別子,
+      id: stockItemId,
     };
 
     expect(input).toBeDefined();
@@ -233,8 +233,8 @@ describe('一覧の出力 ListStockItemsOutput', () => {
     // 規則11 / ADR-007: 買った日が違えば期限が違う。一覧は一意化も統合もしない。
     const output: ListStockItemsOutput = {
       stockItems: [
-        在庫品Dto(在庫品識別子, 'にんじん', '2026-09-20'),
-        在庫品Dto(別の在庫品識別子, 'にんじん', '2026-09-30'),
+        stockItemDto(stockItemId, 'にんじん', '2026-09-20'),
+        stockItemDto(anotherStockItemId, 'にんじん', '2026-09-30'),
       ],
     };
 
@@ -243,7 +243,7 @@ describe('一覧の出力 ListStockItemsOutput', () => {
 
   it('一覧の出力に配列を直接渡せない', () => {
     // 規則9 / FR-07: 包んでおけば、後から絞り込みの条件を足しても壊れない。
-    const dto = 在庫品Dto(在庫品識別子, 'にんじん', null);
+    const dto = stockItemDto(stockItemId, 'にんじん', null);
 
     // @ts-expect-error 配列そのものは一覧の出力ではない
     const output: ListStockItemsOutput = [dto];
@@ -253,10 +253,10 @@ describe('一覧の出力 ListStockItemsOutput', () => {
 
   it('在庫品を識別子で引く対応表を渡せない', () => {
     // 規則8 / FR-04: 並び順に意味がある（先頭が期限の近いもの）。対応表では順序が保てない。
-    const dto = 在庫品Dto(在庫品識別子, 'にんじん', null);
+    const dto = stockItemDto(stockItemId, 'にんじん', null);
 
     // @ts-expect-error 対応表は一覧の出力ではない
-    const output: ListStockItemsOutput = { stockItems: { [在庫品識別子]: dto } };
+    const output: ListStockItemsOutput = { stockItems: { [stockItemId]: dto } };
 
     expect(output).toBeDefined();
   });

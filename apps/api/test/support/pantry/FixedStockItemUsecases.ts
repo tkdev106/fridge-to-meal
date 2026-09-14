@@ -18,109 +18,109 @@ import type { HouseholdId } from '../../../src/shared/domain/HouseholdId.js';
  * 呼び出しを数えず、記憶上の実装の状態として観察する（同 2章）。先行は
  * `FixedStockItemIdGenerator.ts` と `FixedHouseholdAuthenticator.ts`。
  *
- * 応答は **「返す値」か「投げる例外」のどちらか一方**である（先行は `認証器の応答`）。
+ * 応答は **「返す値」か「投げる例外」のどちらか一方**である（先行は `AuthenticatorResponse`）。
  * 失敗の写像（B-08 7章）を確かめるには、ユースケースが規則違反を投げた先を見る必要があるため。
  * **引数を覚えるのは投げる前**にする — 「どこまで届いたか」を状態として観察できるようにする。
  *
  * 本物のユースケースの型をそのまま名乗るので、**api 層が期待する形が本物と食い違って
  * いれば型検査で落ちる。**
  */
-export type 在庫品の応答 = { readonly 返す在庫品: StockItemDto } | { readonly 投げる例外: Error };
+export type StockItemResponse = { readonly returns: StockItemDto } | { readonly throws: Error };
 
-export type 一覧の応答 =
-  { readonly 返す出力: ListStockItemsOutput } | { readonly 投げる例外: Error };
+export type ListStockItemsResponse =
+  { readonly returns: ListStockItemsOutput } | { readonly throws: Error };
 
 /** 削除は値を返さないので、成功は印だけを置く。 */
-export type 削除の応答 = { readonly 成功: true } | { readonly 投げる例外: Error };
+export type DeleteStockItemResponse = { readonly succeeds: true } | { readonly throws: Error };
 
-export class 記憶上の在庫品の登録 {
-  readonly #応答: 在庫品の応答;
-  readonly #受け取った世帯たち: HouseholdId[] = [];
-  readonly #受け取った入力たち: RegisterStockItemInput[] = [];
+export class FixedRegisterStockItem {
+  readonly #response: StockItemResponse;
+  readonly #receivedHouseholdIds: HouseholdId[] = [];
+  readonly #receivedInputs: RegisterStockItemInput[] = [];
 
-  constructor(応答: 在庫品の応答) {
-    this.#応答 = 応答;
+  constructor(response: StockItemResponse) {
+    this.#response = response;
   }
 
-  get 呼ばれた回数(): number {
-    return this.#受け取った世帯たち.length;
+  get callCount(): number {
+    return this.#receivedHouseholdIds.length;
   }
 
   /** 最後に渡された第1引数の世帯。まだ一度も呼ばれていなければ `null`（C-9）。 */
-  get 受け取った世帯(): HouseholdId | null {
-    return this.#受け取った世帯たち.at(-1) ?? null;
+  get receivedHouseholdId(): HouseholdId | null {
+    return this.#receivedHouseholdIds.at(-1) ?? null;
   }
 
   /** 最後に渡された第2引数の入力。 */
-  get 受け取った入力(): RegisterStockItemInput | null {
-    return this.#受け取った入力たち.at(-1) ?? null;
+  get receivedInput(): RegisterStockItemInput | null {
+    return this.#receivedInputs.at(-1) ?? null;
   }
 
-  readonly 登録する: RegisterStockItem = async (householdId, input) => {
-    this.#受け取った世帯たち.push(householdId);
-    this.#受け取った入力たち.push(input);
-    if ('投げる例外' in this.#応答) throw this.#応答.投げる例外;
-    return this.#応答.返す在庫品;
+  readonly register: RegisterStockItem = async (householdId, input) => {
+    this.#receivedHouseholdIds.push(householdId);
+    this.#receivedInputs.push(input);
+    if ('throws' in this.#response) throw this.#response.throws;
+    return this.#response.returns;
   };
 }
 
-export class 記憶上の在庫品の一覧 {
-  readonly #応答: 一覧の応答;
-  readonly #受け取った世帯たち: HouseholdId[] = [];
+export class FixedListStockItems {
+  readonly #response: ListStockItemsResponse;
+  readonly #receivedHouseholdIds: HouseholdId[] = [];
 
-  constructor(応答: 一覧の応答) {
-    this.#応答 = 応答;
+  constructor(response: ListStockItemsResponse) {
+    this.#response = response;
   }
 
-  get 呼ばれた回数(): number {
-    return this.#受け取った世帯たち.length;
+  get callCount(): number {
+    return this.#receivedHouseholdIds.length;
   }
 
-  get 受け取った世帯(): HouseholdId | null {
-    return this.#受け取った世帯たち.at(-1) ?? null;
+  get receivedHouseholdId(): HouseholdId | null {
+    return this.#receivedHouseholdIds.at(-1) ?? null;
   }
 
-  readonly 一覧する: ListStockItems = async (householdId) => {
-    this.#受け取った世帯たち.push(householdId);
-    if ('投げる例外' in this.#応答) throw this.#応答.投げる例外;
-    return this.#応答.返す出力;
+  readonly list: ListStockItems = async (householdId) => {
+    this.#receivedHouseholdIds.push(householdId);
+    if ('throws' in this.#response) throw this.#response.throws;
+    return this.#response.returns;
   };
 }
 
-export class 記憶上の在庫品の更新 {
-  readonly #応答: 在庫品の応答;
-  readonly #受け取った世帯たち: HouseholdId[] = [];
-  readonly #受け取った識別子たち: StockItemId[] = [];
-  readonly #受け取った入力たち: UpdateStockItemInput[] = [];
+export class FixedUpdateStockItem {
+  readonly #response: StockItemResponse;
+  readonly #receivedHouseholdIds: HouseholdId[] = [];
+  readonly #receivedStockItemIds: StockItemId[] = [];
+  readonly #receivedInputs: UpdateStockItemInput[] = [];
 
-  constructor(応答: 在庫品の応答) {
-    this.#応答 = 応答;
+  constructor(response: StockItemResponse) {
+    this.#response = response;
   }
 
-  get 呼ばれた回数(): number {
-    return this.#受け取った世帯たち.length;
+  get callCount(): number {
+    return this.#receivedHouseholdIds.length;
   }
 
-  get 受け取った世帯(): HouseholdId | null {
-    return this.#受け取った世帯たち.at(-1) ?? null;
+  get receivedHouseholdId(): HouseholdId | null {
+    return this.#receivedHouseholdIds.at(-1) ?? null;
   }
 
   /** 最後に渡された第2引数の在庫品の識別子。 */
-  get 受け取った識別子(): StockItemId | null {
-    return this.#受け取った識別子たち.at(-1) ?? null;
+  get receivedStockItemId(): StockItemId | null {
+    return this.#receivedStockItemIds.at(-1) ?? null;
   }
 
   /** 最後に渡された第3引数の入力。 */
-  get 受け取った入力(): UpdateStockItemInput | null {
-    return this.#受け取った入力たち.at(-1) ?? null;
+  get receivedInput(): UpdateStockItemInput | null {
+    return this.#receivedInputs.at(-1) ?? null;
   }
 
-  readonly 更新する: UpdateStockItem = async (householdId, id, input) => {
-    this.#受け取った世帯たち.push(householdId);
-    this.#受け取った識別子たち.push(id);
-    this.#受け取った入力たち.push(input);
-    if ('投げる例外' in this.#応答) throw this.#応答.投げる例外;
-    return this.#応答.返す在庫品;
+  readonly update: UpdateStockItem = async (householdId, id, input) => {
+    this.#receivedHouseholdIds.push(householdId);
+    this.#receivedStockItemIds.push(id);
+    this.#receivedInputs.push(input);
+    if ('throws' in this.#response) throw this.#response.throws;
+    return this.#response.returns;
   };
 }
 
@@ -128,38 +128,38 @@ export class 記憶上の在庫品の更新 {
  * 削除だけは**呼ばれるたびに応答を順に返す**（可変長引数）。削除が冪等でないこと
  * （B-08 規則13 / ADR-027）は、同じ在庫品を2度削除して1度目と2度目の違いを見るしか
  * 確かめようがないためである。用意した数より多く呼ばれたら投げる —
- * **足りないまま緑にしない**ため（先行は `記憶上の世帯認証器`）。
+ * **足りないまま緑にしない**ため（先行は `FixedHouseholdAuthenticator`）。
  */
-export class 記憶上の在庫品の削除 {
-  readonly #応答たち: readonly 削除の応答[];
-  readonly #受け取った世帯たち: HouseholdId[] = [];
-  readonly #受け取った識別子たち: StockItemId[] = [];
+export class FixedDeleteStockItem {
+  readonly #responses: readonly DeleteStockItemResponse[];
+  readonly #receivedHouseholdIds: HouseholdId[] = [];
+  readonly #receivedStockItemIds: StockItemId[] = [];
 
-  constructor(...応答たち: readonly 削除の応答[]) {
-    this.#応答たち = 応答たち;
+  constructor(...responses: readonly DeleteStockItemResponse[]) {
+    this.#responses = responses;
   }
 
-  get 呼ばれた回数(): number {
-    return this.#受け取った世帯たち.length;
+  get callCount(): number {
+    return this.#receivedHouseholdIds.length;
   }
 
-  get 受け取った世帯(): HouseholdId | null {
-    return this.#受け取った世帯たち.at(-1) ?? null;
+  get receivedHouseholdId(): HouseholdId | null {
+    return this.#receivedHouseholdIds.at(-1) ?? null;
   }
 
   /** 最後に渡された第2引数の在庫品の識別子。 */
-  get 受け取った識別子(): StockItemId | null {
-    return this.#受け取った識別子たち.at(-1) ?? null;
+  get receivedStockItemId(): StockItemId | null {
+    return this.#receivedStockItemIds.at(-1) ?? null;
   }
 
-  readonly 削除する: DeleteStockItem = async (householdId, id) => {
-    const 応答 = this.#応答たち[this.#受け取った世帯たち.length];
-    this.#受け取った世帯たち.push(householdId);
-    this.#受け取った識別子たち.push(id);
+  readonly delete: DeleteStockItem = async (householdId, id) => {
+    const response = this.#responses[this.#receivedHouseholdIds.length];
+    this.#receivedHouseholdIds.push(householdId);
+    this.#receivedStockItemIds.push(id);
 
-    if (応答 === undefined) {
-      throw new Error(`用意した応答が尽きた（用意したのは ${this.#応答たち.length} 件）`);
+    if (response === undefined) {
+      throw new Error(`用意した応答が尽きた（用意したのは ${this.#responses.length} 件）`);
     }
-    if ('投げる例外' in 応答) throw 応答.投げる例外;
+    if ('throws' in response) throw response.throws;
   };
 }

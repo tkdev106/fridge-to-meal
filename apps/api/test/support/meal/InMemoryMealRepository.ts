@@ -3,10 +3,10 @@ import type { MealRepository } from '../../../src/contexts/meal/domain/repositor
 import { MealRuleViolation } from '../../../src/contexts/meal/domain/error/MealRuleViolation.js';
 import type { HouseholdId } from '../../../src/shared/domain/HouseholdId.js';
 
-/** 何件目の保存で何を投げるか。先行の `投げる例外` と同じ、決まった応答の持たせ方である。 */
-export type 保存の失敗 = {
-  readonly 何件目の保存で投げるか: number;
-  readonly 投げる例外: Error;
+/** 何件目の保存で何を投げるか。先行の `throws` と同じ、決まった応答の持たせ方である。 */
+export type SaveFailure = {
+  readonly onSaveNumber: number;
+  readonly throws: Error;
 };
 
 /**
@@ -23,28 +23,28 @@ export type 保存の失敗 = {
  *
  * - `save` は引数の世帯と献立の世帯が食い違えば拒む（C-9 / 先行 `save.householdMismatch`）
  *
- * **保存の失敗は `保存が途中で投げるもの` で注入する**（B-28 7章4行目）。先行の
- * `記憶上の在庫品の一覧`（`投げる例外`）と `記憶上の提案リポジトリ`（`直近の取得が投げる例外`）と
+ * **保存の失敗は `withSaveFailure` で注入する**（B-28 7章4行目）。先行の
+ * `FixedListStockItems`（`throws`）と `InMemorySuggestionRepository`（`findRecentThrows`）と
  * 同じ筋で、決まった応答を持たせるだけである。**可変長の構築は壊さない** — 前提の献立を置く
  * 口はそのままで、失敗の設定だけを別の入口から受け取る。
  *
  * 同じ識別子の献立でも置き換えない。献立は生成後に編集できず（C-3）、同じ識別子が2度
- * 発行されるのは発行器の誤りである（先行 `記憶上の提案リポジトリ`）。
+ * 発行されるのは発行器の誤りである（先行 `InMemorySuggestionRepository`）。
  *
  * **`findByHousehold` は世帯ごとの配列を毎回同じ参照で返す。** 複製して返すと、呼ぶ側が
  * 受け取った列をその場で並べ替えていても気づけない（B-27 規則17 / ADR-009）。世帯で分けて
  * 持つのは、「その世帯の献立をすべて返す」という約束から外れた実装をテストの側に作らない
  * ためである（先行 `ListStockItems.test.ts` の同じ配列を返す記憶上の実装）。
  */
-export class 記憶上の献立リポジトリ implements MealRepository {
-  readonly #世帯ごとの保存済み = new Map<HouseholdId, Meal[]>();
-  #保存の回数 = 0;
-  #保存が投げる: 保存の失敗 | null = null;
+export class InMemoryMealRepository implements MealRepository {
+  readonly #storedByHousehold = new Map<HouseholdId, Meal[]>();
+  #saveCount = 0;
+  #saveFailure: SaveFailure | null = null;
 
-  constructor(...献立たち: readonly Meal[]) {
+  constructor(...meals: readonly Meal[]) {
     // 世帯は献立自身が持つものだけで決める。引数で別に受け取ると、献立の世帯と
     // 置き場所が食い違う状態をテストの側に作れてしまう（C-9）。
-    for (const 献立 of 献立たち) this.#その世帯の配列(献立.householdId).push(献立);
+    for (const meal of meals) this.#arrayOf(meal.householdId).push(meal);
   }
 
   /**
@@ -53,30 +53,30 @@ export class 記憶上の献立リポジトリ implements MealRepository {
    * 1件目を保存した後に2件目が落ちる、という途中での失敗を作れる入口である。数えるのは
    * 呼ばれた回数であり、投げた回も1件に数える。
    */
-  static 保存が途中で投げるもの(
-    保存が投げる: 保存の失敗,
-    ...献立たち: readonly Meal[]
-  ): 記憶上の献立リポジトリ {
-    const リポジトリ = new 記憶上の献立リポジトリ(...献立たち);
-    リポジトリ.#保存が投げる = 保存が投げる;
-    return リポジトリ;
+  static withSaveFailure(
+    saveFailure: SaveFailure,
+    ...meals: readonly Meal[]
+  ): InMemoryMealRepository {
+    const repository = new InMemoryMealRepository(...meals);
+    repository.#saveFailure = saveFailure;
+    return repository;
   }
 
-  #その世帯の配列(householdId: HouseholdId): Meal[] {
-    const 既存 = this.#世帯ごとの保存済み.get(householdId);
-    if (既存 !== undefined) return 既存;
+  #arrayOf(householdId: HouseholdId): Meal[] {
+    const existing = this.#storedByHousehold.get(householdId);
+    if (existing !== undefined) return existing;
 
-    const 新しい配列: Meal[] = [];
-    this.#世帯ごとの保存済み.set(householdId, 新しい配列);
-    return 新しい配列;
+    const created: Meal[] = [];
+    this.#storedByHousehold.set(householdId, created);
+    return created;
   }
 
   async findByHousehold(householdId: HouseholdId): Promise<Meal[]> {
-    return this.#その世帯の配列(householdId);
+    return this.#arrayOf(householdId);
   }
 
   async save(householdId: HouseholdId, meal: Meal): Promise<void> {
-    this.#保存の回数 += 1;
+    this.#saveCount += 1;
 
     if (meal.householdId !== householdId) {
       // 世帯が違えば保存を拒む。ここを緩めると世帯分離が破れる（C-9）。
@@ -86,11 +86,11 @@ export class 記憶上の献立リポジトリ implements MealRepository {
       );
     }
 
-    const 保存が投げる = this.#保存が投げる;
-    if (保存が投げる !== null && 保存が投げる.何件目の保存で投げるか === this.#保存の回数) {
+    const saveFailure = this.#saveFailure;
+    if (saveFailure !== null && saveFailure.onSaveNumber === this.#saveCount) {
       // 用意した回だけ落ちる。それより前の回で積んだ献立はそのまま残る（B-28 7章4行目）。
-      throw 保存が投げる.投げる例外;
+      throw saveFailure.throws;
     }
-    this.#その世帯の配列(householdId).push(meal);
+    this.#arrayOf(householdId).push(meal);
   }
 }

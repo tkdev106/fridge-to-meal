@@ -7,13 +7,13 @@ import { dateTimeOf } from '../../../../src/contexts/meal/domain/value/DateTime.
 import { mealIdOf } from '../../../../src/contexts/meal/domain/value/MealId.js';
 import { householdIdOf } from '../../../../src/shared/domain/HouseholdId.js';
 
-const 世帯識別子 = householdIdOf('11111111-1111-4111-8111-111111111111');
+const householdId = householdIdOf('11111111-1111-4111-8111-111111111111');
 
 /** 本題でない値を隠して献立を作る。 */
-function 献立(overrides: Partial<Parameters<typeof createMeal>[0]> = {}) {
+function meal(overrides: Partial<Parameters<typeof createMeal>[0]> = {}) {
   return createMeal({
     id: mealIdOf('22222222-2222-4222-8222-222222222222'),
-    householdId: 世帯識別子,
+    householdId,
     title: '肉じゃが',
     ingredients: [createMealIngredient({ name: 'にんじん', kind: 'main', amount: null })],
     steps: [cookingStepOf('煮る')],
@@ -26,26 +26,29 @@ function 献立(overrides: Partial<Parameters<typeof createMeal>[0]> = {}) {
 describe('作れる献立 CookableMeal', () => {
   it('渡した献立をそのまま抱える', () => {
     // B-14b 規則5 / ADR-036 決定5: 工場は判定をしない。抱えるものを作り替えもしない。
-    const meal = 献立();
+    const created = meal();
 
-    expect(createCookableMeal({ meal }).meal).toBe(meal);
+    expect(createCookableMeal({ meal: created }).meal).toBe(created);
   });
 
   it('充足を持たず、献立だけを抱える', () => {
     // B-14b 規則4 / ADR-035 の論法: 不足0件のものだけを通すのだから、
     // 充足を持たせても中身は常に同じで、持つ意味がない。
-    const meal = 献立();
+    const created = meal();
 
-    expect(createCookableMeal({ meal })).toEqual({ __brand: 'CookableMeal', meal });
+    expect(createCookableMeal({ meal: created })).toEqual({
+      __brand: 'CookableMeal',
+      meal: created,
+    });
   });
 
   it('作ったあとに抱えている献立を差し替えられない', () => {
     // ADR-036 決定5: ブランドは「不足0件の判定を通った」ことの印である。
     // 差し替えられると、その印が指している中身が変わり、印が意味を失う。
-    const cookableMeal = createCookableMeal({ meal: 献立() });
+    const cookableMeal = createCookableMeal({ meal: meal() });
 
     expect(() => {
-      (cookableMeal as { meal: Meal }).meal = 献立({ title: 'カレー' });
+      (cookableMeal as { meal: Meal }).meal = meal({ title: 'カレー' });
     }).toThrow(TypeError);
   });
 });

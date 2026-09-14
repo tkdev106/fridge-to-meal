@@ -10,15 +10,15 @@ import { stockItemIdOf } from '../../../src/contexts/pantry/domain/value/StockIt
  *
  * 用意した数より多く発行を求められたら投げる。**足りないまま緑にしない**ため。
  */
-export function 記憶上の在庫品識別子発行器(発行する値: readonly string[]): StockItemIdGenerator {
-  let 発行済み = 0;
+export function fixedStockItemIdGenerator(idsToIssue: readonly string[]): StockItemIdGenerator {
+  let issuedCount = 0;
 
   return () => {
-    const 値 = 発行する値[発行済み];
-    if (値 === undefined) {
-      throw new Error(`発行できる識別子が尽きた（用意したのは ${発行する値.length} 件）`);
+    const idToIssue = idsToIssue[issuedCount];
+    if (idToIssue === undefined) {
+      throw new Error(`発行できる識別子が尽きた（用意したのは ${idsToIssue.length} 件）`);
     }
-    発行済み += 1;
-    return stockItemIdOf(値);
+    issuedCount += 1;
+    return stockItemIdOf(idToIssue);
   };
 }

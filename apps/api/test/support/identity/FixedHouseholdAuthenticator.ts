@@ -11,34 +11,34 @@ import type { HouseholdId } from '../../../src/shared/domain/HouseholdId.js';
  *
  * 用意した数より多く呼ばれたら投げる。**足りないまま緑にしない**ため。
  */
-export type 認証器の応答 = { readonly 返す世帯: HouseholdId } | { readonly 投げる例外: Error };
+export type AuthenticatorResponse = { readonly returns: HouseholdId } | { readonly throws: Error };
 
-export class 記憶上の世帯認証器 implements HouseholdAuthenticator {
-  readonly #応答たち: readonly 認証器の応答[];
-  readonly #受け取ったアクセストークンたち: string[] = [];
+export class FixedHouseholdAuthenticator implements HouseholdAuthenticator {
+  readonly #responses: readonly AuthenticatorResponse[];
+  readonly #receivedAccessTokens: string[] = [];
 
-  constructor(...応答たち: readonly 認証器の応答[]) {
-    this.#応答たち = 応答たち;
+  constructor(...responses: readonly AuthenticatorResponse[]) {
+    this.#responses = responses;
   }
 
   /** 何度委ねられたか。**呼ばれないこと**が要件のときだけ見る（`docs/testing.md` 2章）。 */
-  get 呼ばれた回数(): number {
-    return this.#受け取ったアクセストークンたち.length;
+  get callCount(): number {
+    return this.#receivedAccessTokens.length;
   }
 
   /** 最後に委ねられたアクセストークン。まだ一度も呼ばれていなければ `null`。 */
-  get 受け取ったアクセストークン(): string | null {
-    return this.#受け取ったアクセストークンたち.at(-1) ?? null;
+  get receivedAccessToken(): string | null {
+    return this.#receivedAccessTokens.at(-1) ?? null;
   }
 
   async authenticate(accessToken: string): Promise<HouseholdId> {
-    const 応答 = this.#応答たち[this.#受け取ったアクセストークンたち.length];
-    this.#受け取ったアクセストークンたち.push(accessToken);
+    const response = this.#responses[this.#receivedAccessTokens.length];
+    this.#receivedAccessTokens.push(accessToken);
 
-    if (応答 === undefined) {
-      throw new Error(`用意した応答が尽きた（用意したのは ${this.#応答たち.length} 件）`);
+    if (response === undefined) {
+      throw new Error(`用意した応答が尽きた（用意したのは ${this.#responses.length} 件）`);
     }
-    if ('投げる例外' in 応答) throw 応答.投げる例外;
-    return 応答.返す世帯;
+    if ('throws' in response) throw response.throws;
+    return response.returns;
   }
 }

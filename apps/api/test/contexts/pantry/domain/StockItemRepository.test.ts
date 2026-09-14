@@ -6,12 +6,12 @@ import { amountOf } from '../../../../src/contexts/pantry/domain/value/Amount.js
 import { householdIdOf } from '../../../../src/shared/domain/HouseholdId.js';
 import type { HouseholdId } from '../../../../src/shared/domain/HouseholdId.js';
 import { PantryRuleViolation } from '../../../../src/contexts/pantry/domain/error/PantryRuleViolation.js';
-import { 記憶上の在庫品リポジトリ } from '../../../support/pantry/InMemoryStockItemRepository.js';
+import { InMemoryStockItemRepository } from '../../../support/pantry/InMemoryStockItemRepository.js';
 
-const 我が家 = householdIdOf('11111111-1111-4111-8111-111111111111');
-const 隣の家 = householdIdOf('99999999-9999-4999-8999-999999999999');
+const ourHousehold = householdIdOf('11111111-1111-4111-8111-111111111111');
+const neighborHousehold = householdIdOf('99999999-9999-4999-8999-999999999999');
 
-function にんじん(householdId: HouseholdId, id = '22222222-2222-4222-8222-222222222222') {
+function carrot(householdId: HouseholdId, id = '22222222-2222-4222-8222-222222222222') {
   return createStockItem({
     id: stockItemIdOf(id),
     householdId,
@@ -23,7 +23,7 @@ function にんじん(householdId: HouseholdId, id = '22222222-2222-4222-8222-22
 }
 
 /** 先頭の引数の型を並べる。C-9 が全メソッドに世帯識別子を要求していることの検査に使う。 */
-type 先頭の引数<T> = {
+type FirstParameter<T> = {
   [K in keyof T]: T[K] extends (...args: infer A) => unknown ? A[0] : never;
 };
 
@@ -31,76 +31,81 @@ type 先頭の引数<T> = {
  * 全メソッドの先頭が `HouseholdId` なら `true`、1つでも違えば `never`。
  * `never` になると下の代入が型検査で落ちる。
  */
-type 全メソッドが世帯識別子を先頭に取るか =
-  先頭の引数<StockItemRepository>[keyof StockItemRepository] extends HouseholdId ? true : never;
+type AllMethodsTakeHouseholdIdFirst =
+  FirstParameter<StockItemRepository>[keyof StockItemRepository] extends HouseholdId ? true : never;
 
 describe('在庫品リポジトリ StockItemRepository', () => {
   it('全メソッドが世帯識別子を先頭の引数に取る（C-9）', () => {
     // 型の主張。世帯識別子を取らないメソッドを足した時点で、この行が typecheck で落ちる。
     // 実行時には何も確かめていない — 確かめているのは型検査のほうである。
-    const 主張: 全メソッドが世帯識別子を先頭に取るか = true;
+    const assertion: AllMethodsTakeHouseholdIdFirst = true;
 
-    expect(主張).toBe(true);
+    expect(assertion).toBe(true);
   });
 
   it('保存した在庫品を取り出せる', async () => {
-    const repository: StockItemRepository = new 記憶上の在庫品リポジトリ();
-    await repository.save(我が家, にんじん(我が家));
+    const repository: StockItemRepository = new InMemoryStockItemRepository();
+    await repository.save(ourHousehold, carrot(ourHousehold));
 
-    const 取得 = await repository.findById(
-      我が家,
+    const found = await repository.findById(
+      ourHousehold,
       stockItemIdOf('22222222-2222-4222-8222-222222222222'),
     );
 
-    expect(取得?.name).toBe('にんじん');
+    expect(found?.name).toBe('にんじん');
   });
 
   it('他の世帯の在庫品は取り出せない', async () => {
     // C-9 の核心。世帯をまたぐ取得が起きないことを、実装ごとにここで確かめられる。
-    const repository: StockItemRepository = new 記憶上の在庫品リポジトリ();
-    await repository.save(我が家, にんじん(我が家));
+    const repository: StockItemRepository = new InMemoryStockItemRepository();
+    await repository.save(ourHousehold, carrot(ourHousehold));
 
-    const 取得 = await repository.findById(
-      隣の家,
+    const found = await repository.findById(
+      neighborHousehold,
       stockItemIdOf('22222222-2222-4222-8222-222222222222'),
     );
 
-    expect(取得).toBeNull();
+    expect(found).toBeNull();
   });
 
   it('一覧は自分の世帯のものだけを返す', async () => {
-    const repository: StockItemRepository = new 記憶上の在庫品リポジトリ();
-    await repository.save(我が家, にんじん(我が家));
-    await repository.save(隣の家, にんじん(隣の家, '33333333-3333-4333-8333-333333333333'));
+    const repository: StockItemRepository = new InMemoryStockItemRepository();
+    await repository.save(ourHousehold, carrot(ourHousehold));
+    await repository.save(
+      neighborHousehold,
+      carrot(neighborHousehold, '33333333-3333-4333-8333-333333333333'),
+    );
 
-    expect(await repository.findByHousehold(我が家)).toHaveLength(1);
-    expect(await repository.findByHousehold(隣の家)).toHaveLength(1);
+    expect(await repository.findByHousehold(ourHousehold)).toHaveLength(1);
+    expect(await repository.findByHousehold(neighborHousehold)).toHaveLength(1);
   });
 
   it('他の世帯の在庫品として保存しようとすると拒む', async () => {
     // interface では強制できない約束なので、実装ごとにここで確かめる。
-    const repository: StockItemRepository = new 記憶上の在庫品リポジトリ();
+    const repository: StockItemRepository = new InMemoryStockItemRepository();
 
-    await expect(repository.save(隣の家, にんじん(我が家))).rejects.toThrow(PantryRuleViolation);
+    await expect(repository.save(neighborHousehold, carrot(ourHousehold))).rejects.toThrow(
+      PantryRuleViolation,
+    );
   });
 
   it('削除できる', async () => {
-    const repository: StockItemRepository = new 記憶上の在庫品リポジトリ();
+    const repository: StockItemRepository = new InMemoryStockItemRepository();
     const id = stockItemIdOf('22222222-2222-4222-8222-222222222222');
-    await repository.save(我が家, にんじん(我が家));
+    await repository.save(ourHousehold, carrot(ourHousehold));
 
-    await repository.delete(我が家, id);
+    await repository.delete(ourHousehold, id);
 
-    expect(await repository.findById(我が家, id)).toBeNull();
+    expect(await repository.findById(ourHousehold, id)).toBeNull();
   });
 
   it('他の世帯の在庫品は削除できない', async () => {
-    const repository: StockItemRepository = new 記憶上の在庫品リポジトリ();
+    const repository: StockItemRepository = new InMemoryStockItemRepository();
     const id = stockItemIdOf('22222222-2222-4222-8222-222222222222');
-    await repository.save(我が家, にんじん(我が家));
+    await repository.save(ourHousehold, carrot(ourHousehold));
 
-    await repository.delete(隣の家, id);
+    await repository.delete(neighborHousehold, id);
 
-    expect(await repository.findById(我が家, id)).not.toBeNull();
+    expect(await repository.findById(ourHousehold, id)).not.toBeNull();
   });
 });

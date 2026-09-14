@@ -10,15 +10,15 @@ import { suggestionIdOf } from '../../../src/contexts/meal/domain/value/Suggesti
  *
  * 用意した数より多く発行を求められたら投げる。**足りないまま緑にしない**ため。
  */
-export function 記憶上の提案識別子発行器(発行する値: readonly string[]): SuggestionIdGenerator {
-  let 発行済み = 0;
+export function fixedSuggestionIdGenerator(idsToIssue: readonly string[]): SuggestionIdGenerator {
+  let issuedCount = 0;
 
   return () => {
-    const 値 = 発行する値[発行済み];
-    if (値 === undefined) {
-      throw new Error(`発行できる識別子が尽きた（用意したのは ${発行する値.length} 件）`);
+    const id = idsToIssue[issuedCount];
+    if (id === undefined) {
+      throw new Error(`発行できる識別子が尽きた（用意したのは ${idsToIssue.length} 件）`);
     }
-    発行済み += 1;
-    return suggestionIdOf(値);
+    issuedCount += 1;
+    return suggestionIdOf(id);
   };
 }

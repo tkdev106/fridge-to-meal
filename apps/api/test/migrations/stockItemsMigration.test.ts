@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { マイグレーションを検分する } from '../support/migrations/InspectMigrationSql.js';
-import {
-  マイグレーションのSQL,
-  生成の土台のファイル名,
-} from '../support/migrations/MigrationFiles.js';
+import { inspectMigrationSql } from '../support/migrations/InspectMigrationSql.js';
+import { migrationSqlFiles, migrationMetaFileNames } from '../support/migrations/MigrationFiles.js';
 
 /**
  * 表を作るマイグレーションに、行レベルセキュリティの4点が**同じファイルで**同居して
@@ -16,72 +13,72 @@ import {
  * ここでは**ポリシーが正しいか**を見ない。述語（`household_id = (select auth.uid())`）は
  * 実 DB に対して B-07b が見る。
  */
-const 表を作るファイル = マイグレーションのSQL.filter(
-  ([, sql]) => マイグレーションを検分する(sql).表を作る,
+const tableCreatingFiles = migrationSqlFiles.filter(
+  ([, sql]) => inspectMigrationSql(sql).createsTable,
 );
 
-const 各ファイル = it.each(表を作るファイル);
+const eachFile = it.each(tableCreatingFiles);
 
 describe('在庫品のマイグレーション', () => {
   it('表を作るマイグレーションが少なくとも1件見つかる', () => {
     // 走査が空振りすると以下がすべて素通りし、守りが消えたことに誰も気づけない。
-    expect(表を作るファイル.length).toBeGreaterThan(0);
+    expect(tableCreatingFiles.length).toBeGreaterThan(0);
   });
 
-  各ファイル('%s は同じファイルで行レベルセキュリティを有効にする', (_名前, sql) => {
+  eachFile('%s は同じファイルで行レベルセキュリティを有効にする', (_fileName, sql) => {
     // 規則5(a)
-    expect(マイグレーションを検分する(sql).行レベルセキュリティを有効にする).toBe(true);
+    expect(inspectMigrationSql(sql).enablesRowLevelSecurity).toBe(true);
   });
 
-  各ファイル('%s は同じファイルで行レベルセキュリティを強制する', (_名前, sql) => {
+  eachFile('%s は同じファイルで行レベルセキュリティを強制する', (_fileName, sql) => {
     // 規則5(b)・6: 表の所有者ロールで繋がざるをえない場合に RLS が素通りするのを塞ぐ。
-    expect(マイグレーションを検分する(sql).行レベルセキュリティを強制する).toBe(true);
+    expect(inspectMigrationSql(sql).forcesRowLevelSecurity).toBe(true);
   });
 
-  各ファイル('%s は authenticated 向けの select ポリシーを持つ', (_名前, sql) => {
+  eachFile('%s は authenticated 向けの select ポリシーを持つ', (_fileName, sql) => {
     // 規則5(c)
-    expect(マイグレーションを検分する(sql).ポリシー.select?.対象ロール).toEqual(['authenticated']);
+    expect(inspectMigrationSql(sql).policies.select?.targetRoles).toEqual(['authenticated']);
   });
 
-  各ファイル('%s は authenticated 向けの insert ポリシーを持つ', (_名前, sql) => {
+  eachFile('%s は authenticated 向けの insert ポリシーを持つ', (_fileName, sql) => {
     // 規則5(c)
-    expect(マイグレーションを検分する(sql).ポリシー.insert?.対象ロール).toEqual(['authenticated']);
+    expect(inspectMigrationSql(sql).policies.insert?.targetRoles).toEqual(['authenticated']);
   });
 
-  各ファイル('%s は authenticated 向けの update ポリシーを持つ', (_名前, sql) => {
+  eachFile('%s は authenticated 向けの update ポリシーを持つ', (_fileName, sql) => {
     // 規則5(c)
-    expect(マイグレーションを検分する(sql).ポリシー.update?.対象ロール).toEqual(['authenticated']);
+    expect(inspectMigrationSql(sql).policies.update?.targetRoles).toEqual(['authenticated']);
   });
 
-  各ファイル('%s は authenticated 向けの delete ポリシーを持つ', (_名前, sql) => {
+  eachFile('%s は authenticated 向けの delete ポリシーを持つ', (_fileName, sql) => {
     // 規則5(c)
-    expect(マイグレーションを検分する(sql).ポリシー.delete?.対象ロール).toEqual(['authenticated']);
+    expect(inspectMigrationSql(sql).policies.delete?.targetRoles).toEqual(['authenticated']);
   });
 
-  各ファイル('%s の insert ポリシーは with check を持つ', (_名前, sql) => {
+  eachFile('%s の insert ポリシーは with check を持つ', (_fileName, sql) => {
     // 落とすと他世帯の行を作れる。しかも作った本人には select ポリシーで見えない。
-    expect(マイグレーションを検分する(sql).ポリシー.insert?.withCheckを持つ).toBe(true);
+    expect(inspectMigrationSql(sql).policies.insert?.hasWithCheck).toBe(true);
   });
 
-  各ファイル('%s の update ポリシーは using を持つ', (_名前, sql) => {
+  eachFile('%s の update ポリシーは using を持つ', (_fileName, sql) => {
     // 無いと他世帯の行を掴める。
-    expect(マイグレーションを検分する(sql).ポリシー.update?.usingを持つ).toBe(true);
+    expect(inspectMigrationSql(sql).policies.update?.hasUsing).toBe(true);
   });
 
-  各ファイル('%s の update ポリシーは with check を持つ', (_名前, sql) => {
+  eachFile('%s の update ポリシーは with check を持つ', (_fileName, sql) => {
     // 無いと自分の行を他世帯へ移せる。
-    expect(マイグレーションを検分する(sql).ポリシー.update?.withCheckを持つ).toBe(true);
+    expect(inspectMigrationSql(sql).policies.update?.hasWithCheck).toBe(true);
   });
 
-  各ファイル('%s は anon からすべての権限を取り上げる', (_名前, sql) => {
+  eachFile('%s は anon からすべての権限を取り上げる', (_fileName, sql) => {
     // 規則5(d) / NFR-09
-    expect(マイグレーションを検分する(sql).anonから全権限を取り上げる).toBe(true);
+    expect(inspectMigrationSql(sql).revokesAllFromAnon).toBe(true);
   });
 
-  各ファイル('%s は authenticated に4つの操作を許可する', (_名前, sql) => {
+  eachFile('%s は authenticated に4つの操作を許可する', (_fileName, sql) => {
     // 規則5(d)・7: 接続ロールは set local role authenticated に切り替えて読み書きするため、
     // 権限は authenticated に付いていれば足りる。
-    expect(マイグレーションを検分する(sql).authenticatedに許す操作).toEqual([
+    expect(inspectMigrationSql(sql).operationsGrantedToAuthenticated).toEqual([
       'select',
       'insert',
       'update',
@@ -93,20 +90,18 @@ describe('在庫品のマイグレーション', () => {
     // 規則9b: 照合の前に SQL コメント（`--` 以降）を落とす。落とさないと、
     // force row level security を消したあと「後で足す」と書くだけで緑に戻り、
     // 守りが自分で穴を開ける。
-    const コメントに書いただけのSQL = [
+    const commentOnlySql = [
       'create table public.stock_items (id uuid primary key);',
       '-- force row level security を後で足す',
     ].join('\n');
 
-    expect(マイグレーションを検分する(コメントに書いただけのSQL).不足).toContain(
-      'force row level security',
-    );
+    expect(inspectMigrationSql(commentOnlySql).missing).toContain('force row level security');
   });
 
   it('生成の土台（meta/_journal.json）がコミットされている', () => {
     // 規則8・9c: drizzle-kit generate は snapshot との差分だけを新しいファイルに書く。
     // 手で足した RLS が消える筋は「snapshot ごと捨てて 0000 から作り直す」場合だけであり、
     // journal がリポジトリに在ることがその一次の防波堤になる。
-    expect(生成の土台のファイル名).toContain('_journal.json');
+    expect(migrationMetaFileNames).toContain('_journal.json');
   });
 });

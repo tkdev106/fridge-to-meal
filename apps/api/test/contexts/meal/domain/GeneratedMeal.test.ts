@@ -7,11 +7,11 @@ import type { CookingStep } from '../../../../src/contexts/meal/domain/value/Coo
 import { createMealIngredient } from '../../../../src/contexts/meal/domain/value/MealIngredient.js';
 import type { MealIngredient } from '../../../../src/contexts/meal/domain/value/MealIngredient.js';
 
-function 主材料(name: string, amount: string | null = null) {
+function mainIngredient(name: string, amount: string | null = null) {
   return createMealIngredient({ name, kind: 'main', amount: amountOf(amount) });
 }
 
-function 調味料(name: string) {
+function seasoning(name: string) {
   // C-16 / ADR-023: 種別は主材料と調味料の2つ。調味料は充足の突き合わせに載らない。
   return createMealIngredient({ name, kind: 'seasoning', amount: null });
 }
@@ -25,7 +25,7 @@ function 調味料(name: string) {
 function generatedMeal(overrides: Partial<Parameters<typeof createGeneratedMeal>[0]> = {}) {
   return createGeneratedMeal({
     title: '肉じゃが',
-    ingredients: [主材料('牛肉')],
+    ingredients: [mainIngredient('牛肉')],
     steps: [cookingStepOf('煮る')],
     ...overrides,
   });
@@ -36,7 +36,7 @@ describe('GeneratedMeal', () => {
     // B-15 5章 / prompt-design 2.2: 持つのはこの3つだけ。
     const generated = generatedMeal({
       title: '肉じゃが',
-      ingredients: [主材料('牛肉')],
+      ingredients: [mainIngredient('牛肉')],
       steps: [cookingStepOf('煮る')],
     });
 
@@ -48,14 +48,14 @@ describe('GeneratedMeal', () => {
   it('識別子・世帯・生成日時・由来の項目を持たない', () => {
     // B-15 規則3 / C-1 / ADR-035: 永続化は呼ぶ側の仕事であり、由来は
     // SuggestionEntry.origin が表す。ここで持つと Meal と見分けがつかなくなる。
-    const 材料 = 主材料('牛肉');
-    const 手順 = cookingStepOf('煮る');
+    const ingredient = mainIngredient('牛肉');
+    const step = cookingStepOf('煮る');
 
-    expect(generatedMeal({ title: '肉じゃが', ingredients: [材料], steps: [手順] })).toEqual({
+    expect(generatedMeal({ title: '肉じゃが', ingredients: [ingredient], steps: [step] })).toEqual({
       __brand: 'GeneratedMeal',
       title: '肉じゃが',
-      ingredients: [材料],
-      steps: [手順],
+      ingredients: [ingredient],
+      steps: [step],
     });
   });
 
@@ -102,22 +102,22 @@ describe('GeneratedMeal', () => {
   it('主材料が1件も無いものを許さない', () => {
     // B-15 規則12 / C-16 / ADR-023: 調味料だけでは充足の突き合わせに載る材料が
     // 1件も無く、在庫に関わらず不足0件（作れる）と判定されてしまう。
-    expect(() => generatedMeal({ ingredients: [調味料('しょうゆ'), 調味料('みりん')] })).toThrow(
-      MealRuleViolation,
-    );
+    expect(() =>
+      generatedMeal({ ingredients: [seasoning('しょうゆ'), seasoning('みりん')] }),
+    ).toThrow(MealRuleViolation);
   });
 
   it('主材料が無い規則違反は、材料が空の違反と識別子で見分けられる', () => {
     // B-15 7章 / 前提4 / ADR-025: 直し方が違う2つの違反を、呼ぶ側が rule で見分けられること。
-    expect(() => generatedMeal({ ingredients: [調味料('しょうゆ'), 調味料('みりん')] })).toThrow(
-      expect.objectContaining({ rule: 'generatedMeal.ingredients.noMain' }),
-    );
+    expect(() =>
+      generatedMeal({ ingredients: [seasoning('しょうゆ'), seasoning('みりん')] }),
+    ).toThrow(expect.objectContaining({ rule: 'generatedMeal.ingredients.noMain' }));
   });
 
   it('主材料が1件あれば、残りが調味料でも作れる', () => {
     // B-15 規則12 / C-16: 境界は主材料1件。
     const generated = generatedMeal({
-      ingredients: [主材料('牛肉'), 調味料('しょうゆ'), 調味料('みりん')],
+      ingredients: [mainIngredient('牛肉'), seasoning('しょうゆ'), seasoning('みりん')],
     });
 
     expect(generated.ingredients.length).toBe(3);
@@ -146,7 +146,9 @@ describe('GeneratedMeal', () => {
 
   it('材料は渡した順に並び、主材料を先頭へ寄せない', () => {
     // B-15 規則13: 並べ替えない。並べ替えると、生成側が書いた材料の並びが失われる。
-    const generated = generatedMeal({ ingredients: [調味料('しょうゆ'), 主材料('牛肉')] });
+    const generated = generatedMeal({
+      ingredients: [seasoning('しょうゆ'), mainIngredient('牛肉')],
+    });
 
     expect(generated.ingredients.map((ingredient) => ingredient.name)).toEqual([
       'しょうゆ',
@@ -169,21 +171,21 @@ describe('GeneratedMeal', () => {
     // 材料や手順を足せてしまう。
     const generated = generatedMeal();
 
-    expect(() => (generated.ingredients as MealIngredient[]).push(主材料('じゃがいも'))).toThrow(
-      TypeError,
-    );
+    expect(() =>
+      (generated.ingredients as MealIngredient[]).push(mainIngredient('じゃがいも')),
+    ).toThrow(TypeError);
     expect(() => (generated.steps as CookingStep[]).push(cookingStepOf('盛る'))).toThrow(TypeError);
   });
 
   it('呼ぶ側が渡した材料と手順の配列を後から書き換えても、値の材料と手順は変わらない', () => {
     // B-15 規則13: 受け取った列は複製してから凍結する。複製しないと、呼ぶ側が
     // 持ち続けている参照から不変条件を通らない変更が入る。
-    const 渡した材料 = [主材料('牛肉')];
-    const 渡した手順 = [cookingStepOf('煮る')];
-    const generated = generatedMeal({ ingredients: 渡した材料, steps: 渡した手順 });
+    const passedIngredients = [mainIngredient('牛肉')];
+    const passedSteps = [cookingStepOf('煮る')];
+    const generated = generatedMeal({ ingredients: passedIngredients, steps: passedSteps });
 
-    渡した材料.push(主材料('じゃがいも'));
-    渡した手順.push(cookingStepOf('盛る'));
+    passedIngredients.push(mainIngredient('じゃがいも'));
+    passedSteps.push(cookingStepOf('盛る'));
 
     expect(generated.ingredients.length).toBe(1);
     expect(generated.steps.length).toBe(1);
@@ -194,8 +196,8 @@ describe('GeneratedMeal', () => {
     // 腐敗防止層の検証の規則であって、domain-model 4章の不変条件ではない。
     const generated = generatedMeal({
       title: '肉じゃが'.repeat(11),
-      ingredients: Array.from({ length: 13 }, (_, 添字) => 主材料(`にんじん${添字 + 1}`)),
-      steps: Array.from({ length: 9 }, (_, 添字) => cookingStepOf(`${添字 + 1}番目の手順`)),
+      ingredients: Array.from({ length: 13 }, (_, index) => mainIngredient(`にんじん${index + 1}`)),
+      steps: Array.from({ length: 9 }, (_, index) => cookingStepOf(`${index + 1}番目の手順`)),
     });
 
     expect(generated.ingredients.length).toBe(13);
@@ -205,7 +207,7 @@ describe('GeneratedMeal', () => {
   it('常備調味料の名称でも、主材料として渡されたら主材料のまま扱う', () => {
     // B-15 規則14 / prompt-design 6.3 / ADR-023: 常備調味料リストによる種別の
     // 倒し込みは腐敗防止層の仕事であり、ここでは課さない。
-    const generated = generatedMeal({ ingredients: [主材料('しょうゆ')] });
+    const generated = generatedMeal({ ingredients: [mainIngredient('しょうゆ')] });
 
     expect(generated.ingredients[0]?.kind).toBe('main');
   });
@@ -213,7 +215,9 @@ describe('GeneratedMeal', () => {
   it('同じ名称の材料が2件あっても拒まない', () => {
     // B-15 規則14 / prompt-design 6.3 / 先行 Meal.test.ts: 重複の除去は腐敗防止層の
     // 正規化であって、domain-model 4章の不変条件ではない。
-    const generated = generatedMeal({ ingredients: [主材料('にんじん'), 主材料('にんじん')] });
+    const generated = generatedMeal({
+      ingredients: [mainIngredient('にんじん'), mainIngredient('にんじん')],
+    });
 
     expect(generated.ingredients.length).toBe(2);
   });
