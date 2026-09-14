@@ -131,7 +131,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | 材料 | `MealIngredient` | 献立が必要とする食材と分量 |
 | 手順 | `CookingStep` | 調理の1ステップ |
 | 調理記録 | `CookingRecord` | 献立を作ったという記録。追加のみ |
-| 在庫スナップショット | `PantrySnapshot` | 生成時点の在庫の複製。以後不変 |
+| 在庫スナップショット | `PantrySnapshot` | **ある時点の**在庫の複製。以後不変。`Suggestion` が抱えるのは生成時点のもの（ADR-037） |
 | 充足 | `MealCoverage` | 現在の在庫で材料をどれだけ賄えるか。都度算出 |
 | 作れる献立 | `CookableMeal` | 現在の在庫で不足0件の既存献立 |
 | 在庫品 | `StockItem` | 冷蔵庫にある1件の食材 |
