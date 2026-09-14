@@ -31,18 +31,18 @@ export function registerStockItem(deps: {
   return async (householdId, input) => {
     // 検証はすべて保存の前に済ませる。規則違反で終わったときに何も残らないのは、
     // 在庫品を組み立ててから保存するこの順序による。
-    const 在庫品 = createStockItem({
+    const stockItem = createStockItem({
       id: deps.generateStockItemId(),
       householdId,
       name: input.name,
-      ingredientId: 食材の指定(input.ingredientId),
+      ingredientId: ingredientIdOrNull(input.ingredientId),
       amount: amountOf(input.amount ?? null),
       expiryDate: expiryDateOf(input.expiryDate ?? null),
     });
 
-    await deps.stockItemRepository.save(householdId, 在庫品);
+    await deps.stockItemRepository.save(householdId, stockItem);
 
-    return stockItemDtoOf(在庫品);
+    return stockItemDtoOf(stockItem);
   };
 }
 
@@ -53,7 +53,7 @@ export function registerStockItem(deps: {
  * 止まる（FR-03 / ADR-008）。**前後の空白は落とさない** — 正規化はドメインの仕事であり、
  * ここで落とすとユースケースが2つ目の正規化規則を持つことになる（規則4b）。
  */
-function 食材の指定(raw: string | null | undefined) {
+function ingredientIdOrNull(raw: string | null | undefined) {
   if (raw === undefined || raw === null || raw.trim() === '') return null;
   return ingredientIdOf(raw);
 }

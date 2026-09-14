@@ -20,13 +20,13 @@ export type ListStockItems = (householdId: HouseholdId) => Promise<ListStockItem
  */
 export function listStockItems(deps: { stockItemRepository: StockItemRepository }): ListStockItems {
   return async (householdId) => {
-    const 保存されているもの = await deps.stockItemRepository.findByHousehold(householdId);
+    const storedStockItems = await deps.stockItemRepository.findByHousehold(householdId);
 
     // 受け取った配列をその場で並べ替えない（B-05 規則7）。実装が内部の配列を返した
     // 場合に、一覧しただけで保存済みの並びが変わってしまう。
-    const 並べたもの = [...保存されているもの].sort(期限の近い順);
+    const sortedStockItems = [...storedStockItems].sort(byExpirySoonestThenName);
 
-    return { stockItems: 並べたもの.map(stockItemDtoOf) };
+    return { stockItems: sortedStockItems.map(stockItemDtoOf) };
   };
 }
 
@@ -35,32 +35,32 @@ export function listStockItems(deps: { stockItemRepository: StockItemRepository 
  * 識別子は一意なので、ここで全順序が閉じる — リポジトリが約束していない順序が
  * 結果に漏れない（規則8）。
  */
-function 期限の近い順(左: StockItem, 右: StockItem): number {
-  const 期限の差 = 期限を比べる(左.expiryDate, 右.expiryDate);
-  if (期限の差 !== 0) return 期限の差;
+function byExpirySoonestThenName(left: StockItem, right: StockItem): number {
+  const expiryDateOrder = compareExpiryDates(left.expiryDate, right.expiryDate);
+  if (expiryDateOrder !== 0) return expiryDateOrder;
 
   // 照合順序は実行環境の ICU に依存するため localeCompare を使わない。
   // コード単位の大小なら Workers と Node で同じ並びになる。
-  const 名称の差 = コード単位で比べる(左.name, 右.name);
-  if (名称の差 !== 0) return 名称の差;
+  const nameOrder = compareCodeUnits(left.name, right.name);
+  if (nameOrder !== 0) return nameOrder;
 
-  return コード単位で比べる(左.id, 右.id);
+  return compareCodeUnits(left.id, right.id);
 }
 
 /**
  * 期限を比べる。未設定は期限のあるどれよりも後ろに置く（B-05 規則3）。
  * 期限は `YYYY-MM-DD` なので、日付に変換せず文字列の大小で比較できる（規則2）。
  */
-function 期限を比べる(左: string | null, 右: string | null): number {
-  if (左 === null && 右 === null) return 0;
-  if (左 === null) return 1;
-  if (右 === null) return -1;
-  return コード単位で比べる(左, 右);
+function compareExpiryDates(left: string | null, right: string | null): number {
+  if (left === null && right === null) return 0;
+  if (left === null) return 1;
+  if (right === null) return -1;
+  return compareCodeUnits(left, right);
 }
 
 /** コード単位の大小で比べる。 */
-function コード単位で比べる(左: string, 右: string): number {
-  if (左 < 右) return -1;
-  if (左 > 右) return 1;
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
   return 0;
 }

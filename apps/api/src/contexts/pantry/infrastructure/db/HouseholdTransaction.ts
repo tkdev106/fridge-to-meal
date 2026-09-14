@@ -39,8 +39,8 @@ export function withHouseholdTransaction<T>(
   return db.transaction(async (tx) => {
     await tx.execute(sql`set local role authenticated`);
 
-    const クレーム = JSON.stringify({ sub: householdId });
-    await tx.execute(sql`select set_config('request.jwt.claims', ${クレーム}, true)`);
+    const claims = JSON.stringify({ sub: householdId });
+    await tx.execute(sql`select set_config('request.jwt.claims', ${claims}, true)`);
 
     return body(tx);
   });

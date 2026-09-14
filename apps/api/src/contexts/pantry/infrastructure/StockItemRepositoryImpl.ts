@@ -30,14 +30,14 @@ export class StockItemRepositoryImpl implements StockItemRepository {
    * 0行は `null`。他世帯を指したときも同じく `null` で、例外にしない（設計 規則4）。
    */
   async findById(householdId: HouseholdId, id: StockItemId): Promise<StockItem | null> {
-    const 行 = await this.tx
+    const rows = await this.tx
       .select()
       .from(stockItems)
       .where(and(eq(stockItems.id, id), eq(stockItems.householdId, householdId)))
       .limit(1);
 
-    const 見つかった行 = 行[0];
-    return 見つかった行 === undefined ? null : 在庫品にする(見つかった行);
+    const foundRow = rows[0];
+    return foundRow === undefined ? null : toStockItem(foundRow);
   }
 
   /**
@@ -50,12 +50,12 @@ export class StockItemRepositoryImpl implements StockItemRepository {
    * 見せるのは画面の要求であり、並べ替えはユースケース層が行う（B-05）。
    */
   async findByHousehold(householdId: HouseholdId): Promise<StockItem[]> {
-    const 行たち = await this.tx
+    const rows = await this.tx
       .select()
       .from(stockItems)
       .where(eq(stockItems.householdId, householdId));
 
-    return 行たち.map(在庫品にする);
+    return rows.map(toStockItem);
   }
 
   /**
@@ -124,7 +124,7 @@ export class StockItemRepositoryImpl implements StockItemRepository {
  * 素のリテラルは型のブランドがあるため在庫品として扱えず、通さない実装は書けない。
  * 期限は `date` 列から `YYYY-MM-DD` の文字列として受け取る（設計 規則10）。
  */
-function 在庫品にする(row: StockItemRow): StockItem {
+function toStockItem(row: StockItemRow): StockItem {
   return createStockItem({
     id: stockItemIdOf(row.id),
     householdId: householdIdOf(row.householdId),

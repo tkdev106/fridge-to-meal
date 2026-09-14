@@ -21,8 +21,8 @@ export function deleteStockItem(deps: {
   stockItemRepository: StockItemRepository;
 }): DeleteStockItem {
   return async (householdId, id) => {
-    const 保存済み = await deps.stockItemRepository.findById(householdId, id);
-    if (保存済み === null) {
+    const storedStockItem = await deps.stockItemRepository.findById(householdId, id);
+    if (storedStockItem === null) {
       // 存在しない場合と他の世帯の場合を同じ規則・同じ文言で断る（B-06a 規則3 / C-9）。
       // 文言に識別子も世帯も書かない — 書けば「他の世帯には在る」が漏れる。
       // `findById` が `null` を返す1つの経路に畳んであるので、区別は生まれない。

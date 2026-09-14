@@ -29,8 +29,8 @@ export function updateStockItem(deps: {
   stockItemRepository: StockItemRepository;
 }): UpdateStockItem {
   return async (householdId, id, input) => {
-    const 保存済み = await deps.stockItemRepository.findById(householdId, id);
-    if (保存済み === null) {
+    const storedStockItem = await deps.stockItemRepository.findById(householdId, id);
+    if (storedStockItem === null) {
       // 存在しない場合と他の世帯の場合を同じ規則・同じ文言で断る（B-06 規則8 / C-9）。
       // 文言に識別子も世帯も書かない — 書けば「他の世帯には在る」が漏れる。
       throw new PantryRuleViolation('update.notFound', '更新する在庫品が見つかりません');
@@ -38,15 +38,15 @@ export function updateStockItem(deps: {
 
     // 検証はすべて保存の前に済ませる（規則12）。期限の書式違反はこの組み立てで
     // 例外になり、保存済みの在庫品は元のまま残る。
-    const 更新後 = withAmountAndExpiryDate(保存済み, {
+    const updatedStockItem = withAmountAndExpiryDate(storedStockItem, {
       amount: amountOf(input.amount),
       expiryDate: expiryDateOf(input.expiryDate),
     });
 
     // 値が今と同じでも保存する（規則6）。差分の判定はもう1つの規則になり、
     // 外から見える違いも無い。
-    await deps.stockItemRepository.save(householdId, 更新後);
+    await deps.stockItemRepository.save(householdId, updatedStockItem);
 
-    return stockItemDtoOf(更新後);
+    return stockItemDtoOf(updatedStockItem);
   };
 }

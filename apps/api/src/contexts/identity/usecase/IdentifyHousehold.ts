@@ -25,7 +25,7 @@ export function identifyHousehold(deps: {
   return async (accessToken) => {
     // 空のアクセストークンは認証器に渡す前に断る（B-07e 規則9 / NFR-09）。空を渡して
     // 返ってきたもので結果を推測しない。
-    if (中身が無い(accessToken)) {
+    if (isBlank(accessToken)) {
       throw new IdentityRuleViolation('accessToken.missing', 'アクセストークンが提示されていない');
     }
 
@@ -40,6 +40,6 @@ export function identifyHousehold(deps: {
  * 断る判定にだけ前後の空白を落とす（B-07e 規則9）。落とした結果が空でありさえ
  * しなければ、アクセストークンの形は見ない — 形を見るのは認証器である（規則1）。
  */
-function 中身が無い(accessToken: string): boolean {
+function isBlank(accessToken: string): boolean {
   return accessToken.trim() === '';
 }

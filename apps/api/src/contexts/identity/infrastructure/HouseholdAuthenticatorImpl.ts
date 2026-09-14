@@ -18,7 +18,7 @@ export type AccessTokenVerification = {
 };
 
 /** 検証を通ったクレームの集まり。hono は型を輸出しないので戻り値から引く（規則11）。 */
-type 検証済みクレーム = Awaited<ReturnType<typeof verify>>;
+type VerifiedClaims = Awaited<ReturnType<typeof verify>>;
 
 /**
  * `HouseholdAuthenticator` の実装（B-07e 設計書 4章・5章）。
@@ -41,20 +41,20 @@ export class HouseholdAuthenticatorImpl implements HouseholdAuthenticator {
   async authenticate(accessToken: string): Promise<HouseholdId> {
     // アクセストークンの正規化はこの層の仕事である（規則9）。ユースケースは受け取ったものを
     // 加工せずに渡してくるので、前後の空白はここで落とす。
-    const 検証するもの = accessToken.trim();
+    const normalizedAccessToken = accessToken.trim();
 
-    const クレーム = await this.検証したクレーム(検証するもの);
+    const claims = await this.verifyClaims(normalizedAccessToken);
 
     // hono の `verify` は `exp` が**あるときだけ**期限を見るため、持たないアクセストークンは素通りする
     // （規則3）。無期限のアクセストークンを通すと失効の手段が消えるので、この層が明示的に断る。
-    if (クレーム.exp === undefined) {
+    if (claims.exp === undefined) {
       throw new IdentityRuleViolation(
         'accessToken.invalid',
         'アクセストークンが有効期限を持たない',
       );
     }
 
-    return 世帯にする(クレーム.sub);
+    return toHouseholdId(claims.sub);
   }
 
   /**
@@ -64,15 +64,15 @@ export class HouseholdAuthenticatorImpl implements HouseholdAuthenticator {
    * 信用しない**（規則2 / ADR-031 決定2）。`issuer` / `audience` は与えられたときだけ渡す —
    * 渡さなければ hono は照合しない（規則6）。
    */
-  private async 検証したクレーム(検証するもの: string): Promise<検証済みクレーム> {
+  private async verifyClaims(normalizedAccessToken: string): Promise<VerifiedClaims> {
     try {
-      return await verify(検証するもの, this.verification.sharedSecret, {
+      return await verify(normalizedAccessToken, this.verification.sharedSecret, {
         alg: this.verification.algorithm,
         ...(this.verification.issuer === undefined ? {} : { iss: this.verification.issuer }),
         ...(this.verification.audience === undefined ? {} : { aud: this.verification.audience }),
       });
-    } catch (投げられたもの) {
-      throw 断り方にした例外(投げられたもの);
+    } catch (thrown) {
+      throw toRejection(thrown);
     }
   }
 }
@@ -91,15 +91,15 @@ export class HouseholdAuthenticatorImpl implements HouseholdAuthenticator {
  * `Jwt` で始まらない例外（共有秘密が渡っていない等、検証以前の設定の誤り）は
  * **包まずそのまま伝える** — 写せない失敗を握りつぶさない（ADR-002 / 7章末行）。
  */
-function 断り方にした例外(投げられたもの: unknown): unknown {
-  if (!(投げられたもの instanceof Error) || !投げられたもの.name.startsWith('Jwt')) {
-    return 投げられたもの;
+function toRejection(thrown: unknown): unknown {
+  if (!(thrown instanceof Error) || !thrown.name.startsWith('Jwt')) {
+    return thrown;
   }
 
   // message にトークン本体もクレームの中身も載せない（規則8）。hono の message には
   // トークン全体（`token (…) expired`）やペイロード全体（`aud` 無し）が載るので、
   // ここで包み直して捨てる。
-  if (投げられたもの.name === 'JwtTokenExpired') {
+  if (thrown.name === 'JwtTokenExpired') {
     return new IdentityRuleViolation(
       'accessToken.expired',
       'アクセストークンの有効期限が切れている',
@@ -115,7 +115,7 @@ function 断り方にした例外(投げられたもの: unknown): unknown {
  * 空でないことはこの層が確かめる。空の世帯を張っても例外にはならず、
  * **問い合わせが0行に化けて黙る**（ADR-029 理由(1)）ため、ここで断る。
  */
-function 世帯にする(sub: unknown): HouseholdId {
+function toHouseholdId(sub: unknown): HouseholdId {
   if (typeof sub !== 'string') {
     throw new IdentityRuleViolation(
       'accessToken.subjectMissing',
@@ -123,13 +123,13 @@ function 世帯にする(sub: unknown): HouseholdId {
     );
   }
 
-  const 世帯 = sub.trim();
-  if (世帯 === '') {
+  const trimmedSub = sub.trim();
+  if (trimmedSub === '') {
     throw new IdentityRuleViolation(
       'accessToken.subjectMissing',
       'アクセストークンが世帯を示していない',
     );
   }
 
-  return householdIdOf(世帯);
+  return householdIdOf(trimmedSub);
 }
