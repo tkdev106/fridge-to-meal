@@ -24,7 +24,22 @@
   **同じ周で JWT の署名方式（共有秘密 / 非対称鍵）も確かめる** — B-07e は `.dev.vars` の雛形から
   共有秘密（HS256）を採ったが、確かめるまで **ADR-031 は `提案` のまま**である（ADR-031 の結果2）
 - [ ] **B-09** `apps/api/src/main.ts`: composition root で結線する。実装クラスの生成をここだけに閉じる
-- [ ] **B-15** `meal/domain/port`: `MealGenerator` ポートの定義。プロバイダ未決のまま進める（ADR-019 / NFR-18）
+- [ ] **B-26** `meal/domain`: 提案 `Suggestion` 集約と、それを組む値（`SuggestionEntry` / `PantrySnapshot`）。
+  **相談のための ADR-037 は起こし、domain-model の追随（用語表・4章・C-7）も済んでいる。残るのは実装である。**
+  置くのは ADR-037 の決定そのまま — 献立側の `StockItem` に分量 `Amount` を足して3項目にし、
+  `PantrySnapshot` はその列を包む。一致の述語は `(name, amount, expiryDate)` の**多重集合**で比べ、
+  **「生成を呼ばない」の判断は持たない**（それは B-28）。`Suggestion` は `entries` が1件以上3件以下で、
+  同じ `mealId` を2つ含めず、`origin` は全件が同じ（C-15 は再利用と生成を混ぜない）。生成後は完全に不変で
+  `with*` を置かない。献立は識別子で参照する。**B-15 の入力 `PantrySnapshot` を起こす周なので B-15 の前に出した**
+  （ADR-037 の結果5）。**ADR-037 が `承認` になってから着手する** —
+  決定が動けば `StockItem` の形ごと捨てることになる
+  （C-4c / C-7 / C-13 / C-14 / C-15 / FR-16 / ADR-007 / ADR-008 / ADR-025 / ADR-034 / ADR-036 の結果9 / **ADR-037** / domain-model 4章）
+- [ ] **B-15** `meal/domain/port`: `MealGenerator` ポートの定義。プロバイダ未決のまま進める（ADR-019 / NFR-18）。
+  **入力4つのうち1つが `PantrySnapshot` であり**（prompt-design 2.1）、その型を起こすのは B-26 である。
+  残る3つ（`requiredCount` / `avoidTitles` / `asOf`）と戻り値 `GeneratedMeal`、0件のときだけ投げること、
+  `householdId` を取らないことは文書から決まるが、**引数の受け取り方など新しく決めた前提が4件ある** —
+  着手する周は設計書の前提の章を確かめること。**B-26 の後**
+  （NFR-11 / NFR-18 / ADR-005 / ADR-019 / ADR-021 / ADR-022 / **ADR-037** / prompt-design 2章）
 - [ ] **B-16** 置き換え済みの **ADR-020 への参照を掃除する**。`apps/api/src/shared/domain/HouseholdId.ts` と
   `packages/contract/src/pantry.ts` に残っている。B-07 で直したのは backlog が名指しした
   `StockItemRepository` の1文だけで、**範囲外には触れていない**（ADR-029 の結果1）
@@ -57,13 +72,6 @@
   **ADR-027 が B-11 を名指ししていた「削除が冪等でない」の宿題をここで引き取る** — 取りこぼした再送が
   受け取る 404 を「すでに消えている」として扱うか、利用者に見せるかを決める。B-11 は一覧の表示だけを
   作り、削除を範囲外としたため宿題が宙に浮いていた（FR-06 / ADR-027 の結果 / screen-design 5章）
-- [ ] **B-26** `meal/domain`: 提案 `Suggestion` 集約と、それを組む値（`SuggestionEntry` / `PantrySnapshot`）。
-  `entries` は1件以上3件以下で同じ `mealId` を2つ含めず、生成後は完全に不変。献立は識別子で参照する。
-  **在庫スナップショットが分量をどう受け取るかは決まっていない** — C-7 の一致比較は `(name, amount, expiryDate)`
-  の集合だが、**献立側の `StockItem` は名称と期限しか持たない**（ADR-036 の決定3）。`Amount` を起こしたときと
-  同じ選択（ADR-034）になるため、**実装の前に ADR を起こして相談する**（B-14b と同じ扱い）。
-  ADR-036 の結果9 が「スナップショットを起こす周で別に決める」と残した宿題である
-  （C-7 / C-13 / C-14 / C-15 / FR-16 / ADR-008 / ADR-034 / ADR-036 の結果9 / domain-model 4章）
 - [ ] **B-27** `meal/usecase`: `SuggestMeals` の**再利用だけの経路**。在庫を名称と期限に落として
   `CookableMealFinder` に渡し、**C-11 の除外を通してから上位3件を採り**、`Suggestion` として保存する —
   ADR-036 の決定4 が「並べる → 除外する → 切る」の順をこの層の責務と決めており、**その呼ぶ側がまだ居ない。**
