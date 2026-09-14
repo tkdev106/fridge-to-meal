@@ -8,8 +8,7 @@ import type { Meal } from '../entity/Meal.js';
  * 型として不可能にするためであり、**献立自身が `householdId` を持っていても省かない**
  * （先行 `StockItemRepository`）。
  *
- * この周（B-27）は再利用だけの経路なので、取得の口しか置かない。献立を作るのは生成の
- * 経路だけであり、`save` は B-28 が足す。
+ * 献立を作るのは生成の経路だけなので、`save` は生成の経路と同じ周（B-28）で足した。
  */
 export interface MealRepository {
   /**
@@ -19,4 +18,15 @@ export interface MealRepository {
    * C-12 が決めるものであり、決めるのは `cookableMealsOf` である（ADR-036 決定4）。
    */
   findByHousehold(householdId: HouseholdId): Promise<Meal[]>;
+
+  /**
+   * 献立を保存する（C-1。生成結果を献立に変換した時点で保存する）。
+   *
+   * `meal.householdId` と引数の `householdId` が食い違う場合、実装は
+   * **`MealRuleViolation`（`rule: 'save.householdMismatch'`）を投げて保存を拒む。**
+   * 食い違いは呼び出し側の誤りであり、黙って引数の側に寄せない（先行
+   * `StockItemRepository.save` / `SuggestionRepository.save`）。**interface では強制できない
+   * 約束なので、実装ごとにテストで確かめる。**
+   */
+  save(householdId: HouseholdId, meal: Meal): Promise<void>;
 }

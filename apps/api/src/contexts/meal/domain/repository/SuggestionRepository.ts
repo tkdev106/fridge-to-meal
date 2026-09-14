@@ -21,6 +21,20 @@ export interface SuggestionRepository {
   findRecentByHousehold(householdId: HouseholdId, limit: number): Promise<Suggestion[]>;
 
   /**
+   * 最新の提案1件を返す。1件も無ければ `null`（B-28 5章）。
+   *
+   * C-7 の比較に使う。**「最新」の決め方は `findRecentByHousehold` と同じ** — 生成日時の
+   * 新しい順、同じ生成日時は `SuggestionId` の降順で閉じる（ADR-038 決定1・2）。1件に
+   * 限って取る以上、順序を約束しないと**どの提案の在庫スナップショットと比べるかが
+   * 実装ごとに変わる。** これも **interface では強制できない約束なので、実装ごとに
+   * テストで確かめる**（先行 `StockItemRepository.save` の `save.householdMismatch`）。
+   *
+   * **見るのは最新の1件だけである**（C-7 の字面どおり）。2件前の提案の在庫と一致するかは
+   * 問わない。何件遡るかを決めるのは C-11 の側であり、そちらは `findRecentByHousehold` が担う。
+   */
+  findLatestByHousehold(householdId: HouseholdId): Promise<Suggestion | null>;
+
+  /**
    * 提案を保存する（C-14）。
    *
    * `suggestion.householdId` と引数の `householdId` が食い違う場合、実装は
