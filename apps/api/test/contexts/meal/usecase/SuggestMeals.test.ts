@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { StockItemDto } from '@fridge-to-meal/contract';
 import { suggestMeals } from '../../../../src/contexts/meal/usecase/SuggestMeals.js';
-import type { SuggestMealsOutput } from '../../../../src/contexts/meal/usecase/SuggestMeals.js';
+import type {
+  SuggestMealsOutput,
+  SuggestionOutput,
+} from '../../../../src/contexts/meal/usecase/SuggestMeals.js';
 import type { Meal } from '../../../../src/contexts/meal/domain/entity/Meal.js';
 import { createMeal } from '../../../../src/contexts/meal/domain/entity/Meal.js';
 import type { Suggestion } from '../../../../src/contexts/meal/domain/entity/Suggestion.js';
@@ -286,10 +289,39 @@ function setUp(
   return { mealRepository, suggestionRepository, mealGenerator, suggest };
 }
 
+/**
+ * 結末から提案を取り出す。**提案を返した結末でなければ、その場で落ちる**（B-31b 規則1）。
+ *
+ * 判別子を `as` で潰して素通しにしない — そうすると、結末を直に見る3件を除くどこでも
+ * `outcome` が検査されなくなる。ここで断つことで、中身を読む既存の it が同時に
+ * 「提案を返す回であること」の見張りも兼ねる。
+ */
+function suggestionOf(output: SuggestMealsOutput): SuggestionOutput {
+  if (output.outcome !== 'suggested') {
+    throw new Error(`提案を返した結末ではない: ${String(output.outcome)}`);
+  }
+
+  return output.suggestion;
+}
+
 /** 返した提案が並べる献立の識別子。並びが本題なので集合にしない。 */
-const mealIdsOf = (output: SuggestMealsOutput) => output.entries.map((entry) => entry.mealId);
+const mealIdsOf = (output: SuggestMealsOutput) =>
+  suggestionOf(output).entries.map((entry) => entry.mealId);
 
 describe('献立を提案する SuggestMeals', () => {
+  it('再利用だけで組んだ回の結末は、提案を返したことを名乗る', async () => {
+    // B-31b 規則1・2 / FR-34 / C-15 / screen-design S-1: 結末は判別できる1つの戻り値で返す。
+    // 投げも `null` も使わないので、呼び出し側は `outcome` だけを見て分岐できる。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' })],
+      meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(output.outcome).toBe('suggested');
+  });
+
   it('在庫で作れる献立が1件あれば、その1件を再利用した提案を返す', async () => {
     // FR-34 / FR-16 / 規則9: 在庫で作れる既存の献立をそのまま並べる。
     const { suggest } = setUp({
@@ -370,7 +402,7 @@ describe('献立を提案する SuggestMeals', () => {
 
     const output = await suggest(ourHousehold, asOf);
 
-    expect(output.entries.map((entry) => entry.origin)).toEqual(['reused', 'reused']);
+    expect(suggestionOf(output).entries.map((entry) => entry.origin)).toEqual(['reused', 'reused']);
   });
 
   it('提案の識別子は、提案の識別子発行器が出した値になる', async () => {
@@ -383,7 +415,7 @@ describe('献立を提案する SuggestMeals', () => {
 
     const output = await suggest(ourHousehold, asOf);
 
-    expect(output.id).toBe('suggestion-1');
+    expect(suggestionOf(output).id).toBe('suggestion-1');
   });
 
   it('提案の生成日時は、引数の基準日時を正規化した値になる', async () => {
@@ -395,7 +427,7 @@ describe('献立を提案する SuggestMeals', () => {
 
     const output = await suggest(ourHousehold, '2026-09-14T12:00:00+09:00');
 
-    expect(output.generatedAt).toBe('2026-09-14T03:00:00.000Z');
+    expect(suggestionOf(output).generatedAt).toBe('2026-09-14T03:00:00.000Z');
   });
 
   it('再利用だけで組めた提案も保存し、同じ識別子で取り出せる', async () => {
@@ -410,7 +442,9 @@ describe('献立を提案する SuggestMeals', () => {
     // 取り出した側を配列のまま比べる。1件も保存されなければ `[]` になり、
     // 提案が `null` でも `[undefined]` と食い違うので、どちらも緑にならない。
     const fetched = await suggestionRepository.findRecentByHousehold(ourHousehold, 3);
-    expect(fetched.map((fetchedSuggestion) => fetchedSuggestion.id)).toEqual([output.id]);
+    expect(fetched.map((fetchedSuggestion) => fetchedSuggestion.id)).toEqual([
+      suggestionOf(output).id,
+    ]);
   });
 
   it('保存された提案の1件は、返した出力と同じ献立を同じ並びで持つ', async () => {
@@ -705,10 +739,25 @@ describe('献立を提案する SuggestMeals', () => {
   // 以前この位置にあった「null を返す」5件は、生成へ回る経路として意味が変わったものである
   // （B-28 設計書 10章。テストが壊れたのではなく仕様が変わった）。
 
+  it('生成の経路で組んだ回の結末も、提案を返したことを名乗る', async () => {
+    // B-31b 規則1・2 / FR-16 / C-2 / screen-design S-2: 名乗りは経路で変わらない。
+    // 再利用で採れたものが0件でも、生成で組み上がれば提案を返した回である。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(output.outcome).toBe('suggested');
+  });
+
   it('在庫で作れる献立が1件も無いときは、生成した献立を並べた提案を返す', async () => {
     // B-28 規則2・16 / C-15 / NFR-C1b: 作れるものが0件でも提案を返す。組めない回を作らない。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [
         meal({ id: mealIdOf(idB), title: '生姜焼き', ingredients: [mainIngredient('豚肉')] }),
       ],
@@ -724,25 +773,9 @@ describe('献立を提案する SuggestMeals', () => {
   it('直近の提案による除外の結果0件になったときも、生成した献立を並べた提案を返す', async () => {
     // B-28 規則2・16 / C-11 / C-15: 除外で空になった回も生成へ回る。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
       recentSuggestions: [storedSuggestion({ mealIds: [idA] })],
-      generatedMeals: [generatedMeal()],
-      mealIdsToIssue: [idC],
-    });
-
-    const output = await suggest(ourHousehold, asOf);
-
-    expect(mealIdsOf(output)).toEqual([idC]);
-  });
-
-  it('在庫が0件のときも、生成した献立を並べた提案を返す', async () => {
-    // B-28 規則2・16 / NFR-C1b: 在庫が空でも例外にしない。在庫の下限で生成を控える判断は
-    // この周の外である（B-28 設計書 10章）。**前提の提案は置かない** — 在庫も前提の提案の
-    // 在庫スナップショットも空だと、C-7 の短絡（2周目）を意図せず通ってしまう。
-    const { suggest } = setUp({
-      stockItems: [],
-      meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
       generatedMeals: [generatedMeal()],
       mealIdsToIssue: [idC],
     });
@@ -755,7 +788,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('保持している献立が0件のときも、生成した献立を並べた提案を返す', async () => {
     // B-28 規則2・16 / C-15: 再利用できる献立がまだ1件も無い世帯は、生成だけで始まる。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       generatedMeals: [generatedMeal()],
       mealIdsToIssue: [idC],
@@ -769,7 +802,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('生成が1件しか返せなくても、その1件で提案を組む', async () => {
     // B-28 規則14 / C-15: 求めるのは3件だが、通った件数でそのまま組む。再生成も再試行もしない。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       generatedMeals: [generatedMeal()],
       mealIdsToIssue: [idC],
@@ -783,7 +816,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('生成が3件返したときは、3件すべてが提案に並ぶ', async () => {
     // FR-16 / C-2 / B-28 規則9: 採用した全件を並べる。採らずに捨てるものを作らない。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       generatedMeals: [
         generatedMeal({ title: '肉じゃが' }),
@@ -822,7 +855,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('生成の経路で組んだ提案の1件は、すべて由来が生成になる', async () => {
     // C-4c / C-15 / FR-35 / B-28 規則13 の前半: 生成の経路の1件に再利用の印を混ぜない。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       generatedMeals: [generatedMeal({ title: '肉じゃが' }), generatedMeal({ title: '生姜焼き' })],
       mealIdsToIssue: [idA, idB],
@@ -830,14 +863,17 @@ describe('献立を提案する SuggestMeals', () => {
 
     const output = await suggest(ourHousehold, asOf);
 
-    expect(output.entries.map((entry) => entry.origin)).toEqual(['generated', 'generated']);
+    expect(suggestionOf(output).entries.map((entry) => entry.origin)).toEqual([
+      'generated',
+      'generated',
+    ]);
   });
 
   it('生成した献立は献立リポジトリに保存され、次の取得で見える', async () => {
     // C-1 / B-28 規則12: 変換した時点で保存する。保存の確認は取得を通して行う
     // （`docs/testing.md` 3章）。
     const { suggest, mealRepository } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       generatedMeals: [generatedMeal({ title: 'ごま和え' })],
       mealIdsToIssue: [idC],
@@ -852,7 +888,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('保存された献立の識別子は、献立の識別子発行器が出した値になる', async () => {
     // ADR-026 / B-28 規則12: 採番はポートの仕事で、本体は乱数を読まない。
     const { suggest, mealRepository } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       generatedMeals: [generatedMeal()],
       mealIdsToIssue: [idC],
@@ -871,7 +907,7 @@ describe('献立を提案する SuggestMeals', () => {
     // 全件を返す口であり並び順を約束しないので、並びを断定すると振る舞いが同じまま
     // 実装の差し替えで赤くなる（CLAUDE.md の依存の規則 / `docs/testing.md` 3章）。
     const { suggest, mealRepository } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       generatedMeals: [generatedMeal({ title: '肉じゃが' }), generatedMeal({ title: '生姜焼き' })],
       mealIdsToIssue: [idA, idB],
@@ -888,7 +924,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('保存された献立は、生成結果の材料と手順をそのまま持つ', async () => {
     // C-5 / B-28 規則12: 材料は在庫品を指さず文字列として複製し、手順は並びのまま持つ。
     const { suggest, mealRepository } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       generatedMeals: [
         generatedMeal({
@@ -918,7 +954,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('生成の経路で保存した献立は、別の世帯からは取り出せない', async () => {
     // C-9 / B-28 規則12: 保存にも第1引数の世帯を渡し、献立にも同じ世帯を持たせる。
     const { suggest, mealRepository } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       generatedMeals: [generatedMeal()],
       mealIdsToIssue: [idC],
@@ -933,7 +969,7 @@ describe('献立を提案する SuggestMeals', () => {
     // C-14 / B-28 規則15: 生成でも記録に残す。残さないと C-7 と C-11 が次の回で効かない。
     const priorSuggestion = storedSuggestion({ mealIds: [idA] });
     const { suggest, suggestionRepository } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
       recentSuggestions: [priorSuggestion],
       generatedMeals: [generatedMeal()],
@@ -946,7 +982,7 @@ describe('献立を提案する SuggestMeals', () => {
     // どちらの側とも食い違う。
     const fetched = await suggestionRepository.findRecentByHousehold(ourHousehold, 3);
     expect(fetched.map((fetchedSuggestion) => fetchedSuggestion.id)).toEqual([
-      output.id,
+      suggestionOf(output).id,
       priorSuggestion.id,
     ]);
   });
@@ -955,6 +991,27 @@ describe('献立を提案する SuggestMeals', () => {
   // 献立も直近3回の提案も引かず、提案を組まず、保存もしない。** 比べる相手は
   // `storedSuggestion` の `pantrySnapshot` で渡す — 既定は空なので、上の it たちは
   // 在庫が1件でもあれば短絡を通らない。
+
+  it('在庫が最新の提案のときから変わっていない回の結末も、提案を返したことを名乗る', async () => {
+    // B-31b 規則1・2 / C-7 / FR-21 / screen-design S-3: 短絡して保存済みの提案を返した回も、
+    // 組み直した回と同じ名乗りである。返す中身が保存済みのものであることは既存の it が持つ。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん', amount: '1本', expiryDate: '2026-09-20' })],
+      meals: [],
+      recentSuggestions: [
+        storedSuggestion({
+          mealIds: [idA],
+          pantrySnapshot: [
+            mealStockItem({ name: 'にんじん', amount: '1本', expiryDate: '2026-09-20' }),
+          ],
+        }),
+      ],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(output.outcome).toBe('suggested');
+  });
 
   it('在庫が最新の提案のときから変わっていなければ、保存済みの提案の識別子をそのまま返す', async () => {
     // C-7 / FR-21 / B-28 規則1: 在庫が動いていない日は作り直さない（NFR-C1）。
@@ -972,7 +1029,7 @@ describe('献立を提案する SuggestMeals', () => {
 
     const output = await suggest(ourHousehold, asOf);
 
-    expect(output.id).toBe(priorSuggestion.id);
+    expect(suggestionOf(output).id).toBe(priorSuggestion.id);
   });
 
   it('在庫が変わっていなければ、作れる献立があっても保存済みの提案が並べた献立を返す', async () => {
@@ -1013,7 +1070,7 @@ describe('献立を提案する SuggestMeals', () => {
 
     const output = await suggest(ourHousehold, asOf);
 
-    expect(output.generatedAt).toBe('2026-09-13T12:00:00.000Z');
+    expect(suggestionOf(output).generatedAt).toBe('2026-09-13T12:00:00.000Z');
   });
 
   it('在庫が変わっていなければ、保存済みの提案の由来をそのまま返す', async () => {
@@ -1035,7 +1092,7 @@ describe('献立を提案する SuggestMeals', () => {
 
     const output = await suggest(ourHousehold, asOf);
 
-    expect(output.entries.map((entry) => entry.origin)).toEqual(['reused']);
+    expect(suggestionOf(output).entries.map((entry) => entry.origin)).toEqual(['reused']);
   });
 
   it('在庫が変わっていなければ、献立生成器を呼ばない', async () => {
@@ -1043,13 +1100,19 @@ describe('献立を提案する SuggestMeals', () => {
     // **状態**として見る（`vi.fn()` を使わない）。**生成結果と発行する献立の識別子をわざと
     // 用意してある** — 既定の0件のままだと、誤って呼ばれた回が `mealGenerator.empty` で
     // 落ち、回数ではない理由で赤くなる。
+    // **在庫と在庫スナップショットを2件ずつにしてあるのは、短絡が生成の門（B-31b 規則7）より
+    // 上にあることを見るためである** — 1件に戻すと、短絡しなくても下限で引き返して呼ばれず、
+    // C-7 の番人が務まらない。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       recentSuggestions: [
         storedSuggestion({
           mealIds: [idA],
-          pantrySnapshot: [mealStockItem({ name: 'にんじん' })],
+          pantrySnapshot: [
+            mealStockItem({ name: 'にんじん' }),
+            mealStockItem({ name: 'ヨーグルト' }),
+          ],
         }),
       ],
       generatedMeals: [generatedMeal()],
@@ -1063,12 +1126,14 @@ describe('献立を提案する SuggestMeals', () => {
 
   it('在庫が変わっていなければ、新しい提案を保存しない', async () => {
     // C-7 / C-11: 短絡した回を記録に残すと、次の回の除外が1回ぶん狂う。
+    // **在庫と在庫スナップショットを2件ずつにしてあるのは、1つ上の it と同じ理由である**
+    // （B-31b 規則7）— 1件に戻すと、短絡しなくても下限で引き返して保存されない。
     const priorSuggestion = storedSuggestion({
       mealIds: [idA],
-      pantrySnapshot: [mealStockItem({ name: 'にんじん' })],
+      pantrySnapshot: [mealStockItem({ name: 'にんじん' }), mealStockItem({ name: 'ヨーグルト' })],
     });
     const { suggest, suggestionRepository } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       recentSuggestions: [priorSuggestion],
       generatedMeals: [generatedMeal()],
@@ -1097,7 +1162,7 @@ describe('献立を提案する SuggestMeals', () => {
 
     const output = await suggest(ourHousehold, asOf);
 
-    expect(output.id).toBe(suggestionId);
+    expect(suggestionOf(output).id).toBe(suggestionId);
   });
 
   it('名称も分量も期限も同じ在庫品が1件から2件に増えた日は、短絡しない', async () => {
@@ -1117,7 +1182,7 @@ describe('献立を提案する SuggestMeals', () => {
 
     const output = await suggest(ourHousehold, asOf);
 
-    expect(output.id).toBe(suggestionId);
+    expect(suggestionOf(output).id).toBe(suggestionId);
   });
 
   it('2件前の提案の在庫と一致しても、短絡しない', async () => {
@@ -1141,7 +1206,7 @@ describe('献立を提案する SuggestMeals', () => {
 
     const output = await suggest(ourHousehold, asOf);
 
-    expect(output.id).toBe(suggestionId);
+    expect(suggestionOf(output).id).toBe(suggestionId);
   });
 
   it('別の世帯の最新の提案は、在庫が変わったかどうかの判定に使わない', async () => {
@@ -1171,7 +1236,7 @@ describe('献立を提案する SuggestMeals', () => {
 
     const output = await suggest(ourHousehold, asOf);
 
-    expect(output.id).toBe(priorSuggestion.id);
+    expect(suggestionOf(output).id).toBe(priorSuggestion.id);
   });
 
   // C-15（B-28 2周目 / 規則2）。**再利用が成立した回に生成を呼ばない**こと自体が要件である。
@@ -1180,8 +1245,10 @@ describe('献立を提案する SuggestMeals', () => {
     // C-15 / FR-34 / NFR-C1b / `docs/testing.md` 2章: 足りない分を生成で埋めない。
     // **生成結果と発行する献立の識別子をわざと用意してある** — 既定の0件のままだと、
     // 誤って呼ばれた回が `mealGenerator.empty` で落ち、回数ではない理由で赤くなる。
+    // **在庫を2件置いてあるのは、生成の門（B-31b 規則7）を通すためである** — 1件に戻すと、
+    // 再利用が成立しなくても下限で引き返して呼ばれず、C-15 の番人が務まらない。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
       generatedMeals: [generatedMeal()],
       mealIdsToIssue: [idC],
@@ -1195,8 +1262,10 @@ describe('献立を提案する SuggestMeals', () => {
   it('生成が1件も返せないときは、規則違反がそのまま呼び出し側へ伝わる', async () => {
     // B-28 7章1行目 / NFR-07: ポートが投げた違反を写さずそのまま伝える。
     // 既定の生成器は用意した生成結果が0件なので `mealGenerator.empty` を投げる。
+    // **在庫を2件置いてあるのは、生成の門（B-31b 規則7）を通すためである** — 1件に戻すと
+    // 生成へ回らず、投げるところまで届かない。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
     });
 
@@ -1208,8 +1277,10 @@ describe('献立を提案する SuggestMeals', () => {
 
   it('生成が1件も返せなかったときは、提案を保存しない', async () => {
     // C-14 の裏 / B-28 7章1行目: 組めなかった回を記録に残すと C-11 の除外が1回ぶん狂う。
+    // **在庫を2件置いてあるのは、生成の門（B-31b 規則7）を通すためである** — 1件に戻すと
+    // 生成へ回らず、「生成が返せなかったから保存しない」を確かめたことにならない。
     const { suggest, suggestionRepository } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
     });
 
@@ -1222,8 +1293,10 @@ describe('献立を提案する SuggestMeals', () => {
   it('献立の保存が途中で失敗したときは、提案を保存しない', async () => {
     // C-1 / C-14 の裏 / B-28 7章4行目: 保存に失敗した献立は提示しない。提案を先に保存すると、
     // 取り出せない献立を指す記録が残り、次の回の除外（C-11）も比較（C-7）もそれを引きずる。
+    // **在庫を2件置いてあるのは、生成の門（B-31b 規則7）を通すためである** — 1件に戻すと
+    // 生成へ回らず、献立の保存が1度も起きないまま緑になる。
     const { suggest, suggestionRepository } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       generatedMeals: [generatedMeal({ title: '肉じゃが' }), generatedMeal({ title: '生姜焼き' })],
       mealIdsToIssue: [idA, idB],
@@ -1317,7 +1390,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('保持している献立の名称を、避けるべき名称として生成に渡す', async () => {
     // FR-42 / ADR-021 / B-28 規則6: 同じ献立をもう一度作らせないための材料を渡す。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [uncookableMeal({ id: idA, title: '肉じゃが' })],
       generatedMeals: [generatedMeal()],
       mealIdsToIssue: [idD],
@@ -1331,7 +1404,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('生成に求める件数は3件である', async () => {
     // B-28 規則3 / ADR-022 / prompt-design 2.1: 1回の提案で並べる上限とは別の定数である。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       generatedMeals: [generatedMeal()],
       mealIdsToIssue: [idD],
@@ -1385,7 +1458,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('生成に渡す基準日時は、引数を UTC の正準形にした値になる', async () => {
     // B-28 規則5 / `docs/testing.md` 5章: 現在時刻を読まず、渡された瞬間を正準化して渡す。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       generatedMeals: [generatedMeal()],
       mealIdsToIssue: [idD],
@@ -1399,7 +1472,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('生成した献立の生成日時は、生成に渡した基準日時と同じ値になる', async () => {
     // B-28 規則5 / C-1: 正準化は1度きりで、生成の入力にも新しい献立にも同じ値を使う。
     const { suggest, mealRepository } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       generatedMeals: [generatedMeal()],
       mealIdsToIssue: [idD],
@@ -1414,7 +1487,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('生成の経路で組んだ提案の生成日時も、同じ値になる', async () => {
     // B-28 規則5・15: 提案の生成日時も同じ1本から取る。経路で作り分けない。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       generatedMeals: [generatedMeal()],
       mealIdsToIssue: [idD],
@@ -1422,14 +1495,14 @@ describe('献立を提案する SuggestMeals', () => {
 
     const output = await suggest(ourHousehold, '2026-09-14T12:00:00+09:00');
 
-    expect(output.generatedAt).toBe('2026-09-14T03:00:00.000Z');
+    expect(suggestionOf(output).generatedAt).toBe('2026-09-14T03:00:00.000Z');
   });
 
   it('避けるべき名称の先頭は、直前の提案に並んだ献立の名称である', async () => {
     // B-28 規則6 / FR-42 / prompt-design D-6: 直前に見たものを最も強く避ける。先頭に来るのは
     // 最新の提案が並べた きんぴら で、その後ろに保持している献立が新しい順で続く。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [
         uncookableMeal({ id: idA, title: '肉じゃが', generatedAt: '2026-09-13T12:00:00Z' }),
         uncookableMeal({ id: idB, title: '生姜焼き', generatedAt: '2026-09-12T12:00:00Z' }),
@@ -1451,7 +1524,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('直前の提案が2件並べていたときは、その提案の並びのまま先頭に来る', async () => {
     // B-28 規則6 / C-12: 先頭の並びは提案の1件の並びそのままで、名称順に並べ替えない。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [
         uncookableMeal({ id: idA, title: '肉じゃが', generatedAt: '2026-09-13T12:00:00Z' }),
         uncookableMeal({ id: idB, title: '生姜焼き', generatedAt: '2026-09-12T12:00:00Z' }),
@@ -1470,7 +1543,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('直前の提案が無いときは、保持している献立の名称が生成日時の新しい順に並ぶ', async () => {
     // B-28 規則6 / ADR-038 決定1: 蓄積の側の並びは生成日時の新しい順である。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [
         uncookableMeal({ id: idA, title: '肉じゃが', generatedAt: '2026-09-13T12:00:00Z' }),
         uncookableMeal({ id: idB, title: '生姜焼き', generatedAt: '2026-09-12T12:00:00Z' }),
@@ -1488,7 +1561,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('生成日時が同じ献立は、献立の識別子の降順で並ぶ', async () => {
     // B-28 規則6 / ADR-038 決定2 / C-12: 同時刻の決着をつけないと、同じ入力で並びが変わる。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [
         uncookableMeal({ id: idA, title: '肉じゃが', generatedAt: '2026-09-13T12:00:00Z' }),
         uncookableMeal({ id: idB, title: '生姜焼き', generatedAt: '2026-09-13T12:00:00Z' }),
@@ -1505,7 +1578,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('保持している献立が1件も無ければ、避けるべき名称は空のまま渡す', async () => {
     // B-28 規則6 の境界 / ADR-021: 避ける対象が無い回に、空でない何かを作らない。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
       generatedMeals: [generatedMeal()],
       mealIdsToIssue: [idD],
@@ -1520,7 +1593,7 @@ describe('献立を提案する SuggestMeals', () => {
     // C-9 / NFR-11: 外へ出すものに他の世帯のものを混ぜない。献立の取得に渡す世帯は
     // 第1引数のものである。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [
         uncookableMeal({ id: idA, title: '肉じゃが' }),
         uncookableMeal({ id: idB, title: '生姜焼き', householdId: neighborHousehold }),
@@ -1538,7 +1611,7 @@ describe('献立を提案する SuggestMeals', () => {
     // B-28 規則17 / ADR-009: 生成日時の新しい順に並べるために、受け取った列をその場で
     // 並べ替えない。積んだのは旧→新の順なので、並べ替えれば取り出す順が入れ替わる。
     const { suggest, mealRepository } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [
         uncookableMeal({ id: idA, title: '肉じゃが', generatedAt: '2026-09-11T12:00:00Z' }),
         uncookableMeal({ id: idB, title: '生姜焼き', generatedAt: '2026-09-13T12:00:00Z' }),
@@ -1557,7 +1630,7 @@ describe('献立を提案する SuggestMeals', () => {
     // B-28 規則7 / ADR-021 結果1 / ADR-008: 提案は識別子しか持たないので、名称は保持している
     // 献立から引く。引けないものは避けようがないので黙って落とす。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [uncookableMeal({ id: idA, title: '肉じゃが' })],
       recentSuggestions: [storedSuggestion({ mealIds: [idD, idA] })],
       generatedMeals: [generatedMeal()],
@@ -1574,7 +1647,7 @@ describe('献立を提案する SuggestMeals', () => {
     // B-28 規則7 / ADR-008: 避ける対象が引けないのは失敗ではない。避ける対象は努力目標であり、
     // 1件も組めなくても生成は成り立つ。**投げないことは、その先の断定が通ることで見る。**
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [uncookableMeal({ id: idA, title: '肉じゃが' })],
       recentSuggestions: [storedSuggestion({ mealIds: [idD] })],
       generatedMeals: [generatedMeal()],
@@ -1589,7 +1662,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('同じ名称の献立が2件保持されていても、避けるべき名称は1件になる', async () => {
     // B-28 規則8 / ADR-021 結果2: 同じ名称を2度送っても避ける効果は増えず、費用だけが増える。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [
         uncookableMeal({ id: idA, title: '肉じゃが', generatedAt: '2026-09-13T12:00:00Z' }),
         uncookableMeal({ id: idB, title: '肉じゃが', generatedAt: '2026-09-12T12:00:00Z' }),
@@ -1607,7 +1680,7 @@ describe('献立を提案する SuggestMeals', () => {
     // B-28 規則8 / prompt-design D-6・論点4: 上限は費用の上限である。落ちるのは古いほうで、
     // 51件目の `献立51` が落ちて50件目の `献立50` は残る。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: mealsWithDistinctTitlesAndGeneratedAt(51),
       generatedMeals: [generatedMeal()],
       mealIdsToIssue: [idD],
@@ -1625,7 +1698,7 @@ describe('献立を提案する SuggestMeals', () => {
     // 指すのは最も新しい `献立01` である — 重なりが上限の内側に来る置き方でないと、
     // 切る前でも後でも50件になり、順序の違いが見えない。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: mealsWithDistinctTitlesAndGeneratedAt(51),
       recentSuggestions: [storedSuggestion({ mealIds: [numberedMealId(1)] })],
       generatedMeals: [generatedMeal()],
@@ -1641,7 +1714,7 @@ describe('献立を提案する SuggestMeals', () => {
     // FR-42 / prompt-design D-6 / B-28 規則8: 先頭が直前の提案なので、直前に見た献立は
     // 必ず残る。指すのは最も古い `献立51` で、蓄積の側だけなら上限で落ちる1件である。
     const { suggest, mealGenerator } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: mealsWithDistinctTitlesAndGeneratedAt(51),
       recentSuggestions: [storedSuggestion({ mealIds: [numberedMealId(51)] })],
       generatedMeals: [generatedMeal()],
@@ -1664,7 +1737,7 @@ describe('献立を提案する SuggestMeals', () => {
   it('生成結果の名称が保持している献立と完全一致したら、その既存の献立の識別子が提案に並ぶ', async () => {
     // C-4 / B-28 規則10: 同じ名称の献立を二重に持たない。提案が指すのは既存の識別子である。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [uncookableMeal({ id: idA, title: '肉じゃが' })],
       generatedMeals: [generatedMeal({ title: '肉じゃが' })],
       mealIdsToIssue: [idC],
@@ -1679,7 +1752,7 @@ describe('献立を提案する SuggestMeals', () => {
     // C-4 / C-1 の裏 / B-28 規則10: 参照するだけなので、保持している献立は1件のままである。
     // 保存されていないことは取得を通して見る（`docs/testing.md` 3章）。
     const { suggest, mealRepository } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [uncookableMeal({ id: idA, title: '肉じゃが' })],
       generatedMeals: [generatedMeal({ title: '肉じゃが' })],
       mealIdsToIssue: [idC],
@@ -1696,7 +1769,7 @@ describe('献立を提案する SuggestMeals', () => {
     // **発行する献立の識別子を1件も用意しない** — 参照で済む1件にも識別子を発行する実装なら、
     // 発行器が尽きてその場で投げる（`docs/testing.md` 2章 と同じ、用意しないことで守る形）。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [
         uncookableMeal({ id: idA, title: '肉じゃが' }),
         uncookableMeal({ id: idB, title: '生姜焼き' }),
@@ -1707,7 +1780,10 @@ describe('献立を提案する SuggestMeals', () => {
 
     const output = await suggest(ourHousehold, asOf);
 
-    expect(output.entries.map((entry) => entry.origin)).toEqual(['generated', 'generated']);
+    expect(suggestionOf(output).entries.map((entry) => entry.origin)).toEqual([
+      'generated',
+      'generated',
+    ]);
   });
 
   it('名称の前後に空白のある生成結果も、空白を落とした既存の献立と一致する', async () => {
@@ -1715,7 +1791,7 @@ describe('献立を提案する SuggestMeals', () => {
     // `createMeal` が同じ trim を1度ずつ通しているからで、突き合わせる側は再正規化しない。
     // **下の「名称の途中に空白がある生成結果」と対である** — 片側の trim が消えるとここが赤くなる。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [uncookableMeal({ id: idA, title: '肉じゃが' })],
       generatedMeals: [generatedMeal({ title: '  肉じゃが  ' })],
       mealIdsToIssue: [idC],
@@ -1731,7 +1807,7 @@ describe('献立を提案する SuggestMeals', () => {
     // （既知の割り切り）。**上の「名称の前後に空白のある生成結果」と対である** — 比べる前に
     // 内部の空白を詰める・小文字にする・NFKC にするといった余計な正規化を足すと、ここが赤くなる。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [uncookableMeal({ id: idA, title: '肉じゃが' })],
       generatedMeals: [generatedMeal({ title: '肉 じゃが' })],
       mealIdsToIssue: [idC],
@@ -1748,7 +1824,7 @@ describe('献立を提案する SuggestMeals', () => {
     // 先に積んだ 識別子B のほうを新しい生成日時にしてある — 「返った列の先頭を採る」実装も
     // 「避けるべき名称と同じ `byNewestFirst` を流用する」実装も 識別子B を指し、どちらも赤くなる。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [
         uncookableMeal({ id: idB, title: '肉じゃが', generatedAt: '2026-09-13T12:00:00Z' }),
         uncookableMeal({ id: idA, title: '肉じゃが', generatedAt: '2026-09-11T12:00:00Z' }),
@@ -1767,7 +1843,7 @@ describe('献立を提案する SuggestMeals', () => {
     // **用意する献立の識別子はちょうど2件**である — 新しく保存するぶんだけ発行するので、
     // 参照で済む 肉じゃが にも発行する実装なら、3件目で発行器が尽きて投げる。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [uncookableMeal({ id: idA, title: '肉じゃが' })],
       generatedMeals: [
         generatedMeal({ title: 'ごま和え' }),
@@ -1792,7 +1868,7 @@ describe('献立を提案する SuggestMeals', () => {
     // **善意で塞ぐ変更を入れるとここが赤くなる** — 赤くなったら直す前に C-4b を読み、
     // 穴を塞ぐという判断そのものを先に決めること（`docs/workflow.md` の「黙って進めない」）。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [
         meal({ id: mealIdOf(idA), title: '肉じゃが', ingredients: [mainIngredient('にんじん')] }),
       ],
@@ -1803,14 +1879,14 @@ describe('献立を提案する SuggestMeals', () => {
 
     const output = await suggest(ourHousehold, asOf);
 
-    expect(output.entries).toEqual([{ mealId: idA, origin: 'generated' }]);
+    expect(suggestionOf(output).entries).toEqual([{ mealId: idA, origin: 'generated' }]);
   });
 
   it('別の世帯に同じ名称の献立があっても参照せず、新しい献立として保存する', async () => {
     // C-9 / B-28 規則10: 突き合わせる相手は第1引数の世帯の献立だけである。隣の家の献立を
     // 参照すると、提案が他の世帯の献立を指すことになる。
     const { suggest } = setUp({
-      stockItems: [stockItem({ name: 'にんじん' })],
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [uncookableMeal({ id: idA, title: '肉じゃが', householdId: neighborHousehold })],
       generatedMeals: [generatedMeal({ title: '肉じゃが' })],
       mealIdsToIssue: [idC],
@@ -1819,5 +1895,213 @@ describe('献立を提案する SuggestMeals', () => {
     const output = await suggest(ourHousehold, asOf);
 
     expect(mealIdsOf(output)).toEqual([idC]);
+  });
+
+  // ここから在庫の下限（B-31b 2周目 / 規則3〜10）。**射影後の在庫が0〜1件のときは生成を呼ばず、
+  // 在庫が足りないことを名乗る結末を返す**（prompt-design 8章 / screen-design S-4）。数えるのは
+  // 期限切れを落としたあとの件数であり（ADR-040 決定2）、C-7 の短絡（規則4）と再利用（規則5）は
+  // この門より先に決まる。**下限を見るのは生成を呼ぶ直前の1か所であって、経路の入口ではない**（規則3）。
+  //
+  // **どの回も生成結果と発行する献立の識別子をわざと用意してある** — 既定の0件のままだと、
+  // 誤って生成へ回った回が `mealGenerator.empty` で落ち、「結末が違う」でも「呼ばれた」でもない
+  // 理由で赤くなる（`docs/testing.md` 2章）。
+  //
+  // **境界の2件は暫定である**（prompt-design 9.1 P-3 の試行を待つ。8章 は「P-4」と書くが誤記）。**動かすときは、この境界を
+  // 固定している5件が同時に動く** — 「在庫が1件だけの日も…」「在庫が2件あれば生成へ回り…」
+  // 「在庫が2件あっても全件が期限切れの日は…」「在庫が2件あっても、期限切れを落とすと1件しか
+  // 残らない日は…」「期限が基準日の当日の在庫品が2件あれば…」。
+  // **そこが赤くなったら、壊れたのではなく数字が変わったのである**（`MAX_AVOID_TITLES` と同じ）。
+
+  it('在庫が0件の日は、在庫が足りないことを名乗る結末を返す', async () => {
+    // B-31b 規則1・7・10 / prompt-design 8章 / screen-design S-4: 在庫が空の日は生成の材料が
+    // 足りない。失敗（S-6）でも規則違反でもないので投げず、判別できる結末として名乗る。
+    // **前提の提案は置かない** — 在庫も在庫スナップショットも0件だと C-7 の短絡を通ってしまう。
+    const { suggest } = setUp({
+      stockItems: [],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(output.outcome).toBe('insufficientStockItems');
+  });
+
+  it('在庫が0件の日は、献立生成器を呼ばない', async () => {
+    // B-31b 規則3・8 / prompt-design 8章 / `docs/testing.md` 2章: 呼ばないこと自体が要件なので、記憶上の
+    // 実装の**状態**として見る（`vi.fn()` を使わない）。材料の足りない回に外へ問い合わせても、
+    // 提案にならないまま費用と待ち時間だけが増える。
+    const { suggest, mealGenerator } = setUp({
+      stockItems: [],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(mealGenerator.callCount).toBe(0);
+  });
+
+  it('在庫が1件だけの日も、在庫が足りないことを名乗る結末を返す', async () => {
+    // B-31b 規則7（境界の下側）/ prompt-design 8章: 1件では献立を組む材料にならない。
+    // 0件の回と同じ結末であり、件数で名乗りを変えない。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' })],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(output.outcome).toBe('insufficientStockItems');
+  });
+
+  it('在庫が2件あれば生成へ回り、生成した献立を並べた提案を返す', async () => {
+    // B-31b 規則7（境界の上側）/ prompt-design 8章: 2件からは生成へ回る。門を通ったあとの
+    // 振る舞いは既存の生成の経路と同じである。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idC]);
+  });
+
+  it('在庫が2件あっても全件が期限切れの日は、在庫が足りないことを名乗る結末を返す', async () => {
+    // B-31b 規則6・10 / ADR-040 決定2: 数えるのは期限切れを落としたあとの件数である。基準日時の
+    // 暦日は 2026-09-14 なので、2026-09-13 の2件はどちらも落ちて0件になる。在庫が0件の日と
+    // 同じ結末であり、「載る在庫が0件」を件数の由来で分けない。
+    const { suggest } = setUp({
+      stockItems: [
+        stockItem({ name: 'にんじん', expiryDate: '2026-09-13' }),
+        stockItem({ name: 'ヨーグルト', expiryDate: '2026-09-13' }),
+      ],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(output.outcome).toBe('insufficientStockItems');
+  });
+
+  it('在庫が2件あっても、期限切れを落とすと1件しか残らない日は、在庫が足りないことを名乗る結末を返す', async () => {
+    // B-31b 規則6・7 / ADR-040 決定1・決定2 / prompt-design 8章: 数えるのは
+    // `unexpiredStockItemsOf` が返した件数であって、在庫の一覧が返した生の件数ではない。
+    // **上の「全件が期限切れ」と下の「当日の2件」だけでは、生の件数が2件以上かつ期限内が
+    // 1件以上で通す実装が緑のまま残る** — 射影後がちょうど1件になるこの回だけが、
+    // 数えている列が射影後のものであることを断つ。
+    const { suggest } = setUp({
+      stockItems: [
+        stockItem({ name: 'にんじん', expiryDate: '2026-09-13' }),
+        stockItem({ name: 'ヨーグルト' }),
+      ],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(output.outcome).toBe('insufficientStockItems');
+  });
+
+  it('期限が基準日の当日の在庫品が2件あれば、生成した献立を並べた提案を返す', async () => {
+    // B-31b 規則6 / ADR-040 決定2 / D-2: 落とすのは基準の暦日より**前**のものだけで、当日は
+    // 落とさない。期限が今日の在庫こそ使い切りたいものであり、数からも外さない。
+    const { suggest } = setUp({
+      stockItems: [
+        stockItem({ name: 'にんじん', expiryDate: '2026-09-14' }),
+        stockItem({ name: 'ヨーグルト', expiryDate: '2026-09-14' }),
+      ],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idC]);
+  });
+
+  it('在庫が足りない結末の回は、提案を保存しない', async () => {
+    // B-31b 規則8 / C-14 / C-11: 組まなかった回を記録に残すと、次の回の比較（C-7）も除外
+    // （C-11）もその記録を引きずる。保存していないことは取得を通して見る
+    // （`docs/testing.md` 3章）。`Suggestion` は1件以上しか持てないので、組めない提案は無い。
+    const { suggest, suggestionRepository } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' })],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(await suggestionRepository.findLatestByHousehold(ourHousehold)).toBeNull();
+  });
+
+  it('在庫が全件期限切れでも、最新の提案の在庫スナップショットと一致していれば保存済みの提案を返す', async () => {
+    // B-31b 規則4 / C-7 / FR-21: C-7 の短絡は下限より先である。短絡は生成を呼ばないので下限の
+    // 出番が無く、出せる提案があるのに「在庫が足りない」と告げるほうが利用者を損なう。
+    const expiredCarrot = { name: 'にんじん', expiryDate: '2026-09-13' };
+    const expiredYogurt = { name: 'ヨーグルト', expiryDate: '2026-09-13' };
+    const priorSuggestion = storedSuggestion({
+      mealIds: [idA],
+      pantrySnapshot: [mealStockItem(expiredCarrot), mealStockItem(expiredYogurt)],
+    });
+    const { suggest } = setUp({
+      stockItems: [stockItem(expiredCarrot), stockItem(expiredYogurt)],
+      meals: [],
+      recentSuggestions: [priorSuggestion],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(suggestionOf(output).id).toBe(priorSuggestion.id);
+  });
+
+  it('在庫が全件期限切れでも、作れる既存の献立が1件あればその献立を並べた提案を返す', async () => {
+    // B-31b 規則5 / C-15 / NFR-C1b / FR-34: 再利用は下限より先である。充足の判定は期限切れの
+    // 在庫品も見るので（B-31b 10章の前提）、射影後が0件でも作れる献立は残り、そちらが出る。
+    const { suggest } = setUp({
+      stockItems: [
+        stockItem({ name: 'にんじん', expiryDate: '2026-09-13' }),
+        stockItem({ name: 'ヨーグルト', expiryDate: '2026-09-13' }),
+      ],
+      meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idA]);
+  });
+
+  it('在庫が0件でも、直近の提案の取得が投げた例外はそのまま伝わる', async () => {
+    // B-31b 規則3・9 / B-28 7章2行目: 下限を見るのは生成を呼ぶ直前であって経路の入口ではない
+    // ので、在庫・最新の提案・献立・直近3回の提案の取得はどの回も通る。
+    // **これは番人であって駆動役ではない** — 下限を取得より前に置く実装にすると、例外が
+    // 出ないまま結末が返り、ここが赤くなる。
+    const preparedError = new Error('直近の提案の取得が落ちた');
+    const { suggest } = setUp({
+      stockItems: [],
+      meals: [],
+      findRecentThrows: preparedError,
+    });
+
+    const execution = suggest(ourHousehold, asOf);
+
+    await expect(execution).rejects.toBe(preparedError);
   });
 });

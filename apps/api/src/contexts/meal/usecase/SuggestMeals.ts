@@ -17,7 +17,11 @@ import { dateTimeOf } from '../domain/value/DateTime.js';
 import type { DateTime } from '../domain/value/DateTime.js';
 import { expiryDateOf } from '../domain/value/ExpiryDate.js';
 import type { MealId } from '../domain/value/MealId.js';
-import { createPantrySnapshot, pantrySnapshotEquals } from '../domain/value/PantrySnapshot.js';
+import {
+  createPantrySnapshot,
+  pantrySnapshotEquals,
+  unexpiredStockItemsOf,
+} from '../domain/value/PantrySnapshot.js';
 import type { PantrySnapshot } from '../domain/value/PantrySnapshot.js';
 import { createStockItem } from '../domain/value/StockItem.js';
 import type { StockItem } from '../domain/value/StockItem.js';
@@ -33,8 +37,10 @@ export type SuggestionEntryOutput = {
 /**
  * 提案1回ぶんの出力。**HTTP の契約ではない**（B-27 10章）。献立側の DTO を
  * `packages/contract` に置くのは api 経路を作る周であり、この周はここに置く。
+ *
+ * **いまの `SuggestMealsOutput` の改名であり、中身は1つも変えない**（ADR-041 決定2・結果3）。
  */
-export type SuggestMealsOutput = {
+export type SuggestionOutput = {
   readonly id: string;
   readonly entries: readonly SuggestionEntryOutput[];
   /** 生成日時。UTC の正準形に正規化された文字列（`DateTime`）。 */
@@ -42,11 +48,27 @@ export type SuggestMealsOutput = {
 };
 
 /**
+ * ユースケースの結末。**`outcome` で判別する**（ADR-041 `提案` 決定1）。
+ * 在庫が足りない回は失敗でも規則違反でもないので、投げも `null` も使わない。
+ *
+ * `<ユースケース>Output` がそのユースケースの戻り値である先行（`ListStockItemsOutput`）に
+ * 合わせ、union のほうが `SuggestMealsOutput` を名乗る。判別子に `kind` を使わないのは、
+ * `MealIngredient.kind`（主材料／調味料。C-16）が同じ語を別の意味で持っているためである。
+ */
+export type SuggestMealsOutput =
+  | { readonly outcome: 'suggested'; readonly suggestion: SuggestionOutput }
+  | { readonly outcome: 'insufficientStockItems' };
+
+/**
  * 在庫で作れる献立から提案を組む（FR-16 / FR-34 / FR-35）。世帯は第1引数で受け取り、
  * 基準日時も引数で受け取る（C-9 / `docs/testing.md` 5章）。
  *
- * **返すのは提案か、投げるかの2択である**（B-28 規則16）。再利用で組めなければ生成へ回るので、
- * 「組めなかった」を表す `null` は無くなった。
+ * **返すのは結末が判別できる1つの値である**（B-31b 規則1 / ADR-041 `提案`）。再利用で組めなければ
+ * 生成へ回るので、「組めなかった」を表す `null` は無い（B-28 規則16）。**生成を呼ぶだけの在庫が
+ * 無い回は `'insufficientStockItems'` を名乗り、提案を組まない**（B-31b 規則7 / prompt-design 8章）。
+ *
+ * 失敗（S-6）と規則違反はこれまでどおり投げる。判別できる戻り値にしたのは、在庫が足りない回が
+ * そのどちらでもないためである（screen-design 3.1 S-4・S-6 / NFR-07 / ADR-025）。
  */
 export type SuggestMeals = (householdId: HouseholdId, asOf: string) => Promise<SuggestMealsOutput>;
 
@@ -81,6 +103,21 @@ const REQUIRED_GENERATED_MEAL_COUNT = 3;
  * **そこが赤くなったら、壊れたのではなく数字が変わったのである。**
  */
 const MAX_AVOID_TITLES = 50;
+
+/**
+ * 生成を呼ぶのに要る、**期限切れを落としたあとの**在庫品の件数（prompt-design 8章 / B-31b 規則7）。
+ * 2件あれば主菜が組めるが、1件では「ゆで卵」しか出ず提案にならない。**下回る回は外へ問い合わせず、
+ * 在庫が足りない結末を返す**（screen-design 3.1 S-4 / ADR-041 決定1）。
+ *
+ * **この値は暫定である。** `prompt-design.md` 9.1 P-3（極端に少ない在庫）の試行の数字を待って閉じる
+ * （同書 8章 は「第9章 P-4」と書くが、9.1 の表も 12章 も P-3 を第8章の境界に充てている）。
+ * **動かすときに動くのはこの1行であり**、境界を固定している5件のテストが同時に動く —
+ * 「在庫が1件だけの日も…」「在庫が2件あれば生成へ回り…」「在庫が2件あっても全件が期限切れの
+ * 日は…」「在庫が2件あっても、期限切れを落とすと1件しか残らない日は…」「期限が基準日の当日の
+ * 在庫品が2件あれば…」。**そこが赤くなったら、壊れたのではなく数字が変わったのである**
+ * （`MAX_AVOID_TITLES` と同じ）。
+ */
+const MIN_STOCK_ITEM_COUNT_TO_GENERATE = 2;
 
 /** 再利用の経路で組む提案の由来（C-4c）。 */
 const REUSED_ORIGIN: SuggestionEntryOrigin = 'reused';
@@ -160,17 +197,37 @@ export function suggestMeals(deps: {
     // **引き当ては生成を呼ぶ前に組み終える。** 生成の途中で保存した献立は
     // `findByHousehold` が返した列（記録そのもの）に積まれるため、都度引き直すと
     // その回に保存したばかりの献立まで参照の対象に入る（B-28 規則10）。
-    const suggestionEntries =
-      selectedCookableMeals.length === 0
-        ? await generateSuggestionEntries(
-            deps,
-            householdId,
-            pantrySnapshot,
-            asOfDateTime,
-            buildAvoidTitles(storedMeals, recentSuggestions),
-            buildExistingMealIdByTitle(storedMeals),
-          )
-        : selectedCookableMeals.map(toReusedEntry);
+    const shouldGenerate = selectedCookableMeals.length === 0;
+
+    // 生成へ回る回だけ、呼ぶ直前に在庫の下限を見る（B-31b 規則3・7 / prompt-design 8章 /
+    // screen-design 3.1 S-4）。**門は経路の入口ではなくここにある** — 前に置くと、C-7 で短絡
+    // できる回（規則4）も作れる既存の献立が残っている回（規則5）も、出せる提案があるのに
+    // 「在庫が足りない」と告げることになる。取得もどの回も通る（規則9）。
+    //
+    // 数えるのは `unexpiredStockItemsOf` が返した列の件数であり、**期限の規則はここに写さない**
+    // （B-31b 規則6 / ADR-040 決定1）。在庫が0件の回も全件が期限切れの回も、載る在庫が0件で
+    // あることに変わりはなく、同じ結末になる（規則10）。
+    //
+    // 下回った回は**生成を呼ばず、献立も提案も組まず、識別子も発行せず、保存もしない**
+    // （規則8 / C-14）— 組まなかった回を記録に残すと、次の回の比較（C-7）と除外（C-11）が
+    // その記録を引きずる。失敗でも規則違反でもないので投げない（規則1 / ADR-041 `提案`）。
+    if (
+      shouldGenerate &&
+      unexpiredStockItemsOf(pantrySnapshot, asOfDateTime).length < MIN_STOCK_ITEM_COUNT_TO_GENERATE
+    ) {
+      return { outcome: 'insufficientStockItems' };
+    }
+
+    const suggestionEntries = shouldGenerate
+      ? await generateSuggestionEntries(
+          deps,
+          householdId,
+          pantrySnapshot,
+          asOfDateTime,
+          buildAvoidTitles(storedMeals, recentSuggestions),
+          buildExistingMealIdByTitle(storedMeals),
+        )
+      : selectedCookableMeals.map(toReusedEntry);
 
     // 検証を保存の前に済ませる。規則違反で終わったときに何も残らないのはこの順序による
     // （B-27 規則11 / 先行 `registerStockItem`）。**提案を保存するのはどちらの経路でも同じ**で、
@@ -431,20 +488,26 @@ function toReusedEntry(cookableMeal: CookableMeal): SuggestionEntry {
 }
 
 /**
- * 提案を出力に写す。**この周で組んで保存した提案と、C-7 で短絡して返す保存済みの提案の
- * 両方が通る** — どちらも同じ写し方であり、短絡した回だけ識別子や生成日時を作り替えない
- * （B-28 規則1）。
+ * 提案を、**提案を返したことを名乗る結末**に写す（B-31b 規則1・2 / ADR-041 `提案`）。
+ * **この周で組んで保存した提案と、C-7 で短絡して返す保存済みの提案の両方が通る** —
+ * どちらも同じ写し方であり、短絡した回だけ識別子や生成日時を作り替えない（B-28 規則1）。
+ *
+ * **判別子が付くだけで、提案の中身は1つも変わらない**（B-31b 規則2）。結末を名乗る場所を
+ * ここ1か所に閉じているので、変種が増えても提案を組む側は動かない。
  *
  * `entries` の並びは**組んだ順そのまま**である — 再利用なら C-12 の順、生成なら生成側が
  * 返した並びであり、ここで並べ替えない（FR-35 / C-2 / C-12 / B-27 規則16 / B-28 規則9）。
  */
 function toOutput(suggestion: Suggestion): SuggestMealsOutput {
   return {
-    id: suggestion.id,
-    entries: suggestion.entries.map((entry) => ({
-      mealId: entry.mealId,
-      origin: entry.origin,
-    })),
-    generatedAt: suggestion.generatedAt,
+    outcome: 'suggested',
+    suggestion: {
+      id: suggestion.id,
+      entries: suggestion.entries.map((entry) => ({
+        mealId: entry.mealId,
+        origin: entry.origin,
+      })),
+      generatedAt: suggestion.generatedAt,
+    },
   };
 }
