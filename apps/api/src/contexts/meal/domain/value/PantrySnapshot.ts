@@ -1,3 +1,4 @@
+import type { DateTime } from './DateTime.js';
 import type { StockItem } from './StockItem.js';
 
 /**
@@ -7,7 +8,8 @@ import type { StockItem } from './StockItem.js';
  * 保存されない一時のものも生まれる（ADR-037 決定3）。
  *
  * 抱えるのは献立側の在庫品の列だけである。並べ替えも重複の除去もしない — 期限の近い順に
- * 並べるのも期限切れを落とすのも、外へ送る射影の仕事である（B-26 規則7 / 規則9）。
+ * 並べるのは、外へ送る射影の仕事である（B-26 規則7）。**期限切れを落とす規則はこの値が持ち**、
+ * 射影と、生成を呼ぶ下限との両方が `unexpiredStockItemsOf` を呼ぶ（ADR-040 決定1）。
  */
 export type PantrySnapshot = {
   /** 生成の経路を1つに絞るための印。素のオブジェクトリテラルを PantrySnapshot として扱えなくする。 */
@@ -28,6 +30,51 @@ export function createPantrySnapshot(props: { stockItems: readonly StockItem[] }
     __brand: 'PantrySnapshot' as const,
     stockItems: Object.freeze([...props.stockItems]),
   });
+}
+
+/**
+ * 期限切れの在庫品を落とした在庫品の列を返す（B-31a / ADR-040 `提案`）。
+ *
+ * 落とすのは**期限が基準日時の暦日より前**のものだけで、当日は落とさない。期限が未設定の
+ * 在庫品も落とさない（FR-13）。返すのは在庫品の列であって在庫スナップショットではない —
+ * 濾した結果を在庫スナップショットで返すと `pantrySnapshotEquals` に渡せてしまい、C-7 の
+ * 比較が期限切れを落とした相手と突き合わされる（B-31a 規則1）。
+ *
+ * 並べ替えも重複の除去もせず、受け取ったスナップショットにも手を入れない（B-31a 規則4・規則5）。
+ * **残した在庫品は受け取ったものをそのまま返す** — ここで作り直すと、名称も分量も期限も
+ * `createStockItem` / `amountOf` / `expiryDateOf` を通った値なのに、2つ目の正規化の規則が
+ * この関数に生まれる（B-31a 規則5b / ADR-037 理由(3)）。
+ *
+ * 在庫0件も全件が期限切れも空の列を返し、投げない。そこで生成を呼ばないと決めるのは
+ * 呼ぶ側である（B-31a 規則6・規則7）。
+ */
+export function unexpiredStockItemsOf(
+  pantrySnapshot: PantrySnapshot,
+  asOf: DateTime,
+): readonly StockItem[] {
+  // 暦日を取り出すのは**この1か所だけ**。`DateTime` は `dateTimeOf` が UTC の正準形に
+  // 正規化しているので、先頭10文字がそのまま `YYYY-MM-DD` になる。時間帯で日を切り直すかは
+  // まだ決めていない（B-31c）— 決まったときに動くのはこの行だけである（B-31a 規則8 / ADR-040 結果1）。
+  const today = asOf.slice(0, 10);
+
+  // 濾すだけで、詰め直しも並べ替えも重複の除去もしない。読むのは受け取った列で、
+  // 返すのは新しい列である（B-31a 規則4・規則5 / ADR-009）。
+  return Object.freeze(
+    pantrySnapshot.stockItems.filter((stockItem) => isUnexpiredOn(stockItem, today)),
+  );
+}
+
+/**
+ * 在庫品がその暦日にまだ期限内かを返す（B-31a 規則2・規則3・規則9）。
+ *
+ * - 期限が**基準の暦日より前**のときだけ期限切れとする。**当日は落とさない** — 残日数0 は
+ *   「期限は今日」であって、その日に使い切るべき在庫だからである（D-2 / FR-18）
+ * - 期限が未設定の在庫品は落とさない。期限は任意入力である（FR-13）
+ * - 比べるのは文字列の大小で足りる。両辺とも `YYYY-MM-DD` で辞書式が暦順であり、
+ *   照合順序が実行環境に依る `localeCompare` は使わない（ADR-036 決定1・結果8）
+ */
+function isUnexpiredOn(stockItem: StockItem, calendarDate: string): boolean {
+  return stockItem.expiryDate === null || stockItem.expiryDate >= calendarDate;
 }
 
 /**

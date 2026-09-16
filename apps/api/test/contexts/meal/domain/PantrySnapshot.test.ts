@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   createPantrySnapshot,
   pantrySnapshotEquals,
+  unexpiredStockItemsOf,
 } from '../../../../src/contexts/meal/domain/value/PantrySnapshot.js';
+import { dateTimeOf } from '../../../../src/contexts/meal/domain/value/DateTime.js';
 import {
   createStockItem,
   type StockItem,
@@ -29,6 +31,17 @@ function pantrySnapshot(...stockItems: StockItem[]) {
 function namesOf(snapshot: ReturnType<typeof createPantrySnapshot>) {
   return snapshot.stockItems.map((stockItem) => stockItem.name);
 }
+
+/**
+ * 在庫品の**列**から名称を並びのまま取り出す。上の `namesOf` は在庫スナップショットを受けるが、
+ * `unexpiredStockItemsOf` が返すのは列である（B-31a 規則1）。
+ */
+function namesOfStockItems(stockItems: readonly StockItem[]) {
+  return stockItems.map((stockItem) => stockItem.name);
+}
+
+/** 判定の基準日時。断りのない it はこれを渡す。 */
+const asOf = dateTimeOf('2026-09-16T00:00:00Z');
 
 describe('在庫スナップショット PantrySnapshot', () => {
   it('渡した在庫品を受け取った並びのまま抱える', () => {
@@ -244,5 +257,142 @@ describe('在庫スナップショットの一致 pantrySnapshotEquals', () => {
     pantrySnapshotEquals(left, right);
 
     expect(namesOf(left)).toEqual(['にんじん', 'たまねぎ']);
+  });
+});
+
+describe('期限切れを落とした在庫品の列 unexpiredStockItemsOf', () => {
+  it('期限を過ぎた在庫品だけを落として残りを返す', () => {
+    // 規則2 / D-5: 落とすのは期限が基準日時の暦日より前のものだけである。
+    const snapshot = pantrySnapshot(
+      stockItem('にんじん', null, '2026-09-15'),
+      stockItem('たまねぎ', null, '2026-09-20'),
+    );
+
+    expect(namesOfStockItems(unexpiredStockItemsOf(snapshot, asOf))).toEqual(['たまねぎ']);
+  });
+
+  it('期限が基準日時の前日の在庫品を落とす', () => {
+    // 規則2 / D-5: 基準日時の暦日より前は「期限を過ぎた」である。
+    const snapshot = pantrySnapshot(stockItem('豚こま肉', null, '2026-09-15'));
+
+    expect(unexpiredStockItemsOf(snapshot, asOf).length).toBe(0);
+  });
+
+  it('期限が基準日時の当日の在庫品は落とさない', () => {
+    // 規則2 / D-2 / prompt-design 9.1 P-2・P-4 / FR-18: 残日数0 は「期限は今日」であり、
+    // まだ使える。当日を落とすと、その日に使い切るべき在庫が真っ先に消える。
+    const snapshot = pantrySnapshot(stockItem('豚こま肉', null, '2026-09-16'));
+
+    expect(namesOfStockItems(unexpiredStockItemsOf(snapshot, asOf))).toEqual(['豚こま肉']);
+  });
+
+  it('期限が基準日時の翌日の在庫品は落とさない', () => {
+    // 規則2: 基準日時の暦日より後はもちろん残る。
+    const snapshot = pantrySnapshot(stockItem('豚こま肉', null, '2026-09-17'));
+
+    expect(namesOfStockItems(unexpiredStockItemsOf(snapshot, asOf))).toEqual(['豚こま肉']);
+  });
+
+  it('期限が未設定の在庫品は落とさない', () => {
+    // 規則3 / FR-13: 期限は任意入力である。未設定を落とすと、期限を書かなかった在庫が消える。
+    const snapshot = pantrySnapshot(stockItem('乾燥わかめ', null, null));
+
+    expect(namesOfStockItems(unexpiredStockItemsOf(snapshot, asOf))).toEqual(['乾燥わかめ']);
+  });
+
+  it('残した在庫品を受け取った並びのまま返す', () => {
+    // 規則4 / ADR-009: 並べ替えない。期限の近い順に並べるのは外へ送る射影の仕事のままである。
+    const snapshot = pantrySnapshot(
+      stockItem('たまねぎ', null, '2026-09-30'),
+      stockItem('にんじん', null, '2026-09-20'),
+    );
+
+    expect(namesOfStockItems(unexpiredStockItemsOf(snapshot, asOf))).toEqual([
+      'たまねぎ',
+      'にんじん',
+    ]);
+  });
+
+  it('同じ名称・分量・期限の在庫品が2件あっても畳まない', () => {
+    // 規則4 / ADR-007: 在庫品は同じ食材でも統合しない。濾すついでに畳むと、件数が変わる。
+    const snapshot = pantrySnapshot(
+      stockItem('卵', '6個', '2026-09-16'),
+      stockItem('卵', '6個', '2026-09-16'),
+    );
+
+    expect(unexpiredStockItemsOf(snapshot, asOf).length).toBe(2);
+  });
+
+  it('濾しても、渡したスナップショットの中身は変わらない', () => {
+    // 規則5 / ADR-009: 返すのは濾した新しい列である。渡された値に手を入れると、
+    // C-7 の一致比較が見ている在庫が後から動く。
+    const snapshot = pantrySnapshot(
+      stockItem('にんじん', null, '2026-09-15'),
+      stockItem('たまねぎ', null, '2026-09-30'),
+    );
+
+    unexpiredStockItemsOf(snapshot, asOf);
+
+    expect(namesOf(snapshot)).toEqual(['にんじん', 'たまねぎ']);
+  });
+
+  it('在庫が0件なら空の列を返す', () => {
+    // 規則6: 在庫が空なのは正常な状態である。投げない。
+    expect(unexpiredStockItemsOf(pantrySnapshot(), asOf).length).toBe(0);
+  });
+
+  it('全件が期限を過ぎていても空の列を返す', () => {
+    // 規則7 / D-5: 空になるのも正常な結果であり、そこで生成を呼ばないと決めるのは呼ぶ側である。
+    const snapshot = pantrySnapshot(
+      stockItem('にんじん', null, '2026-09-15'),
+      stockItem('たまねぎ', null, '2026-09-01'),
+    );
+
+    expect(unexpiredStockItemsOf(snapshot, asOf).length).toBe(0);
+  });
+
+  it('基準日時の時刻は判定に効かない', () => {
+    // 規則8 / 規則2: 見るのは暦日だけである。時刻で切ると、同じ日の同じ在庫が
+    // 朝と夜とで違う扱いになる。
+    const snapshot = pantrySnapshot(stockItem('豚こま肉', null, '2026-09-16'));
+
+    expect(
+      namesOfStockItems(unexpiredStockItemsOf(snapshot, dateTimeOf('2026-09-16T23:59:59.999Z'))),
+    ).toEqual(['豚こま肉']);
+  });
+
+  it('判定に使うのは渡された基準日時であって、実行時の現在時刻ではない', () => {
+    // 規則8 / testing.md 5章: 本体が現在時刻を読むと、テストが決定的でなくなる。
+    // この期限は現実の今日では切れていないので、未来の基準日時で落ちることだけが答えになる。
+    const snapshot = pantrySnapshot(stockItem('さといも', null, '2027-05-05'));
+
+    expect(unexpiredStockItemsOf(snapshot, dateTimeOf('2030-01-01T00:00:00Z')).length).toBe(0);
+  });
+
+  it('月をまたいで前月が期限の在庫品を落とす', () => {
+    // 規則9 / ADR-036 決定1・結果8: 期限どうしは YYYY-MM-DD の文字列の大小で比べる。
+    // 日の部分だけを見る実装だと、30 と 01 を比べて残してしまう。
+    const snapshot = pantrySnapshot(stockItem('キャベツ', null, '2026-09-30'));
+
+    expect(unexpiredStockItemsOf(snapshot, dateTimeOf('2026-10-01T00:00:00Z')).length).toBe(0);
+  });
+
+  it('返すのは在庫品の列であって在庫スナップショットではない', () => {
+    // 規則1 / C-7 / ADR-037 決定3: スナップショットで返すと pantrySnapshotEquals に渡せてしまい、
+    // C-7 の比較が期限切れを落とした相手と突き合わされる。
+    const snapshot = pantrySnapshot(stockItem('にんじん', null, '2026-09-16'));
+
+    expect(Array.isArray(unexpiredStockItemsOf(snapshot, asOf))).toBe(true);
+  });
+
+  it('残した在庫品の分量と期限をそのまま返す', () => {
+    // 規則5b / ADR-037 理由(3) / prompt-design 2.3: 残した在庫品は詰め直さない。
+    // 名称だけに落とすと、分量も期限も読む射影が組み立てられない。
+    const snapshot = pantrySnapshot(stockItem('豚こま肉', '100g', '2026-09-16'));
+
+    const remaining = unexpiredStockItemsOf(snapshot, asOf);
+
+    expect(remaining[0]?.amount).toBe('100g');
+    expect(remaining[0]?.expiryDate).toBe('2026-09-16');
   });
 });
