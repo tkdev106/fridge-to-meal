@@ -48,7 +48,7 @@ export type SuggestionOutput = {
 };
 
 /**
- * ユースケースの結末。**`outcome` で判別する**（ADR-041 `提案` 決定1）。
+ * ユースケースの結末。**`outcome` で判別する**（ADR-041 決定1）。
  * 在庫が足りない回は失敗でも規則違反でもないので、投げも `null` も使わない。
  *
  * `<ユースケース>Output` がそのユースケースの戻り値である先行（`ListStockItemsOutput`）に
@@ -63,7 +63,7 @@ export type SuggestMealsOutput =
  * 在庫で作れる献立から提案を組む（FR-16 / FR-34 / FR-35）。世帯は第1引数で受け取り、
  * 基準日時も引数で受け取る（C-9 / `docs/testing.md` 5章）。
  *
- * **返すのは結末が判別できる1つの値である**（B-31b 規則1 / ADR-041 `提案`）。再利用で組めなければ
+ * **返すのは結末が判別できる1つの値である**（B-31b 規則1 / ADR-041 決定1）。再利用で組めなければ
  * 生成へ回るので、「組めなかった」を表す `null` は無い（B-28 規則16）。**生成を呼ぶだけの在庫が
  * 無い回は `'insufficientStockItems'` を名乗り、提案を組まない**（B-31b 規則7 / prompt-design 8章）。
  *
@@ -210,7 +210,7 @@ export function suggestMeals(deps: {
     //
     // 下回った回は**生成を呼ばず、献立も提案も組まず、識別子も発行せず、保存もしない**
     // （規則8 / C-14）— 組まなかった回を記録に残すと、次の回の比較（C-7）と除外（C-11）が
-    // その記録を引きずる。失敗でも規則違反でもないので投げない（規則1 / ADR-041 `提案`）。
+    // その記録を引きずる。失敗でも規則違反でもないので投げない（規則1 / ADR-041 決定1）。
     if (
       shouldGenerate &&
       unexpiredStockItemsOf(pantrySnapshot, asOfDateTime).length < MIN_STOCK_ITEM_COUNT_TO_GENERATE
@@ -488,7 +488,7 @@ function toReusedEntry(cookableMeal: CookableMeal): SuggestionEntry {
 }
 
 /**
- * 提案を、**提案を返したことを名乗る結末**に写す（B-31b 規則1・2 / ADR-041 `提案`）。
+ * 提案を、**提案を返したことを名乗る結末**に写す（B-31b 規則1・2 / ADR-041 決定1・決定2）。
  * **この周で組んで保存した提案と、C-7 で短絡して返す保存済みの提案の両方が通る** —
  * どちらも同じ写し方であり、短絡した回だけ識別子や生成日時を作り替えない（B-28 規則1）。
  *
