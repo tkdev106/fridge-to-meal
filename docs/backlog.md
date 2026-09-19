@@ -19,20 +19,6 @@
 
 ## 次にやること
 
-- [ ] **B-07g** `identity`: **アクセストークンの検証を JWKS（ES256）に書き換える。** いまの
-  `HouseholdAuthenticatorImpl` は `alg: 'HS256'` を設定で固定しており、**実環境のトークンを1つも通さない**
-  （B-07f で実測。ヘッダーは `ES256` で `kid` を持つ）。`hono/jwt` の `verifyWithJwks` に替える —
-  **依存パッケージは増えない。** 決めることが3つ。**(a) JWKS をどう持つか** — 1リクエストごとに取りに
-  行かせない。**取得に失敗したときに検証を素通りさせない**（鍵が引けないなら世帯を作らない）。
-  **(b) `issuer` / `audience` の任意をやめる** — ADR-043 決定3 が必ず照合すると決めたので、
-  `AccessTokenVerification` の省略可能をなくす。実測値は `iss` が `https://<ref>.supabase.co/auth/v1`、
-  `aud` が `authenticated`。**(c) テストに JWKS をどう与えるか** — `fetch` を差し替える（B-22 / B-24 と
-  同じ手）か、鍵の取得を別のポートに切るか。**後者はドメイン層に «if» が1本増え、ADR-043 の結果2 が
-  「実装の周に決める」とした範囲を越える** — そちらに倒したくなったら、コードを書く前に ADR を提案して止まる。
-  **書き換わるのは `HouseholdAuthenticatorImpl` のテスト**（HS256 の共有秘密でトークンを組んでいる）。
-  ポートの口と `IdentifyHousehold` のテストは動かない。
-  **B-09（結線）の前に置く** — 検証が通らないまま結線すると、api 層のどの経路も世帯を作れずに断る
-  （ADR-043 / NFR-09）
 - [ ] **B-09** `apps/api/src/main.ts`: composition root で結線する。実装クラスの生成をここだけに閉じる。
   **Hyperdrive の binding もこの周で置く** — `wrangler.toml` に `[[hyperdrive]]`（binding 名は `HYPERDRIVE`）、
   `main.ts` は `env.HYPERDRIVE.connectionString` を読み、ドライバに `prepare: false` と
@@ -41,7 +27,17 @@
   `pnpm dev` がその値を要求して止まるため、B-07f の周では入れなかった）。
   **Hyperdrive の問い合わせキャッシュが切れていることを確かめてから通す** — `wrangler hyperdrive get <id>` で
   `caching.disabled` を見る。**リポジトリの側からは検査できない設定**であり、切れていなければ結線した経路が
-  世帯をまたいで結果を返しうる（ADR-042 決定2・決定3・結果3 / ADR-044 / ADR-002 / C-9）
+  世帯をまたいで結果を返しうる（ADR-042 決定2・決定3・結果3 / ADR-044 / ADR-002 / C-9）。
+  **api 層に守りを1つ足す** — **鍵が引けないことと設定が空であることが 401 にならず 5xx になる**ことを
+  api 層のテストで押さえる。B-07g は infrastructure 側で「`IdentityRuleViolation` を投げない」までを
+  押さえ、`statusOfThrown` は「`IdentityRuleViolation` でないものを写さない」ので**連鎖としては成立している**が、
+  **1本で通すテストが無い。** 層をまたぐため B-07g の範囲外に置いた
+  （ADR-032 決定2 / ADR-043 結果2 / NFR-09）。
+  **認証器を1リクエストごとに作り直さない** — 鍵の保持はインスタンスの寿命に等しいので、
+  作り直すと毎リクエストで JWKS を取りに行くことになる（ADR-043 結果2）。
+  **`AccessTokenVerification` に渡す値をここで決める** — ADR-043 決定3 が「渡す値を決めるのは結線」と送った。
+  実測値は `jwksUri` が `<SUPABASE_URL>/auth/v1/.well-known/jwks.json`、`issuer` が
+  `https://<ref>.supabase.co/auth/v1`、`audience` が `authenticated`。**3つとも空を渡せない**（渡すと検証時に断る）
 - [ ] **B-17** トランザクションの helper（`withHouseholdTransaction`）を
   `contexts/pantry/infrastructure/db/` から **`shared/` 側へ移す**。**2つ目のコンテキストが表を持つ日に着手する** —
   コンテキストをまたぐ import は禁止のため、そのままでは2つ目の実装が写しを作る。
