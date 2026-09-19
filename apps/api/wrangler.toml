@@ -24,6 +24,10 @@ send_metrics = false
 #
 # ⚠ ドライバには prepare: false と fetch_types: false を与える（ADR-042 決定3）。
 #
+# ⚠ Hyperdrive の問い合わせキャッシュを切る（caching.disabled。ADR-044）。読み取りはすべて世帯で
+#   絞られていてキャッシュから得るものが無い一方、噛み合わなければ他世帯の在庫が黙って返る。
+#   この設定は Cloudflare 側にあり、ここからは検査できない — wrangler hyperdrive get <id> で見る。
+#
 # ⚠ SUPABASE_JWT_SECRET は使わない。検証は JWKS（ES256）で行う（ADR-043）。取りに行く先は
 #   <SUPABASE_URL>/auth/v1/.well-known/jwks.json で、公開鍵の一覧なので秘密ではない。
 #

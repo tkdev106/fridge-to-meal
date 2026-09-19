@@ -5,7 +5,7 @@
 平日の夕方に「今日何作ろう」を考えるのが面倒くさい — この一点を解消することが目的です。
 レシピサイトは「作りたい料理」から探す作りになっていて、「今あるもので何が作れるか」の方向には向いていません。
 
-> **現状（2026-09-13）: 実装フェーズ。** 要件定義・ドメインモデル・アーキテクチャ決定（ADR-001〜043）は済み。
+> **現状（2026-09-13）: 実装フェーズ。** 要件定義・ドメインモデル・アーキテクチャ決定（ADR-001〜044）は済み。
 > 在庫（pantry）コンテキストはドメイン層から API 層まで縦に一本通っていますが、composition root への結線と
 > 画面からの取得はこれから。何がどこまであるかは [`CLAUDE.md`](CLAUDE.md) の「実装の現在地」、
 > 次にやることは [`docs/backlog.md`](docs/backlog.md) を見てください。
@@ -35,7 +35,7 @@ upstream からの取り込みは人が手で行い、public への反映方法�
 | --- | --- |
 | [`docs/requirements.md`](docs/requirements.md) | 要件定義。何を作るか、何を作らないか |
 | [`docs/domain-model.md`](docs/domain-model.md) | ドメインモデル。サブドメイン分類・ユビキタス言語・集約と不変条件 |
-| [`docs/adr.md`](docs/adr.md) | アーキテクチャ決定録。ADR-001〜043 |
+| [`docs/adr.md`](docs/adr.md) | アーキテクチャ決定録。ADR-001〜044 |
 | [`docs/prompt-design.md`](docs/prompt-design.md) | 献立生成のプロンプト設計。ポートの契約・プロンプト全文・応答の検証規則・試行の設計 |
 | [`docs/screen-design.md`](docs/screen-design.md) | 画面設計。画面遷移・各画面の状態・再利用の見せ方 |
 | [`docs/testing.md`](docs/testing.md) | テスト方針。古典派・観察可能な振る舞い・TDD の1周 |

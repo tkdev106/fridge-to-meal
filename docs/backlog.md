@@ -33,24 +33,15 @@
   ポートの口と `IdentifyHousehold` のテストは動かない。
   **B-09（結線）の前に置く** — 検証が通らないまま結線すると、api 層のどの経路も世帯を作れずに断る
   （ADR-043 / NFR-09）
-- [ ] **B-07h** **実環境でしか確かめられない残り2件。** Cloudflare と Supabase の実環境が要るため、**人の作業**
-  （B-07f と同じ性質。**B-07f の探り Worker と Hyperdrive の設定が残っているうちに測るのが安い**）。
-  **(a) Hyperdrive の問い合わせキャッシュが `set local` と噛み合うか。** 作成時の既定で有効になっている。
-  **噛み合わなければ世帯をまたいで結果が見えることになり、Supabase を選んだ理由（世帯分離の安全網）が壊れる。**
-  トランザクションの中はキャッシュされない見込みだが、**確かめるまで前提にしない。** 見方は、別々の世帯 ID で
-  同じ問い合わせを続けて投げ、**2つ目が1つ目の行を受け取らないこと**を見る。噛み合わなければキャッシュを切る
-  （Cloudflare 側の設定変更であり、リポジトリの側では閉じない）。
-  **(b) 実 Supabase の Postgres の版。** `select version()` を控える。`docker-compose.yml` が版を固定している
-  条件の相手であり、ローカル 16 / CI 17 の2本立て（ADR-030 の結果1）で「正」をどこに置くかの材料になる。
-  B-07f では見ていない（ADR-042 の結果5 / ADR-030 の結果1 / C-9 / NFR-09）
 - [ ] **B-09** `apps/api/src/main.ts`: composition root で結線する。実装クラスの生成をここだけに閉じる。
   **Hyperdrive の binding もこの周で置く** — `wrangler.toml` に `[[hyperdrive]]`（binding 名は `HYPERDRIVE`）、
   `main.ts` は `env.HYPERDRIVE.connectionString` を読み、ドライバに `prepare: false` と
   `fetch_types: false` を与える。**`.dev.vars` の `DATABASE_URL` は廃止し**、手元は
   `WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` で渡す（先に binding だけ置くと
   `pnpm dev` がその値を要求して止まるため、B-07f の周では入れなかった）。
-  **B-07h(a) の答えが出てから着手する** — Hyperdrive の問い合わせキャッシュの扱いが決まらないと、
-  結線した経路が世帯をまたいで結果を返しうる（ADR-042 決定2・決定3・結果3・結果5 / ADR-002 / C-9）
+  **Hyperdrive の問い合わせキャッシュが切れていることを確かめてから通す** — `wrangler hyperdrive get <id>` で
+  `caching.disabled` を見る。**リポジトリの側からは検査できない設定**であり、切れていなければ結線した経路が
+  世帯をまたいで結果を返しうる（ADR-042 決定2・決定3・結果3 / ADR-044 / ADR-002 / C-9）
 - [ ] **B-17** トランザクションの helper（`withHouseholdTransaction`）を
   `contexts/pantry/infrastructure/db/` から **`shared/` 側へ移す**。**2つ目のコンテキストが表を持つ日に着手する** —
   コンテキストをまたぐ import は禁止のため、そのままでは2つ目の実装が写しを作る。
