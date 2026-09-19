@@ -258,7 +258,8 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | --- | --- | --- |
 | フロントエンド | React 19 + Vite 8（SPA・PWA） | ADR-014。Next.js は**採用しない** — サーバアクション類が ADR-003 と衝突するため |
 | サーバサイド | Hono on Cloudflare Workers | ADR-015。ドメイン層とユースケース層はここに置かれる |
-| DB・認証 | Supabase（Postgres + Auth）。**DB アクセスは Drizzle**（`drizzle-orm` + `postgres`）。**supabase-js は使わない** | ADR-029（ADR-020 を置き換え） |
+| DB・認証 | Supabase（Postgres + Auth）。**DB アクセスは Drizzle**（`drizzle-orm` + `postgres`）。**サーバの DB アクセスに supabase-js は使わない** — この禁止は `apps/api` の問い合わせに限る（ADR-029 決定1 は「認証と Postgres そのものは Supabase のまま使う」と続けている） | ADR-029（ADR-020 を置き換え） |
+| web のログイン | **`@supabase/supabase-js` を `apps/web` に置き、メールとパスワードでサインインする。** セッションは継ぎ目1つの背後に閉じ、**画面はライブラリの型を見ない。** 未実装（B-34 / B-35） | ADR-046 |
 | Workers → Postgres の経路 | **Cloudflare Hyperdrive 経由。** origin は Supabase の直接接続（`db.<ref>.supabase.co:5432`）。Supavisor は使わない。**問い合わせキャッシュは切る** | ADR-042 / ADR-044 |
 | アクセストークンの検証 | **JWKS（ES256）。** 共有秘密は使わない | ADR-043（ADR-031 を置き換え） |
 | LLM | **未決** | ADR-019 |
@@ -369,12 +370,20 @@ pnpm --filter @fridge-to-meal/web build
 
 ### 環境変数
 
-`apps/api/.dev.vars`（gitignore 済み）に置く。**クライアント側には置かない。**
+`apps/api/.dev.vars`（gitignore 済み）に置く。**これはサーバ側の置き場である。**
 
 ```
 SUPABASE_URL=...          # 認証（Supabase Auth）用。DB アクセスには使わない
 SUPABASE_ANON_KEY=...     # 同上
 ```
+
+**鍵を3つに分けて扱う（ADR-046 決定4）。混ぜて「クライアントに置かない」と括らない。**
+
+| 鍵 | 扱い |
+| --- | --- |
+| **anon key** | **公開される前提の鍵。** RLS が守るので、web のバンドルに焼き込まれてよい。web 側は `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` として持つ（**`VITE_` の付いたものはビルド時にバンドルへ入る**）。**`.dev.vars` には足さない** — あちらはサーバ専用である |
+| **`service_role` キー** | **使わない。** RLS を迂回し、Supabase を選んだ理由が消える（ADR-029 結果1） |
+| **LLM の API キー** | **サーバ側だけ。** クライアントに置くと抽出されて無制限に使われる（NFR-10） |
 
 **Postgres への接続情報はここに置かない。** Hyperdrive の設定（Cloudflare 側）が持ち、`main.ts` は
 `env.HYPERDRIVE.connectionString` を読む（ADR-042 決定2）。binding は `apps/api/wrangler.toml` の
@@ -394,7 +403,7 @@ SUPABASE_ANON_KEY=...     # 同上
 （`apps/api/drizzle.config.ts` が読む）。生成はスキーマの差分だけで行われ DB に繋がないため、
 **空でも通る。** アプリの実行経路はここを読まない。
 
-**`service_role` キーと、表の所有者ロールの接続文字列を使わない**（どちらも RLS を迂回する）。**接続に使うロールは、表を持たない非所有者のログインロールを別に作る** — 実 Supabase の `postgres` は表の所有者であり、`authenticator` は PostgREST が使っているため、どちらも使わない（B-07f で確認）。**LLM の API キーはサーバ側だけ**（NFR-10）。
+**`service_role` キーと、表の所有者ロールの接続文字列を使わない**（どちらも RLS を迂回する。鍵の3分類は上の表）。**接続に使うロールは、表を持たない非所有者のログインロールを別に作る** — 実 Supabase の `postgres` は表の所有者であり、`authenticator` は PostgREST が使っているため、どちらも使わない（B-07f で確認）。
 
 **ローカル Postgres の接続先は秘密でない**ため `.dev.vars` に置かず、`docker-compose.yml` と CI、
 `apps/api/package.json` の `dev` スクリプトから渡す（`apps/api/test/support/db/ConnectionStrings.ts` が
