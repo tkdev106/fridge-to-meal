@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=\"${CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE:-${WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE:-postgres://authenticator:authenticator@127.0.0.1:55432/postgres?options=-c%20search_path%3Dpublic}}\" wrangler dev",
     "build": "tsc --build",
     "deploy": "wrangler deploy",
     "db:generate": "drizzle-kit generate"
@@ -12,11 +12,11 @@
   "dependencies": {
     "@fridge-to-meal/contract": "workspace:*",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.13.7"
+    "hono": "^4.13.7",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "drizzle-kit": "^0.31.10",
-    "postgres": "^3.4.9",
     "wrangler": "^4.129.1"
   }
 }

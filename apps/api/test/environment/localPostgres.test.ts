@@ -4,6 +4,7 @@ import vitestConfig from '../../../../vitest.config.js';
 import dbConfig from '../../../../vitest.db.config.js';
 import { APP_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
 import { composeYaml, initSql } from '../support/environment/EnvironmentFiles.js';
+import { stripComments } from '../support/environment/StripComments.js';
 import { migrationSqlFiles } from '../support/migrations/MigrationFiles.js';
 import { inspectMigrationSql } from '../support/migrations/InspectMigrationSql.js';
 
@@ -24,22 +25,6 @@ const tableCreatingFiles = migrationSqlFiles.filter(
 );
 
 const eachFile = it.each(tableCreatingFiles);
-
-/**
- * コメントを落とす。**落とすことが要**である — 落とさないと、`healthcheck` を消したあとに
- * 「後で足す」とコメントへ書くだけで緑に戻り、守りが自分で穴を開ける。逆に負の照合
- * （`service_role` が無いこと）では、コメントに書かれた語で**根拠なく赤になる**のを防ぐ。
- * `apps/api/test/support/migrations/InspectMigrationSql.ts` と同じ考え方（B-07c 規則9b）。
- */
-function stripComments(content: string, marker: string): string {
-  return content
-    .split('\n')
-    .map((line) => {
-      const position = line.indexOf(marker);
-      return position === -1 ? line : line.slice(0, position);
-    })
-    .join('\n');
-}
 
 /** compose が公開しているホスト側のポート。 */
 function publishedPort(yaml: string): string | null {

@@ -10,10 +10,18 @@ send_metrics = false
 # Postgres への接続情報はここにも .dev.vars にも置かない。Hyperdrive の設定（Cloudflare 側）が
 # 持ち、main.ts は env.HYPERDRIVE.connectionString を読む（ADR-042 決定2 / B-07f で実測）。
 #
-#   [[hyperdrive]]        ← binding を置くのは B-09（結線）。先に置くと wrangler dev が
-#   binding = "HYPERDRIVE"   WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE を要求し、
-#   id = "..."               pnpm dev が止まる。
+# binding は下に置いてある（B-09 で結線）。binding があると wrangler dev はローカル用の
+# 接続文字列 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE を要求するが、
+# 手元では package.json の dev スクリプトがローカル Postgres の authenticator を既定で渡す。
+# 外から同じ名で与えれば、そちらが優先される。localConnectionString はここに書かない —
+# 接続文字列をこのファイルに置かない規則の一部である。
 #
+# id は B-07f で作った Hyperdrive の id に置き換える（id は秘密ではない。ADR-042 結果2）。
+# wrangler hyperdrive get <id> で caching.disabled が真であることを確かめる（ADR-044 決定3）。
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "00000000000000000000000000000000"
+
 # 環境変数で渡すのは認証（Supabase Auth）用の2つだけ。開発時は apps/api/.dev.vars（gitignore 済み）。
 #   SUPABASE_URL="https://xxxx.supabase.co"   認証用。DB アクセスには使わない
 #   SUPABASE_ANON_KEY="..."                   同上

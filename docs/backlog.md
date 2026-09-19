@@ -19,25 +19,6 @@
 
 ## 次にやること
 
-- [ ] **B-09** `apps/api/src/main.ts`: composition root で結線する。実装クラスの生成をここだけに閉じる。
-  **Hyperdrive の binding もこの周で置く** — `wrangler.toml` に `[[hyperdrive]]`（binding 名は `HYPERDRIVE`）、
-  `main.ts` は `env.HYPERDRIVE.connectionString` を読み、ドライバに `prepare: false` と
-  `fetch_types: false` を与える。**`.dev.vars` の `DATABASE_URL` は廃止し**、手元は
-  `WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` で渡す（先に binding だけ置くと
-  `pnpm dev` がその値を要求して止まるため、B-07f の周では入れなかった）。
-  **Hyperdrive の問い合わせキャッシュが切れていることを確かめてから通す** — `wrangler hyperdrive get <id>` で
-  `caching.disabled` を見る。**リポジトリの側からは検査できない設定**であり、切れていなければ結線した経路が
-  世帯をまたいで結果を返しうる（ADR-042 決定2・決定3・結果3 / ADR-044 / ADR-002 / C-9）。
-  **api 層に守りを1つ足す** — **鍵が引けないことと設定が空であることが 401 にならず 5xx になる**ことを
-  api 層のテストで押さえる。B-07g は infrastructure 側で「`IdentityRuleViolation` を投げない」までを
-  押さえ、`statusOfThrown` は「`IdentityRuleViolation` でないものを写さない」ので**連鎖としては成立している**が、
-  **1本で通すテストが無い。** 層をまたぐため B-07g の範囲外に置いた
-  （ADR-032 決定2 / ADR-043 結果2 / NFR-09）。
-  **認証器を1リクエストごとに作り直さない** — 鍵の保持はインスタンスの寿命に等しいので、
-  作り直すと毎リクエストで JWKS を取りに行くことになる（ADR-043 結果2）。
-  **`AccessTokenVerification` に渡す値をここで決める** — ADR-043 決定3 が「渡す値を決めるのは結線」と送った。
-  実測値は `jwksUri` が `<SUPABASE_URL>/auth/v1/.well-known/jwks.json`、`issuer` が
-  `https://<ref>.supabase.co/auth/v1`、`audience` が `authenticated`。**3つとも空を渡せない**（渡すと検証時に断る）
 - [ ] **B-17** トランザクションの helper（`withHouseholdTransaction`）を
   `contexts/pantry/infrastructure/db/` から **`shared/` 側へ移す**。**2つ目のコンテキストが表を持つ日に着手する** —
   コンテキストをまたぐ import は禁止のため、そのままでは2つ目の実装が写しを作る。
@@ -49,13 +30,13 @@
   古い HTML が残っていること自体が読み手を誤らせる（docs/workflow.md）
 - [ ] **B-22** `apps/web`: **在庫一覧をサーバから取得する。** `ListStockItems` の `GET` を叩く薄い層を置き、
   `PantryList` に渡す。**いまは `App.tsx` が常に0件を渡しており、フラグを有効にしても在庫は出ない**
-  （B-11 は画面だけを作り、取得は範囲外とした）。テストは `fetch` を差し替える。**B-09（結線）の後**
-  （FR-04 / ADR-003）
+  （B-11 は画面だけを作り、取得は範囲外とした）。テストは `fetch` を差し替える。
+  経路は結線済みで接頭辞なし（`GET /stock-items`。B-09）（FR-04 / ADR-003）
 - [ ] **B-24** `apps/web`: **在庫の登録をサーバへ送る。** `POST /stock-items` を叩く薄い層を置き、
   `StockItemForm` の `onRegister` に渡す。**いまは `App.tsx` が「送る手段がまだ無い」ことを表して必ず断る関数を
   渡しており、画面から登録しても保存されない**（B-12 は画面だけを作り、送信は範囲外とした）。
   失敗の応答（`ErrorResponseDto.rule`）から文言を選ぶのもこの周（ADR-032 の決定3）。テストは `fetch` を差し替える。
-  **B-09（結線）の後**（FR-01 / ADR-003 / ADR-032）
+  経路は結線済み（B-09）（FR-01 / ADR-003 / ADR-032）
 - [ ] **B-25** **「ドメイン層に LLM という語を出さない」の言い回しを決める。** `CLAUDE.md` と
   `docs/domain-model.md` 2章 は語そのものを禁じる書き方をしているが、
   `apps/api/src/contexts/pantry/domain/value/Amount.ts` のコメントには ADR-010 の理由を写した
@@ -117,6 +98,7 @@
 | 食材マスタの初期データ（出所・件数） | 食材名のサジェスト（FR-02）。充足の当たり方（C-6）がここに懸かっている |
 | LLM プロバイダ（ADR-019） | `MealGenerator` の腐敗防止層の実装。**ポートの定義（B-15）は済んでいる** — 背後の実装だけが待っている |
 | 献立の保持期間 | 献立の削除・期限切れの扱い |
+| **Hyperdrive の実値（人の作業3点）** — (1) `apps/api/wrangler.toml` の `[[hyperdrive]]` の `id`（仮値 `0` が32桁）を B-07f で作った Hyperdrive の id に差し替える、(2) `wrangler hyperdrive get <id>` で `caching.disabled` が真であることを確かめる、(3) `apps/api/.dev.vars` の `DATABASE_URL` の行を消す（実行経路は読まない。`db:generate` だけが `process.env` から読む）。エージェントは Cloudflare の認証も `.dev.vars` も持たないため触れない（ADR-042 結果2 / ADR-044 決定3 / B-09） | `wrangler deploy`（実環境への配信）。CI と `pnpm dev` は仮値のまま動く |
 | 賞味期限と消費期限の区別 | **期限の種別ごとの**警告の出し分け（FR-12）。単一の「期限」のままの帯分けは B-11 で済んでいる |
 | Supabase 無料プランの一時停止対応 | 稼働の維持に関する運用タスク |
 | 起動時に開く画面（`docs/screen-design.md` 論点1） | **タブと画面遷移。** 在庫タブの「＋」から登録の画面を独立して開くこと（同書 5章）、「保存して閉じる」（同書 6章）、開いた直後に食材名の欄へ焦点を当てること（B-12 設計 規則10b）。**B-12 は遷移が無いため、登録の画面を一覧の下に並べて置いた** — 3つともその暫定に由来する宿題であり、どのタブを最初に開くかが決まらないと遷移そのものを作れない。**在庫が足りないとき（S-4）と上限に達したとき（S-7）の献立画面**も同じ理由で待つが、待つ理由は同じでない。**S-4 は導線が要る** — D-7 は「在庫を登録する」で在庫タブへ送る形であり、送る先へ渡せないと結末を画面にできない。**S-7 は画面そのものが要る** — 3.1 の状態表に1行あるだけでワイヤーも導線も無く、献立タブが遷移待ちである以上どこにも置けない。**遷移が決まった周は S-7 も一緒に拾う**（B-31 を割ったときに残した宿題） |

@@ -39,7 +39,7 @@ type VerifiedClaims = Awaited<ReturnType<typeof verifyWithJwks>>;
  *
  * **腐敗防止層である**（ADR-005）。JWKS・署名・`kid` という外の語はこのファイルに閉じ、
  * `domain/` と `usecase/` には `HouseholdId` と `IdentityRuleViolation` だけが出ていく。
- * 実装の生成は `main.ts` に任せる（B-09。今周はどこからも結線されない）。
+ * 実装の生成は `main.ts` に任せる（B-09 で結線済み。環境1つにつき1インスタンス）。
  *
  * **断り方は2つに分かれる**（設計書7章）。アクセストークンが通らないのは `IdentityRuleViolation`
  * で、api 層が 401 に写す。**設定が空であること（規則5）と鍵の取得の失敗（規則7）はそちらに

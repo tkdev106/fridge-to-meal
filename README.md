@@ -88,8 +88,7 @@ pnpm typecheck
 
 正は [`docs/backlog.md`](docs/backlog.md) です。ここはその見出しだけ。
 
-1. **composition root で結線する**（B-09）— 在庫 API と世帯認証器を `apps/api/src/main.ts` に組み立てる。Hyperdrive の binding もこの周（ADR-042 / ADR-044）
-3. **在庫の画面をつなぐ** — 登録画面（B-12）とサーバからの一覧取得（B-22）
-4. **献立集約を置く** — `Meal`（B-14a）と作れる献立 `CookableMeal`（B-14b）、`MealGenerator` ポート（B-15）
-5. **献立生成のプロンプトを試行する** — 設計は [`docs/prompt-design.md`](docs/prompt-design.md) に完了、道具は [`tools/prompt-trial/`](tools/prompt-trial/)。7つの在庫パターンでの試行・費用の実測・プロバイダ比較（ADR-019）が未実行
-6. **起動時の画面をどれにするか決める** — [`docs/screen-design.md`](docs/screen-design.md) 論点1。判断待ち
+1. **在庫の画面をつなぐ** — 登録画面（B-12）とサーバからの一覧取得（B-22）
+2. **献立集約を置く** — `Meal`（B-14a）と作れる献立 `CookableMeal`（B-14b）、`MealGenerator` ポート（B-15）
+3. **献立生成のプロンプトを試行する** — 設計は [`docs/prompt-design.md`](docs/prompt-design.md) に完了、道具は [`tools/prompt-trial/`](tools/prompt-trial/)。7つの在庫パターンでの試行・費用の実測・プロバイダ比較（ADR-019）が未実行
+4. **起動時の画面をどれにするか決める** — [`docs/screen-design.md`](docs/screen-design.md) 論点1。判断待ち

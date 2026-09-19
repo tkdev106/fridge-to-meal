@@ -3,10 +3,10 @@
 冷蔵庫の在庫を登録し、その在庫で作れる献立を提案する個人向け Web アプリ。
 目的は「今日何作ろう」を考える手間をなくすこと。**在庫管理は手段であって目的ではない。**
 
-> **現状（2026-09-13）: 実装フェーズ。在庫（pantry）コンテキストの縦切りが domain → usecase →
-> infrastructure → api まで通っている。** ただし `apps/api/src/main.ts`（composition root）には
-> まだ `/health` しか結線されておらず、画面もサーバから在庫を取れていない。
-> 実装の現在地は下の「実装の現在地」、次にやることは `docs/backlog.md`。
+> **現状（2026-09-19）: 実装フェーズ。在庫（pantry）コンテキストの縦切りが domain → usecase →
+> infrastructure → api → composition root（`apps/api/src/main.ts`）まで通っている。** 在庫の4経路と
+> 世帯の認証器が結線され、Hyperdrive の binding も置かれた（B-09）。ただし画面はまだサーバから
+> 在庫を取れていない（B-22 / B-24）。実装の現在地は下の「実装の現在地」、次にやることは `docs/backlog.md`。
 
 ---
 
@@ -95,15 +95,15 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 
 | コンテキスト | domain | usecase | infrastructure | api | 備考 |
 | --- | --- | --- | --- | --- | --- |
-| `pantry`（在庫） | `StockItem` 集約、`Amount` / `ExpiryDate` / `IngredientId` / `StockItemId`、`StockItemRepository`«if»、`StockItemIdGenerator`«if» | `RegisterStockItem` / `ListStockItems` / `UpdateStockItem` / `DeleteStockItem`、`StockItemDto` | `StockItemRepositoryImpl`（Drizzle）、`db/schema.ts`、`db/HouseholdTransaction.ts`（`set local role` とクレーム） | `StockItemRoutes`、`RuleViolationStatus` | **縦に一本通っている。** ただし `main.ts` に未結線（B-09） |
+| `pantry`（在庫） | `StockItem` 集約、`Amount` / `ExpiryDate` / `IngredientId` / `StockItemId`、`StockItemRepository`«if»、`StockItemIdGenerator`«if» | `RegisterStockItem` / `ListStockItems` / `UpdateStockItem` / `DeleteStockItem`、`StockItemDto` | `StockItemRepositoryImpl`（Drizzle）、`db/schema.ts`、`db/HouseholdTransaction.ts`（`set local role` とクレーム） | `StockItemRoutes`、`RuleViolationStatus` | **縦に一本通り、`main.ts` で結線されている**（B-09）。4経路は接頭辞なしで根に置かれる（`POST /stock-items` 等） |
 | `meal`（献立） | `Meal` / `Suggestion` 集約、`MealIngredient` / `MealCoverage` / `CookableMeal` / `Amount` / `CookingStep` / `CookingRecord` / `DateTime` / `MealId` / `StockItem` / `ExpiryDate` / `PantrySnapshot` / `SuggestionEntry` / `SuggestionId` / `GeneratedMeal`（value）、`MealCoverageService` / `CookableMealFinder`、`MealGenerator`«if» / `SuggestionIdGenerator`«if» / `MealIdGenerator`«if»、`MealRepository`«if» / `SuggestionRepository`«if»、`MealRuleViolation` | `SuggestMeals`（**再利用と生成の両方**） | — | — | **提案の経路が一本通った。** 在庫が前回の提案から変わっていなければ保存済みの提案をそのまま返し（C-7）、変わっていれば作れる献立を C-11 で除いて上位3件を提案にする。**0件のときは `MealGenerator` を呼び、既存と同じ名称の生成結果は既存を参照する**（C-4）。**ただし期限切れを落とした在庫が2件に満たなければ呼ばず、在庫が足りない結末を返す**（S-4 / ADR-040 / ADR-041。結末は `outcome` で判別する戻り値）。**背後の腐敗防止層はプロバイダ待ち**（ADR-019）。在庫品と期限は献立側にも起こしてあり、在庫品は名称・分量・期限の3項目（ADR-036 / ADR-037） |
-| `identity`（世帯） | `HouseholdAuthenticator`«if»、`IdentityRuleViolation` | `IdentifyHousehold` | `HouseholdAuthenticatorImpl`（**JWKS で ES256 を検証**。鍵は `kid` で引き、`alg` が設定と一致するものだけに絞る。**最初の検証で1度だけ取りに行って保持し、失敗した取得は捨てる**） | — | **実環境と噛み合った**（B-07f で実測、B-07g で実装。ADR-043）。**取得の失敗と設定の空は `IdentityRuleViolation` に包まない** — 包むと 401 に化け、サーバ側の不備を利用者のせいにする（ADR-045）。**ただし `main.ts` に未結線（B-09）** |
+| `identity`（世帯） | `HouseholdAuthenticator`«if»、`IdentityRuleViolation` | `IdentifyHousehold` | `HouseholdAuthenticatorImpl`（**JWKS で ES256 を検証**。鍵は `kid` で引き、`alg` が設定と一致するものだけに絞る。**最初の検証で1度だけ取りに行って保持し、失敗した取得は捨てる**） | — | **実環境と噛み合った**（B-07f で実測、B-07g で実装。ADR-043）。**取得の失敗と設定の空は `IdentityRuleViolation` に包まない** — 包むと 401 に化け、サーバ側の不備を利用者のせいにする（ADR-045）。**`main.ts` で結線されている**（B-09）— 認証器は環境1つにつき1つで、要求ごとに作り直さない（ADR-043 結果2） |
 | `catalog`（食材） | — | — | — | — | `.gitkeep` のみ。食材マスタの初期データが判断待ち |
 | `shared/domain` | `HouseholdId` | | | | |
 
 | 場所 | 現在地 |
 | --- | --- |
-| `apps/api/src/main.ts` | `GET /health` だけ。**実装クラスの `new` はまだ1つもない** |
+| `apps/api/src/main.ts` | composition root。`createApp(deps)`（Hono の組み立て）/ `composeDependencies(env, ports)`（**実装クラスの `new` はこの関数の中だけ**）/ default export（Workers の入口。同じ `env` には同じ組み立てを返す）の3口。在庫のユースケースは1要求1トランザクションで包み、`StockItemRepositoryImpl` はトランザクションの中で生成する。`AccessTokenVerification` の3値は `SUPABASE_URL` から導く（`jwksUri` = `<url>/auth/v1/.well-known/jwks.json`、`issuer` = `<url>/auth/v1`、`audience` = `authenticated`）。**鍵が引けない・設定が空は 500 で 401 にならない**ことを `test/main.test.ts` が層をまたいで押さえる（ADR-045 結果4） |
 | `apps/web/src/` | `App.tsx` が `PantryList` に常に0件を渡す。サーバ取得は B-22、登録画面は B-12 |
 | `packages/contract/src/` | `pantry.ts`（在庫 API の型）と `error.ts` |
 | `supabase/migrations/` | `stock_items` 表と RLS。`meta/` は drizzle-kit の生成物 |
@@ -377,9 +377,14 @@ SUPABASE_ANON_KEY=...     # 同上
 ```
 
 **Postgres への接続情報はここに置かない。** Hyperdrive の設定（Cloudflare 側）が持ち、`main.ts` は
-`env.HYPERDRIVE.connectionString` を読む（ADR-042 決定2）。手元で `wrangler dev` を回すときは
-`WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` にローカルの接続文字列を与える。
-**binding を `wrangler.toml` に置くのは B-09** — 先に置くと `pnpm dev` がその値を要求して止まる。
+`env.HYPERDRIVE.connectionString` を読む（ADR-042 決定2）。binding は `apps/api/wrangler.toml` の
+`[[hyperdrive]]`（`binding = "HYPERDRIVE"`）にある。**`id` は差し替えるまで仮値**（`0` が32桁）で、
+B-07f で作った Hyperdrive の id に置き換える（秘密ではない。ADR-042 結果2。`docs/backlog.md` の判断待ち）。手元の `wrangler dev` はローカル Postgres の `authenticator`
+（`127.0.0.1:55432`）を既定で使う — `pnpm --filter @fridge-to-meal/api dev` がその値を
+`CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` に入れる。別の接続先にしたければ
+同じ名の環境変数を外から与える（旧名 `WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` も
+読むが、wrangler 4.129 はこれを非推奨にした）。**新しい環境を立てるときは `wrangler hyperdrive get <id>`
+で `caching.disabled` が真であることを確かめる**（ADR-044 決定3。リポジトリの側からは検査できない）。
 
 **`SUPABASE_JWT_SECRET` は使わない。** 検証は JWKS で行う（ADR-043）。取りに行く先は
 `<SUPABASE_URL>/auth/v1/.well-known/jwks.json` であり、**公開鍵の一覧なので秘密ではない。**
@@ -390,8 +395,9 @@ SUPABASE_ANON_KEY=...     # 同上
 
 **`service_role` キーと、表の所有者ロールの接続文字列を使わない**（どちらも RLS を迂回する）。**接続に使うロールは、表を持たない非所有者のログインロールを別に作る** — 実 Supabase の `postgres` は表の所有者であり、`authenticator` は PostgREST が使っているため、どちらも使わない（B-07f で確認）。**LLM の API キーはサーバ側だけ**（NFR-10）。
 
-**ローカル Postgres の接続先は秘密でない**ため `.dev.vars` に置かず、`docker-compose.yml` と CI から渡す
-（`apps/api/test/support/db/ConnectionStrings.ts` が 127.0.0.1:55432 を固定で持つ）。
+**ローカル Postgres の接続先は秘密でない**ため `.dev.vars` に置かず、`docker-compose.yml` と CI、
+`apps/api/package.json` の `dev` スクリプトから渡す（`apps/api/test/support/db/ConnectionStrings.ts` が
+127.0.0.1:55432 を固定で持つ）。
 
 ## 作業の進め方
 
