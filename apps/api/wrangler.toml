@@ -16,11 +16,13 @@ send_metrics = false
 # 外から同じ名で与えれば、そちらが優先される。localConnectionString はここに書かない —
 # 接続文字列をこのファイルに置かない規則の一部である。
 #
-# id は B-07f で作った Hyperdrive の id に置き換える（id は秘密ではない。ADR-042 結果2）。
-# wrangler hyperdrive get <id> で caching.disabled が真であることを確かめる（ADR-044 決定3）。
+# id は B-07f で作った Hyperdrive のもの（秘密ではない。ADR-042 結果2）。この設定の
+# 問い合わせキャッシュが切れていることは 2026-09-19 にユーザーが確かめた（ADR-044 決定3）。
+# 別の環境を立てたときは wrangler hyperdrive get <id> で caching.disabled を見る —
+# リポジトリの側からは検査できない設定である。
 [[hyperdrive]]
 binding = "HYPERDRIVE"
-id = "00000000000000000000000000000000"
+id = "fefe9ddf248f42388c89824cf08a7445"
 
 # 環境変数で渡すのは認証（Supabase Auth）用の2つだけ。開発時は apps/api/.dev.vars（gitignore 済み）。
 #   SUPABASE_URL="https://xxxx.supabase.co"   認証用。DB アクセスには使わない

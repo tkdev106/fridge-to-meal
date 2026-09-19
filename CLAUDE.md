@@ -378,8 +378,9 @@ SUPABASE_ANON_KEY=...     # 同上
 
 **Postgres への接続情報はここに置かない。** Hyperdrive の設定（Cloudflare 側）が持ち、`main.ts` は
 `env.HYPERDRIVE.connectionString` を読む（ADR-042 決定2）。binding は `apps/api/wrangler.toml` の
-`[[hyperdrive]]`（`binding = "HYPERDRIVE"`）にある。**`id` は差し替えるまで仮値**（`0` が32桁）で、
-B-07f で作った Hyperdrive の id に置き換える（秘密ではない。ADR-042 結果2。`docs/backlog.md` の判断待ち）。手元の `wrangler dev` はローカル Postgres の `authenticator`
+`[[hyperdrive]]`（`binding = "HYPERDRIVE"`）にある。**`id` は B-07f で作った Hyperdrive のもの**
+（秘密ではない。ADR-042 結果2）。**この設定の問い合わせキャッシュが切れていることは
+2026-09-19 にユーザーが確かめた**（ADR-044 決定3）。手元の `wrangler dev` はローカル Postgres の `authenticator`
 （`127.0.0.1:55432`）を既定で使う — `pnpm --filter @fridge-to-meal/api dev` がその値を
 `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` に入れる。別の接続先にしたければ
 同じ名の環境変数を外から与える（旧名 `WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` も
