@@ -155,9 +155,9 @@ function branchNameProblem(name) {
   }
 
   const words = slug.split('-');
-  const 生成された語 = words.find((w) => !/^[a-z]+$|^[0-9]+$|^[a-z][0-9]+$/.test(w));
-  if (生成された語 !== undefined) {
-    return `slug の "${生成された語}" が何を指すのか名前から読めません。生成された識別子ではなく、変更の内容を語で書いてください`;
+  const generatedWord = words.find((w) => !/^[a-z]+$|^[0-9]+$|^[a-z][0-9]+$/.test(w));
+  if (generatedWord !== undefined) {
+    return `slug の "${generatedWord}" が何を指すのか名前から読めません。生成された識別子ではなく、変更の内容を語で書いてください`;
   }
   if (!words.some((w) => /^[a-z]{3,}$/.test(w))) {
     return 'slug に変更の内容がありません。タスクの番号だけでは何をする枝か読めないので、内容を表す語を足してください';
@@ -177,12 +177,12 @@ function createdBranchNames(git) {
   if (git === null) return [];
 
   if (git.name === 'switch' || git.name === 'checkout') {
-    const 作る指定 = git.args.findIndex(
+    const createFlagIndex = git.args.findIndex(
       (a) => a === '-c' || a === '-C' || a === '-b' || a === '-B' || a === '--create',
     );
-    if (作る指定 < 0) return [];
-    const 名前 = git.args[作る指定 + 1];
-    return 名前 === undefined || isFlag(名前) ? [] : [名前];
+    if (createFlagIndex < 0) return [];
+    const name = git.args[createFlagIndex + 1];
+    return name === undefined || isFlag(name) ? [] : [name];
   }
 
   if (git.name === 'branch') {
@@ -194,11 +194,11 @@ function createdBranchNames(git) {
     ) {
       return [];
     }
-    const 改名 = hasFlag(git.args, '--move') || hasShortFlag(git.args, 'm');
-    const 位置引数 = git.args.filter((a) => !isFlag(a));
-    if (位置引数.length === 0) return []; // 一覧
+    const isRename = hasFlag(git.args, '--move') || hasShortFlag(git.args, 'm');
+    const positionalArgs = git.args.filter((a) => !isFlag(a));
+    if (positionalArgs.length === 0) return []; // 一覧
     // 改名は `git branch -m <旧> <新>` か `git branch -m <新>`。新しい名前は末尾。
-    return 改名 ? [位置引数[位置引数.length - 1]] : [位置引数[0]];
+    return isRename ? [positionalArgs[positionalArgs.length - 1]] : [positionalArgs[0]];
   }
 
   return [];
@@ -373,10 +373,13 @@ for (const segment of splitSegments(command)) {
   // 拒否の理由がブランチ名ごとに違い、固定の message に収まらないためである。
   // push される名前は `.githooks/pre-push` がもう1枚で見る — main への push と同じ2枚の構えで、
   // どちらも越えられることを前提にしている。
-  for (const 名前 of createdBranchNames(git)) {
-    const 理由 = branchNameProblem(名前);
-    if (理由 !== null)
-      deny('branch-name', `ブランチ名 "${名前}" は使えません。${理由}（docs/workflow.md 1章）。`);
+  for (const name of createdBranchNames(git)) {
+    const problem = branchNameProblem(name);
+    if (problem !== null)
+      deny(
+        'branch-name',
+        `ブランチ名 "${name}" は使えません。${problem}（docs/workflow.md 1章）。`,
+      );
   }
 
   const explicitRef =

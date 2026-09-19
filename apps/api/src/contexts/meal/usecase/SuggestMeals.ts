@@ -13,7 +13,7 @@ import type { SuggestionRepository } from '../domain/repository/SuggestionReposi
 import { cookableMealsOf } from '../domain/service/CookableMealFinder.js';
 import { amountOf } from '../domain/value/Amount.js';
 import type { CookableMeal } from '../domain/value/CookableMeal.js';
-import { dateTimeOf } from '../domain/value/DateTime.js';
+import { dateTimeOf, hoursBeforeOf } from '../domain/value/DateTime.js';
 import type { DateTime } from '../domain/value/DateTime.js';
 import { expiryDateOf } from '../domain/value/ExpiryDate.js';
 import type { MealId } from '../domain/value/MealId.js';
@@ -49,15 +49,19 @@ export type SuggestionOutput = {
 
 /**
  * ユースケースの結末。**`outcome` で判別する**（ADR-041 決定1）。
- * 在庫が足りない回は失敗でも規則違反でもないので、投げも `null` も使わない。
+ * 在庫が足りない回も上限に達した回も失敗でも規則違反でもないので、投げも `null` も使わない。
  *
  * `<ユースケース>Output` がそのユースケースの戻り値である先行（`ListStockItemsOutput`）に
  * 合わせ、union のほうが `SuggestMealsOutput` を名乗る。判別子に `kind` を使わないのは、
  * `MealIngredient.kind`（主材料／調味料。C-16）が同じ語を別の意味で持っているためである。
+ *
+ * **`'generationLimitReached'` が S-7 である**（NFR-C2 / ADR-049 結果5）。ADR-041 結果2 の
+ * とおり、上限の数え方がどう決まっても足すのはこの1行と、それを返す分岐だけであった。
  */
 export type SuggestMealsOutput =
   | { readonly outcome: 'suggested'; readonly suggestion: SuggestionOutput }
-  | { readonly outcome: 'insufficientStockItems' };
+  | { readonly outcome: 'insufficientStockItems' }
+  | { readonly outcome: 'generationLimitReached' };
 
 /**
  * 在庫で作れる献立から提案を組む（FR-16 / FR-34 / FR-35）。世帯は第1引数で受け取り、
@@ -66,9 +70,11 @@ export type SuggestMealsOutput =
  * **返すのは結末が判別できる1つの値である**（B-31b 規則1 / ADR-041 決定1）。再利用で組めなければ
  * 生成へ回るので、「組めなかった」を表す `null` は無い（B-28 規則16）。**生成を呼ぶだけの在庫が
  * 無い回は `'insufficientStockItems'` を名乗り、提案を組まない**（B-31b 規則7 / prompt-design 8章）。
+ * **直近24時間の生成が上限に達している回も同じで、`'generationLimitReached'` を名乗る**
+ * （B-31c / NFR-C2 / ADR-049）。
  *
- * 失敗（S-6）と規則違反はこれまでどおり投げる。判別できる戻り値にしたのは、在庫が足りない回が
- * そのどちらでもないためである（screen-design 3.1 S-4・S-6 / NFR-07 / ADR-025）。
+ * 失敗（S-6）と規則違反はこれまでどおり投げる。判別できる戻り値にしたのは、在庫が足りない回も
+ * 上限に達した回もそのどちらでもないためである（screen-design 3.1 S-4・S-6・S-7 / NFR-07 / ADR-025）。
  */
 export type SuggestMeals = (householdId: HouseholdId, asOf: string) => Promise<SuggestMealsOutput>;
 
@@ -117,6 +123,34 @@ const MAX_AVOID_TITLES = 50;
  * （`MAX_AVOID_TITLES` と同じ）。
  */
 const MIN_STOCK_ITEM_COUNT_TO_GENERATE = 2;
+
+/**
+ * 1日に生成を呼べる回数の上限（NFR-C2 / B-31c / screen-design 3.1 S-7）。**達していたら
+ * 生成を呼ばず、上限に達した結末を返す**（ADR-049 決定1 / ADR-041 決定1）。
+ *
+ * 値は NFR-C2 の初期値である。**数える単位は世帯であり**（C-9。同 NFR の字面は「1ユーザー
+ * あたり」だが、MVP は1利用者1世帯である）、**数えるのは生成の由来を持つ保存済みの提案**で
+ * ある — 再利用だけで組めた提案も保存されるため（C-14）、提案の件数をそのまま数えると
+ * 呼んでいない回まで上限を食う（ADR-049 決定1）。
+ *
+ * **動かすときに動くのはこの1行であり**、境界を固定している2件のテストが同時に動く —
+ * 「直近24時間の生成が上限に達している日は…」と「上限にあと1回ぶん残っていれば…」。
+ */
+const MAX_GENERATION_COUNT_PER_DAY = 10;
+
+/**
+ * 「1日」の幅（ADR-049 決定2）。**基準日時から遡る24時間の窓であり、暦日で切らない。**
+ *
+ * `docs/` のどこにもタイムゾーンの記述が無く、暦日で切るとどの案も時間帯を1つ選ぶことに
+ * なる（ADR-040 結果1 がこの周へ送った判断）。窓なら `asOf` と幅だけで決まり、**暦日を
+ * 1度も取り出さない。** 費用の上限としても素直である — 暦日で切ると日付が変わる瞬間に
+ * 2日ぶんを続けて呼べるが、窓なら任意の24時間がつねに上限以下に収まる。
+ *
+ * **窓の下端は含む**（`countGeneratedByHouseholdSince` の契約）。**動かすときに動くのは
+ * この1行であり**、境界を固定している2件のテストが同時に動く — 「ちょうど24時間前の生成も…」と
+ * 「窓より前の生成は…」。
+ */
+const GENERATION_LIMIT_WINDOW_HOURS = 24;
 
 /** 再利用の経路で組む提案の由来（C-4c）。 */
 const REUSED_ORIGIN: SuggestionEntryOrigin = 'reused';
@@ -215,6 +249,31 @@ export function suggestMeals(deps: {
       unexpiredStockItemsOf(pantrySnapshot, asOfDateTime).length < MIN_STOCK_ITEM_COUNT_TO_GENERATE
     ) {
       return { outcome: 'insufficientStockItems' };
+    }
+
+    // 続けて、同じ位置で1日の生成回数の上限を見る（B-31c / NFR-C2 / screen-design 3.1 S-7 /
+    // ADR-049）。**門が在庫の下限と同じ位置にあるのは同じ理由である** — 前に置くと、C-7 で
+    // 短絡できる回も作れる既存の献立が残っている回も、出せる提案があるのに上限を告げることに
+    // なる（ADR-049 結果6）。
+    //
+    // **在庫の下限より後にあるのも決めごとである**（同 結果6）。下限は手元の在庫だけで判るが、
+    // 上限は問い合わせが1つ要る — 在庫が足りない日は数えに行かない。両方に当たる日に
+    // 在庫の側を名乗るのも正しい: **在庫を登録すれば解ける S-4 と違い、S-7 は待つしかない。**
+    //
+    // 数えるのは**生成の由来を持つ保存済みの提案**であって提案の件数ではない（決定1 / C-14 /
+    // C-15 / C-4c）。**由来で絞る規則はリポジトリの契約が持ち、ここには写さない** —
+    // こちらが持つのは上限の数と窓の幅である（ADR-038 決定3 が `limit` に対して置いた線と同じ）。
+    //
+    // 達した回は**生成を呼ばず、献立も提案も組まず、識別子も発行せず、保存もしない。**
+    // 保存すると、数えている当のものが自分で増えていく。失敗でも規則違反でもないので投げない。
+    if (shouldGenerate) {
+      const generationCount = await deps.suggestionRepository.countGeneratedByHouseholdSince(
+        householdId,
+        hoursBeforeOf(asOfDateTime, GENERATION_LIMIT_WINDOW_HOURS),
+      );
+      if (generationCount >= MAX_GENERATION_COUNT_PER_DAY) {
+        return { outcome: 'generationLimitReached' };
+      }
     }
 
     const suggestionEntries = shouldGenerate
