@@ -9,7 +9,7 @@ import type { Session, SessionState, SignInOutcome, SignUpOutcome } from './Sess
  * **腐敗防止層である**（ADR-005 と同じ置き方を web の中で行う。ADR-046 決定3）。
  * `@supabase/supabase-js` の語と型はこのファイルに閉じ、外へ出ていくのは `Session.ts` の型と
  * 文字列だけである（規則1）。**このクラスを `new` してよいのは web の入口だけ**で、
- * 結線そのものは B-35 が行う（規則2）。
+ * 結線は `main.tsx` にある（規則2 / B-35）。
  *
  * **薄い写しに留める**（設計 10章）。`HouseholdAuthenticatorImpl` は `kid` の選び方や鍵の保持と
  * いった判断を持つのでテストで観察するが、こちらは委譲しかないため単体テストを置かない
@@ -37,7 +37,9 @@ export class SessionImpl implements Session {
    * アカウントを作る（FR-25 / 規則7）。
    *
    * 結末が3つに分かれるのは、**メールの確認を要する設定だとセッションが返らない**ためである。
-   * 実プロジェクトの設定は未確認で、B-35 が文言を決めるときに実物で確かめる（設計 10章）。
+   * 実プロジェクトの設定は未確認のままである — B-35 は実物に繋げず確かめられなかったため、
+   * `'confirmationRequired'` の変種を残し、画面は確認メールの案内を出す（B-35 設計 10章）。
+   * 確認が要らないと判った周に、`Session.ts` の doc どおり変種と文言を落とす。
    */
   async signUp(email: string, password: string): Promise<SignUpOutcome> {
     const { data, error } = await this.client.auth.signUp({ email, password });
@@ -53,7 +55,9 @@ export class SessionImpl implements Session {
    * サインインする（FR-25 / 規則7）。
    *
    * **通らなかった理由の種別は分けない。** 資格情報の誤りも通信不能も `'rejected'` に倒れる
-   * （設計 10章）— 分ける必要があるかは、文言を決める B-35 で判る。
+   * （設計 10章）。B-35 はこのままにすると判断した — 分けるにはここに「どの失敗か」の判断が増え、
+   * 内側の口を起こしてテストする形に膨らむ。代わりに**画面の断りの文言が原因を断定しない**
+   * （B-35 設計 6章 規則8）。分けると決まったら、足すのは `Session.ts` の結末の変種とここの写しである。
    */
   async signIn(email: string, password: string): Promise<SignInOutcome> {
     const { error } = await this.client.auth.signInWithPassword({ email, password });

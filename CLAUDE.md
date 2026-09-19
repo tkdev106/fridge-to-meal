@@ -5,8 +5,8 @@
 
 > **現状（2026-09-19）: 実装フェーズ。在庫（pantry）コンテキストの縦切りが domain → usecase →
 > infrastructure → api → composition root（`apps/api/src/main.ts`）まで通っている。** 在庫の4経路と
-> 世帯の認証器が結線され、Hyperdrive の binding も置かれた（B-09）。ただし画面はまだサーバから
-> 在庫を取れていない（B-22 / B-24）。実装の現在地は下の「実装の現在地」、次にやることは `docs/backlog.md`。
+> 世帯の認証器が結線され、Hyperdrive の binding も置かれた（B-09）。web はログインの門まで通った（B-35）が、
+> 画面はまだサーバから在庫を取れていない（B-22 / B-24）。実装の現在地は下の「実装の現在地」、次にやることは `docs/backlog.md`。
 
 ---
 
@@ -104,7 +104,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | 場所 | 現在地 |
 | --- | --- |
 | `apps/api/src/main.ts` | composition root。`createApp(deps)`（Hono の組み立て）/ `composeDependencies(env, ports)`（**実装クラスの `new` はこの関数の中だけ**）/ default export（Workers の入口。同じ `env` には同じ組み立てを返す）の3口。在庫のユースケースは1要求1トランザクションで包み、`StockItemRepositoryImpl` はトランザクションの中で生成する。`AccessTokenVerification` の3値は `SUPABASE_URL` から導く（`jwksUri` = `<url>/auth/v1/.well-known/jwks.json`、`issuer` = `<url>/auth/v1`、`audience` = `authenticated`）。**鍵が引けない・設定が空は 500 で 401 にならない**ことを `test/main.test.ts` が層をまたいで押さえる（ADR-045 結果4） |
-| `apps/web/src/` | `App.tsx` が `PantryList` に常に0件を渡す。サーバ取得は B-22、登録画面は B-12。**`session/` にセッションの継ぎ目がある**（B-34。`Session` / `SessionConfig` / `SessionImpl`）— **まだ誰も `new` していない**（結線は B-35）|
+| `apps/web/src/` | **`App.tsx` は門である**（B-35）— `Session.subscribe` の3値で「何も出さない／ログイン／今の画面」を出し分ける。`main.tsx` が `new SessionImpl(sessionConfigOf(import.meta.env))` を**ここだけで**行い `App` に渡す。ログイン／サインアップの画面とログアウトは `features/identity/`（ログアウトの位置は暫定。ADR-046 結果4）。サインイン済みの画面は `PantryList` に常に0件を渡す。サーバ取得は B-22、登録画面は B-12。**`session/` にセッションの継ぎ目がある**（B-34。`Session` / `SessionConfig` / `SessionImpl`）。手元で動かすには `apps/web/.env.local` に `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` が要る（無ければ起動時に `Error` で落ちる） |
 | `packages/contract/src/` | `pantry.ts`（在庫 API の型）と `error.ts` |
 | `supabase/migrations/` | `stock_items` 表と RLS。`meta/` は drizzle-kit の生成物 |
 | `apps/api/test/` | 単体（`contexts/`）・契約（`contract/`）・DB（`db/`、`pnpm test:db`）・移行（`migrations/`）の4種。差し替え用の `Fixed*` / `InMemory*` は `test/support/` |
@@ -118,7 +118,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 **テストの `describe` は対象、`it` は振る舞いを日本語の文**で書く（`docs/testing.md` 6章）— 文字列であって
 識別子ではない。
 
-**移行の途中である。** `apps/api/src` と `apps/api/test` は済んだ。`apps/web`（38件）と
+**移行の途中である。** `apps/api/src` と `apps/api/test` は済んだ。`apps/web`（37件）と
 `.claude/hooks/guard.mjs`（6件）にはまだ日本語のローカル名が残る（backlog B-30c / B-30d）。
 **1ファイルの中で流儀を混ぜない** — 触るファイルは、そのファイルごと英語に揃えるか、
 そのファイルの既存の流儀に合わせるかのどちらかにする。
@@ -260,7 +260,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | フロントエンド | React 19 + Vite 8（SPA・PWA） | ADR-014。Next.js は**採用しない** — サーバアクション類が ADR-003 と衝突するため |
 | サーバサイド | Hono on Cloudflare Workers | ADR-015。ドメイン層とユースケース層はここに置かれる |
 | DB・認証 | Supabase（Postgres + Auth）。**DB アクセスは Drizzle**（`drizzle-orm` + `postgres`）。**サーバの DB アクセスに supabase-js は使わない** — この禁止は `apps/api` の問い合わせに限る（ADR-029 決定1 は「認証と Postgres そのものは Supabase のまま使う」と続けている） | ADR-029（ADR-020 を置き換え） |
-| web のログイン | **`@supabase/supabase-js` を `apps/web` に置き、メールとパスワードでサインインする。** セッションは継ぎ目1つの背後に閉じ、**画面はライブラリの型を見ない。** **継ぎ目は `apps/web/src/session/` に置かれた**（B-34）。**画面と結線はまだ無い**（B-35） | ADR-046 |
+| web のログイン | **`@supabase/supabase-js` を `apps/web` に置き、メールとパスワードでサインインする。** セッションは継ぎ目1つの背後に閉じ、**画面はライブラリの型を見ない。** **継ぎ目は `apps/web/src/session/` に置かれた**（B-34）。**画面（`features/identity/`）と結線（`main.tsx`）も置かれた**（B-35）。失敗の種別は分けておらず、画面の断りの文言は原因を断定しない | ADR-046 |
 | Workers → Postgres の経路 | **Cloudflare Hyperdrive 経由。** origin は Supabase の直接接続（`db.<ref>.supabase.co:5432`）。Supavisor は使わない。**問い合わせキャッシュは切る** | ADR-042 / ADR-044 |
 | アクセストークンの検証 | **JWKS（ES256）。** 共有秘密は使わない | ADR-043（ADR-031 を置き換え） |
 | LLM | **未決** | ADR-019 |
