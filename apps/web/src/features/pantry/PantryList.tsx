@@ -13,9 +13,14 @@
  * `apps/web/src/server/` の継ぎ目で、それを呼ぶのは `App.tsx` である。
  */
 
+import { useRef, useState } from 'react';
+import type { DeleteFailureNotice } from './DeleteFailureNotice.js';
+import { deleteFailureNoticeOf } from './DeleteFailureNotice.js';
 import type { ExpirySection, ListedStockItem } from './PantrySections.js';
 import { pantrySectionsOf } from './PantrySections.js';
-import type { StockItemsOutcome } from '../../server/StockItemRequests.js';
+import type { SwipePoint } from './SwipeGesture.js';
+import { isDeleteSwipe } from './SwipeGesture.js';
+import type { DeleteStockItem, StockItemsOutcome } from '../../server/StockItemRequests.js';
 
 /**
  * 帯の見出し。**見出し自体がテキストの警告**になっていることで、色を使わなくても
@@ -54,6 +59,19 @@ const 読み込み中の案内 = '在庫を読み込んでいます。';
 const 取れなかったときの断り = '在庫を読み込めませんでした。';
 
 /**
+ * 消せなかったときの断り（FR-06 / B-23。**暫定**）。**断りの種類から選ぶ**
+ * （ADR-032 決定3）— 選ぶ判断は `DeleteFailureNotice.ts` にあり、ここはその識別子に文言を
+ * 当てるだけである。
+ *
+ * **原因を断定しない。** 認証の断りもサーバ側の不備も通信の失敗もここに落ちており、
+ * 見分ける材料が無い（取れなかったときの断りと同じ構え）。**「すでに消えている」ときは
+ * ここへ来ない** — 案内そのものを出さない（ADR-050）。
+ */
+const 消せなかった断り: Record<DeleteFailureNotice, string> = {
+  unavailable: 'いま消せませんでした。もう一度お試しください。',
+};
+
+/**
  * 残日数を読める文にする（NFR-17 / screen-design 9章の「今日」「あと2日」）。
  * 数から文への言い換えだけを行い、どの帯に入るかはここで決めない（規則5 は純粋関数の側）。
  */
@@ -65,9 +83,41 @@ function 残日数の文(remainingDays: number | null): string {
   return `あと${remainingDays}日`;
 }
 
-function StockItemRow({ row }: { row: ListedStockItem }) {
+/**
+ * 一覧の1行。**なぞって消す**（FR-06 / `docs/screen-design.md` 5章。確認は出さない）。
+ *
+ * 押した点と離した点の2つだけを覚え、**削除と読むかの判断は `SwipeGesture.ts` が持つ**
+ * （規則7）。ポインタのイベントは触れる相手を問わない（指・マウス・ペン）ので、
+ * ジェスチャの依存を足さずに済む（`docs/workflow.md` 3章）。
+ */
+function StockItemRow({ row, onSwipe }: { row: ListedStockItem; onSwipe: (id: string) => void }) {
+  // 覚えるだけで描き直す必要が無いので state にしない。
+  const 押した点 = useRef<SwipePoint | null>(null);
+
   return (
-    <li>
+    <li
+      // 縦は送り、横はこちらで受け取る（`SwipeGesture.ts`）。指定しないと、横へ引いた指も
+      // 送りとして browser に取られ、離上が届かないことがある。
+      style={{ touchAction: 'pan-y' }}
+      onPointerDown={(event) => {
+        押した点.current = { x: event.clientX, y: event.clientY };
+        // 行の外で指を離しても離上がこの行に届くようにする。届かないと、押した点が
+        // 残ったまま次の操作と混ざる。
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerUp={(event) => {
+        const 始点 = 押した点.current;
+        押した点.current = null;
+
+        if (始点 !== null && isDeleteSwipe(始点, { x: event.clientX, y: event.clientY })) {
+          onSwipe(row.stockItem.id);
+        }
+      }}
+      // 送りに取られた・指が外れたなどで離上が来ない回は、押した点を捨てる。
+      onPointerCancel={() => {
+        押した点.current = null;
+      }}
+    >
       <span>{row.stockItem.name}</span>
       {row.stockItem.amount !== null && <span>{row.stockItem.amount}</span>}
       {/* 期限の表現は色に頼らず、必ずテキストを出す（NFR-17）。 */}
@@ -85,6 +135,11 @@ export type PantryListState = { readonly outcome: 'loading' } | StockItemsOutcom
 export type PantryListProps = {
   stockItems: PantryListState;
   /**
+   * 削除の実行（FR-06 / B-23）。**結末で返り、例外を投げない**（`server/README.md`）。
+   * 送り先も認証もこの画面は知らない。**一覧を取り直すのは呼び出し側**（`App.tsx`）である。
+   */
+  onDelete: DeleteStockItem;
+  /**
    * 残日数を数える基準日（`YYYY-MM-DD`）。**呼び出し側が渡す。**
    * ここで `new Date()` を読むと、現在時刻が本体に埋まる（docs/testing.md 5章）。
    * 実行環境の暦日を作るのは `todayOf` の仕事で、それを呼ぶのは `App.tsx` である。
@@ -92,7 +147,32 @@ export type PantryListProps = {
   today: string;
 };
 
-export function PantryList({ stockItems, today }: PantryListProps) {
+export function PantryList({ stockItems, today, onDelete }: PantryListProps) {
+  const [案内, set案内] = useState<DeleteFailureNotice | null>(null);
+  // 送っている間は次のスワイプを受け取らない。描き直す必要が無いので state にしない。
+  const 消している = useRef(false);
+
+  function 消す(id: string) {
+    // 二重に送っても2度目は 404 になり、それを「すでに消えている」と読む（ADR-050）ので
+    // 害は無いが、往復を1つ無駄にする。
+    if (消している.current) return;
+
+    消している.current = true;
+    set案内(null);
+
+    // **`catch` を置かない。** 口は結末で返し投げない（`server/README.md`）ので、握り潰すと
+    // 本当の不具合が案内に化ける。`finally` だけは残す — 投げられた回に操作が戻らなくなるため。
+    void (async () => {
+      try {
+        // 消えたと読めた回は案内を出さない（`DeleteFailureNotice.ts`）。一覧は
+        // `App.tsx` が同じ読みで取り直すので、ここで列から抜かない（B-22 設計 規則3）。
+        set案内(deleteFailureNoticeOf(await onDelete(id)));
+      } finally {
+        消している.current = false;
+      }
+    })();
+  }
+
   // 出し分けだけを行い、計算を持たない（B-22 設計 8章末尾 / B-11 設計 規則7）。
   if (stockItems.outcome === 'loading') return <p>{読み込み中の案内}</p>;
   if (stockItems.outcome === 'failed') return <p>{取れなかったときの断り}</p>;
@@ -104,12 +184,14 @@ export function PantryList({ stockItems, today }: PantryListProps) {
 
   return (
     <div>
+      {案内 !== null && <p>{消せなかった断り[案内]}</p>}
+
       {sections.map((section) => (
         <section key={section.section}>
           <h2>{帯の見出し[section.section]}</h2>
           <ul>
             {section.stockItems.map((row) => (
-              <StockItemRow key={row.stockItem.id} row={row} />
+              <StockItemRow key={row.stockItem.id} row={row} onSwipe={消す} />
             ))}
           </ul>
         </section>

@@ -6,7 +6,7 @@ import { sessionConfigOf } from './session/SessionConfig.js';
 import { SessionImpl } from './session/SessionImpl.js';
 import { apiBaseUrlOf } from './server/ApiBaseUrl.js';
 import type { StockItemRequestsDeps } from './server/StockItemRequests.js';
-import { listStockItems, registerStockItem } from './server/StockItemRequests.js';
+import { deleteStockItem, listStockItems, registerStockItem } from './server/StockItemRequests.js';
 
 // 継ぎ目の実装を `new` するのはここだけ（`SessionImpl.ts` 規則2 / B-35 設計 6章 規則3）。
 // 設定が欠けていれば `sessionConfigOf` の `Error` を**包まずそのまま外へ**出す（規則12 / ADR-045）
@@ -29,12 +29,18 @@ const stockItemRequests: StockItemRequestsDeps = {
 
 const requestStockItems = listStockItems(stockItemRequests);
 const sendStockItem = registerStockItem(stockItemRequests);
+const requestStockItemDeletion = deleteStockItem(stockItemRequests);
 
 const container = document.getElementById('root');
 if (!container) throw new Error('#root が見つからない');
 
 createRoot(container).render(
   <StrictMode>
-    <App session={session} listStockItems={requestStockItems} registerStockItem={sendStockItem} />
+    <App
+      session={session}
+      listStockItems={requestStockItems}
+      registerStockItem={sendStockItem}
+      deleteStockItem={requestStockItemDeletion}
+    />
   </StrictMode>,
 );

@@ -1,6 +1,6 @@
 /**
- * `GET /stock-items`（B-22 設計 5章 / 規則2・3・6〜10 / 7章）と `POST /stock-items`（B-24）を
- * 叩く工場、および2つの結末。
+ * `GET /stock-items`（B-22 設計 5章 / 規則2・3・6〜10 / 7章）と `POST /stock-items`（B-24）、
+ * `DELETE /stock-items/:id`（B-23）を叩く工場、および3つの結末。
  *
  * **ここは画面ではない。** 経路の継ぎ目であり、`@supabase/*` を1つも触らない —
  * トークンは `accessToken()` の1引数で受け取る（規則1 / ADR-046 決定3）。
@@ -54,6 +54,32 @@ export type RegisterStockItem = (
   input: RegisterStockItemInput,
 ) => Promise<RegisterStockItemOutcome>;
 
+/**
+ * 削除の結末（FR-06 / B-23 / ADR-050）。
+ *
+ * **登録と同じ3つの形を採る。** 断りの `rule` を畳まないのは、**`delete.notFound` を
+ * 「すでに消えている」と読む判断が画面にある**ためである（ADR-027 が後続へ送った宿題を
+ * ADR-050 が引き取った）。畳むと、その読み分けの材料がここで失われる。
+ *
+ * **ここでは読まない。** どの `rule` が来るかは api 層の写像が正であり（`RuleViolationStatus.ts`）、
+ * 値の意味を読むのは画面である（`README.md` / `features/pantry/DeleteFailureNotice.ts`）。
+ *
+ * **成功に消した在庫品を載せない。** 応答は 204 で本体を持たず、一覧はサーバから取り直す
+ * （`App.tsx`）— web で列から抜くと、並び（期限の近い順）を web が握り直すことになる（規則3）。
+ */
+export type DeleteStockItemOutcome =
+  | { readonly outcome: 'deleted' }
+  | { readonly outcome: 'rejected'; readonly rule: string }
+  | { readonly outcome: 'failed' };
+
+/**
+ * 画面が受け取る口。**この口も例外を投げない**（規則9）。
+ *
+ * 受け取るのは在庫品の識別子だけで、**世帯は運ばない**（C-9）。識別子の形は検めない —
+ * 形を決めるのは発行する側である（ADR-026）。
+ */
+export type DeleteStockItem = (id: string) => Promise<DeleteStockItemOutcome>;
+
 export type StockItemRequestsDeps = {
   readonly baseUrl: string;
   /** `Session.accessToken` を渡す。継ぎ目の型そのものは受け取らない */
@@ -75,6 +101,9 @@ const FAILED = { outcome: 'failed' } as const;
 
 /** 登録が通ったこと（B-24）。応答の在庫品は読まない（`RegisterStockItemOutcome` の doc）。 */
 const REGISTERED = { outcome: 'registered' } as const;
+
+/** 削除が通ったこと（B-23）。応答は 204 で本体を持たない（`DeleteStockItemOutcome` の doc）。 */
+const DELETED = { outcome: 'deleted' } as const;
 
 /**
  * 本体を持つ要求に付ける型（B-24）。**`GET` には付けない**（規則8）— 付けると preflight の
@@ -208,6 +237,53 @@ export function registerStockItem(deps: StockItemRequestsDeps): RegisterStockIte
       // 読めない本体で成功を失敗に化けさせる理由も無い（`RegisterStockItemOutcome` の doc）。
       if (response.ok) {
         return REGISTERED;
+      }
+
+      const body = await response.json();
+
+      return isRejection(body) ? { outcome: 'rejected', rule: body.rule } : FAILED;
+    } catch {
+      return FAILED;
+    }
+  };
+}
+
+/**
+ * 在庫品を1件削除しに行く口を組む（FR-06 / B-23）。
+ *
+ * **消す相手は経路の識別子だけで表す。** 本体も持たず、クエリも付けず、世帯も運ばない
+ * （規則6・15 / C-9）。**識別子は経路へ埋めるときだけ逃がす** — 形を検めるのではなく、
+ * 一覧から渡った値が経路の区切りとして読まれないようにするためである（ADR-026）。
+ *
+ * **例外を外に出さない**（規則9）。トークンの取り出しが投げた・出口が投げた・断りの本体が
+ * 読めない・`rule` が無い、のすべてを `failed` に畳む。**断りの `rule` だけは畳まず
+ * `rejected` に載せる** — `delete.notFound` を「すでに消えている」と読むのは画面である
+ * （ADR-027 / ADR-050 / `features/pantry/DeleteFailureNotice.ts`）。
+ *
+ * **自分では送り直さない**（規則10 / ADR-007）— 削除は冪等でないため（ADR-027）、送り直した
+ * 2度目は**消せていても 404 を受け取る。** 再送は利用者の操作に委ねる。
+ */
+export function deleteStockItem(deps: StockItemRequestsDeps): DeleteStockItem {
+  const { baseUrl, accessToken, httpFetch = environmentHttpFetch } = deps;
+
+  return async (id) => {
+    try {
+      const token = await accessToken();
+
+      // 規則7: `null` なら**要求を出さない**。空文字は `null` と同じに扱わない（`listStockItems` と同じ）。
+      if (token === null) {
+        return FAILED;
+      }
+
+      // 規則8: 本体が無いので `Content-Type` を付けない（付けると preflight の許可対象が増える）。
+      const response = await httpFetch(`${baseUrl}${STOCK_ITEMS_PATH}/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      // **通ったときは本体を読まない。** 応答は 204 であり、本体そのものが無い。
+      if (response.ok) {
+        return DELETED;
       }
 
       const body = await response.json();
