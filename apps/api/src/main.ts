@@ -10,6 +10,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { Hono } from 'hono';
 import type { ExecutionContext } from 'hono';
+import { cors } from 'hono/cors';
 import postgres from 'postgres';
 import type {
   AccessTokenVerification,
@@ -152,13 +153,58 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
 }
 
 /**
+ * CORS で許す要求元の**明示の一覧**（B-22 設計書 規則12 / NFR-08 / NFR-09 / ADR-046 決定4）。
+ *
+ * `*` にも要求元の反射にもしない — web は `Authorization` にアクセストークンを載せて来るので
+ * （ADR-043）、未知の origin からの往復をブラウザに許させる理由が1つも無い。
+ *
+ * **いま2つしか無いのは、本番の配信先がまだ決まっていないためである**（ADR-046 結果3 /
+ * B-22 設計書 10章）。開発の web は `http://localhost:5173`（`vite.config.ts` の `server.port`）で、
+ * `127.0.0.1` で開く人が居るため同じ開発サーバを2つの名で挙げている。
+ * **配信先が決まった周に、その origin をこの一覧へ足す** — 先回りで未知の origin を許さない。
+ */
+const ALLOWED_WEB_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+
+/**
+ * CORS で許す method。**画面の有無ではなく結線済みの経路に合わせる**（B-22 設計書 規則13 / B-09）。
+ * 在庫の4経路がそのまま4つであり、Worker が持たない `HEAD` / `PATCH` は挙げない。
+ */
+const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'DELETE'];
+
+/**
+ * CORS で許す要求ヘッダ（B-22 設計書 規則13 / ADR-043）。アクセストークンを運ぶ `Authorization` と、
+ * 本体を持つ経路の `Content-Type` の2つだけ。**明示すると hono は要求されたヘッダを写さなくなる** —
+ * 写せば許可の一覧が要求元の言い値になる。
+ */
+const ALLOWED_HEADERS = ['Authorization', 'Content-Type'];
+
+/**
  * `/health` と在庫の4経路を1つの Hono にする。`new` するのは Hono だけ（B-09 設計書 規則1・2）。
  *
  * 在庫の経路は**接頭辞なし**で根にマウントする（`POST /stock-items` 等。FR-01 / FR-04 /
- * FR-05 / FR-06 / ADR-003）。web からの到達（接頭辞・CORS）は B-22 が決める。
+ * FR-05 / FR-06 / ADR-003）。**接頭辞は増やさない**（B-22 設計書 規則15）— この Worker の origin は
+ * 在庫の API と `/health` しか出さないので、`/api` で切り分ける相手が居ない。接頭辞が効くのは
+ * web と api が1つのドメインを分け合うときで、**その配信先はまだ決まっていない。**
+ *
+ * **CORS は経路より前に `app.use('*', …)` で置く**（B-22 設計書 規則11・14 / ADR-046 結果3）。
+ * `/health` も経路の1つなので、その前である。後ろに挿すと、通った応答にしか許可のヘッダが付かず、
+ * **断りの応答（401 / 500）が素のまま出る** — するとサーバが断ったことがブラウザでは CORS の失敗に
+ * 化け、web は断られた理由を読めなくなる（ADR-045 は不備を利用者のせいにしないことを求めている）。
+ * 認証を要さずに preflight が通るのも、この位置に居るからである。
+ *
+ * `credentials` は真にしない（規則12）— トークンはヘッダで運び、Cookie の経路を作らない。
  */
 export function createApp(deps: AppDependencies): Hono {
   const app = new Hono();
+
+  app.use(
+    '*',
+    cors({
+      origin: ALLOWED_WEB_ORIGINS,
+      allowMethods: ALLOWED_METHODS,
+      allowHeaders: ALLOWED_HEADERS,
+    }),
+  );
 
   /** 疎通確認。結線に依らず応え、環境を1つも読まない。Supabase 無料プランの一時停止よけにも使える（`docs/requirements.md` 11章 未決事項7）。 */
   app.get('/health', (c) => c.json({ status: 'ok' }));
