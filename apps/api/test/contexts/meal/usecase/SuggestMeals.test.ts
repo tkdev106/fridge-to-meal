@@ -170,6 +170,25 @@ function storedSuggestion(props: {
   });
 }
 
+/**
+ * 生成の由来を持つ提案を `count` 回ぶん置く（ADR-048 決定1 / NFR-C2）。**上限の数に入るのは
+ * これだけである** — 再利用だけで組めた提案（C-14 が保存させる回）は数に入らない。
+ *
+ * 生成日時の既定は基準日時の1時間前で、24時間の窓の内側である（決定2。基準日時は
+ * `2026-09-14T03:00:00Z` なので、窓の下端は `2026-09-13T03:00:00Z`）。
+ *
+ * 並べる献立は `idA` に揃えてある。**上限の回は献立を1件も置かないので**（`meals: []`）、
+ * C-11 の除外にも C-7 の比較にも効かない。
+ */
+function storedGeneratedSuggestions(
+  count: number,
+  generatedAt = '2026-09-14T02:00:00Z',
+): Suggestion[] {
+  return Array.from({ length: count }, () =>
+    storedSuggestion({ mealIds: [idA], origin: 'generated', generatedAt }),
+  );
+}
+
 /** 本題でない値を隠して献立を作る。既定は我が家の、主材料1件・手順1件・調理記録なし。 */
 function meal(overrides: Partial<Parameters<typeof createMeal>[0]> = {}): Meal {
   return createMeal({
@@ -2103,5 +2122,242 @@ describe('献立を提案する SuggestMeals', () => {
     const execution = suggest(ourHousehold, asOf);
 
     await expect(execution).rejects.toBe(preparedError);
+  });
+
+  // ここから1日の生成回数の上限（B-31c / NFR-C2 / screen-design S-7 / ADR-048）。**直近24時間の
+  // 生成が上限に達していたら生成を呼ばず、上限に達したことを名乗る結末を返す。** 数えるのは
+  // **生成の由来を持つ保存済みの提案**であり（決定1 / C-15 / C-4c）、「1日」は**基準日時から
+  // 遡る24時間の窓**である（決定2）。**門は在庫の下限の次、生成を呼ぶ直前にある**（結果6）—
+  // 前に置くと、C-7 で短絡できる回も作れる既存の献立が残っている回も、出せる提案があるのに
+  // 上限を告げることになる。
+  //
+  // **どの回も生成結果と発行する献立の識別子をわざと用意してある** — 在庫の下限の回と同じ
+  // 理由である（既定の0件のままだと、誤って生成へ回った回が `mealGenerator.empty` で落ちる）。
+  //
+  // **上限の10回と窓の24時間は暫定ではない**（NFR-C2 の初期値と ADR-048 決定2）が、**動かすときは
+  // この境界を固定している4件が同時に動く** — 「上限に達している日は…」「上限にあと1回ぶん
+  // 残っていれば…」「ちょうど24時間前の生成も…」「窓より前の生成は…」。
+
+  it('直近24時間の生成が上限に達している日は、上限に達したことを名乗る結末を返す', async () => {
+    // ADR-048 決定1・決定2 / NFR-C2 / screen-design S-7: 呼ばないと決めた結果であって
+    // 失敗（S-6）でも規則違反でもないので、投げずに判別できる結末として名乗る（ADR-041 決定1）。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      recentSuggestions: storedGeneratedSuggestions(10),
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(output.outcome).toBe('generationLimitReached');
+  });
+
+  it('上限に達している日は、献立生成器を呼ばない', async () => {
+    // NFR-C2 / `docs/testing.md` 2章: **上限の目的は呼ばないことそのものである。**
+    // 呼ばないこと自体が要件なので、記憶上の実装の**状態**として見る（`vi.fn()` を使わない）。
+    const { suggest, mealGenerator } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      recentSuggestions: storedGeneratedSuggestions(10),
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(mealGenerator.callCount).toBe(0);
+  });
+
+  it('上限に達した結末の回は、提案を保存しない', async () => {
+    // ADR-048 決定1 / C-14 / C-11 / C-7: 組まなかった回を記録に残すと、次の回の比較も除外も
+    // その記録を引きずる。**しかも数えるのは保存された提案なので、保存すると上限そのものが
+    // 自分で増えていく。** 保存していないことは取得を通して見る（`docs/testing.md` 3章）。
+    const priorSuggestions = storedGeneratedSuggestions(10);
+    const { suggest, suggestionRepository } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      recentSuggestions: priorSuggestions,
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(
+      await suggestionRepository.countGeneratedByHouseholdSince(
+        ourHousehold,
+        dateTimeOf('2026-09-13T03:00:00Z'),
+      ),
+    ).toBe(priorSuggestions.length);
+  });
+
+  it('上限にあと1回ぶん残っていれば生成へ回り、生成した献立を並べた提案を返す', async () => {
+    // ADR-048 決定1（境界の下側）/ NFR-C2: 上限は「達したら呼ばない」であって
+    // 「近づいたら呼ばない」ではない。門を通ったあとの振る舞いは既存の生成の経路と同じである。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      recentSuggestions: storedGeneratedSuggestions(9),
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idC]);
+  });
+
+  it('ちょうど24時間前の生成も、上限の数に入る', async () => {
+    // ADR-048 決定2（窓の下端の境界）: 下端は含む。**9件を窓の内側に、1件を下端ちょうどに
+    // 置いてある** — 下端を含まない実装なら9件と数え、生成へ回って赤くなる。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      recentSuggestions: [
+        ...storedGeneratedSuggestions(9),
+        ...storedGeneratedSuggestions(1, '2026-09-13T03:00:00Z'),
+      ],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(output.outcome).toBe('generationLimitReached');
+  });
+
+  it('窓より前の生成は上限の数に入らず、生成へ回る', async () => {
+    // ADR-048 決定2 / 比較した案 (b) A: 窓が動くので、最も古い1回が24時間を過ぎれば1回ぶん
+    // 戻る。**10件すべてを下端の1分前に置いてある** — 窓を見ない実装なら上限として断る。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      recentSuggestions: storedGeneratedSuggestions(10, '2026-09-13T02:59:00Z'),
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idC]);
+  });
+
+  it('再利用だけで組んだ提案は上限の数に入らず、生成へ回る', async () => {
+    // ADR-048 決定1 / C-14 / NFR-C2: **数えたいのは生成を呼んだ回数であって提案の件数では
+    // ない。** 再利用だけで組めた提案も保存されるので、保存された提案をそのまま数えると
+    // 呼んでいない回まで上限を食う。**由来だけを既定の再利用に戻してある。**
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      recentSuggestions: Array.from({ length: 10 }, () =>
+        storedSuggestion({ mealIds: [idA], generatedAt: '2026-09-14T02:00:00Z' }),
+      ),
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idC]);
+  });
+
+  it('別の世帯の生成は上限の数に入らず、生成へ回る', async () => {
+    // C-9 / ADR-048 決定1: 数える単位は世帯である。隣の世帯が使い切った日に
+    // こちらが締め出されない。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      recentSuggestions: Array.from({ length: 10 }, () =>
+        storedSuggestion({
+          mealIds: [idA],
+          householdId: neighborHousehold,
+          origin: 'generated',
+          generatedAt: '2026-09-14T02:00:00Z',
+        }),
+      ),
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idC]);
+  });
+
+  it('上限に達していても、最新の提案の在庫スナップショットと一致していれば保存済みの提案を返す', async () => {
+    // ADR-048 結果6 / C-7 / FR-21: C-7 の短絡は上限の門より先である。短絡は生成を呼ばないので
+    // 門の出番が無く、出せる提案があるのに「上限に達した」と告げるほうが利用者を損なう。
+    const carrot = { name: 'にんじん' };
+    const yogurt = { name: 'ヨーグルト' };
+    const latestSuggestion = storedSuggestion({
+      mealIds: [idA],
+      origin: 'generated',
+      generatedAt: '2026-09-14T02:30:00Z',
+      pantrySnapshot: [mealStockItem(carrot), mealStockItem(yogurt)],
+    });
+    const { suggest } = setUp({
+      stockItems: [stockItem(carrot), stockItem(yogurt)],
+      meals: [],
+      recentSuggestions: [...storedGeneratedSuggestions(10), latestSuggestion],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(suggestionOf(output).id).toBe(latestSuggestion.id);
+  });
+
+  it('上限に達していても、作れる既存の献立が1件あればその献立を並べた提案を返す', async () => {
+    // ADR-048 結果6 / C-15 / NFR-C1b / FR-34: 再利用も上限の門より先である。上限が抑えるのは
+    // 生成の回数であって、提案そのものではない。**その回の提案は保存されるが、再利用の由来
+    // なので数には入らない**（決定1 / C-14）。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [meal({ id: mealIdOf(idB), ingredients: [mainIngredient('にんじん')] })],
+      recentSuggestions: storedGeneratedSuggestions(10),
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idB]);
+  });
+
+  it('在庫が下限を割り、かつ上限にも達している日は、在庫が足りないことを名乗る結末を返す', async () => {
+    // ADR-048 結果6（門の順）: 在庫の下限が先で上限が後である。**在庫を登録すれば解ける
+    // S-4 と違い、S-7 は待つしかない** — 先に解ける側を告げる。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' })],
+      meals: [],
+      recentSuggestions: storedGeneratedSuggestions(10),
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(output.outcome).toBe('insufficientStockItems');
+  });
+
+  it('生成に失敗した回は、上限の数に入らない', async () => {
+    // ADR-048 決定3 / 結果3 / NFR-07: 失敗した回は提案が保存されず、数にも入らない。
+    // **上限まで1回ぶん残した状態で2度続けて失敗させる** — 失敗が枠を食う実装なら、
+    // 2度目は投げずに上限の結末を返してここが赤くなる。
+    // 失うものは結果3 が引き受けた — 実際に外へ出る回数は上限＋失敗した回数になる。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      recentSuggestions: storedGeneratedSuggestions(9),
+      generatedMeals: [],
+      mealIdsToIssue: [idC],
+    });
+
+    await expect(suggest(ourHousehold, asOf)).rejects.toThrow(MealRuleViolation);
+
+    await expect(suggest(ourHousehold, asOf)).rejects.toThrow(MealRuleViolation);
   });
 });

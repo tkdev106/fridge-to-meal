@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dateTimeOf } from '../../../../src/contexts/meal/domain/value/DateTime.js';
+import { dateTimeOf, hoursBeforeOf } from '../../../../src/contexts/meal/domain/value/DateTime.js';
 import { MealRuleViolation } from '../../../../src/contexts/meal/domain/error/MealRuleViolation.js';
 
 describe('日時 DateTime', () => {
@@ -71,6 +71,20 @@ describe('日時 DateTime', () => {
     // B-14a 7章 / ADR-025: 書式の違反とは別の規則として見分けられること。
     expect(() => dateTimeOf('2026-02-30T00:00:00Z')).toThrow(
       expect.objectContaining({ rule: 'dateTime.notACalendarDateTime' }),
+    );
+  });
+
+  it('指定した時間だけ遡った日時を返す', () => {
+    // ADR-048 決定2 / B-31c: 生成回数を数える窓の下端を出す。暦日を取り出さずに
+    // 「1日」を表せることが、時間帯を選ばずに済む理由である。
+    expect(hoursBeforeOf(dateTimeOf('2026-09-14T12:00:00Z'), 24)).toBe('2026-09-13T12:00:00.000Z');
+  });
+
+  it('遡って日をまたいでも UTC の正準形を保つ', () => {
+    // ADR-048 決定2 / C-12: 返るのも `DateTime` であり、窓の下端と生成日時を文字列の
+    // 大小で比べられること。**月をまたぐ側で見る** — 日の引き算だけで組んだ実装が落ちる。
+    expect(hoursBeforeOf(dateTimeOf('2026-10-01T03:00:00+09:00'), 24)).toBe(
+      '2026-09-29T18:00:00.000Z',
     );
   });
 });
