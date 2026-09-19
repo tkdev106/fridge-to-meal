@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { RegisterStockItemInput, StockItemDto } from '@fridge-to-meal/contract';
 import type {
+  DeleteStockItem,
   ListStockItems,
   RegisterStockItem,
   StockItemsOutcome,
 } from '../../src/server/StockItemRequests.js';
-import { listStockItems, registerStockItem } from '../../src/server/StockItemRequests.js';
+import {
+  deleteStockItem,
+  listStockItems,
+  registerStockItem,
+} from '../../src/server/StockItemRequests.js';
 import type { ReceivedRequest } from '../support/server/FixedHttpFetch.js';
 import { FixedHttpFetch } from '../support/server/FixedHttpFetch.js';
 
@@ -447,6 +452,195 @@ describe('在庫の登録 registerStockItem', () => {
     const httpFetch = new FixedHttpFetch({ throws: new Error('送れない') }, registered);
 
     const outcome = await registering(httpFetch)(carrotInput);
+
+    expect(outcome).toEqual({ outcome: 'failed' });
+  });
+});
+
+// ---- 在庫の削除（B-23）----
+
+/** 削除する在庫品の識別子の標本。**一覧から渡ってくる値であり、web は形を決めない**（ADR-026）。 */
+const carrotId = 'stock-item-carrot';
+
+/**
+ * 通る応答。**削除の成功は 204 で本体を持たない**ため、本体が読めない応答として届ける —
+ * 継ぎ目が読むのは `ok` だけである（設計 5章 `HttpResponse`）。
+ */
+const deleted = { ok: true, unreadableBody: true } as const;
+
+/**
+ * 削除の口を1つ組む。本題（届ける応答・トークンの取り出し方）だけが引数に現れる形にする
+ * （`docs/testing.md` 6章）。
+ */
+function deleting(
+  httpFetch: FixedHttpFetch,
+  accessTokenOf: () => Promise<string | null> = async () => accessToken,
+): DeleteStockItem {
+  return deleteStockItem({ baseUrl, accessToken: accessTokenOf, httpFetch: httpFetch.httpFetch });
+}
+
+describe('在庫の削除 deleteStockItem', () => {
+  it('応答が通れば deleted の結末を返す', async () => {
+    // FR-06: 消えたことだけを伝える。204 は本体を持たないので読まない。
+    const outcome = await deleting(new FixedHttpFetch(deleted))(carrotId);
+
+    expect(outcome).toEqual({ outcome: 'deleted' });
+  });
+
+  it('叩く先は基点に /stock-items と識別子を足した1つだけで世帯を表すものを載せない', async () => {
+    // B-22 設計 規則6・15 / C-9 / NFR-09: 接頭辞を web の側で足さない。世帯は経路にも
+    // クエリにも載せず、サーバがアクセストークンから定める。
+    const httpFetch = new FixedHttpFetch(deleted);
+
+    await deleting(httpFetch)(carrotId);
+
+    expect(httpFetch.receivedRequests.map((request) => request.url)).toEqual([
+      'https://api.example.dev/stock-items/stock-item-carrot',
+    ]);
+  });
+
+  it('識別子に経路の区切りが混ざっても1つの区切りとして送る', async () => {
+    // ADR-026 / B-23: 識別子の形を決めるのは発行する側であり、web は検めない。**経路へ
+    // 埋めるときだけは逃がす** — 逃がさないと、一覧から渡った値で別の経路を叩く形になる。
+    const httpFetch = new FixedHttpFetch(deleted);
+
+    await deleting(httpFetch)('stock-item/../health');
+
+    expect(httpFetch.receivedRequests.map((request) => request.url)).toEqual([
+      'https://api.example.dev/stock-items/stock-item%2F..%2Fhealth',
+    ]);
+  });
+
+  it('DELETE で送る', async () => {
+    // FR-06 / B-09: 削除の経路は `DELETE /stock-items/:id` である。
+    const httpFetch = new FixedHttpFetch(deleted);
+
+    await deleting(httpFetch)(carrotId);
+
+    expect(onlyRequest(httpFetch).method).toBe('DELETE');
+  });
+
+  it('本体を持たないので Content-Type を付けない', async () => {
+    // B-22 設計 規則8 / ADR-048: 付けると preflight の許可対象が増える。削除に本体は無い。
+    const httpFetch = new FixedHttpFetch(deleted);
+
+    await deleting(httpFetch)(carrotId);
+
+    expect(onlyRequest(httpFetch).headers).toEqual({
+      Authorization: 'Bearer access-token-example',
+    });
+  });
+
+  it('本体を1つも送らない', async () => {
+    // B-23: 消す相手は経路の識別子で足りる。本体を付けると、api 側が読まないものを運ぶことになる。
+    const httpFetch = new FixedHttpFetch(deleted);
+
+    await deleting(httpFetch)(carrotId);
+
+    expect(onlyRequest(httpFetch).body).toBeUndefined();
+  });
+
+  it('取り出したアクセストークンを Authorization の Bearer に載せる', async () => {
+    // B-22 設計 規則8 / ADR-043: トークンはヘッダで運ぶ（Cookie の経路を作らない）。
+    const httpFetch = new FixedHttpFetch(deleted);
+
+    await deleting(httpFetch)(carrotId);
+
+    expect(onlyRequest(httpFetch).headers.Authorization).toBe('Bearer access-token-example');
+  });
+
+  it('アクセストークンが null なら failed の結末を返す', async () => {
+    // B-22 設計 規則7 / 7章: 出しても 401 が返るだけである。
+    const outcome = await deleting(new FixedHttpFetch(deleted), async () => null)(carrotId);
+
+    expect(outcome).toEqual({ outcome: 'failed' });
+  });
+
+  it('アクセストークンが null なら要求を1つも出さない', async () => {
+    // B-22 設計 規則7: **出さないこと自体が要件**（`docs/testing.md` 2章の例外）。
+    // **通る応答を用意しておく** — 誤って出た回も最後まで通り、落ちるのは件数の断定だけになる。
+    const httpFetch = new FixedHttpFetch(deleted);
+
+    await deleting(httpFetch, async () => null)(carrotId);
+
+    expect(httpFetch.receivedRequests.map((request) => request.url)).toEqual([]);
+  });
+
+  it('アクセストークンが空文字でも要求を出し空のまま Bearer に載せる', async () => {
+    // B-22 設計 規則7 後半: 「提示されていない」の判定は api と `IdentifyHousehold` の側に
+    // 1か所だけ残す。web で null と同じに畳まない。
+    const httpFetch = new FixedHttpFetch(deleted);
+
+    await deleting(httpFetch, async () => '')(carrotId);
+
+    expect(onlyRequest(httpFetch).headers.Authorization).toBe('Bearer ');
+  });
+
+  it('見つからない断りの rule もそのまま rejected の結末に載せる', async () => {
+    // ADR-027 / B-23: **継ぎ目は `delete.notFound` を成功に畳まない。** 「すでに消えている」と
+    // 読むかどうかは画面の判断であり（`DeleteFailureNotice.ts`）、ここは値を運ぶだけである
+    // （`server/README.md`「`rule` から文言を選ばない」）。
+    const outcome = await deleting(new FixedHttpFetch(rejected('delete.notFound')))(carrotId);
+
+    expect(outcome).toEqual({ outcome: 'rejected', rule: 'delete.notFound' });
+  });
+
+  it('認証の断りの rule もそのまま rejected の結末に載せる', async () => {
+    // ADR-032 決定3: 継ぎ目は `rule` の意味を読まない。401 の断り（`accessToken.missing`）も
+    // 同じ形で運び、読み分けは画面に任せる。
+    const outcome = await deleting(new FixedHttpFetch(rejected('accessToken.missing')))(carrotId);
+
+    expect(outcome).toEqual({ outcome: 'rejected', rule: 'accessToken.missing' });
+  });
+
+  it('断りの応答に rule が無ければ failed の結末を返す', async () => {
+    // B-22 設計 規則9 と同じ構え: 読む手がかりの無い断りは、理由の無い失敗と変わらない。
+    const outcome = await deleting(new FixedHttpFetch({ ok: false, body: {} }))(carrotId);
+
+    expect(outcome).toEqual({ outcome: 'failed' });
+  });
+
+  it('断りの応答の rule が文字列でなければ failed の結末を返す', async () => {
+    // B-22 設計 規則9: 文字列でないものを画面に渡すと、読み分けの側で落ちる。
+    const outcome = await deleting(new FixedHttpFetch({ ok: false, body: { rule: 42 } }))(carrotId);
+
+    expect(outcome).toEqual({ outcome: 'failed' });
+  });
+
+  it('断りの応答の本体が読めなければ failed の結末を返す', async () => {
+    // B-22 設計 規則9 / 7章: 本体が読めないことも1つの結末に畳む。**通った応答と違い、
+    // 断りは本体を読む** — `rule` が無ければ画面は何も読み分けられない。
+    const outcome = await deleting(new FixedHttpFetch({ ok: false, unreadableBody: true }))(
+      carrotId,
+    );
+
+    expect(outcome).toEqual({ outcome: 'failed' });
+  });
+
+  it('通信が失敗して出口が投げても例外を外に出さず failed の結末を返す', async () => {
+    // B-22 設計 規則9 / FR-41: 外へ出すと画面の側で誰も受け止めず、一覧が止まる。
+    const httpFetch = new FixedHttpFetch({ throws: new Error('送れない') });
+
+    await expect(deleting(httpFetch)(carrotId)).resolves.toEqual({ outcome: 'failed' });
+  });
+
+  it('アクセストークンの取り出しが投げても例外を外に出さず failed の結末を返す', async () => {
+    // B-22 設計 規則9 / `Session.ts` 規則7: `SessionImpl.accessToken` は投げうる。
+    const httpFetch = new FixedHttpFetch(deleted);
+    const rejecting = async (): Promise<string | null> => {
+      throw new Error('セッションを取り出せない');
+    };
+
+    await expect(deleting(httpFetch, rejecting)(carrotId)).resolves.toEqual({ outcome: 'failed' });
+  });
+
+  it('1度失敗しても自分では送り直さない', async () => {
+    // ADR-007 / ADR-027 / B-23: 削除は冪等でないため、**送り直した2度目は消せていても 404 を
+    // 受け取る。** 再送は利用者の操作に委ねる（`docs/screen-design.md` 5章は確認も取り消しも
+    // 置いていない）。2度目の応答が結果に現れないことで見る（**回数は数えない**）。
+    const httpFetch = new FixedHttpFetch({ throws: new Error('送れない') }, deleted);
+
+    const outcome = await deleting(httpFetch)(carrotId);
 
     expect(outcome).toEqual({ outcome: 'failed' });
   });

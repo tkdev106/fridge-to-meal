@@ -11,12 +11,17 @@
 import { useEffect, useState } from 'react';
 import { SignInForm } from './features/identity/SignInForm.js';
 import { SignOutButton } from './features/identity/SignOutButton.js';
+import { deleteFailureNoticeOf } from './features/pantry/DeleteFailureNotice.js';
 import { PantryList } from './features/pantry/PantryList.js';
 import type { PantryListState } from './features/pantry/PantryList.js';
 import { StockItemForm } from './features/pantry/StockItemForm.js';
 import { todayOf } from './features/pantry/RemainingDays.js';
 import type { Session, SessionState } from './session/Session.js';
-import type { ListStockItems, RegisterStockItem } from './server/StockItemRequests.js';
+import type {
+  DeleteStockItem,
+  ListStockItems,
+  RegisterStockItem,
+} from './server/StockItemRequests.js';
 
 export type AppProps = {
   /** セッションの継ぎ目。画面はこの型だけを見る（ADR-046 決定3）。 */
@@ -28,9 +33,11 @@ export type AppProps = {
   listStockItems: ListStockItems;
   /** 在庫を登録しに行く口（B-24）。組み立てるのはやはり `main.tsx` だけである。 */
   registerStockItem: RegisterStockItem;
+  /** 在庫を削除しに行く口（B-23）。同じく組み立てるのは `main.tsx` だけである。 */
+  deleteStockItem: DeleteStockItem;
 };
 
-export function App({ session, listStockItems, registerStockItem }: AppProps) {
+export function App({ session, listStockItems, registerStockItem, deleteStockItem }: AppProps) {
   // 購読を始めた時点の状態は subscribe が1度目に渡す（`Session.ts` 規則5）ので、
   // ここで先に決めない。最初の描画は購読が始まるまでの一瞬だけ 'unknown' でよい。
   const [state, setState] = useState<SessionState>('unknown');
@@ -39,7 +46,8 @@ export function App({ session, listStockItems, registerStockItem }: AppProps) {
   // 在庫があるのに無いように見せてしまう。
   const [stockItems, setStockItems] = useState<PantryListState>({ outcome: 'loading' });
 
-  // 一覧を取り直した回数。登録が通るたびに1つ増やし、下の効果をもう1度走らせる（B-24）。
+  // 一覧を取り直した回数。登録が通るたび（B-24）と、消えたと読めるたび（B-23）に1つ増やし、
+  // 下の効果をもう1度走らせる。
   const [reloadCount, setReloadCount] = useState(0);
 
   // 購読は1本。`session` が同じなら張り替えず、外れるとき戻り値で解除する（規則2）。
@@ -84,6 +92,27 @@ export function App({ session, listStockItems, registerStockItem }: AppProps) {
     return outcome;
   };
 
+  /**
+   * **消えたと読めたら一覧を取り直す**（FR-06 / B-23 / ADR-050）。
+   *
+   * 読みは `deleteFailureNoticeOf` の1つだけを使う — 案内を出すかどうかを決めるのと
+   * **同じ関数**であり（`DeleteFailureNotice.ts`）、2か所に判断を置くと「案内は出さないのに
+   * 一覧は古いまま」のような食い違いが生まれる。`null` は「思ったとおりになった」を表す。
+   *
+   * **web で列から行を抜かない。** 登録と同じ理由で、並び（期限の近い順）を決めるのは
+   * サーバである（B-22 設計 規則3 / B-24）。**取り直しは読みの検めでもある** — 404 を
+   * 「すでに消えている」と読んだ回も、消えていなければ行がそのまま戻ってくる。
+   *
+   * **消せなかった回は取り直さない。** 一覧は変わっておらず、往復を1つ無駄にするうえ、
+   * その取得も失敗すれば断りが一覧全体の断りに置き換わってしまう（`PantryList`）。
+   */
+  const deleteAndReload: DeleteStockItem = async (id) => {
+    const outcome = await deleteStockItem(id);
+    if (deleteFailureNoticeOf(outcome) === null) setReloadCount((count) => count + 1);
+
+    return outcome;
+  };
+
   // **`'unknown'` をログイン画面に倒さない**（規則1 / `Session.ts` 規則6）。保存されたセッションの
   // 復元は非同期で、倒すとサインイン済みの利用者にログイン画面が一瞬見える。
   if (state === 'unknown') return null;
@@ -105,7 +134,7 @@ export function App({ session, listStockItems, registerStockItem }: AppProps) {
   // ログアウトはさらにその下（規則11。暫定 — 設定画面ができたら移す。ADR-046 結果4）。
   return (
     <main>
-      <PantryList stockItems={stockItems} today={todayOf(new Date())} />
+      <PantryList stockItems={stockItems} today={todayOf(new Date())} onDelete={deleteAndReload} />
       <StockItemForm onRegister={registerAndReload} />
       <SignOutButton onSignOut={() => session.signOut()} />
     </main>
