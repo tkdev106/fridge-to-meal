@@ -16,17 +16,7 @@ import type { PantryListState } from './features/pantry/PantryList.js';
 import { StockItemForm } from './features/pantry/StockItemForm.js';
 import { todayOf } from './features/pantry/RemainingDays.js';
 import type { Session, SessionState } from './session/Session.js';
-import type { ListStockItems } from './server/StockItemRequests.js';
-
-/**
- * 登録の実行。**サーバへ送る手段がまだ無いことを表して必ず断る**（B-12 設計 10章）。
- *
- * 解決させると、保存できていないのに保存できたように見える。偽の成功を出さないための形であり、
- * `POST /stock-items` を叩く層を置く B-24 まで続く（未完成は隠さない — CLAUDE.md）。
- */
-function registerStockItem(): Promise<void> {
-  return Promise.reject(new Error('在庫の登録をサーバへ送る経路はまだありません（B-24）'));
-}
+import type { ListStockItems, RegisterStockItem } from './server/StockItemRequests.js';
 
 export type AppProps = {
   /** セッションの継ぎ目。画面はこの型だけを見る（ADR-046 決定3）。 */
@@ -36,9 +26,11 @@ export type AppProps = {
    * 門は呼ぶだけで、基点も `fetch` もトークンの取り出し方も知らない。
    */
   listStockItems: ListStockItems;
+  /** 在庫を登録しに行く口（B-24）。組み立てるのはやはり `main.tsx` だけである。 */
+  registerStockItem: RegisterStockItem;
 };
 
-export function App({ session, listStockItems }: AppProps) {
+export function App({ session, listStockItems, registerStockItem }: AppProps) {
   // 購読を始めた時点の状態は subscribe が1度目に渡す（`Session.ts` 規則5）ので、
   // ここで先に決めない。最初の描画は購読が始まるまでの一瞬だけ 'unknown' でよい。
   const [state, setState] = useState<SessionState>('unknown');
@@ -46,6 +38,9 @@ export function App({ session, listStockItems }: AppProps) {
   // 在庫は取りに行くまで「読み込み中」である。**0件を初期値にしない**（B-22 設計 7章）—
   // 在庫があるのに無いように見せてしまう。
   const [stockItems, setStockItems] = useState<PantryListState>({ outcome: 'loading' });
+
+  // 一覧を取り直した回数。登録が通るたびに1つ増やし、下の効果をもう1度走らせる（B-24）。
+  const [reloadCount, setReloadCount] = useState(0);
 
   // 購読は1本。`session` が同じなら張り替えず、外れるとき戻り値で解除する（規則2）。
   useEffect(() => session.subscribe(setState), [session]);
@@ -71,7 +66,23 @@ export function App({ session, listStockItems }: AppProps) {
     return () => {
       active = false;
     };
-  }, [state, listStockItems]);
+  }, [state, listStockItems, reloadCount]);
+
+  /**
+   * 登録が通ったら一覧を取り直す（FR-01 / FR-04 / B-24）。
+   *
+   * **登録した在庫品を web で列に足さない。** 並び（期限の近い順）を決めるのはサーバであり
+   * （B-22 設計 規則3）、足すと帯の中の位置を web が決めることになる。継ぎ目が成功に
+   * 在庫品を載せていないのもこのためである。
+   *
+   * 結末はそのまま画面へ返す — 断りの文言を選ぶのは `StockItemForm` の側である（ADR-032 決定3）。
+   */
+  const registerAndReload: RegisterStockItem = async (input) => {
+    const outcome = await registerStockItem(input);
+    if (outcome.outcome === 'registered') setReloadCount((count) => count + 1);
+
+    return outcome;
+  };
 
   // **`'unknown'` をログイン画面に倒さない**（規則1 / `Session.ts` 規則6）。保存されたセッションの
   // 復元は非同期で、倒すとサインイン済みの利用者にログイン画面が一瞬見える。
@@ -95,7 +106,7 @@ export function App({ session, listStockItems }: AppProps) {
   return (
     <main>
       <PantryList stockItems={stockItems} today={todayOf(new Date())} />
-      <StockItemForm onRegister={registerStockItem} />
+      <StockItemForm onRegister={registerAndReload} />
       <SignOutButton onSignOut={() => session.signOut()} />
     </main>
   );

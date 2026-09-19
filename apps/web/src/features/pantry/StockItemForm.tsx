@@ -1,21 +1,25 @@
 /**
  * 在庫登録の画面（B-12 設計 4章 / 6章 規則5・7〜12）。`docs/screen-design.md` 第6章に当たる。
  *
- * ここは `StockItemFormValues.ts` を読むだけの薄い層である。何を保存できるかの判断も、
- * 空欄をどう読み替えるかも持たない（規則9）— `.tsx` は vitest が拾わない（`include` は
- * `*.test.ts`、`environment: 'node'`）ため、判断を置くと誰も確かめられなくなる。
+ * ここは `StockItemFormValues.ts` と `RegisterFailureNotice.ts` を読むだけの薄い層である。
+ * 何を保存できるかの判断も、空欄をどう読み替えるかも、**断りからどの案内を選ぶかも持たない**
+ * （規則9 / B-24）— `.tsx` は vitest が拾わない（`include` は `*.test.ts`、
+ * `environment: 'node'`）ため、判断を置くと誰も確かめられなくなる。
  *
  * 反対に、**日本語はここにしか置かない**（規則9）。文言も配色も未確定であり
  * （`docs/screen-design.md` 論点3）、以下の日本語は同書 第6章のワイヤーから写した仮のものである。
  *
- * 登録の実行は引数で受け取る。サーバへ送る手段はこの周では作らない（B-12 設計 2章 / B-24）。
+ * 登録の実行は引数で受け取る。**組み立てるのは `main.tsx` だけ**であり、この画面は基点も
+ * `fetch` もトークンの取り出し方も知らない（B-24 / B-22 設計 規則1・4）。
  */
 
 import type { ChangeEvent, FormEvent } from 'react';
 import { useState } from 'react';
-import type { RegisterStockItemInput } from '@fridge-to-meal/contract';
+import type { RegisterFailureNotice } from './RegisterFailureNotice.js';
+import { registerFailureNoticeOf } from './RegisterFailureNotice.js';
 import type { StockItemFormValues } from './StockItemFormValues.js';
 import { EMPTY_STOCK_ITEM_FORM, registerStockItemInputOf } from './StockItemFormValues.js';
+import type { RegisterStockItem } from '../../server/StockItemRequests.js';
 
 /** 画面の見出し。仮の文言である。 */
 const 画面の見出し = '食材を追加';
@@ -38,25 +42,35 @@ const 保存の名札 = '保存してもう1件';
 const 送っている間の名札 = '保存しています…';
 
 /**
- * 保存できなかったときの案内。**理由ごとに文言を分けない**（規則7）— この周は断りの
- * `rule` を受け取らない。理由から文言を選ぶのは B-24（ADR-032 の決定3）。
+ * 保存できなかったときの案内。**断りの `rule` から選ぶ**（ADR-032 決定3 / B-24）— 選ぶ判断は
+ * `RegisterFailureNotice.ts` にあり、ここはその識別子に文言を当てるだけである（規則9）。
  *
  * **書き込みの失敗の断り方は、要件にも画面設計にも根拠が無い**（NFR-07 と
  * `docs/screen-design.md` 9章「生成の失敗」は LLM の応答の話であって、ここには及ばない）。
  * 入力を残すのは打ち直しが1件10秒（NFR-15）に収まらないため、自動で送り直さないのは
  * 同名でも統合されない在庫品が2件残るため（ADR-007）。**それ以外は実装上の取り決めである。**
+ *
+ * **直せる誤りだけ、どこを直すかを言う。** `unavailable` は原因を断定しない — サーバ側の不備も
+ * 通信の失敗もここに落ちており、見分ける材料が無い（`PantryList` の断りと同じ構え）。
  */
-const 保存できなかった案内 = '保存できませんでした。入力はそのままです。もう一度お試しください。';
+const 保存できなかった案内: Record<RegisterFailureNotice, string> = {
+  nameEmpty: '食材名を入れてください。',
+  expiryDateInvalid: '期限を確かめてください。',
+  unavailable: '保存できませんでした。入力はそのままです。もう一度お試しください。',
+};
 
 export type StockItemFormProps = {
-  /** 登録の実行。送る手段はこの周では作らない（B-12 設計 2章）。成功は解決、失敗は reject で表す。 */
-  onRegister: (input: RegisterStockItemInput) => Promise<void>;
+  /**
+   * 登録の実行（B-24）。**結末で返り、例外を投げない**（`server/README.md` / B-22 設計 規則9）。
+   * 送り先も認証もこの画面は知らない。
+   */
+  onRegister: RegisterStockItem;
 };
 
 export function StockItemForm({ onRegister }: StockItemFormProps) {
   const [values, setValues] = useState<StockItemFormValues>(EMPTY_STOCK_ITEM_FORM);
   const [送っている, set送っている] = useState(false);
-  const [保存できなかった, set保存できなかった] = useState(false);
+  const [案内, set案内] = useState<RegisterFailureNotice | null>(null);
 
   const 登録の入力 = registerStockItemInputOf(values);
 
@@ -74,14 +88,16 @@ export function StockItemForm({ onRegister }: StockItemFormProps) {
     if (登録の入力 === null || 送っている) return;
 
     set送っている(true);
-    set保存できなかった(false);
+    set案内(null);
+    // **`catch` を置かない。** 口は結末で返し投げない（`server/README.md`）ので、握り潰すと
+    // 本当の不具合が案内に化ける。`finally` だけは残す — 投げられた回に操作が戻らなくなるため。
     try {
-      await onRegister(登録の入力);
-      // 成功したら3欄を空に戻し、続けてもう1件入れられる状態にする（規則12 / FR-08）。
-      setValues(EMPTY_STOCK_ITEM_FORM);
-    } catch {
-      // 入力は消さない（NFR-15）。自動で送り直さない（ADR-007）。断る理由は見ない（規則7）。
-      set保存できなかった(true);
+      const 選んだ案内 = registerFailureNoticeOf(await onRegister(登録の入力));
+      set案内(選んだ案内);
+
+      // 通ったときだけ3欄を空に戻し、続けてもう1件入れられる状態にする（規則12 / FR-08）。
+      // 断られたときは入力を消さない（NFR-15）。自動で送り直さない（ADR-007）。
+      if (選んだ案内 === null) setValues(EMPTY_STOCK_ITEM_FORM);
     } finally {
       set送っている(false);
     }
@@ -111,7 +127,7 @@ export function StockItemForm({ onRegister }: StockItemFormProps) {
         <input type="date" value={values.expiryDate} onChange={欄の書き換え('expiryDate')} />
       </label>
 
-      {保存できなかった && <p>{保存できなかった案内}</p>}
+      {案内 !== null && <p>{保存できなかった案内[案内]}</p>}
 
       {/* 保存の操作は画面の下半分に置く（規則10 / NFR-14）。これ1つだけである（規則5）。 */}
       <button type="submit" disabled={登録の入力 === null || 送っている}>
