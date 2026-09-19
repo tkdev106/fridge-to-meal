@@ -30,7 +30,7 @@
   古い HTML が残っていること自体が読み手を誤らせる（docs/workflow.md）
 - [ ] **B-24** `apps/web`: **在庫の登録をサーバへ送る。** `POST /stock-items` を叩く薄い層を
   `apps/web/src/server/StockItemRequests.ts` に足し、`StockItemForm` の `onRegister` に渡す。
-  **経路の継ぎ目と CORS は B-22 が置いた** — 基点は `VITE_API_BASE_URL`、差し替える出口は `HttpFetch`、
+  **経路の継ぎ目と CORS は B-22 が置いた** — 基点は `VITE_API_BASE_URL`、出口は `StockItemRequestsDeps.httpFetch`（省略可能な引数として差し替える）、
   許す method に `POST` は既に入っており、接頭辞は無い（ADR-048）。**いまは `App.tsx` が「送る手段がまだ無い」ことを表して必ず断る関数を
   渡しており、画面から登録しても保存されない**（B-12 は画面だけを作り、送信は範囲外とした）。
   失敗の応答（`ErrorResponseDto.rule`）から文言を選ぶのもこの周（ADR-032 の決定3）。テストは `fetch` を差し替える。

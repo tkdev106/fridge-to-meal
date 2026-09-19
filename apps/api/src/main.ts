@@ -168,6 +168,9 @@ const ALLOWED_WEB_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'];
 /**
  * CORS で許す method。**画面の有無ではなく結線済みの経路に合わせる**（B-22 設計書 規則13 / B-09）。
  * 在庫の4経路がそのまま4つであり、Worker が持たない `HEAD` / `PATCH` は挙げない。
+ *
+ * **`OPTIONS` も挙げない。** preflight に応えるのはミドルウェア自身であり、`next()` を呼ぶ前に
+ * 204 を返す — 経路に届かないものを許可の一覧に並べる必要はない（ADR-048 決定3）。
  */
 const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'DELETE'];
 
