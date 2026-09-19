@@ -80,7 +80,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 **テストの `describe` は対象、`it` は振る舞いを日本語の文**で書く（`docs/testing.md` 6章）— 文字列であって
 識別子ではない。
 
-**移行の途中である。** `apps/api/src` と `apps/api/test` は済んだ。`apps/web`（37件）と
+**移行の途中である。** `apps/api/src` と `apps/api/test` は済んだ。`apps/web`（39件）と
 `.claude/hooks/guard.mjs`（6件）にはまだ日本語のローカル名が残る（backlog B-30c / B-30d）。
 **1ファイルの中で流儀を混ぜない** — 触るファイルは、そのファイルごと英語に揃えるか、
 そのファイルの既存の流儀に合わせるかのどちらかにする。
@@ -345,10 +345,10 @@ SUPABASE_ANON_KEY=...     # 同上
 | 鍵 | 扱い |
 | --- | --- |
 | **anon key** | **公開される前提の鍵。** RLS が守るので、web のバンドルに焼き込まれてよい。web 側は `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` として持つ（**`VITE_` の付いたものはビルド時にバンドルへ入る**）。**`.dev.vars` には足さない** — あちらはサーバ専用である |
-
-**`apps/web` には鍵でない必須の設定がもう1つある。** `VITE_API_BASE_URL`（api の基点。`https://…` や `http://127.0.0.1:8787`）であり、**既定値を埋め込まない** — 埋め込むと、設定を忘れたビルドが間違った相手を静かに叩く。欠けていれば起動時に `Error` で落ち、message に名前が出る（ADR-048 決定4 / 結果1）。**秘密ではないが、web だけが持つ**（`.dev.vars` はサーバ専用である）。
 | **`service_role` キー** | **使わない。** RLS を迂回し、Supabase を選んだ理由が消える（ADR-029 結果1） |
 | **LLM の API キー** | **サーバ側だけ。** クライアントに置くと抽出されて無制限に使われる（NFR-10） |
+
+**`apps/web` には鍵でない必須の設定がもう1つある。** `VITE_API_BASE_URL`（api の基点。`https://…` や `http://127.0.0.1:8787`）であり、**既定値を埋め込まない** — 埋め込むと、設定を忘れたビルドが間違った相手を静かに叩く。欠けていれば起動時に `Error` で落ち、message に名前が出る（ADR-048 決定4 / 結果1）。**秘密ではないが、web だけが持つ**（`.dev.vars` はサーバ専用である）。
 
 **Postgres への接続情報はここに置かない。** Hyperdrive の設定（Cloudflare 側）が持ち、`main.ts` は
 `env.HYPERDRIVE.connectionString` を読む（ADR-042 決定2）。binding は `apps/api/wrangler.toml` の
