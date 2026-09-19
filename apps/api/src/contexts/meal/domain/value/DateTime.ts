@@ -52,3 +52,28 @@ export function dateTimeOf(raw: string): DateTime {
   // ここが崩れると、生成日時の新しい順が入力の書き方で変わる（C-12）。
   return parsed.toISOString() as DateTime;
 }
+
+/** 1時間のミリ秒。遡る幅を時間で受け取るのは、窓の幅が時間で決まっているためである（ADR-049 決定2）。 */
+const MILLISECONDS_PER_HOUR = 60 * 60 * 1000;
+
+/**
+ * 基準の日時から `hours` 時間だけ遡った日時を返す（ADR-049 決定2 / B-31c）。
+ *
+ * **1日の生成回数を数える窓の下端を出すためにある。** 決定2 が「1日」を基準日時から遡る
+ * 24時間の窓と定めたので、**暦日を1度も取り出さずに窓を表せる** — 暦日で切ると時間帯を
+ * 1つ選ぶことになり、`docs/` にはその記述が無い（ADR-040 結果1 が送った判断）。
+ *
+ * 返すのも UTC の正準形である。**窓の内か外かは文字列の大小でそのまま比べられる**
+ * （`dateTimeOf` が桁を揃えている。C-12）。
+ *
+ * **`hours` は呼ぶ側の定数であり、検査しない。** 受け取るのは既に `DateTime` を通った値と
+ * モジュール直下の定数だけで、外から届く入力ではない（先行 `MealGenerator.requiredCount` の
+ * 「契約の外」と同じ扱い）。
+ */
+export function hoursBeforeOf(dateTime: DateTime, hours: number): DateTime {
+  // `DateTime` は正準形なので、解釈のぶれなく瞬間へ戻せる。引き算はミリ秒で行い、
+  // 日付の桁を自分で繰り下げない — 月末と閏年の繰り下がりを2つ目の規則として持つことになる。
+  return new Date(
+    new Date(dateTime).getTime() - hours * MILLISECONDS_PER_HOUR,
+  ).toISOString() as DateTime;
+}
