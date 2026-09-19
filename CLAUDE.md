@@ -38,7 +38,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | --- | --- |
 | 何を作るか（機能要件・非機能要件・コスト設計） | `docs/requirements.md` |
 | どう表現するか（ドメインモデル・用語・不変条件・確定事項） | `docs/domain-model.md` |
-| なぜその作りなのか（アーキテクチャ決定 ADR-001〜050） | `docs/adr.md` |
+| なぜその作りなのか（アーキテクチャ決定 ADR-001〜051） | `docs/adr.md` |
 | LLM に何を渡し何を受け取るか（プロンプト全文・応答の検証規則） | `docs/prompt-design.md` |
 | 画面に何をどう出すか（遷移・状態・再利用の見せ方） | `docs/screen-design.md` |
 | どうテストするか（古典派・観察可能な振る舞い・TDD の1周） | `docs/testing.md` |
