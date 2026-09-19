@@ -26,6 +26,11 @@ type VerifiedClaims = Awaited<ReturnType<typeof verify>>;
  * **腐敗防止層である**（ADR-005）。JWT・署名・共有秘密という外の語はこのファイルに閉じ、
  * `domain/` と `usecase/` には `HouseholdId` と `IdentityRuleViolation` だけが出ていく。
  * 実装の生成は `main.ts` に任せる（B-09。今周はどこからも結線されない）。
+ *
+ * **これは共有秘密（HS256）の経路である。実環境は ES256（非対称鍵）で署名しており、いまのままでは
+ * 実環境のトークンを1つも通さない**（B-07f で実測。ヘッダーは `ES256` で `kid` を持つ）。JWKS への
+ * 書き換えは B-07g であり、決定は ADR-043（ADR-031 を置き換えた）。**結線がまだ無いため、通らない
+ * ことで壊れる経路は存在しない** — 倒れ方は「素通り」ではなく「全部断る」側である。
  */
 export class HouseholdAuthenticatorImpl implements HouseholdAuthenticator {
   constructor(private readonly verification: AccessTokenVerification) {}
@@ -61,8 +66,11 @@ export class HouseholdAuthenticatorImpl implements HouseholdAuthenticator {
    * 設定した共有秘密とアルゴリズムで検証する。
    *
    * **期待するアルゴリズムは設定で1つに固定し、トークンのヘッダーが名乗る `alg` を
-   * 信用しない**（規則2 / ADR-031 決定2）。`issuer` / `audience` は与えられたときだけ渡す —
-   * 渡さなければ hono は照合しない（規則6）。
+   * 信用しない**（規則2 / ADR-043 決定2。ADR-031 決定2 から引き継がれた規則）。
+   * `issuer` / `audience` は与えられたときだけ渡す — 渡さなければ hono は照合しない（規則6）。
+   *
+   * **この「与えられたときだけ」は ADR-043 決定3 が否定した。** 実測値が得られたので必ず照合する
+   * 形に変える（B-07g）。任意のままなのは、まだ書き換えていないからである。
    */
   private async verifyClaims(normalizedAccessToken: string): Promise<VerifiedClaims> {
     try {

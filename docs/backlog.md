@@ -19,12 +19,38 @@
 
 ## 次にやること
 
-- [ ] **B-07f** **Workers から Postgres への接続経路を確かめる**（Hyperdrive の要否）。**このコンテナでは確かめられない** —
-  Cloudflare と Supabase の実環境が要る。結果しだいで **ADR-029 の承認が動き**、要れば設定の追加として新しい ADR を起こす。
-  **B-09（結線）の前に置く**（ADR-029 の結果3 / ADR-015 / ADR-020 の結果2）。
-  **同じ周で JWT の署名方式（共有秘密 / 非対称鍵）も確かめる** — B-07e は `.dev.vars` の雛形から
-  共有秘密（HS256）を採ったが、確かめるまで **ADR-031 は `提案` のまま**である（ADR-031 の結果2）
-- [ ] **B-09** `apps/api/src/main.ts`: composition root で結線する。実装クラスの生成をここだけに閉じる
+- [ ] **B-07g** `identity`: **アクセストークンの検証を JWKS（ES256）に書き換える。** いまの
+  `HouseholdAuthenticatorImpl` は `alg: 'HS256'` を設定で固定しており、**実環境のトークンを1つも通さない**
+  （B-07f で実測。ヘッダーは `ES256` で `kid` を持つ）。`hono/jwt` の `verifyWithJwks` に替える —
+  **依存パッケージは増えない。** 決めることが3つ。**(a) JWKS をどう持つか** — 1リクエストごとに取りに
+  行かせない。**取得に失敗したときに検証を素通りさせない**（鍵が引けないなら世帯を作らない）。
+  **(b) `issuer` / `audience` の任意をやめる** — ADR-043 決定3 が必ず照合すると決めたので、
+  `AccessTokenVerification` の省略可能をなくす。実測値は `iss` が `https://<ref>.supabase.co/auth/v1`、
+  `aud` が `authenticated`。**(c) テストに JWKS をどう与えるか** — `fetch` を差し替える（B-22 / B-24 と
+  同じ手）か、鍵の取得を別のポートに切るか。**後者はドメイン層に «if» が1本増え、ADR-043 の結果2 が
+  「実装の周に決める」とした範囲を越える** — そちらに倒したくなったら、コードを書く前に ADR を提案して止まる。
+  **書き換わるのは `HouseholdAuthenticatorImpl` のテスト**（HS256 の共有秘密でトークンを組んでいる）。
+  ポートの口と `IdentifyHousehold` のテストは動かない。
+  **B-09（結線）の前に置く** — 検証が通らないまま結線すると、api 層のどの経路も世帯を作れずに断る
+  （ADR-043 / NFR-09）
+- [ ] **B-07h** **実環境でしか確かめられない残り2件。** Cloudflare と Supabase の実環境が要るため、**人の作業**
+  （B-07f と同じ性質。**B-07f の探り Worker と Hyperdrive の設定が残っているうちに測るのが安い**）。
+  **(a) Hyperdrive の問い合わせキャッシュが `set local` と噛み合うか。** 作成時の既定で有効になっている。
+  **噛み合わなければ世帯をまたいで結果が見えることになり、Supabase を選んだ理由（世帯分離の安全網）が壊れる。**
+  トランザクションの中はキャッシュされない見込みだが、**確かめるまで前提にしない。** 見方は、別々の世帯 ID で
+  同じ問い合わせを続けて投げ、**2つ目が1つ目の行を受け取らないこと**を見る。噛み合わなければキャッシュを切る
+  （Cloudflare 側の設定変更であり、リポジトリの側では閉じない）。
+  **(b) 実 Supabase の Postgres の版。** `select version()` を控える。`docker-compose.yml` が版を固定している
+  条件の相手であり、ローカル 16 / CI 17 の2本立て（ADR-030 の結果1）で「正」をどこに置くかの材料になる。
+  B-07f では見ていない（ADR-042 の結果5 / ADR-030 の結果1 / C-9 / NFR-09）
+- [ ] **B-09** `apps/api/src/main.ts`: composition root で結線する。実装クラスの生成をここだけに閉じる。
+  **Hyperdrive の binding もこの周で置く** — `wrangler.toml` に `[[hyperdrive]]`（binding 名は `HYPERDRIVE`）、
+  `main.ts` は `env.HYPERDRIVE.connectionString` を読み、ドライバに `prepare: false` と
+  `fetch_types: false` を与える。**`.dev.vars` の `DATABASE_URL` は廃止し**、手元は
+  `WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` で渡す（先に binding だけ置くと
+  `pnpm dev` がその値を要求して止まるため、B-07f の周では入れなかった）。
+  **B-07h(a) の答えが出てから着手する** — Hyperdrive の問い合わせキャッシュの扱いが決まらないと、
+  結線した経路が世帯をまたいで結果を返しうる（ADR-042 決定2・決定3・結果3・結果5 / ADR-002 / C-9）
 - [ ] **B-17** トランザクションの helper（`withHouseholdTransaction`）を
   `contexts/pantry/infrastructure/db/` から **`shared/` 側へ移す**。**2つ目のコンテキストが表を持つ日に着手する** —
   コンテキストをまたぐ import は禁止のため、そのままでは2つ目の実装が写しを作る。

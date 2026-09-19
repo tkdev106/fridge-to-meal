@@ -152,7 +152,7 @@ describe('世帯認証器 HouseholdAuthenticatorImpl', () => {
   });
 
   it('ヘッダーが設定と違うアルゴリズムを名乗るアクセストークンを accessToken.invalid で断る', async () => {
-    // 規則2 / ADR-031 決定2: 期待するアルゴリズムは設定で固定し、ヘッダーを信用しない。
+    // 規則2 / ADR-043 決定2: 期待するアルゴリズムは設定で固定し、ヘッダーを信用しない。
     const execution = authenticator().authenticate(
       await sign(validClaims(), sharedSecret, 'HS512'),
     );

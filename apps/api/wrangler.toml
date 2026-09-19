@@ -7,20 +7,33 @@ compatibility_flags = ["nodejs_compat"]
 # 無関係なエラーがログに混ざって原因の切り分けを妨げる。
 send_metrics = false
 
-# 接続情報は環境変数で渡す（ADR-029）。開発時は apps/api/.dev.vars（gitignore 済み）に置く。
-#   DATABASE_URL="postgres://..."   Postgres への接続。authenticated に切り替えられる非所有者ロール
-#   SUPABASE_URL="https://xxxx.supabase.co"   認証（Supabase Auth）用。DB アクセスには使わない
-#   SUPABASE_ANON_KEY="..."                   同上
-#   SUPABASE_JWT_SECRET="..."                 受け取った JWT の検証に使う（鍵の方式は B-07e で確かめる）
+# Postgres への接続情報はここにも .dev.vars にも置かない。Hyperdrive の設定（Cloudflare 側）が
+# 持ち、main.ts は env.HYPERDRIVE.connectionString を読む（ADR-042 決定2 / B-07f で実測）。
 #
-# ⚠ service_role キーと、表の所有者ロールの接続文字列を置かない。どちらも RLS を迂回してしまい、
-#   Supabase を選んだ理由（世帯分離の安全網）が消える。
+#   [[hyperdrive]]        ← binding を置くのは B-09（結線）。先に置くと wrangler dev が
+#   binding = "HYPERDRIVE"   WRANGLER_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE を要求し、
+#   id = "..."               pnpm dev が止まる。
+#
+# 環境変数で渡すのは認証（Supabase Auth）用の2つだけ。開発時は apps/api/.dev.vars（gitignore 済み）。
+#   SUPABASE_URL="https://xxxx.supabase.co"   認証用。DB アクセスには使わない
+#   SUPABASE_ANON_KEY="..."                   同上
+#
+# ⚠ Workers から Postgres へ直接 TCP で繋がない。到達はできるが、TLS を要求すると接続の
+#   やり直しが繰り返され、1リクエストあたりの外向き接続数の上限に当たって落ちる（B-07f）。
+#   NFR-08 は例外を認めていないので TLS を捨てる道は無い。Hyperdrive を挟む（ADR-042）。
+#
+# ⚠ ドライバには prepare: false と fetch_types: false を与える（ADR-042 決定3）。
+#
+# ⚠ SUPABASE_JWT_SECRET は使わない。検証は JWKS（ES256）で行う（ADR-043）。取りに行く先は
+#   <SUPABASE_URL>/auth/v1/.well-known/jwks.json で、公開鍵の一覧なので秘密ではない。
+#
+# ⚠ service_role キーと、表の所有者ロールの接続文字列を Hyperdrive の設定にも置かない。
+#   どちらも RLS を迂回してしまい、Supabase を選んだ理由（世帯分離の安全網）が消える。
+#   接続に使うのは表を持たない非所有者のログインロールである（ADR-029 決定3(b)）。
 #
 # ⚠ 読み書きは 1リクエスト1トランザクションで行い、その中で set local role と
 #   set local request.jwt.claims を張る。local を落とさない — 接続プーラは接続を貸し回すため、
 #   セッションに残した設定は他人のリクエストに漏れる。
 #
-# ⚠ Workers から Postgres へ直接繋ぐ形になったため、接続経路（Hyperdrive の要否）は未確認。
-#   確かめるのは B-07f。
-#
-# ⚠ LLM の API キーもここに置く。クライアントには絶対に置かない（NFR-10）。
+# ⚠ LLM の API キーは .dev.vars（gitignore 済み）と wrangler secret に置く。このファイルは git 管理下
+#   なので、秘密を1つも書かない。クライアントにも絶対に置かない（NFR-10）。
