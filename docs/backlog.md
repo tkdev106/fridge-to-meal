@@ -28,18 +28,11 @@
   手で書き写すと次に同じことが起きるので、**Markdown から生成する手段を置く**か、
   **閲覧用 HTML をやめる**かのどちらかを選ぶ。**正は Markdown**（CLAUDE.md）であり、
   古い HTML が残っていること自体が読み手を誤らせる（docs/workflow.md）
-- [ ] **B-24** `apps/web`: **在庫の登録をサーバへ送る。** `POST /stock-items` を叩く薄い層を
-  `apps/web/src/server/StockItemRequests.ts` に足し、`StockItemForm` の `onRegister` に渡す。
-  **経路の継ぎ目と CORS は B-22 が置いた** — 基点は `VITE_API_BASE_URL`、出口は `StockItemRequestsDeps.httpFetch`（省略可能な引数として差し替える）、
-  許す method に `POST` は既に入っており、接頭辞は無い（ADR-048）。**いまは `App.tsx` が「送る手段がまだ無い」ことを表して必ず断る関数を
-  渡しており、画面から登録しても保存されない**（B-12 は画面だけを作り、送信は範囲外とした）。
-  失敗の応答（`ErrorResponseDto.rule`）から文言を選ぶのもこの周（ADR-032 の決定3）。テストは `fetch` を差し替える。
-  経路は結線済み（B-09）。**トークンは `apps/web/src/session/` の継ぎ目（`Session.accessToken()`）から受け取る** — B-34 が置いた（ADR-046）（FR-01 / ADR-003 / ADR-032）
 - [ ] **B-23** `apps/web`: 在庫の削除（FR-06）。行のスワイプで消し、確認は出さない。
   **ADR-027 が B-11 を名指ししていた「削除が冪等でない」の宿題をここで引き取る** — 取りこぼした再送が
   受け取る 404 を「すでに消えている」として扱うか、利用者に見せるかを決める。B-11 は一覧の表示だけを
   作り、削除を範囲外としたため宿題が宙に浮いていた（FR-06 / ADR-027 の結果 / screen-design 5章）
-- [ ] **B-30c** **日本語の識別子を英語に置き換える（3）— `apps/web`**（39件 / 7ファイル。`src` 16 / `test` 23。B-35 が `App.tsx` の1件を済ませ、B-22 が `PantryList.tsx` に2件足した）
+- [ ] **B-30c** **日本語の識別子を英語に置き換える（3）— `apps/web`**（40件 / 7ファイル。`src` 17 / `test` 23。B-35 が `App.tsx` の1件を済ませ、B-22 が `PantryList.tsx` に2件、B-24 が `StockItemForm.tsx` に1件足した）
 
 > **B-30a〜c に共通する範囲。2026-09-14 にユーザーが決定。**
 > **置き換えるのは識別子だけ** — **コメント2,059行**と **`describe` / `it` の日本語の文631件**は**残す。**

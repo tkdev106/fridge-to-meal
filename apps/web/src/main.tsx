@@ -5,7 +5,8 @@ import type { Session } from './session/Session.js';
 import { sessionConfigOf } from './session/SessionConfig.js';
 import { SessionImpl } from './session/SessionImpl.js';
 import { apiBaseUrlOf } from './server/ApiBaseUrl.js';
-import { listStockItems } from './server/StockItemRequests.js';
+import type { StockItemRequestsDeps } from './server/StockItemRequests.js';
+import { listStockItems, registerStockItem } from './server/StockItemRequests.js';
 
 // 継ぎ目の実装を `new` するのはここだけ（`SessionImpl.ts` 規則2 / B-35 設計 6章 規則3）。
 // 設定が欠けていれば `sessionConfigOf` の `Error` を**包まずそのまま外へ**出す（規則12 / ADR-045）
@@ -18,16 +19,22 @@ const session: Session = new SessionImpl(sessionConfigOf(import.meta.env));
 //
 // トークンは `Session` の口を**関数で包んで**渡す（同 規則7）。継ぎ目に `Session` の型を
 // 渡さないのは、経路の側が認証の実装を知らないままでいるためである（ADR-046 決定3）。
-const requestStockItems = listStockItems({
+//
+// **基点とトークンの出どころは在庫の口で1組である。** 別々に組むと、片方だけ別の基点を
+// 見ている状態を作れてしまう（B-24）。
+const stockItemRequests: StockItemRequestsDeps = {
   baseUrl: apiBaseUrlOf(import.meta.env),
   accessToken: () => session.accessToken(),
-});
+};
+
+const requestStockItems = listStockItems(stockItemRequests);
+const sendStockItem = registerStockItem(stockItemRequests);
 
 const container = document.getElementById('root');
 if (!container) throw new Error('#root が見つからない');
 
 createRoot(container).render(
   <StrictMode>
-    <App session={session} listStockItems={requestStockItems} />
+    <App session={session} listStockItems={requestStockItems} registerStockItem={sendStockItem} />
   </StrictMode>,
 );

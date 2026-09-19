@@ -15,10 +15,19 @@ export type HttpDelivery =
   /** 取りに行けない。渡した例外をそのまま投げる。 */
   | { readonly throws: Error };
 
-/** 出口が受け取った要求1つぶん。**url とヘッダだけを記録する**（規則6・8 が見るもの）。 */
+/**
+ * 出口が受け取った要求1つぶん。**渡されたものをそのまま記録する**（規則6・8 と B-24 が見るもの）。
+ *
+ * `method` と `body` は `HttpRequest` の任意の2項目であり、**省略されたことも事実として残す** —
+ * 補って `'GET'` と書き込むと、既定に任せたのか自分で書いたのかがテストから見分けられなくなる。
+ */
 export type ReceivedRequest = {
   readonly url: string;
   readonly headers: Record<string, string>;
+  /** 省略されていれば `undefined`（実行環境の `fetch` の既定は `GET`）。 */
+  readonly method: string | undefined;
+  /** 本体を持たない要求は `undefined`。 */
+  readonly body: string | undefined;
 };
 
 /**
@@ -57,7 +66,12 @@ export class FixedHttpFetch {
 
     // **記録は投げるより先である**（`docs/testing.md` 2章）。要求が出たことは、
     // そのあと投げても事実であり、規則7 の「要求を出さない」はここを見て確かめる。
-    this.#receivedRequests.push({ url, headers: { ...init.headers } });
+    this.#receivedRequests.push({
+      url,
+      headers: { ...init.headers },
+      method: init.method,
+      body: init.body,
+    });
 
     if (delivery === undefined) {
       throw new Error('届ける応答が1件も無い');
