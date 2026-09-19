@@ -28,14 +28,10 @@
   手で書き写すと次に同じことが起きるので、**Markdown から生成する手段を置く**か、
   **閲覧用 HTML をやめる**かのどちらかを選ぶ。**正は Markdown**（CLAUDE.md）であり、
   古い HTML が残っていること自体が読み手を誤らせる（docs/workflow.md）
-- [ ] **B-22** `apps/web`: **在庫一覧をサーバから取得する。** `ListStockItems` の `GET` を叩く薄い層を置き、
-  `PantryList` に渡す。**いまは `App.tsx` が常に0件を渡しており、フラグを有効にしても在庫は出ない**
-  （B-11 は画面だけを作り、取得は範囲外とした）。テストは `fetch` を差し替える。
-  経路は結線済みで接頭辞なし（`GET /stock-items`。B-09）。**トークンは `apps/web/src/session/` の継ぎ目（`Session.accessToken()`）から受け取る** — B-34 が置いた（ADR-046）。
-  **`Authorization` を付けると単純要求でなくなるため、CORS と接頭辞もこの周で決める** —
-  `apps/api/src/main.ts` が「web からの到達は B-22 が決める」と書いた宿題である（ADR-046 結果3）（FR-04 / ADR-003）
-- [ ] **B-24** `apps/web`: **在庫の登録をサーバへ送る。** `POST /stock-items` を叩く薄い層を置き、
-  `StockItemForm` の `onRegister` に渡す。**いまは `App.tsx` が「送る手段がまだ無い」ことを表して必ず断る関数を
+- [ ] **B-24** `apps/web`: **在庫の登録をサーバへ送る。** `POST /stock-items` を叩く薄い層を
+  `apps/web/src/server/StockItemRequests.ts` に足し、`StockItemForm` の `onRegister` に渡す。
+  **経路の継ぎ目と CORS は B-22 が置いた** — 基点は `VITE_API_BASE_URL`、出口は `StockItemRequestsDeps.httpFetch`（省略可能な引数として差し替える）、
+  許す method に `POST` は既に入っており、接頭辞は無い（ADR-048）。**いまは `App.tsx` が「送る手段がまだ無い」ことを表して必ず断る関数を
   渡しており、画面から登録しても保存されない**（B-12 は画面だけを作り、送信は範囲外とした）。
   失敗の応答（`ErrorResponseDto.rule`）から文言を選ぶのもこの周（ADR-032 の決定3）。テストは `fetch` を差し替える。
   経路は結線済み（B-09）。**トークンは `apps/web/src/session/` の継ぎ目（`Session.accessToken()`）から受け取る** — B-34 が置いた（ADR-046）（FR-01 / ADR-003 / ADR-032）
