@@ -28,17 +28,12 @@
   手で書き写すと次に同じことが起きるので、**Markdown から生成する手段を置く**か、
   **閲覧用 HTML をやめる**かのどちらかを選ぶ。**正は Markdown**（CLAUDE.md）であり、
   古い HTML が残っていること自体が読み手を誤らせる（docs/workflow.md）
-- [ ] **B-34** `apps/web`: **セッションの層。** Supabase Auth からアクセストークンを得て保持し、期限が来る前に
-  更新する経路を、**継ぎ目1つの背後に**置く。**画面は supabase-js の型を1つも見ない**（ADR-046 決定3）。
-  `@supabase/supabase-js` をここで足す（同 決定1）。設定は `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` で、
-  **バンドルに焼き込まれる前提**（同 決定4・結果2）。`apps/api/.dev.vars` には足さない。
-  **この周が作るのは継ぎ目そのものなので、差し替える相手は継ぎ目ではなく supabase-js 側である** — 継ぎ目の実装は
-  薄い写しに留め、本物の外部に出る部分は `pnpm test` で観察しない（`docs/testing.md` 5章と同じ判断）。
-  **決定3 を lint で機械的に守れるか決める** — `apps/web/src/features/**` から `@supabase/*` を import しない規則を
-  `.dependency-cruiser.cjs` に足すか、足さない理由を書く。**足すなら `CLAUDE.md` の依存ルールの表も同じ周で変える**
-  （FR-25 / ADR-046 / docs/testing.md 5章 / CLAUDE.md「依存は外から内へ」）
 - [ ] **B-35** `apps/web`: **ログインとサインアップの画面、`App.tsx` の門、ログアウト。** セッションが無ければ
-  ログイン、あれば今の画面という形にする。方式は**メールとパスワード**（ADR-046 決定2）。**設定画面は作らない** —
+  ログイン、あれば今の画面という形にする。方式は**メールとパスワード**（ADR-046 決定2）。
+  **継ぎ目は `apps/web/src/session/` に既にある**（B-34。`Session` / `SessionConfig` / `SessionImpl`）— **まだ誰も `new` しておらず、`main.tsx` で `sessionConfigOf(import.meta.env)` を読んで結線するのがこの周である。**
+  **`apps/web/.env.local` もこの周で要る**（`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`。無ければ結線した時点で `Error` で落ちる）。
+  **文言を決めるときに、失敗の種別を分けるかを必ず判断する** — 継ぎ目の `signIn` / `signUp` は**資格情報の誤りも通信不能も `'rejected'` に倒している**（B-34 が種別を分けなかった）。「メールかパスワードが違います」だけだと**通信不能のときに嘘になる。** 分けると決めたら、足すのは画面ではなく継ぎ目の結末の型である。
+  **サインアップのメール確認の設定は未確認である** — 確認が要る設定なら `signUp` は`'confirmationRequired'` を返す。**実物で確かめ、返らないと分かったらその変種を落とす**。**設定画面は作らない** —
   `docs/screen-design.md` 2.1 は設定を履歴タブの右上に置くと**決めている**が、**`apps/web` にはまだタブが1つも
   無い**ため置き場所が作れない。ログアウトは暫定の位置にする（B-12 が登録の画面を一覧の下に並べたのと同じ手。
   ADR-046 結果4）。**下タブ3つは決まっており、論点1 が待っているのは「起動時にどれを開くか」だけである** —
@@ -49,14 +44,14 @@
 - [ ] **B-22** `apps/web`: **在庫一覧をサーバから取得する。** `ListStockItems` の `GET` を叩く薄い層を置き、
   `PantryList` に渡す。**いまは `App.tsx` が常に0件を渡しており、フラグを有効にしても在庫は出ない**
   （B-11 は画面だけを作り、取得は範囲外とした）。テストは `fetch` を差し替える。
-  経路は結線済みで接頭辞なし（`GET /stock-items`。B-09）。**トークンは B-34 の継ぎ目から受け取る**（ADR-046）。
+  経路は結線済みで接頭辞なし（`GET /stock-items`。B-09）。**トークンは `apps/web/src/session/` の継ぎ目（`Session.accessToken()`）から受け取る** — B-34 が置いた（ADR-046）。
   **`Authorization` を付けると単純要求でなくなるため、CORS と接頭辞もこの周で決める** —
   `apps/api/src/main.ts` が「web からの到達は B-22 が決める」と書いた宿題である（ADR-046 結果3）（FR-04 / ADR-003）
 - [ ] **B-24** `apps/web`: **在庫の登録をサーバへ送る。** `POST /stock-items` を叩く薄い層を置き、
   `StockItemForm` の `onRegister` に渡す。**いまは `App.tsx` が「送る手段がまだ無い」ことを表して必ず断る関数を
   渡しており、画面から登録しても保存されない**（B-12 は画面だけを作り、送信は範囲外とした）。
   失敗の応答（`ErrorResponseDto.rule`）から文言を選ぶのもこの周（ADR-032 の決定3）。テストは `fetch` を差し替える。
-  経路は結線済み（B-09）。**トークンは B-34 の継ぎ目から受け取る**（ADR-046）（FR-01 / ADR-003 / ADR-032）
+  経路は結線済み（B-09）。**トークンは `apps/web/src/session/` の継ぎ目（`Session.accessToken()`）から受け取る** — B-34 が置いた（ADR-046）（FR-01 / ADR-003 / ADR-032）
 - [ ] **B-25** **「ドメイン層に LLM という語を出さない」の言い回しを決める。** `CLAUDE.md` と
   `docs/domain-model.md` 2章 は語そのものを禁じる書き方をしているが、
   `apps/api/src/contexts/pantry/domain/value/Amount.ts` のコメントには ADR-010 の理由を写した

@@ -89,6 +89,22 @@ module.exports = {
       to: { path: '^apps/' },
     },
 
+    // ---- web の中の継ぎ目（ADR-046 決定3） ----
+    {
+      name: 'webの画面はsupabaseを直接importしない',
+      comment:
+        'アクセストークンの取得・保持・更新・破棄は apps/web/src/session/ の継ぎ目の背後に閉じる。' +
+        '画面がライブラリを直接呼ぶと、差し替える相手がライブラリの内部になり、' +
+        '古典派のテスト（docs/testing.md）が回らない。ADR-046 結果1 が認めた ' +
+        '「認証だけは web が Supabase を直接見る」という例外の範囲を、1ディレクトリに閉じる規則である。',
+      severity: 'error',
+      // **`src/` ではなく `apps/web/` 全体から縛る。** テストが直接触れると、差し替える相手が
+      // 継ぎ目ではなくライブラリの内部になり、`docs/testing.md` 5章 の判断（本物の外部に
+      // 出る部分を pnpm test で観察しない）が機械的に守られなくなる。
+      from: { path: '^apps/web/', pathNot: '^apps/web/src/session/' },
+      to: { path: 'node_modules/@supabase/' },
+    },
+
     // ---- 一般的な健全性 ----
     {
       name: '循環参照を作らない',
@@ -106,7 +122,15 @@ module.exports = {
 
   options: {
     doNotFollow: { path: 'node_modules' },
-    exclude: { path: '(node_modules|dist|\\.gitkeep)' },
+    // 除くのは**ワークスペースのビルド成果物だけ**である（apps/*/dist・dist-test・dist-types）。
+    // node_modules を除かないのは、除くと npm の辺がグラフから丸ごと消え、
+    // 'webの画面はsupabaseを直接importしない' が**当たらないまま緑になる**ため。
+    // 辺をたどらないのは doNotFollow の仕事で、こちらは葉として見えていればよい。
+    //
+    // **先頭の錨を外さないこと。** 'dist' を無条件に除くと、入口が dist/ の下にある package が
+    // まるごと消える（@supabase/supabase-js は dist/index.mjs、hono は dist/cjs/index.js）。
+    // react は入口が index.js なので消えず、react だけで確かめると罠に気づけない。
+    exclude: { path: '^(apps|packages)/[^/]+/dist|\\.gitkeep' },
     tsPreCompilationDeps: true,
     tsConfig: { fileName: 'tsconfig.base.json' },
     enhancedResolveOptions: {

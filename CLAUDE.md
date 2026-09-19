@@ -104,7 +104,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | 場所 | 現在地 |
 | --- | --- |
 | `apps/api/src/main.ts` | composition root。`createApp(deps)`（Hono の組み立て）/ `composeDependencies(env, ports)`（**実装クラスの `new` はこの関数の中だけ**）/ default export（Workers の入口。同じ `env` には同じ組み立てを返す）の3口。在庫のユースケースは1要求1トランザクションで包み、`StockItemRepositoryImpl` はトランザクションの中で生成する。`AccessTokenVerification` の3値は `SUPABASE_URL` から導く（`jwksUri` = `<url>/auth/v1/.well-known/jwks.json`、`issuer` = `<url>/auth/v1`、`audience` = `authenticated`）。**鍵が引けない・設定が空は 500 で 401 にならない**ことを `test/main.test.ts` が層をまたいで押さえる（ADR-045 結果4） |
-| `apps/web/src/` | `App.tsx` が `PantryList` に常に0件を渡す。サーバ取得は B-22、登録画面は B-12 |
+| `apps/web/src/` | `App.tsx` が `PantryList` に常に0件を渡す。サーバ取得は B-22、登録画面は B-12。**`session/` にセッションの継ぎ目がある**（B-34。`Session` / `SessionConfig` / `SessionImpl`）— **まだ誰も `new` していない**（結線は B-35）|
 | `packages/contract/src/` | `pantry.ts`（在庫 API の型）と `error.ts` |
 | `supabase/migrations/` | `stock_items` 表と RLS。`meta/` は drizzle-kit の生成物 |
 | `apps/api/test/` | 単体（`contexts/`）・契約（`contract/`）・DB（`db/`、`pnpm test:db`）・移行（`migrations/`）の4種。差し替え用の `Fixed*` / `InMemory*` は `test/support/` |
@@ -174,6 +174,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 - **`householdId` はリポジトリの全メソッドで必須引数。** 世帯をまたぐ取得を型として不可能にする（C-9）。
 - **リポジトリの口が並び順を約束するのは、一部しか返さないときだけ。** 全件返す口は約束しない — 並べ替えはユースケース層の仕事で、画面の要求をリポジトリに焼き付けない（先行 `StockItemRepository.findByHousehold`）。**`limit` で絞る口は約束する** — どの行を取るかが順序で決まるため、順序を約束しない `limit` は意味を持たない（ADR-038）。
 - **api 層は世帯と識別子の型をユースケースから導出し、規則違反は例外の `name` で見分ける**（ADR-032）。
+- **`@supabase/*` を import してよいのは `apps/web/src/session/` だけ。** 画面（`features/` も `App.tsx` も `main.tsx` も）は継ぎ目の型だけを見る — ADR-046 結果1 が認めた「認証だけは web が Supabase を直接見る」という**例外の範囲を1ディレクトリに閉じる**（ADR-046 決定3）。在庫と献立は従来どおり API だけを通る。
 
 これらは `pnpm lint:deps`（dependency-cruiser）と `pnpm lint:code`（ESLint の禁止語）が**機械的に検査する。**
 規則を緩めて緑にしない。
@@ -259,7 +260,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | フロントエンド | React 19 + Vite 8（SPA・PWA） | ADR-014。Next.js は**採用しない** — サーバアクション類が ADR-003 と衝突するため |
 | サーバサイド | Hono on Cloudflare Workers | ADR-015。ドメイン層とユースケース層はここに置かれる |
 | DB・認証 | Supabase（Postgres + Auth）。**DB アクセスは Drizzle**（`drizzle-orm` + `postgres`）。**サーバの DB アクセスに supabase-js は使わない** — この禁止は `apps/api` の問い合わせに限る（ADR-029 決定1 は「認証と Postgres そのものは Supabase のまま使う」と続けている） | ADR-029（ADR-020 を置き換え） |
-| web のログイン | **`@supabase/supabase-js` を `apps/web` に置き、メールとパスワードでサインインする。** セッションは継ぎ目1つの背後に閉じ、**画面はライブラリの型を見ない。** 未実装（B-34 / B-35） | ADR-046 |
+| web のログイン | **`@supabase/supabase-js` を `apps/web` に置き、メールとパスワードでサインインする。** セッションは継ぎ目1つの背後に閉じ、**画面はライブラリの型を見ない。** **継ぎ目は `apps/web/src/session/` に置かれた**（B-34）。**画面と結線はまだ無い**（B-35） | ADR-046 |
 | Workers → Postgres の経路 | **Cloudflare Hyperdrive 経由。** origin は Supabase の直接接続（`db.<ref>.supabase.co:5432`）。Supavisor は使わない。**問い合わせキャッシュは切る** | ADR-042 / ADR-044 |
 | アクセストークンの検証 | **JWKS（ES256）。** 共有秘密は使わない | ADR-043（ADR-031 を置き換え） |
 | LLM | **未決** | ADR-019 |
@@ -292,6 +293,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 .github/workflows/ci.yml   PR と main への push で pnpm verify と pnpm test:db を別ジョブで回す
 .github/workflows/cleanup-assigned-branches.yml  web セッションが残す claude/* の枝を毎日掃除する
 apps/web/                  React + Vite（PWA）— API のクライアント
+  src/session/             セッションの継ぎ目。**ここは画面ではない**（ADR-046 決定3）。@supabase/* を import してよい唯一の場所
   src/features/pantry/     画面もコンテキスト単位で切る（PantryList / PantrySections / RemainingDays）
   src/features/meal/
   test/                    画面ロジックの単体テスト
