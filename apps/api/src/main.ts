@@ -153,7 +153,7 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
 }
 
 /**
- * CORS で許す要求元の**明示の一覧**（B-22 設計書 規則12 / NFR-08 / NFR-09 / ADR-046 決定4）。
+ * CORS で許す要求元の**明示の一覧**（B-22 設計書 規則12 / ADR-048 決定2 / NFR-08 / NFR-09）。
  *
  * `*` にも要求元の反射にもしない — web は `Authorization` にアクセストークンを載せて来るので
  * （ADR-043）、未知の origin からの往復をブラウザに許させる理由が1つも無い。
