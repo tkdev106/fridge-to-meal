@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { StockItemDto } from '@fridge-to-meal/contract';
-import { suggestMeals } from '../../../../src/contexts/meal/usecase/SuggestMeals.js';
+import {
+  suggestMeals,
+  suggestNewMeals,
+} from '../../../../src/contexts/meal/usecase/SuggestMeals.js';
 import type {
   SuggestMealsOutput,
   SuggestionOutput,
@@ -296,16 +299,22 @@ function setUp(
     void suggestionRepository.save(suggestion.householdId, suggestion);
   }
   const mealGenerator = new FixedMealGenerator(...(props.generatedMeals ?? []));
-  const suggest = suggestMeals({
+  // **2つの入口を同じ結線から作る**（B-32）。既定の提案と明示操作は同じ依存を見ており、
+  // 片方だけ別の記憶上の実装に繋ぐと、同じ前提の下で振る舞いを比べられなくなる。
+  // **識別子の発行器も1つずつである** — 明示操作を2度呼ぶ回（上限の数に入ることを見る回）が、
+  // 用意した識別子を順に使い切ることまで含めて1つの前提になる。
+  const deps = {
     listStockItems: listStockItems.list,
     mealRepository,
     suggestionRepository,
     mealGenerator,
     generateMealId: fixedMealIdGenerator(props.mealIdsToIssue ?? []),
     generateSuggestionId: fixedSuggestionIdGenerator(props.suggestionIdsToIssue ?? [suggestionId]),
-  });
+  };
+  const suggest = suggestMeals(deps);
+  const suggestNew = suggestNewMeals(deps);
 
-  return { mealRepository, suggestionRepository, mealGenerator, suggest };
+  return { mealRepository, suggestionRepository, mealGenerator, suggest, suggestNew };
 }
 
 /**
@@ -2359,5 +2368,420 @@ describe('献立を提案する SuggestMeals', () => {
     await expect(suggest(ourHousehold, asOf)).rejects.toThrow(MealRuleViolation);
 
     await expect(suggest(ourHousehold, asOf)).rejects.toThrow(MealRuleViolation);
+  });
+});
+
+describe('新しい献立を求める明示操作 SuggestNewMeals', () => {
+  // ここから FR-36 の明示操作（B-32）。**既定の提案とは別の入口**であり、C-15 が数える2つの
+  // 生成の機会のうち「利用者が新しい献立を明示的に求めたとき」のほうである。
+  //
+  // **この入口が上書きするのは1つだけである**（prompt-design 8章 の表）— 「作れる既存の献立が
+  // 1件以上ある」で短絡しないことである。**在庫の下限も NFR-C2 の1日の上限も、この入口に
+  // そのまま当たる**（同 表 / ADR-049 結果7）。
+  //
+  // **C-7 の短絡も通らない。根拠は FR-21 である** — 「再生成は明示的な操作（FR-36）でのみ
+  // 行う」と定めており、C-7 はその「明示的な操作でない回」の判定である（ADR-051）。通して
+  // しまうと、利用者が押した直後（在庫が動いていない回）にこそ何も起きず、FR-36 の
+  // 「常に3件を新規生成する」と screen-design D-2 の「押すと必ず LLM を呼ぶ」が死ぬ。
+  //
+  // **どの回も生成結果と発行する献立の識別子をわざと用意してある** — 在庫の下限・上限の回と
+  // 同じ理由である（既定の0件のままだと、誤って生成へ回った回が `mealGenerator.empty` で落ちる）。
+
+  it('在庫で作れる既存の献立があっても、生成した献立を並べた提案を返す', async () => {
+    // FR-36 / C-15 / prompt-design 8章: この入口が上書きするのは「作れる既存の献立がある」
+    // 条件である。**既定の提案なら にんじん で作れる idA を再利用して生成を呼ばない回**であり、
+    // 上書きが効いていなければここが idA で赤くなる。
+    const { suggestNew } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggestNew(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idC]);
+  });
+
+  it('作れる既存の献立があっても、提案の1件は由来が生成になる', async () => {
+    // FR-35 / C-4c / C-15: 明示操作で得たものは生成の経路から来たものであり、再利用の印を
+    // 付けない。1つの提案の中で由来が混ざらないのは既定の提案と同じである。
+    const { suggestNew } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggestNew(ourHousehold, asOf);
+
+    expect(suggestionOf(output).entries.map((entry) => entry.origin)).toEqual(['generated']);
+  });
+
+  it('生成に求める件数は3件である', async () => {
+    // FR-36「常に3件を新規生成する」/ ADR-022: 求める件数は既定の提案と同じ3件であり、
+    // 入口で変えない。**返るのが3件に満たなくても、通った件数でそのまま組む**（C-15）。
+    const { suggestNew, mealGenerator } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    await suggestNew(ourHousehold, asOf);
+
+    expect(mealGenerator.receivedInput?.requiredCount).toBe(3);
+  });
+
+  it('在庫が最新の提案のときから変わっていなくても、生成した献立を並べた提案を返す', async () => {
+    // FR-21 / FR-36 / screen-design D-2 / ADR-051: C-7 の短絡は「明示的な操作でない回」の
+    // 判定である。**既定の提案なら保存済みの提案（idA）をそのまま返す回**であり、短絡を通って
+    // しまえばここが idA で赤くなる。押した直後に何も起きないことこそ、この入口の失敗である。
+    const carrot = { name: 'にんじん' };
+    const yogurt = { name: 'ヨーグルト' };
+    const { suggestNew } = setUp({
+      stockItems: [stockItem(carrot), stockItem(yogurt)],
+      meals: [],
+      recentSuggestions: [
+        storedSuggestion({
+          mealIds: [idA],
+          pantrySnapshot: [mealStockItem(carrot), mealStockItem(yogurt)],
+        }),
+      ],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggestNew(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idC]);
+  });
+
+  it('在庫が変わっていない回も、提案の識別子は新しく発行した値になる', async () => {
+    // FR-21 / C-14 / ADR-051: 短絡した回は保存済みの提案の識別子をそのまま返すが、明示操作は
+    // 短絡しない。**この回に組んだ提案は新しい1回ぶん**であり、識別子も生成日時も保存済みの
+    // ものではない。
+    const carrot = { name: 'にんじん' };
+    const yogurt = { name: 'ヨーグルト' };
+    const { suggestNew } = setUp({
+      stockItems: [stockItem(carrot), stockItem(yogurt)],
+      meals: [],
+      recentSuggestions: [
+        storedSuggestion({
+          mealIds: [idA],
+          pantrySnapshot: [mealStockItem(carrot), mealStockItem(yogurt)],
+        }),
+      ],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggestNew(ourHousehold, asOf);
+
+    expect(suggestionOf(output).id).toBe(suggestionId);
+  });
+
+  it('在庫が変わっていない回も、組んだ提案を保存して次の最新にする', async () => {
+    // C-14 / C-7: 保存するのは既定の提案と同じである。**保存しないと、次の回の比較（C-7）も
+    // 除外（C-11）もこの回を見なかったことになる。** 保存したことは取得を通して見る
+    // （`docs/testing.md` 3章）。
+    const carrot = { name: 'にんじん' };
+    const yogurt = { name: 'ヨーグルト' };
+    const { suggestNew, suggestionRepository } = setUp({
+      stockItems: [stockItem(carrot), stockItem(yogurt)],
+      meals: [],
+      recentSuggestions: [
+        storedSuggestion({
+          mealIds: [idA],
+          pantrySnapshot: [mealStockItem(carrot), mealStockItem(yogurt)],
+        }),
+      ],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    await suggestNew(ourHousehold, asOf);
+
+    expect((await suggestionRepository.findLatestByHousehold(ourHousehold))?.id).toBe(suggestionId);
+  });
+
+  it('最新の提案の取得が投げても、明示操作は提案を返す', async () => {
+    // FR-21 / C-7 / ADR-051: 明示操作は最新の提案を比べる必要がない。**既定の提案ならこの
+    // 例外がそのまま伝わる回**であり、比較の相手を引きに行かないことがここで見える。
+    const { suggestNew } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      findLatestThrows: new Error('最新の提案が引けない'),
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggestNew(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idC]);
+  });
+
+  it('避けるべき名称の先頭は、直前の提案に並んだ献立の名称である', async () => {
+    // ADR-021 / FR-42 / prompt-design D-6: **明示操作こそ直前に見た献立を避けたい回である** —
+    // 利用者は今見ているものとは違うものを求めて押している。並びは既定の提案と同じ材料から
+    // 組み、入口ごとに組み直さない。
+    const { suggestNew, mealGenerator } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [
+        uncookableMeal({ id: idA, title: '肉じゃが', generatedAt: '2026-09-13T12:00:00Z' }),
+        uncookableMeal({ id: idB, title: '生姜焼き', generatedAt: '2026-09-12T12:00:00Z' }),
+        uncookableMeal({ id: idC, title: 'きんぴら', generatedAt: '2026-09-11T12:00:00Z' }),
+      ],
+      recentSuggestions: [
+        storedSuggestion({ mealIds: [idC], generatedAt: '2026-09-13T12:00:00Z' }),
+        storedSuggestion({ mealIds: [idB], generatedAt: '2026-09-12T12:00:00Z' }),
+      ],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idD],
+    });
+
+    await suggestNew(ourHousehold, asOf);
+
+    expect(mealGenerator.receivedInput?.avoidTitles).toEqual(['きんぴら', '肉じゃが', '生姜焼き']);
+  });
+
+  it('直前の提案が無いときは、保持している献立の名称が生成日時の新しい順に並ぶ', async () => {
+    // ADR-038 決定1 / B-28 規則6: 蓄積の側の並びも既定の提案と同じである。
+    const { suggestNew, mealGenerator } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [
+        uncookableMeal({ id: idA, title: '肉じゃが', generatedAt: '2026-09-13T12:00:00Z' }),
+        uncookableMeal({ id: idB, title: '生姜焼き', generatedAt: '2026-09-12T12:00:00Z' }),
+      ],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idD],
+    });
+
+    await suggestNew(ourHousehold, asOf);
+
+    expect(mealGenerator.receivedInput?.avoidTitles).toEqual(['肉じゃが', '生姜焼き']);
+  });
+
+  it('生成結果の名称が保持している献立と完全一致したら、その既存の献立の識別子が提案に並ぶ', async () => {
+    // C-4 / C-4c: 同じ名称の献立を二重に持たない規則も入口で変わらない。**識別子を1件も
+    // 用意していない**ので、新しく保存しようとすればその場で落ちる。
+    const { suggestNew } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [uncookableMeal({ id: idB, title: 'ごま和え' })],
+      generatedMeals: [generatedMeal({ title: 'ごま和え' })],
+      mealIdsToIssue: [],
+    });
+
+    const output = await suggestNew(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idB]);
+  });
+
+  it('生成した献立は献立リポジトリに保存され、次の取得で見える', async () => {
+    // C-1: 提示するのは保存を終えた献立だけである。保存したことは取得を通して見る
+    // （`docs/testing.md` 3章）。
+    const { suggestNew, mealRepository } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      generatedMeals: [generatedMeal({ title: 'ごま和え' })],
+      mealIdsToIssue: [idC],
+    });
+
+    await suggestNew(ourHousehold, asOf);
+
+    const storedMeals = await mealRepository.findByHousehold(ourHousehold);
+    expect(storedMeals.map((storedMeal) => storedMeal.title)).toEqual(['ごま和え']);
+  });
+
+  it('生成が1件も返せないときは、規則違反がそのまま呼び出し側へ伝わる', async () => {
+    // NFR-07 / B-28 7章: 出口が投げた規則違反をここで握って別の提案に埋め合わせない。
+    const { suggestNew } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      generatedMeals: [],
+      mealIdsToIssue: [idC],
+    });
+
+    await expect(suggestNew(ourHousehold, asOf)).rejects.toThrow(MealRuleViolation);
+  });
+
+  it('組んだ提案は、別の世帯からは取り出せない', async () => {
+    // C-9: 保存する提案が抱える世帯も、入口で変わらない。
+    const { suggestNew, suggestionRepository } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    await suggestNew(ourHousehold, asOf);
+
+    expect(await suggestionRepository.findLatestByHousehold(neighborHousehold)).toBeNull();
+  });
+
+  it('在庫が1件だけの日は、在庫が足りないことを名乗る結末を返す', async () => {
+    // prompt-design 8章（FR-36 の行）/ ADR-041 決定1: **明示操作が上書きするのは「作れる既存の
+    // 献立がある」条件だけである。** 在庫の条件は明示操作にもそのまま当たる — 1件では
+    // 主菜が組めないことは、誰が求めても変わらない。
+    const { suggestNew } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' })],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggestNew(ourHousehold, asOf);
+
+    expect(output.outcome).toBe('insufficientStockItems');
+  });
+
+  it('在庫が1件だけの日は、献立生成器を呼ばない', async () => {
+    // prompt-design 8章 / `docs/testing.md` 2章: 下限の目的は呼ばないことそのものである。
+    // 呼ばないこと自体が要件なので、記憶上の実装の**状態**として見る（`vi.fn()` を使わない）。
+    const { suggestNew, mealGenerator } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' })],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    await suggestNew(ourHousehold, asOf);
+
+    expect(mealGenerator.callCount).toBe(0);
+  });
+
+  it('在庫が2件あっても全件が期限切れの日は、在庫が足りないことを名乗る結末を返す', async () => {
+    // ADR-040 決定2 / B-31b 規則6: 数えるのは期限切れを落としたあとの件数である。
+    // **期限の規則も入口で変わらない。**
+    const { suggestNew } = setUp({
+      stockItems: [
+        stockItem({ name: 'にんじん', expiryDate: '2026-09-13' }),
+        stockItem({ name: 'ヨーグルト', expiryDate: '2026-09-13' }),
+      ],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggestNew(ourHousehold, asOf);
+
+    expect(output.outcome).toBe('insufficientStockItems');
+  });
+
+  it('在庫が2件あれば生成へ回り、生成した献立を並べた提案を返す', async () => {
+    // prompt-design 8章（境界の上側）: 門を通ったあとの振る舞いは既定の生成の経路と同じである。
+    const { suggestNew } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggestNew(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idC]);
+  });
+
+  it('直近24時間の生成が上限に達している日は、上限に達したことを名乗る結末を返す', async () => {
+    // ADR-049 結果7 / NFR-C2 / prompt-design 8章（FR-36 の行）: **上限は明示操作にも当たる。**
+    // 抑えたいのは呼んだ回数そのものであり、押せば必ず呼ぶ入口を上限の外に置けば、
+    // 上限は上限として働かない。
+    const { suggestNew } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      recentSuggestions: storedGeneratedSuggestions(10),
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggestNew(ourHousehold, asOf);
+
+    expect(output.outcome).toBe('generationLimitReached');
+  });
+
+  it('上限に達している日は、献立生成器を呼ばない', async () => {
+    // ADR-049 結果7 / `docs/testing.md` 2章: 呼ばないこと自体が要件なので、記憶上の実装の
+    // **状態**として見る（`vi.fn()` を使わない）。
+    const { suggestNew, mealGenerator } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      recentSuggestions: storedGeneratedSuggestions(10),
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    await suggestNew(ourHousehold, asOf);
+
+    expect(mealGenerator.callCount).toBe(0);
+  });
+
+  it('上限に達した結末の回は、提案を保存しない', async () => {
+    // ADR-049 決定1 / C-14: 組まなかった回を記録に残すと、数えている当のものが自分で増えていく。
+    const priorSuggestions = storedGeneratedSuggestions(10);
+    const { suggestNew, suggestionRepository } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      recentSuggestions: priorSuggestions,
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    await suggestNew(ourHousehold, asOf);
+
+    expect(
+      await suggestionRepository.countGeneratedByHouseholdSince(
+        ourHousehold,
+        dateTimeOf('2026-09-13T03:00:00Z'),
+      ),
+    ).toBe(priorSuggestions.length);
+  });
+
+  it('上限にあと1回ぶん残っていれば生成へ回り、生成した献立を並べた提案を返す', async () => {
+    // ADR-049 決定1（境界の下側）: 上限は「達したら呼ばない」であって「近づいたら呼ばない」
+    // ではない。**入口が増えても境界は同じ1本である。**
+    const { suggestNew } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      recentSuggestions: storedGeneratedSuggestions(9),
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggestNew(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idC]);
+  });
+
+  it('明示操作で組んだ提案も、次の回の上限の数に入る', async () => {
+    // ADR-049 結果7: **数えるのは `origin` が `'generated'` の提案であり、どの入口から呼んだかを
+    // 区別しない。** 上限まで1回ぶん残した状態で明示操作を2度続けると、1度目が枠を使い切り、
+    // 2度目は上限の結末になる。入口ごとに数えている実装なら、2度目も生成へ回って赤くなる。
+    const { suggestNew } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      recentSuggestions: storedGeneratedSuggestions(9),
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    await suggestNew(ourHousehold, asOf);
+
+    expect((await suggestNew(ourHousehold, asOf)).outcome).toBe('generationLimitReached');
+  });
+
+  it('在庫が下限を割り、かつ上限にも達している日は、在庫が足りないことを名乗る結末を返す', async () => {
+    // ADR-049 結果6（門の順）: 在庫の下限が先で上限が後である。**門の順も入口で変わらない** —
+    // 在庫を登録すれば解ける S-4 を先に告げる。
+    const { suggestNew } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' })],
+      meals: [],
+      recentSuggestions: storedGeneratedSuggestions(10),
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggestNew(ourHousehold, asOf);
+
+    expect(output.outcome).toBe('insufficientStockItems');
   });
 });

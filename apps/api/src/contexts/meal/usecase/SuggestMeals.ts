@@ -75,8 +75,33 @@ export type SuggestMealsOutput =
  *
  * 失敗（S-6）と規則違反はこれまでどおり投げる。判別できる戻り値にしたのは、在庫が足りない回も
  * 上限に達した回もそのどちらでもないためである（screen-design 3.1 S-4・S-6・S-7 / NFR-07 / ADR-025）。
+ *
+ * **これは既定の提案の入口である。** 利用者が新しい献立を明示的に求めたときの入口は
+ * `SuggestNewMeals` であり、C-15 が数える2つの生成の機会がそれぞれ1つの入口を持つ（B-32）。
  */
 export type SuggestMeals = (householdId: HouseholdId, asOf: string) => Promise<SuggestMealsOutput>;
+
+/**
+ * 新しい献立を求める明示操作（FR-36 / C-15 / B-32 / ADR-051）。**再利用せず、必ず生成を呼ぶ。**
+ * 引数も結末も `SuggestMeals` と同じで、**違うのは生成へ回るかどうかの決め方だけである。**
+ *
+ * **上書きするのは prompt-design 8章 の表の「作れる既存の献立が1件以上ある」条件と、
+ * C-7 の短絡の2つだけである**（ADR-051 決定1）。**在庫の下限も NFR-C2 の1日の上限も、
+ * この入口にそのまま当たる**（同 表 / ADR-049 結果7）— 抑えたいのは呼んだ回数そのものであり、
+ * 押せば必ず呼ぶ入口を上限の外に置けば、上限は上限として働かない。
+ *
+ * **C-7 を通さない根拠は FR-21 である** — 「再生成は明示的な操作（FR-36）でのみ行う」と定めて
+ * おり、C-7 はその「明示的な操作でない回」の判定である（ADR-051 理由(1)）。通してしまうと、
+ * 利用者が押した直後（在庫が動いていない回）にこそ何も起きず、FR-36 の「常に3件を新規生成する」と
+ * screen-design D-2 の「押すと必ず LLM を呼ぶ」が死ぬ。
+ *
+ * **型としては `SuggestMeals` と同じ形である。** 見分けるのは名前であって型ではなく、どちらを
+ * 呼ぶかは結線する側（composition root）が決める。
+ */
+export type SuggestNewMeals = (
+  householdId: HouseholdId,
+  asOf: string,
+) => Promise<SuggestMealsOutput>;
 
 /**
  * 1回の提案で並べる上限（FR-16 / C-15 / `Suggestion` の不変条件）。**件数をこちらが持つのは、
@@ -159,43 +184,85 @@ const REUSED_ORIGIN: SuggestionEntryOrigin = 'reused';
 const GENERATED_ORIGIN: SuggestionEntryOrigin = 'generated';
 
 /**
- * 提案のユースケースを組み立てる。依存は引数で受け取り、実装の生成は `main.ts` に任せる
- * （ADR-002 / B-09）。在庫は `pantry/usecase` から受け取る（ADR-033 決定2）。
+ * 2つの入口が同じだけ必要とする依存（B-32）。**片方だけが要るものは1つも無い** — 明示操作も
+ * 在庫を読み、献立と提案を引き、生成を呼び、識別子を発行して保存する。
  */
-export function suggestMeals(deps: {
+type MealSuggestionDeps = {
   listStockItems: ListStockItems;
   mealRepository: MealRepository;
   suggestionRepository: SuggestionRepository;
   mealGenerator: MealGenerator;
   generateMealId: MealIdGenerator;
   generateSuggestionId: SuggestionIdGenerator;
-}): SuggestMeals {
-  return async (householdId, asOf) => {
-    // 在庫も献立も最新の提案も直近の提案も第1引数の世帯で引く。同じ世帯のものだけを
-    // 突き合わせる責務はここにある（C-9 / B-27 規則1）。**取得が投げた例外は握りつぶさない** —
-    // 比べる相手や除外の材料が引けないときに埋め合わせると、C-7 と C-11 が黙って効かなくなる
-    // （7章2行目）。
-    const stockItemsOutput = await deps.listStockItems(householdId);
+};
 
-    // 写した在庫は1本だけ作り、作れる献立の判定と在庫スナップショットの両方へ渡す。
-    // 同じ在庫から2種類を組むと、判定に使った在庫と記録に残る在庫がずれる
-    // （B-27 規則4 / ADR-037 決定1）。
-    const mealStockItems = stockItemsOutput.stockItems.map(toMealStockItem);
+/**
+ * どちらの入口から求められたかを表す（FR-36 / C-15 / B-32 / ADR-051 決定2）。**このモジュールの
+ * 中だけの値である** — 外から渡させると、既定の提案の口で明示操作を求められてしまい、
+ * 「どちらの操作か」が呼ぶたびの引数になる。入口は関数2つで表し、値は内側に閉じる。
+ */
+type SuggestionRequest = 'default' | 'newMeals';
 
-    // 在庫スナップショットも1本だけ作り、C-7 の比較に使うものと生成に渡すものと提案が抱える
-    // ものを同じにする（B-28 規則4 / ADR-037 決定1）。在庫スナップショットは呼び出し時点の
-    // 在庫の複製であり、献立が使った分だけではない（B-27 規則13 / C-7）。
-    const pantrySnapshot = createPantrySnapshot({ stockItems: mealStockItems });
-    // 基準日時の正準化も1度きりにする。生成に渡す瞬間・新しい献立の生成日時・提案の生成日時が
-    // 同じ値であることは、この1本から従う（B-28 規則5 / `docs/testing.md` 5章）。
-    // **短絡する回も通す** — 引数が読めるかどうかは経路で変わらない。
-    const asOfDateTime = dateTimeOf(asOf);
+/**
+ * 既定の提案のユースケースを組み立てる。依存は引数で受け取り、実装の生成は `main.ts` に任せる
+ * （ADR-002 / B-09）。在庫は `pantry/usecase` から受け取る（ADR-033 決定2）。
+ */
+export function suggestMeals(deps: MealSuggestionDeps): SuggestMeals {
+  return async (householdId, asOf) => suggest(deps, householdId, asOf, 'default');
+}
 
-    // 在庫が最新の提案のときから動いていなければ、その提案をそのまま返してここで終える
-    // （C-7 / FR-21 / NFR-C1 / B-28 規則1）。**最初の分岐がこれである**
-    // （domain-model 6章）。献立も直近3回の提案も引かず、提案を組まず、識別子も発行せず、
-    // 保存もしない — 返す識別子も由来も生成日時も保存済みの提案のものであって、
-    // 引数の基準日時でも新しく発行した識別子でもない。
+/**
+ * 明示操作のユースケースを組み立てる（FR-36 / B-32 / ADR-051 決定2）。**依存も本体も既定の提案と
+ * 同じものを使い、写しを作らない** — 避けるべき名称の組み立ても、既存の献立の参照も、在庫の
+ * 下限も1日の上限も1か所にしかない。片方だけ直したときに静かにずれるのを避けるためである。
+ */
+export function suggestNewMeals(deps: MealSuggestionDeps): SuggestNewMeals {
+  return async (householdId, asOf) => suggest(deps, householdId, asOf, 'newMeals');
+}
+
+/**
+ * 2つの入口が共有する本体（B-32 / ADR-051 決定2）。**`request` で変わるのは2か所だけである** —
+ * C-7 の短絡を通るかどうかと、再利用の候補を採るかどうか。在庫の下限も1日の上限も生成の
+ * 呼び出しも保存も、どちらの入口でも同じ1本を通る。
+ */
+async function suggest(
+  deps: MealSuggestionDeps,
+  householdId: HouseholdId,
+  asOf: string,
+  request: SuggestionRequest,
+): Promise<SuggestMealsOutput> {
+  // 在庫も献立も最新の提案も直近の提案も第1引数の世帯で引く。同じ世帯のものだけを
+  // 突き合わせる責務はここにある（C-9 / B-27 規則1）。**取得が投げた例外は握りつぶさない** —
+  // 比べる相手や除外の材料が引けないときに埋め合わせると、C-7 と C-11 が黙って効かなくなる
+  // （7章2行目）。
+  const stockItemsOutput = await deps.listStockItems(householdId);
+
+  // 写した在庫は1本だけ作り、作れる献立の判定と在庫スナップショットの両方へ渡す。
+  // 同じ在庫から2種類を組むと、判定に使った在庫と記録に残る在庫がずれる
+  // （B-27 規則4 / ADR-037 決定1）。
+  const mealStockItems = stockItemsOutput.stockItems.map(toMealStockItem);
+
+  // 在庫スナップショットも1本だけ作り、C-7 の比較に使うものと生成に渡すものと提案が抱える
+  // ものを同じにする（B-28 規則4 / ADR-037 決定1）。在庫スナップショットは呼び出し時点の
+  // 在庫の複製であり、献立が使った分だけではない（B-27 規則13 / C-7）。
+  const pantrySnapshot = createPantrySnapshot({ stockItems: mealStockItems });
+  // 基準日時の正準化も1度きりにする。生成に渡す瞬間・新しい献立の生成日時・提案の生成日時が
+  // 同じ値であることは、この1本から従う（B-28 規則5 / `docs/testing.md` 5章）。
+  // **短絡する回も通す** — 引数が読めるかどうかは経路で変わらない。
+  const asOfDateTime = dateTimeOf(asOf);
+
+  // 在庫が最新の提案のときから動いていなければ、その提案をそのまま返してここで終える
+  // （C-7 / FR-21 / NFR-C1 / B-28 規則1）。**既定の提案では最初の分岐がこれである**
+  // （domain-model 6章）。献立も直近3回の提案も引かず、提案を組まず、識別子も発行せず、
+  // 保存もしない — 返す識別子も由来も生成日時も保存済みの提案のものであって、
+  // 引数の基準日時でも新しく発行した識別子でもない。
+  //
+  // **明示操作はこの分岐を通らず、最新の提案を引きもしない**（FR-36 / B-32 / ADR-051 決定1）。
+  // C-7 は「**再生成の判定**」の規則であり、FR-21 が「**再生成は明示的な操作（FR-36）でのみ
+  // 行う**」と定めている以上、判定にかけるのは明示的でない回のほうである。通してしまうと、
+  // 利用者が押した直後（在庫が動いていない回）にこそ何も起きず、FR-36 の「常に3件を新規生成
+  // する」と screen-design D-2 の「押すと必ず LLM を呼ぶ」が死ぬ（ADR-051 理由(1)(2)）。
+  if (request === 'default') {
     const latestSuggestion = await deps.suggestionRepository.findLatestByHousehold(householdId);
     if (
       latestSuggestion !== null &&
@@ -203,111 +270,135 @@ export function suggestMeals(deps: {
     ) {
       return toOutput(latestSuggestion);
     }
+  }
 
-    // 一致しない、または比べる相手が1件も無ければ、いつもどおり再利用から組む（B-28 規則1・2）。
-    const storedMeals = await deps.mealRepository.findByHousehold(householdId);
-    const recentSuggestions = await deps.suggestionRepository.findRecentByHousehold(
+  // 一致しない、または比べる相手が1件も無ければ、いつもどおり再利用から組む（B-28 規則1・2）。
+  // **明示操作もこの2つは引く** — 献立は避けるべき名称と既存の参照の材料であり、直近の提案は
+  // その先頭（直前の提案）が避けるべき名称の先頭に来るからである（ADR-021 / prompt-design D-6）。
+  const storedMeals = await deps.mealRepository.findByHousehold(householdId);
+  const recentSuggestions = await deps.suggestionRepository.findRecentByHousehold(
+    householdId,
+    EXCLUSION_LOOKBACK_COUNT,
+  );
+
+  // 再利用の候補を採る。**明示操作は1件も採らない**（FR-36 / C-15 / B-32 / ADR-051 決定1）—
+  // prompt-design 8章 の表が「上書きするのはすぐ上の『作れる既存の献立がある』条件だけ」と
+  // 書いているのがここであり、**0件になることで、そのすぐ下の門がそのまま生成へ流す。**
+  // 門を別に増やさないのは、在庫の下限も1日の上限もその先に1つずつしか無いためである。
+  const selectedCookableMeals =
+    request === 'default'
+      ? selectCookableMeals(storedMeals, mealStockItems, recentSuggestions)
+      : [];
+
+  // 再利用で採れたものが0件のときだけ生成へ回る。0件は例外ではなく正常な経路であり、
+  // 1件でも採れていれば生成は呼ばない（B-28 規則2 / C-15 / NFR-C1b）。**明示操作はここが常に
+  // 0件なので、常に生成へ回る**（FR-36 / ADR-051 理由(b)(3)）。避けるべき名称を組むのも、名称の
+  // 引き当てを組むのも生成へ回る回だけである — 再利用で組めた回は外へ何も出さず、既存との
+  // 突き合わせも要らない。
+  //
+  // **引き当ては生成を呼ぶ前に組み終える。** 生成の途中で保存した献立は
+  // `findByHousehold` が返した列（記録そのもの）に積まれるため、都度引き直すと
+  // その回に保存したばかりの献立まで参照の対象に入る（B-28 規則10）。
+  const shouldGenerate = selectedCookableMeals.length === 0;
+
+  // 生成へ回る回だけ、呼ぶ直前に在庫の下限を見る（B-31b 規則3・7 / prompt-design 8章 /
+  // screen-design 3.1 S-4）。**門は経路の入口ではなくここにある** — 前に置くと、C-7 で短絡
+  // できる回（規則4）も作れる既存の献立が残っている回（規則5）も、出せる提案があるのに
+  // 「在庫が足りない」と告げることになる。取得もどの回も通る（規則9）。
+  //
+  // 数えるのは `unexpiredStockItemsOf` が返した列の件数であり、**期限の規則はここに写さない**
+  // （B-31b 規則6 / ADR-040 決定1）。在庫が0件の回も全件が期限切れの回も、載る在庫が0件で
+  // あることに変わりはなく、同じ結末になる（規則10）。
+  //
+  // 下回った回は**生成を呼ばず、献立も提案も組まず、識別子も発行せず、保存もしない**
+  // （規則8 / C-14）— 組まなかった回を記録に残すと、次の回の比較（C-7）と除外（C-11）が
+  // その記録を引きずる。失敗でも規則違反でもないので投げない（規則1 / ADR-041 決定1）。
+  if (
+    shouldGenerate &&
+    unexpiredStockItemsOf(pantrySnapshot, asOfDateTime).length < MIN_STOCK_ITEM_COUNT_TO_GENERATE
+  ) {
+    return { outcome: 'insufficientStockItems' };
+  }
+
+  // 続けて、同じ位置で1日の生成回数の上限を見る（B-31c / NFR-C2 / screen-design 3.1 S-7 /
+  // ADR-049）。**門が在庫の下限と同じ位置にあるのは同じ理由である** — 前に置くと、C-7 で
+  // 短絡できる回も作れる既存の献立が残っている回も、出せる提案があるのに上限を告げることに
+  // なる（ADR-049 結果6）。
+  //
+  // **在庫の下限より後にあるのも決めごとである**（同 結果6）。下限は手元の在庫だけで判るが、
+  // 上限は問い合わせが1つ要る — 在庫が足りない日は数えに行かない。両方に当たる日に
+  // 在庫の側を名乗るのも正しい: **在庫を登録すれば解ける S-4 と違い、S-7 は待つしかない。**
+  //
+  // 数えるのは**生成の由来を持つ保存済みの提案**であって提案の件数ではない（決定1 / C-14 /
+  // C-15 / C-4c）。**由来で絞る規則はリポジトリの契約が持ち、ここには写さない** —
+  // こちらが持つのは上限の数と窓の幅である（ADR-038 決定3 が `limit` に対して置いた線と同じ）。
+  //
+  // 達した回は**生成を呼ばず、献立も提案も組まず、識別子も発行せず、保存もしない。**
+  // 保存すると、数えている当のものが自分で増えていく。失敗でも規則違反でもないので投げない。
+  if (shouldGenerate) {
+    const generationCount = await deps.suggestionRepository.countGeneratedByHouseholdSince(
       householdId,
-      EXCLUSION_LOOKBACK_COUNT,
+      hoursBeforeOf(asOfDateTime, GENERATION_LIMIT_WINDOW_HOURS),
     );
-
-    // 順は**並べる → 除外する → 切る**（B-27 規則6 / ADR-036 決定4 / 結果7）。
-    // 並べるのは `cookableMealsOf` で、受け取るのは全件である（C-12）。受け取った列は
-    // 読むだけで、その場で並べ替えない（B-27 規則17 / ADR-009）。
-    const cookableMeals = cookableMealsOf(storedMeals, mealStockItems);
-    // 直近に出した献立を落とす。**先に切ってから除外すると**、除外された分を取り戻せず
-    // 3件を割る（B-27 規則6(b)・7 / C-11 / FR-37）。
-    const notRecentlySuggested = excludeRecentlySuggested(cookableMeals, recentSuggestions);
-    // 上位から採る。切るのはこのユースケースであり、`cookableMealsOf` は全件を返す
-    // （FR-16 / C-15 / B-27 規則6(c)・10 / ADR-036 決定4）。
-    const selectedCookableMeals = notRecentlySuggested.slice(0, MAX_SUGGESTION_ENTRIES);
-
-    // 再利用で採れたものが0件のときだけ生成へ回る。0件は例外ではなく正常な経路であり、
-    // 1件でも採れていれば生成は呼ばない（B-28 規則2 / C-15 / NFR-C1b）。避けるべき名称を
-    // 組むのも、名称の引き当てを組むのも生成へ回る回だけである — 再利用で組めた回は
-    // 外へ何も出さず、既存との突き合わせも要らない。
-    //
-    // **引き当ては生成を呼ぶ前に組み終える。** 生成の途中で保存した献立は
-    // `findByHousehold` が返した列（記録そのもの）に積まれるため、都度引き直すと
-    // その回に保存したばかりの献立まで参照の対象に入る（B-28 規則10）。
-    const shouldGenerate = selectedCookableMeals.length === 0;
-
-    // 生成へ回る回だけ、呼ぶ直前に在庫の下限を見る（B-31b 規則3・7 / prompt-design 8章 /
-    // screen-design 3.1 S-4）。**門は経路の入口ではなくここにある** — 前に置くと、C-7 で短絡
-    // できる回（規則4）も作れる既存の献立が残っている回（規則5）も、出せる提案があるのに
-    // 「在庫が足りない」と告げることになる。取得もどの回も通る（規則9）。
-    //
-    // 数えるのは `unexpiredStockItemsOf` が返した列の件数であり、**期限の規則はここに写さない**
-    // （B-31b 規則6 / ADR-040 決定1）。在庫が0件の回も全件が期限切れの回も、載る在庫が0件で
-    // あることに変わりはなく、同じ結末になる（規則10）。
-    //
-    // 下回った回は**生成を呼ばず、献立も提案も組まず、識別子も発行せず、保存もしない**
-    // （規則8 / C-14）— 組まなかった回を記録に残すと、次の回の比較（C-7）と除外（C-11）が
-    // その記録を引きずる。失敗でも規則違反でもないので投げない（規則1 / ADR-041 決定1）。
-    if (
-      shouldGenerate &&
-      unexpiredStockItemsOf(pantrySnapshot, asOfDateTime).length < MIN_STOCK_ITEM_COUNT_TO_GENERATE
-    ) {
-      return { outcome: 'insufficientStockItems' };
+    if (generationCount >= MAX_GENERATION_COUNT_PER_DAY) {
+      return { outcome: 'generationLimitReached' };
     }
+  }
 
-    // 続けて、同じ位置で1日の生成回数の上限を見る（B-31c / NFR-C2 / screen-design 3.1 S-7 /
-    // ADR-049）。**門が在庫の下限と同じ位置にあるのは同じ理由である** — 前に置くと、C-7 で
-    // 短絡できる回も作れる既存の献立が残っている回も、出せる提案があるのに上限を告げることに
-    // なる（ADR-049 結果6）。
-    //
-    // **在庫の下限より後にあるのも決めごとである**（同 結果6）。下限は手元の在庫だけで判るが、
-    // 上限は問い合わせが1つ要る — 在庫が足りない日は数えに行かない。両方に当たる日に
-    // 在庫の側を名乗るのも正しい: **在庫を登録すれば解ける S-4 と違い、S-7 は待つしかない。**
-    //
-    // 数えるのは**生成の由来を持つ保存済みの提案**であって提案の件数ではない（決定1 / C-14 /
-    // C-15 / C-4c）。**由来で絞る規則はリポジトリの契約が持ち、ここには写さない** —
-    // こちらが持つのは上限の数と窓の幅である（ADR-038 決定3 が `limit` に対して置いた線と同じ）。
-    //
-    // 達した回は**生成を呼ばず、献立も提案も組まず、識別子も発行せず、保存もしない。**
-    // 保存すると、数えている当のものが自分で増えていく。失敗でも規則違反でもないので投げない。
-    if (shouldGenerate) {
-      const generationCount = await deps.suggestionRepository.countGeneratedByHouseholdSince(
+  const suggestionEntries = shouldGenerate
+    ? await generateSuggestionEntries(
+        deps,
         householdId,
-        hoursBeforeOf(asOfDateTime, GENERATION_LIMIT_WINDOW_HOURS),
-      );
-      if (generationCount >= MAX_GENERATION_COUNT_PER_DAY) {
-        return { outcome: 'generationLimitReached' };
-      }
-    }
+        pantrySnapshot,
+        asOfDateTime,
+        buildAvoidTitles(storedMeals, recentSuggestions),
+        buildExistingMealIdByTitle(storedMeals),
+      )
+    : selectedCookableMeals.map(toReusedEntry);
 
-    const suggestionEntries = shouldGenerate
-      ? await generateSuggestionEntries(
-          deps,
-          householdId,
-          pantrySnapshot,
-          asOfDateTime,
-          buildAvoidTitles(storedMeals, recentSuggestions),
-          buildExistingMealIdByTitle(storedMeals),
-        )
-      : selectedCookableMeals.map(toReusedEntry);
+  // 検証を保存の前に済ませる。規則違反で終わったときに何も残らないのはこの順序による
+  // （B-27 規則11 / 先行 `registerStockItem`）。**提案を保存するのはどちらの経路でも同じ**で、
+  // 識別子も生成日時も経路で変えない（B-28 規則15 / C-14）。
+  const suggestion = createSuggestion({
+    // 現在時刻も乱数も本体では読まない（B-27 規則12 / `docs/testing.md` 5章）。
+    id: deps.generateSuggestionId(),
+    householdId,
+    entries: suggestionEntries,
+    pantrySnapshot,
+    generatedAt: asOfDateTime,
+  });
 
-    // 検証を保存の前に済ませる。規則違反で終わったときに何も残らないのはこの順序による
-    // （B-27 規則11 / 先行 `registerStockItem`）。**提案を保存するのはどちらの経路でも同じ**で、
-    // 識別子も生成日時も経路で変えない（B-28 規則15 / C-14）。
-    const suggestion = createSuggestion({
-      // 現在時刻も乱数も本体では読まない（B-27 規則12 / `docs/testing.md` 5章）。
-      id: deps.generateSuggestionId(),
-      householdId,
-      entries: suggestionEntries,
-      pantrySnapshot,
-      generatedAt: asOfDateTime,
-    });
+  await deps.suggestionRepository.save(householdId, suggestion);
 
-    await deps.suggestionRepository.save(householdId, suggestion);
+  return toOutput(suggestion);
+}
 
-    return toOutput(suggestion);
-  };
+/**
+ * 再利用で提案に並べる作れる献立を選び出す（B-27 規則6 / C-10 / C-11 / C-12 / FR-34 / FR-37）。
+ * **通るのは既定の提案の回だけである** — 明示操作は再利用を行わない（FR-36 / B-32）。
+ *
+ * 順は**並べる → 除外する → 切る**（ADR-036 決定4 / 結果7）。並べるのは `cookableMealsOf` で、
+ * 受け取るのは全件である（C-12）。直近に出した献立を落とすのはそのあとで、**先に切ってから
+ * 除外すると**、除外された分を取り戻せず3件を割る（B-27 規則6(b)・7 / C-11）。上位から採るのも
+ * このユースケースの仕事であり、`cookableMealsOf` は全件を返す（FR-16 / C-15 / 規則6(c)・10）。
+ *
+ * 受け取った列は読むだけで、その場で並べ替えない（B-27 規則17 / ADR-009）。
+ */
+function selectCookableMeals(
+  storedMeals: readonly Meal[],
+  mealStockItems: readonly StockItem[],
+  recentSuggestions: readonly Suggestion[],
+): readonly CookableMeal[] {
+  const cookableMeals = cookableMealsOf(storedMeals, mealStockItems);
+  const notRecentlySuggested = excludeRecentlySuggested(cookableMeals, recentSuggestions);
+
+  return notRecentlySuggested.slice(0, MAX_SUGGESTION_ENTRIES);
 }
 
 /**
  * 生成へ回して、提案の1件の列を返す（B-28 規則9・12・13・14）。**再利用で1件も採れなかった
- * ときだけ通る道**である（規則2 / C-15）。
+ * ときだけ通る道**である（規則2 / C-15）。**明示操作は候補を1件も採らないので必ずここを通るが、
+ * 通ったあとの振る舞いは入口で変わらない**（FR-36 / B-32 / ADR-051 決定2）。
  *
  * 生成結果は**返ってきた並びのまま**提案の1件に写す。並べ替えも切り捨てもしない — 並びを
  * 決めるのは生成の側であり、C-12 は再利用の並びの規則である（C-2 / 規則9）。求めるのは3件だが、
