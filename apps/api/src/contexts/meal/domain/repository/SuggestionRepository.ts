@@ -46,7 +46,7 @@ export interface SuggestionRepository {
   save(householdId: HouseholdId, suggestion: Suggestion): Promise<void>;
 
   /**
-   * 生成の由来を持つ提案の件数を返す（NFR-C2 / ADR-048 決定1）。1件も無ければ 0。
+   * 生成の由来を持つ提案の件数を返す（NFR-C2 / ADR-049 決定1）。1件も無ければ 0。
    *
    * **1日の生成回数の上限がこれを数える。** 数えたいのは**生成を呼んだ回数**であって提案の
    * 件数ではない — C-14 が再利用のみで組めた提案も保存させるため、**保存された提案をその
@@ -55,7 +55,7 @@ export interface SuggestionRepository {
    * のまま」と定めているからである。
    *
    * **数える条件は3つあり、どれも約束である**（interface では強制できないので、実装ごとに
-   * テストで確かめる。先行 `save.householdMismatch` / ADR-038 結果2 / ADR-048 結果4）。
+   * テストで確かめる。先行 `save.householdMismatch` / ADR-038 結果2 / ADR-049 結果4）。
    *
    * - 引数の世帯の提案だけを数える（C-9）
    * - `entries` の `origin` が `'generated'` の提案だけを数える
@@ -63,7 +63,7 @@ export interface SuggestionRepository {
    *   約束しないと、ちょうど窓の下端に当たる回が実装ごとに数えられたり数えられなかったりする
    *
    * **「1日」の幅は知らない。** `since` として窓の下端を受け取るだけであり、24時間を持つのは
-   * `SuggestMeals` である（ADR-048 決定2。ADR-038 決定3 が `limit` に対して置いた線と同じ）。
+   * `SuggestMeals` である（ADR-049 決定2。ADR-038 決定3 が `limit` に対して置いた線と同じ）。
    *
    * **並び順は約束しない。** 返すのは件数だけで、どの提案を数えたかは外から見えない
    * （ADR-038 決定1 が順序を約束したのは、限って取る口だからである）。

@@ -1,0 +1,54 @@
+# server
+
+**ここは画面ではない。** `features/` が画面の置き場であるのに対し、ここは `apps/api` への
+**経路の継ぎ目**である。`session/` がアクセストークンの出入りを1か所に閉じたのと同じ置き方を、
+サーバへの往復についてもう一度したものである（ADR-046 決定3 / `session/README.md`）。
+
+**層を1つ増やしたのではない。** `docs/adr.md` A章 の表は `apps/web/` をまとめてプレゼンテーション層に
+対応づけ、**その表以外の対応を作らないこと**と定めている。ここもその内側であり、外向きの依存
+（`apps/api` の中身を import しない）は先行と変わらない。import してよいのは
+`@fridge-to-meal/contract` の型だけである。
+
+## `api/` と名づけない理由
+
+**`api 層` はサーバ側の層の名である**（`apps/api/src/contexts/*/api/`）。同じ語を web の中で
+もう一度使うと、「api 層」と言ったときにどちらを指すのか読めなくなる — `CLAUDE.md` が
+「ドメイン」の2つの意味に注意を促しているのと同じ種類の曖昧性を、こちらでは**名前の側で避ける**
+（B-22 設計 規則1）。ここに置くのは層ではなく、**相手（サーバ）への出口**である。
+
+`features/` の下に置かないのも `session/` と同じ理由で、継ぎ目が特定の画面のものではないためである —
+在庫（B-22 / B-24 / B-23）も献立も、サーバを叩くときはここを通る。
+
+| ファイル | 役割 |
+| --- | --- |
+| `HttpFetch.ts` | 差し替える出口の**構造型**。`Response` も `fetch` も型として口に出さない |
+| `ApiBaseUrl.ts` | `VITE_API_BASE_URL` の読み取りと正規化 |
+| `StockItemRequests.ts` | 在庫の要求を組む工場と読み込みの結末 |
+
+## ここで守ること
+
+- **`@supabase/*` を1つも import しない。** `session/` の型（`Session`）も import しない —
+  トークンは `accessToken: () => Promise<string | null>` の1引数で受け取る。組み合わせるのは
+  `main.tsx` だけである（B-22 設計 規則1 / 9章）
+- **`Response` / `Request` / `Context` / `fetch` の型を書かない。** `apps/web/test` は
+  `types: []` / `lib: ES2022` で DOM の型を持たないため、差し替える出口は構造型（`HttpResponse` /
+  `HttpFetch`）で表す。先行は `HouseholdAuthenticatorImpl` の `JwksResponse` / `FetchJwks`
+- **DTO を詰め替えない。並べ替えない。** 画面は `@fridge-to-meal/contract` の DTO をそのまま
+  受け取る（B-22 設計 規則2・3）。変換を足すと web が第2の DTO を持ち、サーバの並び
+  （期限の近い順）を web が握り直すことになる
+- **世帯を運ぶ引数を足さない**（C-9）。経路にもクエリにも本体にも載せず、サーバが
+  アクセストークンから定める。web は世帯を1つも持たない
+- **取得の口は例外を外に出さない。** 通信の失敗も断りの応答も読めない本体も、`failed` の
+  1つの結末に畳む（B-22 設計 規則9）。外へ出すと `App.tsx` の効果で誰も受け止めず、
+  読み込み中のまま画面が止まる（FR-41）
+- **設定の読み取りは渡された記録だけを見る。** `import.meta.env` を読むのは `main.tsx` である
+  （B-22 設計 規則4 / `docs/testing.md` 5章）
+
+設定の値は `apps/web/.env.local` に置く（Vite の既定。`.gitignore` の `.env.*` で git 管理外）。
+`VITE_API_BASE_URL` は**必須**で、既定値を埋め込まない — 欠けたら起動時に落ち、message に名前が
+出る（B-22 設計 規則5 / ADR-045 結果2）。`apps/api/.dev.vars` は**サーバ専用**で、こちらの値を
+足さない。
+
+**経路の接頭辞は web の側で足さない**（`GET /stock-items` のまま。B-22 設計 規則15）。接頭辞が
+効くのは web と api が1つのドメインを分け合うときで、その配信先はまだ決まっていない。決まった周に
+`VITE_API_BASE_URL` の値で足せる。

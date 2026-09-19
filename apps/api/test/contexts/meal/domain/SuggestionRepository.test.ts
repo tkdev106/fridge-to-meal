@@ -23,7 +23,7 @@ const largeId = '77777777-7777-4777-8777-777777777777';
  * 本題でない値を隠して提案を1件作る。本題は**識別子・世帯・生成日時**の3つだけで、
  * 並べた献立も在庫スナップショットも「最新の1件」の選び方には効かない。
  *
- * **由来だけは数える口の本題である**（ADR-048 決定1）。既定は再利用のままにしてある —
+ * **由来だけは数える口の本題である**（ADR-049 決定1）。既定は再利用のままにしてある —
  * 数えるのは生成の由来を持つ提案だけであり、既定を生成にすると数えない側の回が書きにくい。
  */
 function suggestion(props: {
@@ -46,7 +46,7 @@ function suggestion(props: {
   });
 }
 
-/** 数える窓の下端。下の回はこれを境に入る側と出る側を1分ずつ跨がせてある（ADR-048 決定2）。 */
+/** 数える窓の下端。下の回はこれを境に入る側と出る側を1分ずつ跨がせてある（ADR-049 決定2）。 */
 const windowStart = dateTimeOf('2026-09-13T12:00:00Z');
 
 /** 先頭の引数の型を並べる。C-9 が全メソッドに世帯識別子を要求していることの検査に使う。 */
@@ -159,19 +159,19 @@ describe('提案リポジトリ SuggestionRepository', () => {
     expect(await repository.findLatestByHousehold(ourHousehold)).toBeNull();
   });
 
-  // ここから生成の回数を数える口（ADR-048 決定1 / NFR-C2）。**interface では強制できない
+  // ここから生成の回数を数える口（ADR-049 決定1 / NFR-C2）。**interface では強制できない
   // 約束がもう1つ増える**（同 結果4 / ADR-038 結果2）。数える条件は**世帯・由来・窓の下端の
   // 境界**の3つで、どれが緩んでも上限が実装ごとに変わる。
 
   it('提案が1件も保存されていなければ、生成の回数は0になる', async () => {
-    // ADR-048 決定1 / 境界: 一度も提案していない世帯では数える相手が無い。
+    // ADR-049 決定1 / 境界: 一度も提案していない世帯では数える相手が無い。
     const repository: SuggestionRepository = new InMemorySuggestionRepository();
 
     expect(await repository.countGeneratedByHouseholdSince(ourHousehold, windowStart)).toBe(0);
   });
 
   it('生成の由来を持つ提案を、窓の内側で数える', async () => {
-    // ADR-048 決定1 / NFR-C2: 数えるのは生成を呼んだ回数である。
+    // ADR-049 決定1 / NFR-C2: 数えるのは生成を呼んだ回数である。
     const repository: SuggestionRepository = new InMemorySuggestionRepository();
     await repository.save(
       ourHousehold,
@@ -186,7 +186,7 @@ describe('提案リポジトリ SuggestionRepository', () => {
   });
 
   it('再利用の由来の提案は、生成の回数に入れない', async () => {
-    // ADR-048 決定1 / C-14: 再利用だけで組めた提案も保存されるので、保存された提案を
+    // ADR-049 決定1 / C-14: 再利用だけで組めた提案も保存されるので、保存された提案を
     // そのまま数えると**呼んでいない回まで上限を食う。**
     const repository: SuggestionRepository = new InMemorySuggestionRepository();
     await repository.save(
@@ -198,7 +198,7 @@ describe('提案リポジトリ SuggestionRepository', () => {
   });
 
   it('窓の下端より前の提案は、生成の回数に入れない', async () => {
-    // ADR-048 決定2: 窓の外は数えない。24時間を過ぎた回は1回ぶん戻る。
+    // ADR-049 決定2: 窓の外は数えない。24時間を過ぎた回は1回ぶん戻る。
     const repository: SuggestionRepository = new InMemorySuggestionRepository();
     await repository.save(
       ourHousehold,
@@ -209,7 +209,7 @@ describe('提案リポジトリ SuggestionRepository', () => {
   });
 
   it('窓の下端ちょうどの提案は、生成の回数に入れる', async () => {
-    // ADR-048 決定2（境界の閉じ方）: 下端は含む。**どちらに倒すかを約束しないと、
+    // ADR-049 決定2（境界の閉じ方）: 下端は含む。**どちらに倒すかを約束しないと、
     // ちょうど24時間前に呼んだ回が実装ごとに数えられたり数えられなかったりする。**
     const repository: SuggestionRepository = new InMemorySuggestionRepository();
     await repository.save(
@@ -221,7 +221,7 @@ describe('提案リポジトリ SuggestionRepository', () => {
   });
 
   it('別の世帯の生成は、生成の回数に入れない', async () => {
-    // C-9 / ADR-048 決定1: 数える単位は世帯である。隣の世帯の生成でこちらが締め出されない。
+    // C-9 / ADR-049 決定1: 数える単位は世帯である。隣の世帯の生成でこちらが締め出されない。
     const repository: SuggestionRepository = new InMemorySuggestionRepository();
     await repository.save(
       neighborHousehold,
