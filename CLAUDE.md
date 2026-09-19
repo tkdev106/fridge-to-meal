@@ -7,7 +7,8 @@
 > infrastructure → api → composition root（`apps/api/src/main.ts`）まで通っている。** 在庫の4経路と
 > 世帯の認証器が結線され、Hyperdrive の binding も置かれた（B-09）。web はログインの門まで通り（B-35）、
 > **在庫一覧をサーバから取れるようになった**（B-22。CORS と api の基点もここで決めた。ADR-048）。
-> **画面からの登録はまだサーバに届かない**（B-24）。実装の現在地は下の「実装の現在地」、次にやることは `docs/backlog.md`。
+> **画面からの登録もサーバへ届く**（B-24。断りの `rule` から画面の文言を選ぶのもここで決めた。ADR-032 決定3）。
+> 実装の現在地は下の「実装の現在地」、次にやることは `docs/backlog.md`。
 
 ---
 
@@ -66,7 +67,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | 場所 | 現在地 |
 | --- | --- |
 | `apps/api/src/main.ts` | composition root。`createApp(deps)`（Hono の組み立て）/ `composeDependencies(env, ports)`（**実装クラスの `new` はこの関数の中だけ**）/ default export（Workers の入口。同じ `env` には同じ組み立てを返す）の3口。在庫のユースケースは1要求1トランザクションで包み、`StockItemRepositoryImpl` はトランザクションの中で生成する。`AccessTokenVerification` の3値は `SUPABASE_URL` から導く（`jwksUri` = `<url>/auth/v1/.well-known/jwks.json`、`issuer` = `<url>/auth/v1`、`audience` = `authenticated`）。**鍵が引けない・設定が空は 500 で 401 にならない**ことを `test/main.test.ts` が層をまたいで押さえる（ADR-045 結果4） |
-| `apps/web/src/` | **`App.tsx` は門である**（B-35）— `Session.subscribe` の3値で「何も出さない／ログイン／今の画面」を出し分ける。`main.tsx` が `new SessionImpl(sessionConfigOf(import.meta.env))` と `listStockItems({ baseUrl, accessToken })` を**ここだけで**組み立て `App` に渡す。ログイン／サインアップの画面とログアウトは `features/identity/`（ログアウトの位置は暫定。ADR-046 結果4）。**在庫一覧はサーバから取る**（B-22）— `PantryList` は「読み込み中／取れた／取れなかった」の3値を受け取り、門が効果1つで取りに行く（サインイン済みのときだけ1度。自動で再試行しない）。**取得の継ぎ目は `server/`**（B-22。`ApiBaseUrl` / `HttpFetch` / `StockItemRequests`）。登録の送信は B-24、削除は B-23。**`session/` にセッションの継ぎ目がある**（B-34。`Session` / `SessionConfig` / `SessionImpl`）。手元で動かすには `apps/web/.env.local` に `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` / `VITE_API_BASE_URL` の3つが要る（無ければ起動時に `Error` で落ちる） |
+| `apps/web/src/` | **`App.tsx` は門である**（B-35）— `Session.subscribe` の3値で「何も出さない／ログイン／今の画面」を出し分ける。`main.tsx` が `new SessionImpl(sessionConfigOf(import.meta.env))` と、在庫の2つの口（`listStockItems` / `registerStockItem`。基点とトークンの組は1つ）を**ここだけで**組み立て `App` に渡す。ログイン／サインアップの画面とログアウトは `features/identity/`（ログアウトの位置は暫定。ADR-046 結果4）。**在庫一覧はサーバから取る**（B-22）— `PantryList` は「読み込み中／取れた／取れなかった」の3値を受け取り、門が効果1つで取りに行く（サインイン済みのときだけ1度。自動で再試行しない）。**サーバへの継ぎ目は `server/`**（B-22 / B-24。`ApiBaseUrl` / `HttpFetch` / `StockItemRequests`）。**登録もここを通って `POST /stock-items` に届く**（B-24）— 結末は「通った／断られた（`rule` つき）／失敗」の3つで、**文言を選ぶ表は画面の側**（`features/pantry/RegisterFailureNotice.ts`。ADR-032 決定3）。登録が通ったら門が一覧を取り直す（web で列に足さない）。削除は B-23。**`session/` にセッションの継ぎ目がある**（B-34。`Session` / `SessionConfig` / `SessionImpl`）。手元で動かすには `apps/web/.env.local` に `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` / `VITE_API_BASE_URL` の3つが要る（無ければ起動時に `Error` で落ちる） |
 | `packages/contract/src/` | `pantry.ts`（在庫 API の型）と `error.ts` |
 | `supabase/migrations/` | `stock_items` 表と RLS。`meta/` は drizzle-kit の生成物 |
 | `apps/api/test/` | 単体（`contexts/`）・契約（`contract/`）・DB（`db/`、`pnpm test:db`）・移行（`migrations/`）の4種。差し替え用の `Fixed*` / `InMemory*` は `test/support/` |
@@ -80,7 +81,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 **テストの `describe` は対象、`it` は振る舞いを日本語の文**で書く（`docs/testing.md` 6章）— 文字列であって
 識別子ではない。
 
-**移行の途中である。** `apps/api/src` と `apps/api/test` は済んだ。`apps/web`（39件）と
+**移行の途中である。** `apps/api/src` と `apps/api/test` は済んだ。`apps/web`（40件）と
 `.claude/hooks/guard.mjs`（6件）にはまだ日本語のローカル名が残る（backlog B-30c / B-30d）。
 **1ファイルの中で流儀を混ぜない** — 触るファイルは、そのファイルごと英語に揃えるか、
 そのファイルの既存の流儀に合わせるかのどちらかにする。

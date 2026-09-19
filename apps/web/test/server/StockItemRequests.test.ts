@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { StockItemDto } from '@fridge-to-meal/contract';
-import type { ListStockItems, StockItemsOutcome } from '../../src/server/StockItemRequests.js';
-import { listStockItems } from '../../src/server/StockItemRequests.js';
+import type { RegisterStockItemInput, StockItemDto } from '@fridge-to-meal/contract';
+import type {
+  ListStockItems,
+  RegisterStockItem,
+  StockItemsOutcome,
+} from '../../src/server/StockItemRequests.js';
+import { listStockItems, registerStockItem } from '../../src/server/StockItemRequests.js';
 import type { ReceivedRequest } from '../support/server/FixedHttpFetch.js';
 import { FixedHttpFetch } from '../support/server/FixedHttpFetch.js';
 
@@ -45,8 +49,9 @@ function listing(
 }
 
 /**
- * 出た要求がちょうど1つであることを確かめて取り出す。**ヘッダを見る3件（S5 / S6 / S9）だけが使う** —
- * 要求の件数そのものを仕様にするのは規則7 の1件だけである（`docs/testing.md` 2章）。
+ * 出た要求がちょうど1つであることを確かめて取り出す。**要求の中身（ヘッダ・method・本体）を
+ * 見るものだけが使う** — 要求の件数そのものを仕様にするのは規則7 の1件だけである
+ * （`docs/testing.md` 2章）。
  */
 function onlyRequest(httpFetch: FixedHttpFetch): ReceivedRequest {
   const [request, ...rest] = httpFetch.receivedRequests;
@@ -241,5 +246,208 @@ describe('在庫一覧の取得 listStockItems', () => {
     };
 
     await expect(listing(httpFetch, rejecting)()).resolves.toEqual({ outcome: 'failed' });
+  });
+});
+
+// ---- 在庫の登録（B-24）----
+
+/**
+ * 登録の入力の標本。**任意の2欄が埋まっているものと `null` のものを用意する** —
+ * 継ぎ目が欄を落としたり `null` を省略に読み替えたりしないことを見るため（規則2）。
+ */
+const carrotInput: RegisterStockItemInput = {
+  name: 'にんじん',
+  amount: '2本',
+  expiryDate: '2026-09-21',
+};
+const porkInput: RegisterStockItemInput = { name: 'ぶたにく', amount: null, expiryDate: null };
+
+/** 通る応答。**登録の成功は 201 だが、継ぎ目が読むのは `ok` だけである**（設計 5章 `HttpResponse`）。 */
+const registered = { ok: true, body: {} } as const;
+
+/** 断りの応答。載るのは `rule` だけである（`ErrorResponseDto` / ADR-032 決定3）。 */
+function rejected(rule: string) {
+  return { ok: false, body: { rule } } as const;
+}
+
+/**
+ * 登録の口を1つ組む。本題（届ける応答・トークンの取り出し方）だけが引数に現れる形にする
+ * （`docs/testing.md` 6章）。**空文字の `baseUrl` は組む側の話なのでここでは扱わない**（設計 10章）。
+ */
+function registering(
+  httpFetch: FixedHttpFetch,
+  accessTokenOf: () => Promise<string | null> = async () => accessToken,
+): RegisterStockItem {
+  return registerStockItem({ baseUrl, accessToken: accessTokenOf, httpFetch: httpFetch.httpFetch });
+}
+
+describe('在庫の登録 registerStockItem', () => {
+  it('応答が通れば registered の結末を返す', async () => {
+    // FR-01: 保存できたことだけを伝える。**応答の在庫品は結末に載せない** —
+    // 一覧はサーバから取り直す（`App.tsx`）ので、受け取っても使い道が無い。
+    const outcome = await registering(new FixedHttpFetch(registered))(carrotInput);
+
+    expect(outcome).toEqual({ outcome: 'registered' });
+  });
+
+  it('叩く先は基点に /stock-items を足した1つだけで世帯を表すものを載せない', async () => {
+    // B-22 設計 規則6・15 / C-9 / NFR-09: 接頭辞を web の側で足さない。世帯は経路にも
+    // クエリにも本体にも載せず、サーバがアクセストークンから定める。
+    const httpFetch = new FixedHttpFetch(registered);
+
+    await registering(httpFetch)(carrotInput);
+
+    expect(httpFetch.receivedRequests.map((request) => request.url)).toEqual([
+      'https://api.example.dev/stock-items',
+    ]);
+  });
+
+  it('POST で送る', async () => {
+    // FR-01 / B-09: 登録の経路は `POST /stock-items` である（同じ経路の `GET` は一覧を返す）。
+    const httpFetch = new FixedHttpFetch(registered);
+
+    await registering(httpFetch)(carrotInput);
+
+    expect(onlyRequest(httpFetch).method).toBe('POST');
+  });
+
+  it('渡された登録の入力をそのまま JSON にして本体に載せる', async () => {
+    // B-22 設計 規則2 / C-9: 詰め替えない。未設定の欄は `null` のまま送り、省略に読み替えない
+    // （contract は省略と `null` を同義と定めるが、**読み替えるのは継ぎ目の仕事ではない**）。
+    // 期待値は literal で置く（`docs/testing.md` 3章）。
+    const httpFetch = new FixedHttpFetch(registered);
+
+    await registering(httpFetch)(porkInput);
+
+    expect(onlyRequest(httpFetch).body).toBe('{"name":"ぶたにく","amount":null,"expiryDate":null}');
+  });
+
+  it('取り出したアクセストークンを Authorization の Bearer に載せる', async () => {
+    // B-22 設計 規則8 / ADR-043: トークンはヘッダで運ぶ（Cookie の経路を作らない）。
+    const httpFetch = new FixedHttpFetch(registered);
+
+    await registering(httpFetch)(carrotInput);
+
+    expect(onlyRequest(httpFetch).headers.Authorization).toBe('Bearer access-token-example');
+  });
+
+  it('本体を持つので Content-Type に application/json を付ける', async () => {
+    // B-24: `GET` では付けなかった（規則8）が、本体を読ませる要求には要る。CORS の許可は
+    // `Authorization` と `Content-Type` の2つで、api 側に既に入っている（ADR-048 / `main.ts`）。
+    // **付けるのはこの2つだけである** — 増やすと preflight の許可対象が増える。
+    const httpFetch = new FixedHttpFetch(registered);
+
+    await registering(httpFetch)(carrotInput);
+
+    expect(onlyRequest(httpFetch).headers).toEqual({
+      Authorization: 'Bearer access-token-example',
+      'Content-Type': 'application/json',
+    });
+  });
+
+  it('アクセストークンが null なら failed の結末を返す', async () => {
+    // B-22 設計 規則7 / 7章: 出しても 401 が返るだけである。
+    const outcome = await registering(
+      new FixedHttpFetch(registered),
+      async () => null,
+    )(carrotInput);
+
+    expect(outcome).toEqual({ outcome: 'failed' });
+  });
+
+  it('アクセストークンが null なら要求を1つも出さない', async () => {
+    // B-22 設計 規則7: **出さないこと自体が要件**（`docs/testing.md` 2章の例外）。
+    // **通る応答を用意しておく** — 誤って出た回も最後まで通り、落ちるのは件数の断定だけになる。
+    const httpFetch = new FixedHttpFetch(registered);
+
+    await registering(httpFetch, async () => null)(carrotInput);
+
+    expect(httpFetch.receivedRequests.map((request) => request.url)).toEqual([]);
+  });
+
+  it('アクセストークンが空文字でも要求を出し空のまま Bearer に載せる', async () => {
+    // B-22 設計 規則7 後半: 「提示されていない」の判定は api と `IdentifyHousehold` の側に
+    // 1か所だけ残す。web で null と同じに畳まない。
+    const httpFetch = new FixedHttpFetch(registered);
+
+    await registering(httpFetch, async () => '')(carrotInput);
+
+    expect(onlyRequest(httpFetch).headers.Authorization).toBe('Bearer ');
+  });
+
+  it('断りの応答の rule をそのまま rejected の結末に載せる', async () => {
+    // ADR-032 決定3 / B-24: **読み込みと違い失敗を1つに畳まない** — 登録には利用者が入力を
+    // 直せば通る断りがあり（`name.empty` / `expiryDate.*`）、畳むとそれを伝えられない。
+    // **どの rule を「直せる誤り」と読むかは画面が決める**（`RegisterFailureNotice.ts`）ので、
+    // ここは値をそのまま運ぶ。
+    const outcome = await registering(new FixedHttpFetch(rejected('expiryDate.format')))(
+      carrotInput,
+    );
+
+    expect(outcome).toEqual({ outcome: 'rejected', rule: 'expiryDate.format' });
+  });
+
+  it('断りの応答に rule が無ければ failed の結末を返す', async () => {
+    // B-22 設計 規則9 と同じ構え: 選ぶ手がかりの無い断りは、理由の無い失敗と変わらない。
+    const outcome = await registering(new FixedHttpFetch({ ok: false, body: {} }))(carrotInput);
+
+    expect(outcome).toEqual({ outcome: 'failed' });
+  });
+
+  it('断りの応答の rule が文字列でなければ failed の結末を返す', async () => {
+    // B-22 設計 規則9: 文字列でないものを画面に渡すと、文言の選び分けの側で落ちる。
+    const outcome = await registering(new FixedHttpFetch({ ok: false, body: { rule: 42 } }))(
+      carrotInput,
+    );
+
+    expect(outcome).toEqual({ outcome: 'failed' });
+  });
+
+  it('断りの応答の本体が読めなければ failed の結末を返す', async () => {
+    // B-22 設計 規則9 / 7章: 本体が読めないことも1つの結末に畳む。
+    const outcome = await registering(new FixedHttpFetch({ ok: false, unreadableBody: true }))(
+      carrotInput,
+    );
+
+    expect(outcome).toEqual({ outcome: 'failed' });
+  });
+
+  it('通った応答の本体が読めなくても registered の結末を返す', async () => {
+    // B-24: **成功の本体は読まない。** 一覧はサーバから取り直すため、採番された識別子を
+    // 受け取っても使い道が無い（使う周が来たら読む）。
+    const outcome = await registering(new FixedHttpFetch({ ok: true, unreadableBody: true }))(
+      carrotInput,
+    );
+
+    expect(outcome).toEqual({ outcome: 'registered' });
+  });
+
+  it('通信が失敗して出口が投げても例外を外に出さず failed の結末を返す', async () => {
+    // B-22 設計 規則9 / FR-41: 外へ出すと画面の側で誰も受け止めず、送っている表示のまま止まる。
+    const httpFetch = new FixedHttpFetch({ throws: new Error('送れない') });
+
+    await expect(registering(httpFetch)(carrotInput)).resolves.toEqual({ outcome: 'failed' });
+  });
+
+  it('アクセストークンの取り出しが投げても例外を外に出さず failed の結末を返す', async () => {
+    // B-22 設計 規則9 / `Session.ts` 規則7: `SessionImpl.accessToken` は投げうる。
+    const httpFetch = new FixedHttpFetch(registered);
+    const rejecting = async (): Promise<string | null> => {
+      throw new Error('セッションを取り出せない');
+    };
+
+    await expect(registering(httpFetch, rejecting)(carrotInput)).resolves.toEqual({
+      outcome: 'failed',
+    });
+  });
+
+  it('1度断られても自分では送り直さない', async () => {
+    // ADR-007 / B-12 設計 規則7: 自動で送り直すと、**同名でも統合されない在庫品が2件残る。**
+    // 2度目の応答が結果に現れないことで見る（**回数は数えない**）。
+    const httpFetch = new FixedHttpFetch({ throws: new Error('送れない') }, registered);
+
+    const outcome = await registering(httpFetch)(carrotInput);
+
+    expect(outcome).toEqual({ outcome: 'failed' });
   });
 });
