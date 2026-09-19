@@ -19,6 +19,17 @@
 
 ## 次にやること
 
+- [ ] **B-36** **複製に由来する記述とガードを取り除く**（ADR-047 決定4）。移した先で誤りになる記述だけを落とし、
+  **ファイルを元リポジトリの版へ丸ごと戻さない** — 同じファイルに public へ持っていきたい変更（実装の現在地・
+  ADR-046 の反映）が同居している。`CLAUDE.md`（「このリポジトリの位置づけ」節、ブランチ運用の upstream の行、
+  「Claude Code on the web で作業するとき」の upstream に触れる2点、ディレクトリ構成の `guard.mjs` と `pre-push` の
+  行の `upstream` の語）、`docs/workflow.md`（7章の upstream の2行と末尾の2文、守る手段の表の `core.hooksPath` の
+  例外、guard と pre-push の行の upstream 表記）、`.claude/hooks/guard.mjs`（`UPSTREAM_REMOTE` / `UPSTREAM_REPO` と
+  `push-to-upstream`）、`.githooks/pre-push`（upstream のブロック）と、この2つの回帰テストから対応するケース。
+  **残すものを3つ明示する** — `.claude/hooks/guard.test.mjs` と `.githooks/pre-push.test.mjs` は**ケースを削るだけで
+  ファイルは残す**（どちらも元リポジトリには無い）、`.github/workflows/cleanup-assigned-branches.yml` と
+  CLAUDE.md のその行（ADR-047 結果4）、`.claude/hooks/session-start.sh` の作者を固定する2行（同 決定4）。
+  **フックのテストを一緒に直さないと `pnpm test:hooks` が落ちる**（ADR-047 決定4）
 - [ ] **B-17** トランザクションの helper（`withHouseholdTransaction`）を
   `contexts/pantry/infrastructure/db/` から **`shared/` 側へ移す**。**2つ目のコンテキストが表を持つ日に着手する** —
   コンテキストをまたぐ import は禁止のため、そのままでは2つ目の実装が写しを作る。
@@ -90,6 +101,18 @@
 > 「全体を揃える」ではなく「`apps/` の内部だけの流儀を外に合わせる」ものである — ADR の「状況」に書く材料。
 > **1ファイルの中で流儀を混ぜない**（`CLAUDE.md`）ため、**ディレクトリで割れば各ファイルは常に一貫している。**
 > 順序の根拠は B-28 の後に着手すると決めたこと（docs/workflow.md 3章 / CLAUDE.md「実装の現在地」末尾）
+
+## 人の操作（ループは着手しない）
+
+**エージェントの権限では実行できないもの。** 決まっていないから待つのではなく、**打ち手が人にしか無い**ため
+ここに置く。`/next` は「次にやること」からしか取らない。
+
+- [ ] **B-37** 作者の書き換えと public 側への早送り push、private 側のアーカイブ、移した先での
+  **GitHub のブランチ保護の有効化**（ADR-047 決定1〜3 と 決定5）。手順の材料は ADR-047 の 状況 と 結果7。
+  **B-36 の直後に行う** — 2つの周のあいだ、upstream のガードが外れた窓が開く（同 結果8）。
+  **移す前に GitHub App が `tkdev106` 側に入っていることを確かめる**（同 結果3）（ADR-047）
+
+---
 
 ## 判断待ち（着手しない）
 
