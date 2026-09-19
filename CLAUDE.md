@@ -10,48 +10,7 @@
 
 ---
 
-## このリポジトリの位置づけ — public の非公開コピー
-
-このリポジトリ（`tatsuro-kawakami-lvgs/fridge-to-meal`、private）は、public の
-`tkdev106/fridge-to-meal` から**履歴ごと複製した開発用のコピー**である。
-
-| リモート | 先 | 扱い |
-| --- | --- | --- |
-| `origin` | `https://github.com/tatsuro-kawakami-lvgs/fridge-to-meal` | **ここで開発する。** push してよい唯一のリモート |
-| `upstream` | `https://github.com/tkdev106/fridge-to-meal.git` | **読み取り専用。** fetch はしてよい。**push は絶対にしない** |
-
-**upstream への push は3枚で止める。** どれも越えられるが、うっかり越えないために置く。
-
-| 層 | 何をするか | 効く範囲 |
-| --- | --- | --- |
-| `git remote set-url --push upstream no_push` | push 先の URL を壊し、物理的に不可能にする | その clone だけ。**コンテナが消えると消える**ので clone のたびに打つ（`docs/workflow.md` 7章） |
-| `.claude/hooks/guard.mjs` の `push-to-upstream` | エージェントの `git push upstream …` と `tkdev106/fridge-to-meal` を含む URL への push を拒否する | エージェントが打つコマンド |
-| `.githooks/pre-push` | リモート名が `upstream`、または URL に `tkdev106/fridge-to-meal` を含む push をすべて断る | `core.hooksPath` を設定した作業ツリー |
-
-**upstream からの取り込みは人が行う。エージェントはやらない。** `main` は PR 経由でしか
-更新できない決まり（下の「ブランチ運用」）と、upstream の履歴をそのまま `main` に載せたい
-要求とがぶつかるため、取り込みは 2枚のフックを承知のうえで越える人の操作になる。
-
-```sh
-git fetch upstream
-git switch main && git merge --ff-only upstream/main   # ff できなければ止まって相談する
-git push --no-verify origin main                        # pre-push を意図的に越える。人だけが打つ
-```
-
-**origin から upstream への反映（public に戻す方法）は未決。** 決めるまでは、このリポジトリで
-起きたことは public に出ないものとして扱う。
-
-**枝のコミットの作者は `tkdev106` に固定する**（メールは `178723293+tkdev106@users.noreply.github.com`）。
-リポジトリローカルの設定で行い、エージェントのコンテナでは `.claude/hooks/session-start.sh` が
-セッション開始のたびに入れ直す。
-
-**これは枝のコミットにしか効かない。** GitHub の squash merge が `main` に作るコミットの作者は
-**PR を開いたアカウント**になり、`git config` では変えられない（PR #1 で確認済み。枝は `tkdev106`、
-`main` は `tatsuro-kawakami-lvgs`）。**これは受け入れる。** `main` の作者を揃える必要があるかは、
-上の「origin から upstream への反映」を決めるときに一緒に決める — それまで、マージ方法を変えたり
-PR を開くアカウントを持ち替えたりしない。
-
-### Claude Code on the web で作業するとき
+## Claude Code on the web で作業するとき
 
 web のセッションは `claude/<slug>-<生成された識別子>` という枝を**ハーネスが割り当てて**始まる。
 この名前は `docs/workflow.md` 1章の規則（`claude` を含めない・生成された識別子を入れない）に
@@ -63,9 +22,11 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
   マージ時の自動削除では消えない。** `.github/workflows/cleanup-assigned-branches.yml` が毎日、先端が
   7日より古く、開いている PR の無い `claude/*` を消す。エージェントが消す必要はない
 - web のコンテナでは `core.hooksPath` を設定しない（設定すると割り当て枝への push が止まり、
-  セッションが成果を出せなくなる）。`main` と upstream は `guard.mjs` が守る
-- web のコンテナには `upstream` リモートが無い（`git remote -v` で確かめられる）。無いものに push は
-  できないので、`no_push` の設定はここでは要らない
+  セッションが成果を出せなくなる）。`main` は `guard.mjs` が守る
+- **コミットの作者は `tkdev106` に固定される**（メールは `178723293+tkdev106@users.noreply.github.com`）。
+  `.claude/hooks/session-start.sh` がセッション開始のたびに入れ直す — **ローカルの git 設定はコンテナと
+  一緒に消える**ため、1度きりの設定では足りない。**web に限った話ではない** — 手元の clone では
+  `docs/workflow.md` 7章 の手順で1度だけ入れる
 - web のコンテナには **`gh` が無い。** PR の作成・CI の結果の確認・squash merge は
   GitHub の MCP ツール（`mcp__github__*`）で行う。`/next` の手順にどちらの書き方も置いてある
 
@@ -223,7 +184,6 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 - **`main` への直接 push は禁止。** `.claude/hooks/guard.mjs`（エージェント）と
   `.githooks/pre-push`（git）の2枚で止める。**GitHub のブランチ保護は private + 現行プランでは
   効かない**ため、この2枚が実質の防御であり、どちらも越えられることを前提にする
-- **`upstream` への push は禁止。** 同じ2枚に `no_push` を足した3枚で止める（上の「位置づけ」）
 - 未完成の機能も**マージを止めない。** 画面に出せない段階でも `main` に入れる
 - **feature flag は置かない。** 本番の配信先がまだ無く、未完成を隠して見せない相手が居ない。
   隠す仕組みを置くと、それ自体の保守（消し忘れ・畳み込み・lint での縛り）が仕事になる。
@@ -281,7 +241,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 ```
 .claude/                   エージェントの作業環境
   settings.json            許可・拒否とフックの登録（settings.local.json は各自のもので git 管理外）
-  hooks/guard.mjs          戻せない操作・main と upstream への push の拒否。guard.test.mjs が回帰テスト
+  hooks/guard.mjs          戻せない操作・main への push の拒否。guard.test.mjs が回帰テスト
   hooks/session-start.sh   web セッション開始時の pnpm install・ローカル Postgres の起動・コミット作者とメッセージ形式の設定
   commands/                /next（ループ1周）/tdd（テスト駆動で1件）/verify /sync /address
   agents/design-writer     タスク1件を設計書に落とす。実装の3段はこれを入力に取る
@@ -289,7 +249,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
   agents/test-writer       一覧をテストにし、落ちること（赤）を確認する
   agents/implementer       テストを変えずに緑にする
   agents/design-reviewer   差分を設計文書と突き合わせる読み手
-.githooks/pre-push         main と upstream への push を git の側で止める（要 core.hooksPath）。pre-push.test.mjs が回帰テスト
+.githooks/pre-push         main への push を git の側で止める（要 core.hooksPath）。pre-push.test.mjs が回帰テスト
 .github/workflows/ci.yml   PR と main への push で pnpm verify と pnpm test:db を別ジョブで回す
 .github/workflows/cleanup-assigned-branches.yml  web セッションが残す claude/* の枝を毎日掃除する
 apps/web/                  React + Vite（PWA）— API のクライアント

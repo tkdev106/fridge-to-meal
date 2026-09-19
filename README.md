@@ -10,18 +10,6 @@
 > 画面からの取得はこれから。何がどこまであるかは [`CLAUDE.md`](CLAUDE.md) の「実装の現在地」、
 > 次にやることは [`docs/backlog.md`](docs/backlog.md) を見てください。
 
-## このリポジトリについて
-
-このリポジトリ（`tatsuro-kawakami-lvgs/fridge-to-meal`、private）は、public の
-[`tkdev106/fridge-to-meal`](https://github.com/tkdev106/fridge-to-meal) を履歴ごと複製した**非公開の開発用コピー**です。
-
-| リモート | 役割 |
-| --- | --- |
-| `origin` | 開発の場。push してよい唯一のリモート |
-| `upstream` | 元の public リポジトリ。**読み取り専用。push しない** — ローカル設定・エージェントのガード・git フックの3枚で止めています |
-
-upstream からの取り込みは人が手で行い、public への反映方法は未決です。詳細は [`CLAUDE.md`](CLAUDE.md) の「このリポジトリの位置づけ」。
-
 ## 特徴として設計しているもの
 
 - **在庫を起点にした献立提案** — 期限が近い食材を優先して使う献立が上位に来る
@@ -63,12 +51,10 @@ Node 22 以上と pnpm 10 が要ります（`packageManager` フィールドが�
 pnpm install
 
 # clone 後に1度だけ（すべてローカル設定で git には入らない）
-git remote add upstream https://github.com/tkdev106/fridge-to-meal.git   # 元リポジトリ（読み取り専用）
-git remote set-url --push upstream no_push                                # 誤 push を物理的に不可能にする
 git config user.name "tkdev106"                                           # コミットの作者を固定する
 git config user.email "178723293+tkdev106@users.noreply.github.com"
 git config commit.template .gitmessage                                    # コミットの形式
-git config core.hooksPath .githooks                                       # main と upstream への push を止める
+git config core.hooksPath .githooks                                       # main への push を止める
 
 pnpm verify        # 完了の定義の片方。format:check → lint → typecheck → test → test:hooks → build
 pnpm db:up         # ローカル Postgres を起こす（Docker）

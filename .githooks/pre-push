@@ -1,6 +1,5 @@
 #!/usr/bin/env sh
-# main への直接 push・元リポジトリ（public）への push・何をする枝か読めないブランチ名を
-# git の側で止める。
+# main への直接 push と、何をする枝か読めないブランチ名を git の側で止める。
 #
 # .claude/hooks/guard.mjs は Claude Code のエージェントしか止められない。
 # このリポジトリは private で、現在のプランでは GitHub のブランチ保護が効かない
@@ -18,19 +17,6 @@
 
 TRUNK_REF='refs/heads/main'
 ZERO='0000000000000000000000000000000000000000'
-
-# 元リポジトリ（public）。このリポジトリはその非公開の開発用コピーで、元は読み取り専用
-# （CLAUDE.md「このリポジトリの位置づけ」）。guard.mjs の push-to-upstream と同じ規則を
-# 2つの言語で書いている。リモート名と URL の両方で見るのは、別名で登録し直されても止めるため。
-# push する参照を読む前に断る — 枝でもタグでも削除でも、向こうに何かが届くこと自体が誤りである。
-UPSTREAM_REMOTE='upstream'
-UPSTREAM_REPO='tkdev106/fridge-to-meal'
-
-if [ "$1" = "$UPSTREAM_REMOTE" ] || printf '%s' "$2" | grep -qF "$UPSTREAM_REPO"; then
-  echo "pre-push: 元リポジトリ（$UPSTREAM_REPO）は読み取り専用です。push 先は origin だけにしてください（CLAUDE.md「このリポジトリの位置づけ」）。" >&2
-  echo "pre-push: 物理的にも不可能にしておくなら git remote set-url --push upstream no_push を打ってください。" >&2
-  exit 1
-fi
 
 # ブランチ名が「何をする枝か」を名前だけで読めるか。読めない理由を stdout に出す。
 branch_name_problem() {

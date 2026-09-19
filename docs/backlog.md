@@ -19,17 +19,11 @@
 
 ## 次にやること
 
-- [ ] **B-36** **複製に由来する記述とガードを取り除く**（ADR-047 決定4）。移した先で誤りになる記述だけを落とし、
-  **ファイルを元リポジトリの版へ丸ごと戻さない** — 同じファイルに public へ持っていきたい変更（実装の現在地・
-  ADR-046 の反映）が同居している。`CLAUDE.md`（「このリポジトリの位置づけ」節、ブランチ運用の upstream の行、
-  「Claude Code on the web で作業するとき」の upstream に触れる2点、ディレクトリ構成の `guard.mjs` と `pre-push` の
-  行の `upstream` の語）、`docs/workflow.md`（7章の upstream の2行と末尾の2文、守る手段の表の `core.hooksPath` の
-  例外、guard と pre-push の行の upstream 表記）、`.claude/hooks/guard.mjs`（`UPSTREAM_REMOTE` / `UPSTREAM_REPO` と
-  `push-to-upstream`）、`.githooks/pre-push`（upstream のブロック）と、この2つの回帰テストから対応するケース。
-  **残すものを3つ明示する** — `.claude/hooks/guard.test.mjs` と `.githooks/pre-push.test.mjs` は**ケースを削るだけで
-  ファイルは残す**（どちらも元リポジトリには無い）、`.github/workflows/cleanup-assigned-branches.yml` と
-  CLAUDE.md のその行（ADR-047 結果4）、`.claude/hooks/session-start.sh` の作者を固定する2行（同 決定4）。
-  **フックのテストを一緒に直さないと `pnpm test:hooks` が落ちる**（ADR-047 決定4）
+- [ ] **B-38** **`README.md` の「現状」を実装の現在地に合わせる。** 日付が 2026-09-13 のままで、
+  「composition root への結線と画面からの取得はこれから」と書いているが、**結線は B-09 で済み、
+  web はログインの門まで通っている**（B-35）。ADR の範囲も `ADR-001〜045` で止まっている。
+  **B-37 より先に直す** — 移したあとの `README.md` は public の入口そのものになる（ADR-047 決定1）。
+  `CLAUDE.md` の「現状」は 2026-09-19 に更新済みなので、**写す先はそちら**（ADR-047 / docs/workflow.md 5章）
 - [ ] **B-17** トランザクションの helper（`withHouseholdTransaction`）を
   `contexts/pantry/infrastructure/db/` から **`shared/` 側へ移す**。**2つ目のコンテキストが表を持つ日に着手する** —
   コンテキストをまたぐ import は禁止のため、そのままでは2つ目の実装が写しを作る。
@@ -109,8 +103,12 @@
 
 - [ ] **B-37** 作者の書き換えと public 側への早送り push、private 側のアーカイブ、移した先での
   **GitHub のブランチ保護の有効化**（ADR-047 決定1〜3 と 決定5）。手順の材料は ADR-047 の 状況 と 結果7。
-  **B-36 の直後に行う** — 2つの周のあいだ、upstream のガードが外れた窓が開く（同 結果8）。
-  **移す前に GitHub App が `tkdev106` 側に入っていることを確かめる**（同 結果3）（ADR-047）
+  **速やかに行う** — 複製に由来する記述とガードを取り除く周は済んでおり、**元リポジトリへの push を
+  止めるものは、この作業ツリーにもう無い**（同 結果8 が言う窓が、いま開いている）。
+  **移す前に GitHub App が `tkdev106` 側に入っていることを確かめる**（同 結果3）。
+  **ブランチ保護を有効にしたら文書の追随までが1組である** — `CLAUDE.md`「ブランチ運用と自律ループ」と
+  `docs/workflow.md` 1章 が「**ブランチ保護は private + 現行プランでは効かない**ため2枚のフックが実質の
+  防御」と書いており、**移った先では前提のほうが消える**（ADR-047 決定5 / 理由(5)）（ADR-047）
 
 ---
 
