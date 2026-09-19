@@ -4,17 +4,30 @@ import { App } from './App.js';
 import type { Session } from './session/Session.js';
 import { sessionConfigOf } from './session/SessionConfig.js';
 import { SessionImpl } from './session/SessionImpl.js';
+import { apiBaseUrlOf } from './server/ApiBaseUrl.js';
+import { listStockItems } from './server/StockItemRequests.js';
 
 // 継ぎ目の実装を `new` するのはここだけ（`SessionImpl.ts` 規則2 / B-35 設計 6章 規則3）。
 // 設定が欠けていれば `sessionConfigOf` の `Error` を**包まずそのまま外へ**出す（規則12 / ADR-045）
 // — 利用者が入力を直しても解消しない失敗であり、画面を出しても受け止め手がいない。
 const session: Session = new SessionImpl(sessionConfigOf(import.meta.env));
 
+// 経路の継ぎ目を組み立てるのもここだけ（B-22 設計 規則4）。`import.meta.env` を読むのは
+// この1か所で、`apiBaseUrlOf` も継ぎ目も渡された値しか見ない — 読ませる相手を結線が決める。
+// `VITE_API_BASE_URL` が欠けていれば、こちらも**包まずそのまま外へ**出す（同 規則5 / ADR-045）。
+//
+// トークンは `Session` の口を**関数で包んで**渡す（同 規則7）。継ぎ目に `Session` の型を
+// 渡さないのは、経路の側が認証の実装を知らないままでいるためである（ADR-046 決定3）。
+const requestStockItems = listStockItems({
+  baseUrl: apiBaseUrlOf(import.meta.env),
+  accessToken: () => session.accessToken(),
+});
+
 const container = document.getElementById('root');
 if (!container) throw new Error('#root が見つからない');
 
 createRoot(container).render(
   <StrictMode>
-    <App session={session} />
+    <App session={session} listStockItems={requestStockItems} />
   </StrictMode>,
 );
