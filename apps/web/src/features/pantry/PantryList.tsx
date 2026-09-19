@@ -8,12 +8,14 @@
  * 反対に、**日本語はここにしか置かない**（規則10）。文言も配色も未確定であり
  * （同書 論点3）、純粋関数に持たせるとテストが仮の文言を固定してしまう。
  *
- * 在庫品の列は引数で受け取る。サーバからの取得はこの周では作らない（B-11 設計 2章）。
+ * **受け取るのは読み込みの結末である**（B-22 設計 5章 / 規則2）。在庫品の列そのものではなく、
+ * 「読み込み中／取れた／取れなかった」の3値を受け取り、出し分けだけを行う。取りに行くのは
+ * `apps/web/src/server/` の継ぎ目で、それを呼ぶのは `App.tsx` である。
  */
 
-import type { StockItemDto } from '@fridge-to-meal/contract';
 import type { ExpirySection, ListedStockItem } from './PantrySections.js';
 import { pantrySectionsOf } from './PantrySections.js';
+import type { StockItemsOutcome } from '../../server/StockItemRequests.js';
 
 /**
  * 帯の見出し。**見出し自体がテキストの警告**になっていることで、色を使わなくても
@@ -30,6 +32,24 @@ const 残日数なしの印 = '－';
 
 /** 在庫が0件のときの案内。登録の導線そのものは B-12 で置くので、ここは文言だけ。 */
 const 在庫が0件のときの案内 = '冷蔵庫の中身がまだ登録されていません。登録すると、ここに並びます。';
+
+/**
+ * 読み込み中の案内（B-22 設計 7章 / 10章。**暫定**）。
+ *
+ * **0件の案内を出さない。** 在庫があるのに無いように見せてしまう。
+ * `docs/screen-design.md` は在庫一覧の読み込み中の見せ方を決めていない（同書 9章の表は
+ * オフラインの帯・LLM の縮退・生成の失敗だけ）ため、文言もこの1行も仮である。
+ */
+const 読み込み中の案内 = '在庫を読み込んでいます。';
+
+/**
+ * 取れなかったときの断り（B-22 設計 7章 / 10章。**暫定**）。
+ *
+ * **原因を断定しない** — 継ぎ目は通信の失敗・401・500・壊れた応答をすべて1つの結末に畳んで
+ * おり（同 規則9）、ここに見分けられる材料は無い。**再試行の手段も置かない**（規則10。
+ * 自動でも取りに行き直さない）。失敗の種別から文言を選ぶのは B-24 が決める（ADR-032 決定3）。
+ */
+const 取れなかったときの断り = '在庫を読み込めませんでした。';
 
 /**
  * 残日数を読める文にする（NFR-17 / screen-design 9章の「今日」「あと2日」）。
@@ -54,8 +74,14 @@ function StockItemRow({ row }: { row: ListedStockItem }) {
   );
 }
 
+/**
+ * 画面が受け取る3値（B-22 設計 5章）。取得の結末に「読み込み中」を1つ足しただけのもので、
+ * `failed` の中身は継ぎ目が畳んだままである（規則9）。
+ */
+export type PantryListState = { readonly outcome: 'loading' } | StockItemsOutcome;
+
 export type PantryListProps = {
-  stockItems: readonly StockItemDto[];
+  stockItems: PantryListState;
   /**
    * 残日数を数える基準日（`YYYY-MM-DD`）。**呼び出し側が渡す。**
    * ここで `new Date()` を読むと、現在時刻が本体に埋まる（docs/testing.md 5章）。
@@ -65,7 +91,11 @@ export type PantryListProps = {
 };
 
 export function PantryList({ stockItems, today }: PantryListProps) {
-  const sections = pantrySectionsOf(stockItems, today);
+  // 出し分けだけを行い、計算を持たない（B-22 設計 8章末尾 / B-11 設計 規則7）。
+  if (stockItems.outcome === 'loading') return <p>{読み込み中の案内}</p>;
+  if (stockItems.outcome === 'failed') return <p>{取れなかったときの断り}</p>;
+
+  const sections = pantrySectionsOf(stockItems.stockItems, today);
 
   // 在庫品が0件なら帯を1つも出さない（規則11）。
   if (sections.length === 0) return <p>{在庫が0件のときの案内}</p>;

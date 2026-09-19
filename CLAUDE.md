@@ -5,8 +5,9 @@
 
 > **現状（2026-09-19）: 実装フェーズ。在庫（pantry）コンテキストの縦切りが domain → usecase →
 > infrastructure → api → composition root（`apps/api/src/main.ts`）まで通っている。** 在庫の4経路と
-> 世帯の認証器が結線され、Hyperdrive の binding も置かれた（B-09）。web はログインの門まで通った（B-35）が、
-> 画面はまだサーバから在庫を取れていない（B-22 / B-24）。実装の現在地は下の「実装の現在地」、次にやることは `docs/backlog.md`。
+> 世帯の認証器が結線され、Hyperdrive の binding も置かれた（B-09）。web はログインの門まで通り（B-35）、
+> **在庫一覧をサーバから取れるようになった**（B-22。CORS と api の基点もここで決めた。ADR-048）。
+> **画面からの登録はまだサーバに届かない**（B-24）。実装の現在地は下の「実装の現在地」、次にやることは `docs/backlog.md`。
 
 ---
 
@@ -36,7 +37,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | --- | --- |
 | 何を作るか（機能要件・非機能要件・コスト設計） | `docs/requirements.md` |
 | どう表現するか（ドメインモデル・用語・不変条件・確定事項） | `docs/domain-model.md` |
-| なぜその作りなのか（アーキテクチャ決定 ADR-001〜045） | `docs/adr.md` |
+| なぜその作りなのか（アーキテクチャ決定 ADR-001〜048） | `docs/adr.md` |
 | LLM に何を渡し何を受け取るか（プロンプト全文・応答の検証規則） | `docs/prompt-design.md` |
 | 画面に何をどう出すか（遷移・状態・再利用の見せ方） | `docs/screen-design.md` |
 | どうテストするか（古典派・観察可能な振る舞い・TDD の1周） | `docs/testing.md` |
@@ -65,7 +66,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | 場所 | 現在地 |
 | --- | --- |
 | `apps/api/src/main.ts` | composition root。`createApp(deps)`（Hono の組み立て）/ `composeDependencies(env, ports)`（**実装クラスの `new` はこの関数の中だけ**）/ default export（Workers の入口。同じ `env` には同じ組み立てを返す）の3口。在庫のユースケースは1要求1トランザクションで包み、`StockItemRepositoryImpl` はトランザクションの中で生成する。`AccessTokenVerification` の3値は `SUPABASE_URL` から導く（`jwksUri` = `<url>/auth/v1/.well-known/jwks.json`、`issuer` = `<url>/auth/v1`、`audience` = `authenticated`）。**鍵が引けない・設定が空は 500 で 401 にならない**ことを `test/main.test.ts` が層をまたいで押さえる（ADR-045 結果4） |
-| `apps/web/src/` | **`App.tsx` は門である**（B-35）— `Session.subscribe` の3値で「何も出さない／ログイン／今の画面」を出し分ける。`main.tsx` が `new SessionImpl(sessionConfigOf(import.meta.env))` を**ここだけで**行い `App` に渡す。ログイン／サインアップの画面とログアウトは `features/identity/`（ログアウトの位置は暫定。ADR-046 結果4）。サインイン済みの画面は `PantryList` に常に0件を渡す。サーバ取得は B-22、登録画面は B-12。**`session/` にセッションの継ぎ目がある**（B-34。`Session` / `SessionConfig` / `SessionImpl`）。手元で動かすには `apps/web/.env.local` に `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` が要る（無ければ起動時に `Error` で落ちる） |
+| `apps/web/src/` | **`App.tsx` は門である**（B-35）— `Session.subscribe` の3値で「何も出さない／ログイン／今の画面」を出し分ける。`main.tsx` が `new SessionImpl(sessionConfigOf(import.meta.env))` と `listStockItems({ baseUrl, accessToken })` を**ここだけで**組み立て `App` に渡す。ログイン／サインアップの画面とログアウトは `features/identity/`（ログアウトの位置は暫定。ADR-046 結果4）。**在庫一覧はサーバから取る**（B-22）— `PantryList` は「読み込み中／取れた／取れなかった」の3値を受け取り、門が効果1つで取りに行く（サインイン済みのときだけ1度。自動で再試行しない）。**取得の継ぎ目は `server/`**（B-22。`ApiBaseUrl` / `HttpFetch` / `StockItemRequests`）。登録の送信は B-24、削除は B-23。**`session/` にセッションの継ぎ目がある**（B-34。`Session` / `SessionConfig` / `SessionImpl`）。手元で動かすには `apps/web/.env.local` に `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` / `VITE_API_BASE_URL` の3つが要る（無ければ起動時に `Error` で落ちる） |
 | `packages/contract/src/` | `pantry.ts`（在庫 API の型）と `error.ts` |
 | `supabase/migrations/` | `stock_items` 表と RLS。`meta/` は drizzle-kit の生成物 |
 | `apps/api/test/` | 単体（`contexts/`）・契約（`contract/`）・DB（`db/`、`pnpm test:db`）・移行（`migrations/`）の4種。差し替え用の `Fixed*` / `InMemory*` は `test/support/` |
@@ -80,7 +81,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 識別子ではない。
 
 **移行の途中である。** `apps/api/src` と `apps/api/test` と `.claude/hooks/guard.mjs` は済んだ。
-`apps/web`（37件）にはまだ日本語のローカル名が残る（backlog B-30c）。
+`apps/web`（39件）にはまだ日本語のローカル名が残る（backlog B-30c）。
 **1ファイルの中で流儀を混ぜない** — 触るファイルは、そのファイルごと英語に揃えるか、
 そのファイルの既存の流儀に合わせるかのどちらかにする。
 
@@ -131,7 +132,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 - **ユースケースの引数と戻り値にフレームワーク由来の型を入れない。** `Request` / `Response` / `Context` が1つでも現れたら、その層は Web に固定される（ADR-003）。DTO だけを受け渡す。
 - **`new MealRepositoryImpl()` を書いてよいのは `apps/api/src/main.ts` だけ。** 他所で実装クラスを直接生成しない。
 - **実装クラスは `<interface 名>Impl` と名づける。** `Db` / `Supabase` / `Drizzle` の接頭辞を付けない — 手段を名前に焼き付けると、差し替えるために interface を置いた意味が薄れる（ADR-029）。
-- **ドメイン層に LLM・プロンプト・JSON・モデル名・SQL という語を出さない。** 外部との変換は `infrastructure/` の腐敗防止層が担う（ADR-005）。
+- **ドメイン層に LLM・プロンプト・JSON・モデル名・SQL を持ち込まない。** 禁じているのは**手段への依存**であって語そのものではない — 型・識別子・ロジックがそれらを知ってはならない。**設計の意図を記録するコメントに語が現れるのは可**（`pantry/domain/value/Amount.ts` が ADR-010 の理由を写している）。**上の「1. 用語表にない語をコードに書かない」の禁止語とは扱いが違う** — あちらは同義語の混在を断つためにコメントも含めて語そのものを禁じ、`pnpm lint:code` が機械的に検査する。外部との変換は `infrastructure/` の腐敗防止層が担う（ADR-005）。
 - **`householdId` はリポジトリの全メソッドで必須引数。** 世帯をまたぐ取得を型として不可能にする（C-9）。
 - **リポジトリの口が並び順を約束するのは、一部しか返さないときだけ。** 全件返す口は約束しない — 並べ替えはユースケース層の仕事で、画面の要求をリポジトリに焼き付けない（先行 `StockItemRepository.findByHousehold`）。**`limit` で絞る口は約束する** — どの行を取るかが順序で決まるため、順序を約束しない `limit` は意味を持たない（ADR-038）。
 - **api 層は世帯と識別子の型をユースケースから導出し、規則違反は例外の `name` で見分ける**（ADR-032）。
@@ -346,6 +347,8 @@ SUPABASE_ANON_KEY=...     # 同上
 | **anon key** | **公開される前提の鍵。** RLS が守るので、web のバンドルに焼き込まれてよい。web 側は `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` として持つ（**`VITE_` の付いたものはビルド時にバンドルへ入る**）。**`.dev.vars` には足さない** — あちらはサーバ専用である |
 | **`service_role` キー** | **使わない。** RLS を迂回し、Supabase を選んだ理由が消える（ADR-029 結果1） |
 | **LLM の API キー** | **サーバ側だけ。** クライアントに置くと抽出されて無制限に使われる（NFR-10） |
+
+**`apps/web` には鍵でない必須の設定がもう1つある。** `VITE_API_BASE_URL`（api の基点。`https://…` や `http://127.0.0.1:8787`）であり、**既定値を埋め込まない** — 埋め込むと、設定を忘れたビルドが間違った相手を静かに叩く。欠けていれば起動時に `Error` で落ち、message に名前が出る（ADR-048 決定4 / 結果1）。**秘密ではないが、web だけが持つ**（`.dev.vars` はサーバ専用である）。
 
 **Postgres への接続情報はここに置かない。** Hyperdrive の設定（Cloudflare 側）が持ち、`main.ts` は
 `env.HYPERDRIVE.connectionString` を読む（ADR-042 決定2）。binding は `apps/api/wrangler.toml` の

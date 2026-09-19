@@ -428,4 +428,185 @@ describe('composition root main', () => {
       expect(fetchJwks.callCount).toBe(1);
     });
   });
+
+  describe('web からの到達 CORS', () => {
+    // B-22 設計書 規則11〜15。開発の web は :5173 で開く（`vite.config.ts` の `server.port`）。
+    // `127.0.0.1` で開く人が居るため、許可の一覧は2つである（設計書 10章 前提2）。
+    const webOrigin = 'http://localhost:5173';
+    const loopbackWebOrigin = 'http://127.0.0.1:5173';
+    /** 許可の一覧に無い要求元。架空の値である（B-09 設計書 11章と同じ流儀）。 */
+    const unknownOrigin = 'https://akunin.example';
+
+    /** 要求元1つ。単純要求にも preflight にも同じ形で載る。 */
+    function originHeaders(origin: string): Record<string, string> {
+      return { Origin: origin };
+    }
+
+    /**
+     * preflight の要求。**`Authorization` を付けない** — 付けずに通ることが規則14 の本題である。
+     */
+    function preflightRequest(origin: string, extraHeaders: Record<string, string> = {}) {
+      return {
+        method: 'OPTIONS',
+        headers: {
+          ...originHeaders(origin),
+          'Access-Control-Request-Method': 'GET',
+          ...extraHeaders,
+        },
+      };
+    }
+
+    /**
+     * 一覧のヘッダを要素に開く。**並び順は約束の対象ではない**（HTTP はどちらの順でも同じ許可を
+     * 表す）ので、突き合わせる側で揃える。ヘッダの名は大小を区別しないため小文字に落とす。
+     */
+    function headerValues(
+      response: { headers: { get(name: string): string | null } },
+      name: string,
+    ): string[] {
+      const value = response.headers.get(name) ?? '';
+      return value
+        .split(',')
+        .map((each) => each.trim())
+        .filter((each) => each !== '')
+        .sort();
+    }
+
+    it('開発の web の origin からの GET /stock-items には許可の origin をそのまま返す', async () => {
+      // 規則11・12 / FR-04 / ADR-046 結果3: ミドルウェアは経路より前に置き、許可の origin をそのまま返す。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/stock-items', {
+        headers: { ...bearerHeaders('x'), ...originHeaders(webOrigin) },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+    });
+
+    it('127.0.0.1 の origin も許可の一覧に入っている', async () => {
+      // 規則12 / 設計書 10章 前提2: 同じ開発サーバを別の host 名で開く人が居る。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/stock-items', {
+        headers: { ...bearerHeaders('x'), ...originHeaders(loopbackWebOrigin) },
+      });
+
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://127.0.0.1:5173');
+    });
+
+    it('許していない origin には許可の origin を返さない', async () => {
+      // 規則12 / NFR-08 / NFR-09: `*` にも要求元の反射にもしない。許可の一覧は明示である。
+      // 断るのは状態コードではなく**ヘッダを付けないこと**で、塞ぐのはブラウザの側である。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/stock-items', {
+        headers: { ...bearerHeaders('x'), ...originHeaders(unknownOrigin) },
+      });
+
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe(null);
+    });
+
+    it('許可の応答に資格情報の許可を付けない', async () => {
+      // 規則12 / ADR-043: トークンはヘッダで運ぶ。Cookie の経路を作らない。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/stock-items', {
+        headers: { ...bearerHeaders('x'), ...originHeaders(webOrigin) },
+      });
+
+      expect(response.headers.get('Access-Control-Allow-Credentials')).toBe(null);
+    });
+
+    it('アクセストークンを付けない OPTIONS /stock-items は 401 にならず 204 で通る', async () => {
+      // 規則14 / ADR-046 結果3: preflight は認証を要さずに通る。認証にも経路にも届かない。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/stock-items', preflightRequest(webOrigin));
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+    });
+
+    it('preflight が許す method は結線済みの4つである', async () => {
+      // 規則13 / FR-01 / FR-04 / FR-05 / FR-06 / B-09: 画面の有無ではなく結線済みの経路に合わせる。
+      // `HEAD` と `PATCH` は Worker が持たないので、この突き合わせに現れてはいけない。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/stock-items', preflightRequest(webOrigin));
+
+      expect(headerValues(response, 'Access-Control-Allow-Methods')).toEqual([
+        'DELETE',
+        'GET',
+        'POST',
+        'PUT',
+      ]);
+    });
+
+    it('preflight が許すヘッダは Authorization と Content-Type だけで、要求されたヘッダを写さない', async () => {
+      // 規則13 / ADR-043: 許すのは2つだけ。要求されたものを写すと、許可の一覧が要求元の言い値になる。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request(
+        '/stock-items',
+        preflightRequest(webOrigin, { 'Access-Control-Request-Headers': 'x-nazo-header' }),
+      );
+
+      const allowedHeaders = headerValues(response, 'Access-Control-Allow-Headers').map((each) =>
+        each.toLowerCase(),
+      );
+      expect(allowedHeaders).toEqual(['authorization', 'content-type']);
+      expect(allowedHeaders).not.toContain('x-nazo-header');
+    });
+
+    it('アクセストークンの無い GET /stock-items の 401 にも許可の origin が付く', async () => {
+      // 規則14 / ADR-045 / NFR-09: 付かなければ、サーバが断ったことがブラウザでは CORS の失敗に化け、
+      // web の `failed` の理由を誰も読めなくなる。ミドルウェアを経路より前に置くのはこのためである。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/stock-items', { headers: originHeaders(webOrigin) });
+
+      expect(response.status).toBe(401);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'accessToken.missing' });
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+    });
+
+    it('サーバ側の不備による 500 にも許可の origin が付く', async () => {
+      // 規則14 / ADR-045: 500 も断りである。`SUPABASE_URL` が空の環境で 500 になる経路を流用する。
+      const { app } = composedApp({ ...env, SUPABASE_URL: '' });
+
+      const response = await app.request('/stock-items', {
+        headers: {
+          ...bearerHeaders(await accessTokenOf(validClaims())),
+          ...originHeaders(webOrigin),
+        },
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+    });
+
+    it('接頭辞を付けた /api/stock-items には経路を置かない', async () => {
+      // 規則15 / B-09 / ADR-003: 接頭辞は増やさない。Worker の origin は API と `/health` しか出さない。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/api/stock-items', {
+        headers: { ...bearerHeaders('x'), ...originHeaders(webOrigin) },
+      });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('開発の web の origin からの GET /health にも許可の origin が付く', async () => {
+      // 規則11 / ADR-046 結果3: ミドルウェアは `app.use('*', …)` で**すべての経路の前**に立つ。
+      // `/health` も経路の1つであり、その後ろに挿した置き方はここで赤くなる。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/health', { headers: originHeaders(webOrigin) });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+    });
+  });
 });
