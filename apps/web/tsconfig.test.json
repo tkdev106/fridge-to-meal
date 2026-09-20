@@ -9,14 +9,17 @@
   // モジュールとして import するテストが apps/web には無いため。
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2022"],
+    // コンポーネントを描くテストは jsdom の上で動くため DOM の型が要る。
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     // 本体の型は references 経由で入る。テスト自身は実行環境の型を必要としない。
     "types": [],
+    // テストの中で JSX を書く（本体と同じ変換でよい）。
+    "jsx": "react-jsx",
     "rootDir": ".",
     // 型検査だけが目的だが、composite なプロジェクトは emit を止められないため
     // 出力先を分ける。dist-test/ は git 管理外。
     "outDir": "./dist-test"
   },
-  "include": ["test/**/*.ts"],
+  "include": ["test/**/*.ts", "test/**/*.tsx"],
   "references": [{ "path": "./tsconfig.json" }]
 }
