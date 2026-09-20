@@ -105,6 +105,17 @@ module.exports = {
       to: { path: 'node_modules/@supabase/' },
     },
 
+    {
+      name: 'webのテストはtesting-libraryを直接importしない',
+      comment:
+        'コンポーネントを描く道具は apps/web/test/support/dom/ の継ぎ目の背後に閉じる。' +
+        'テストが直に import すると、後始末（cleanup）の登録を忘れた回に前のテストが描いた木が残り、' +
+        '見つかりはするので赤くならず、嘘の緑になる。ADR-052 決定3 を機械的に守る規則である。',
+      severity: 'error',
+      from: { path: '^apps/web/', pathNot: '^apps/web/test/support/dom/' },
+      to: { path: 'node_modules/@testing-library/' },
+    },
+
     // ---- 一般的な健全性 ----
     {
       name: '循環参照を作らない',
