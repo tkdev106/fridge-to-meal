@@ -24,4 +24,8 @@ import { cleanup } from '@testing-library/react';
 // ここで1度だけ登録する（import した時点で、そのテストファイルに効く）。
 afterEach(cleanup);
 
-export { render, screen, within } from '@testing-library/react';
+// **押す手段もここから出す。** 素の `element.click()` は React 19 の更新を `act` の外で
+// 起こし、警告と一緒に「描き直されていない木」をテストに見せる。`fireEvent` は
+// `@testing-library/react` が `act` で包んだものである。
+// **`@testing-library/user-event` は入れない** — 依存の追加は止まる条件である（`CLAUDE.md`）。
+export { fireEvent, render, screen, within } from '@testing-library/react';
