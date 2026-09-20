@@ -20,13 +20,28 @@ const FORBIDDEN_TERMS = [
 ];
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/dist-types/**', '**/node_modules/**', 'tools/**', '**/*.d.ts'] },
+  {
+    ignores: [
+      '**/dist/**',
+      '**/dist-types/**',
+      '**/node_modules/**',
+      'tools/**',
+      '**/*.d.ts',
+      // 並列で走るエージェントが作る git worktree。リポジトリの複製なので、
+      // 検査すると同じ指摘が2度出るうえ、実行時間も倍になる
+      '.claude/worktrees/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       globals: { ...globals.browser, ...globals.node },
+      // 型の解決の起点をこのファイルの場所に固定する。**省略すると、リポジトリの内側に
+      // tsconfig.json を持つ別の木（エージェントの git worktree）があるときに
+      // 「候補が複数ある」として全ファイルが parsing error になる。**
+      parserOptions: { tsconfigRootDir: import.meta.dirname },
     },
     rules: {
       '@typescript-eslint/consistent-type-imports': 'error',
