@@ -99,7 +99,7 @@ describe('下タブの器 TabbedScreen', () => {
   it('最初に選ばれているタブは、色に依らない手がかりで読み取れる', () => {
     renderTabbedScreen();
 
-    // NFR-17 / B-38 設計 6章 規則5・規則1。`aria-selected` は色を使わずに読める。
+    // B-38 設計 6章 規則5・規則1（NFR-17 の構え）。`aria-selected` は色を使わずに読める。
     expect(tabFor('pantry').getAttribute('aria-selected')).toBe('true');
   });
 
