@@ -226,7 +226,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | Workers → Postgres の経路 | **Cloudflare Hyperdrive 経由。** origin は Supabase の直接接続（`db.<ref>.supabase.co:5432`）。Supavisor は使わない。**問い合わせキャッシュは切る** | ADR-042 / ADR-044 |
 | アクセストークンの検証 | **JWKS（ES256）。** 共有秘密は使わない | ADR-043（ADR-031 を置き換え） |
 | LLM | **未決** | ADR-019 |
-| 検証 | Vitest 5 / ESLint 10 + typescript-eslint / dependency-cruiser / Prettier | `docs/testing.md` / `docs/workflow.md` 2章 |
+| 検証 | Vitest 5 / ESLint 10 + typescript-eslint / dependency-cruiser / Prettier。**画面のコンポーネントは jsdom + `@testing-library/react` で描いて観察する**（既定の環境は `node` のまま。要る回だけ `// @vitest-environment jsdom` を宣言する） | `docs/testing.md` / `docs/workflow.md` 2章 / ADR-052 |
 
 実装上の必須事項:
 
@@ -259,6 +259,7 @@ apps/web/                  React + Vite（PWA）— API のクライアント
   src/features/pantry/     画面もコンテキスト単位で切る（PantryList / PantrySections / RemainingDays）
   src/features/meal/
   test/                    画面ロジックの単体テスト
+  test/support/dom/        コンポーネントを描く継ぎ目（ADR-052）。@testing-library/* はここだけが import する
 apps/api/                  Hono on Cloudflare Workers
   src/contexts/meal/       ← コアドメイン
     domain/

@@ -19,6 +19,11 @@
 
 ## 次にやること
 
+- [ ] **B-40** **残りの画面にコンポーネントのテストを置く。** ADR-052 で道具は入り、
+  `PantryList` は描いて確かめている（表示の分岐4件）。**まだ描かれていないのは
+  `StockItemForm` / `SignInForm` / `App`** の3つで、とくに門（`App.tsx`）は
+  セッションの3値の出し分けと在庫の取り直し（B-22 規則10 / B-23 / B-24）という
+  **切り出せない判断**を抱えている。**仮の文言を期待値に書かない**（`docs/testing.md` 4.1）（ADR-052 / `docs/testing.md` 4章）
 - [ ] **B-17** トランザクションの helper（`withHouseholdTransaction`）を
   `contexts/pantry/infrastructure/db/` から **`shared/` 側へ移す**。**2つ目のコンテキストが表を持つ日に着手する** —
   コンテキストをまたぐ import は禁止のため、そのままでは2つ目の実装が写しを作る。
