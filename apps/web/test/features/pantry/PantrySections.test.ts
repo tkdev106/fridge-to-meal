@@ -4,21 +4,21 @@ import type { ExpirySection, PantrySection } from '../../../src/features/pantry/
 import { expirySectionOf, pantrySectionsOf } from '../../../src/features/pantry/PantrySections.js';
 
 /** 本題でないほうを固定する。基準日を動かすテストだけが第2引数を渡す。 */
-const 既定の基準日 = '2026-09-11';
+const DEFAULT_AS_OF = '2026-09-11';
 
 /** 本題でない識別子の採番。識別子で照合するテストは自分で literal を渡す。 */
-let 連番 = 0;
-function 次の識別子() {
-  連番 += 1;
-  return `id-${連番}`;
+let sequence = 0;
+function nextId() {
+  sequence += 1;
+  return `id-${sequence}`;
 }
 
 /** テストの本題でない項目を隠す（`docs/testing.md` 6章）。本題だけが引数に現れる。 */
-function 在庫品(
+function stockItem(
   props: { id?: string; name?: string; expiryDate?: string | null } = {},
 ): StockItemDto {
   return {
-    id: props.id ?? 次の識別子(),
+    id: props.id ?? nextId(),
     name: props.name ?? 'にんじん',
     ingredientId: null,
     amount: null,
@@ -26,24 +26,24 @@ function 在庫品(
   };
 }
 
-function 帯に分ける(在庫品の列: readonly StockItemDto[], 基準日: string = 既定の基準日) {
-  return pantrySectionsOf(在庫品の列, 基準日);
+function sectionsOf(stockItems: readonly StockItemDto[], asOf: string = DEFAULT_AS_OF) {
+  return pantrySectionsOf(stockItems, asOf);
 }
 
 /** 返った帯の並び（規則6）。 */
-function 帯の列(sections: readonly PantrySection[]) {
+function sectionNames(sections: readonly PantrySection[]) {
   return sections.map((section) => section.section);
 }
 
 /** ある帯に入っている在庫品の識別子を、返った順に並べたもの。帯が無ければ空。 */
-function 識別子の列(sections: readonly PantrySection[], 帯: ExpirySection) {
-  const 該当 = sections.find((section) => section.section === 帯);
+function idsOf(sections: readonly PantrySection[], expirySection: ExpirySection) {
+  const found = sections.find((section) => section.section === expirySection);
 
-  return 該当 === undefined ? [] : 該当.stockItems.map((row) => row.stockItem.id);
+  return found === undefined ? [] : found.stockItems.map((row) => row.stockItem.id);
 }
 
 /** 返ったすべての行の残日数を、返った順に並べたもの（FR-11）。 */
-function 残日数の列(sections: readonly PantrySection[]) {
+function remainingDaysList(sections: readonly PantrySection[]) {
   return sections.flatMap((section) => section.stockItems.map((row) => row.remainingDays));
 }
 
@@ -82,64 +82,64 @@ describe('期限の帯 expirySectionOf', () => {
 describe('在庫の帯分け pantrySectionsOf', () => {
   it('在庫品に基準日からの残日数を添えて返す', () => {
     // FR-11 / B-11 設計 5章: 行は在庫品と残日数の組。
-    const sections = 帯に分ける([在庫品({ expiryDate: '2026-09-13' })], '2026-09-11');
+    const sections = sectionsOf([stockItem({ expiryDate: '2026-09-13' })], '2026-09-11');
 
-    expect(残日数の列(sections)).toEqual([2]);
+    expect(remainingDaysList(sections)).toEqual([2]);
   });
 
   it('在庫品を残日数に応じた帯に振り分ける', () => {
     // B-11 設計 規則5 / FR-12。
-    const sections = 帯に分ける([
-      在庫品({ id: '当日', expiryDate: '2026-09-11' }),
-      在庫品({ id: '二日後', expiryDate: '2026-09-13' }),
-      在庫品({ id: '十日後', expiryDate: '2026-09-21' }),
+    const sections = sectionsOf([
+      stockItem({ id: '当日', expiryDate: '2026-09-11' }),
+      stockItem({ id: '二日後', expiryDate: '2026-09-13' }),
+      stockItem({ id: '十日後', expiryDate: '2026-09-21' }),
     ]);
 
     expect({
-      urgent: 識別子の列(sections, 'urgent'),
-      soon: 識別子の列(sections, 'soon'),
-      rest: 識別子の列(sections, 'rest'),
+      urgent: idsOf(sections, 'urgent'),
+      soon: idsOf(sections, 'soon'),
+      rest: idsOf(sections, 'rest'),
     }).toEqual({ urgent: ['当日'], soon: ['二日後'], rest: ['十日後'] });
   });
 
   it('帯は危険・警告・その他の順に返す', () => {
     // B-11 設計 規則6: 帯の順序は固定。渡された順に引きずられない。
-    const sections = 帯に分ける([
-      在庫品({ expiryDate: '2026-09-21' }),
-      在庫品({ expiryDate: '2026-09-13' }),
-      在庫品({ expiryDate: '2026-09-11' }),
+    const sections = sectionsOf([
+      stockItem({ expiryDate: '2026-09-21' }),
+      stockItem({ expiryDate: '2026-09-13' }),
+      stockItem({ expiryDate: '2026-09-11' }),
     ]);
 
-    expect(帯の列(sections)).toEqual(['urgent', 'soon', 'rest']);
+    expect(sectionNames(sections)).toEqual(['urgent', 'soon', 'rest']);
   });
 
   it('該当する在庫品が無い帯は返さない', () => {
     // B-11 設計 規則6: 中身が0件の帯は出さない。
-    const sections = 帯に分ける([
-      在庫品({ expiryDate: '2026-09-11' }),
-      在庫品({ expiryDate: '2026-09-21' }),
+    const sections = sectionsOf([
+      stockItem({ expiryDate: '2026-09-11' }),
+      stockItem({ expiryDate: '2026-09-21' }),
     ]);
 
-    expect(帯の列(sections)).toEqual(['urgent', 'rest']);
+    expect(sectionNames(sections)).toEqual(['urgent', 'rest']);
   });
 
   it('在庫品が0件なら帯を1つも返さない', () => {
     // B-11 設計 規則6・11: 0件のときは登録を促す表示に倒す。
-    expect(帯に分ける([])).toEqual([]);
+    expect(sectionsOf([])).toEqual([]);
   });
 
   it('帯の中は受け取った順をそのまま保ち、並べ替えない', () => {
     // FR-04 / B-11 設計 規則7: 期限の近い順は ListStockItems が既に満たしている。
-    const sections = 帯に分ける([
-      在庫品({ id: 'その他の1件目', expiryDate: '2026-09-25' }),
-      在庫品({ id: '危険の1件目', expiryDate: '2026-09-11' }),
-      在庫品({ id: 'その他の2件目', expiryDate: '2026-09-20' }),
-      在庫品({ id: '危険の2件目', expiryDate: '2026-09-09' }),
+    const sections = sectionsOf([
+      stockItem({ id: 'その他の1件目', expiryDate: '2026-09-25' }),
+      stockItem({ id: '危険の1件目', expiryDate: '2026-09-11' }),
+      stockItem({ id: 'その他の2件目', expiryDate: '2026-09-20' }),
+      stockItem({ id: '危険の2件目', expiryDate: '2026-09-09' }),
     ]);
 
     expect({
-      urgent: 識別子の列(sections, 'urgent'),
-      rest: 識別子の列(sections, 'rest'),
+      urgent: idsOf(sections, 'urgent'),
+      rest: idsOf(sections, 'rest'),
     }).toEqual({
       urgent: ['危険の1件目', '危険の2件目'],
       rest: ['その他の1件目', 'その他の2件目'],
@@ -148,52 +148,52 @@ describe('在庫の帯分け pantrySectionsOf', () => {
 
   it('期限が同じ在庫品どうしも入力の順のまま返す', () => {
     // B-11 設計 規則7: 振り分けは安定である。
-    const sections = 帯に分ける([
-      在庫品({ id: '先に渡したほう', name: 'にんじん', expiryDate: '2026-09-12' }),
-      在庫品({ id: '後に渡したほう', name: 'たまねぎ', expiryDate: '2026-09-12' }),
+    const sections = sectionsOf([
+      stockItem({ id: '先に渡したほう', name: 'にんじん', expiryDate: '2026-09-12' }),
+      stockItem({ id: '後に渡したほう', name: 'たまねぎ', expiryDate: '2026-09-12' }),
     ]);
 
-    expect(識別子の列(sections, 'soon')).toEqual(['先に渡したほう', '後に渡したほう']);
+    expect(idsOf(sections, 'soon')).toEqual(['先に渡したほう', '後に渡したほう']);
   });
 
   it('同じ名称の在庫品を統合せず別々の行として返す', () => {
     // ADR-007 / B-11 設計 規則8: 同じ食材の行が並ぶことがある。
-    const sections = 帯に分ける([
-      在庫品({ id: '当日のほう', name: 'にんじん', expiryDate: '2026-09-11' }),
-      在庫品({ id: '十日後のほう', name: 'にんじん', expiryDate: '2026-09-21' }),
+    const sections = sectionsOf([
+      stockItem({ id: '当日のほう', name: 'にんじん', expiryDate: '2026-09-11' }),
+      stockItem({ id: '十日後のほう', name: 'にんじん', expiryDate: '2026-09-21' }),
     ]);
 
     expect({
-      urgent: 識別子の列(sections, 'urgent'),
-      rest: 識別子の列(sections, 'rest'),
+      urgent: idsOf(sections, 'urgent'),
+      rest: idsOf(sections, 'rest'),
     }).toEqual({ urgent: ['当日のほう'], rest: ['十日後のほう'] });
   });
 
   it('期限が未設定の在庫品は残日数を無しにしてその他の帯に置く', () => {
     // FR-13 / B-11 設計 規則3・5。
-    const sections = 帯に分ける([在庫品({ expiryDate: null })]);
+    const sections = sectionsOf([stockItem({ expiryDate: null })]);
 
-    expect([帯の列(sections), 残日数の列(sections)]).toEqual([['rest'], [null]]);
+    expect([sectionNames(sections), remainingDaysList(sections)]).toEqual([['rest'], [null]]);
   });
 
   it('期限が壊れている在庫品でも例外を投げずその他の帯に置く', () => {
     // B-11 設計 規則4 / 7章: 1件のために一覧が出せなくなるほうが悪い。
-    const sections = 帯に分ける([在庫品({ expiryDate: 'abc' })]);
+    const sections = sectionsOf([stockItem({ expiryDate: 'abc' })]);
 
-    expect([帯の列(sections), 残日数の列(sections)]).toEqual([['rest'], [null]]);
+    expect([sectionNames(sections), remainingDaysList(sections)]).toEqual([['rest'], [null]]);
   });
 
   it('渡された在庫品の配列を書き換えない', () => {
     // B-11 設計 規則7 / B-05 規則7 の先例（ListStockItems）: その場で並べ替えると、
     // 一覧しただけで呼び出し側が持っている並びが変わってしまう。
-    const 在庫品の列 = [
-      在庫品({ id: 'その他の分', expiryDate: '2026-09-25' }),
-      在庫品({ id: '危険の分', expiryDate: '2026-09-11' }),
-      在庫品({ id: '警告の分', expiryDate: '2026-09-13' }),
+    const stockItems = [
+      stockItem({ id: 'その他の分', expiryDate: '2026-09-25' }),
+      stockItem({ id: '危険の分', expiryDate: '2026-09-11' }),
+      stockItem({ id: '警告の分', expiryDate: '2026-09-13' }),
     ];
 
-    帯に分ける(在庫品の列);
+    sectionsOf(stockItems);
 
-    expect(在庫品の列.map((row) => row.id)).toEqual(['その他の分', '危険の分', '警告の分']);
+    expect(stockItems.map((row) => row.id)).toEqual(['その他の分', '危険の分', '警告の分']);
   });
 });

@@ -22,24 +22,24 @@ import { EMPTY_STOCK_ITEM_FORM, registerStockItemInputOf } from './StockItemForm
 import type { RegisterStockItem } from '../../server/StockItemRequests.js';
 
 /** 画面の見出し。仮の文言である。 */
-const 画面の見出し = '食材を追加';
+const HEADING = '食材を追加';
 
 /**
  * 欄の見出し。**分量と期限には必須の印を付けない**（規則11 / FR-13）— 空のまま保存できる。
  * 「（任意）」を見出しに含めるのは `docs/screen-design.md` 6章 のワイヤーどおりで、
  * 任意であることを印の有無ではなく文字で伝えるためである。
  */
-const 欄の見出し: Record<keyof StockItemFormValues, string> = {
+const FIELD_LABELS: Record<keyof StockItemFormValues, string> = {
   name: '食材名',
   amount: '分量（任意）',
   expiryDate: '期限（任意）',
 };
 
 /** 保存の操作の名札。操作は1つで、その振る舞いが「保存してもう1件」である（規則5 / FR-08）。 */
-const 保存の名札 = '保存してもう1件';
+const SAVE_LABEL = '保存してもう1件';
 
 /** 送っている間の名札。受け付けないこと（規則8）を、操作の見た目だけでなく文字でも伝える。 */
-const 送っている間の名札 = '保存しています…';
+const SENDING_LABEL = '保存しています…';
 
 /**
  * 保存できなかったときの案内。**断りの `rule` から選ぶ**（ADR-032 決定3 / B-24）— 選ぶ判断は
@@ -53,7 +53,7 @@ const 送っている間の名札 = '保存しています…';
  * **直せる誤りだけ、どこを直すかを言う。** `unavailable` は原因を断定しない — サーバ側の不備も
  * 通信の失敗もここに落ちており、見分ける材料が無い（`PantryList` の断りと同じ構え）。
  */
-const 保存できなかった案内: Record<RegisterFailureNotice, string> = {
+const NOTICES: Record<RegisterFailureNotice, string> = {
   nameEmpty: '食材名を入れてください。',
   expiryDateInvalid: '期限を確かめてください。',
   unavailable: '保存できませんでした。入力はそのままです。もう一度お試しください。',
@@ -69,69 +69,69 @@ export type StockItemFormProps = {
 
 export function StockItemForm({ onRegister }: StockItemFormProps) {
   const [values, setValues] = useState<StockItemFormValues>(EMPTY_STOCK_ITEM_FORM);
-  const [送っている, set送っている] = useState(false);
-  const [案内, set案内] = useState<RegisterFailureNotice | null>(null);
+  const [sending, setSending] = useState(false);
+  const [notice, setNotice] = useState<RegisterFailureNotice | null>(null);
 
-  const 登録の入力 = registerStockItemInputOf(values);
+  const registerInput = registerStockItemInputOf(values);
 
-  function 欄の書き換え(欄: keyof StockItemFormValues) {
+  function changeField(field: keyof StockItemFormValues) {
     return (event: ChangeEvent<HTMLInputElement>) => {
-      setValues((前の値) => ({ ...前の値, [欄]: event.target.value }));
+      setValues((previous) => ({ ...previous, [field]: event.target.value }));
     };
   }
 
-  async function 保存する(event: FormEvent<HTMLFormElement>) {
+  async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     // 名称から登録の入力が作れないときは保存を効かせない（規則2）。送っている間も同じ（規則8）
     // — 二重に送ると、同名でも統合されない在庫品が2件残る（ADR-007）。
-    if (登録の入力 === null || 送っている) return;
+    if (registerInput === null || sending) return;
 
-    set送っている(true);
-    set案内(null);
+    setSending(true);
+    setNotice(null);
     // **`catch` を置かない。** 口は結末で返し投げない（`server/README.md`）ので、握り潰すと
     // 本当の不具合が案内に化ける。`finally` だけは残す — 投げられた回に操作が戻らなくなるため。
     try {
-      const 選んだ案内 = registerFailureNoticeOf(await onRegister(登録の入力));
-      set案内(選んだ案内);
+      const selectedNotice = registerFailureNoticeOf(await onRegister(registerInput));
+      setNotice(selectedNotice);
 
       // 通ったときだけ3欄を空に戻し、続けてもう1件入れられる状態にする（規則12 / FR-08）。
       // 断られたときは入力を消さない（NFR-15）。自動で送り直さない（ADR-007）。
-      if (選んだ案内 === null) setValues(EMPTY_STOCK_ITEM_FORM);
+      if (selectedNotice === null) setValues(EMPTY_STOCK_ITEM_FORM);
     } finally {
-      set送っている(false);
+      setSending(false);
     }
   }
 
   return (
-    <form onSubmit={保存する}>
-      <h2>{画面の見出し}</h2>
+    <form onSubmit={save}>
+      <h2>{HEADING}</h2>
 
       <label>
-        {欄の見出し.name}
+        {FIELD_LABELS.name}
         {/* 焦点は当てない（規則10 / 10b）。いまは `App.tsx` が一覧の下に並べて置くだけなので、
             焦点を当てると起動した時点で一覧を飛ばして飛んでくる — 起動時に開く画面は未決である
             （`docs/screen-design.md` 論点1）。独立した画面として開ける周で当てる。 */}
-        <input value={values.name} onChange={欄の書き換え('name')} />
+        <input value={values.name} onChange={changeField('name')} />
       </label>
 
       <label>
-        {欄の見出し.amount}
+        {FIELD_LABELS.amount}
         {/* 分量は自由文字列。数値と単位に分けない（ADR-010）。 */}
-        <input value={values.amount} onChange={欄の書き換え('amount')} />
+        <input value={values.amount} onChange={changeField('amount')} />
       </label>
 
       <label>
-        {欄の見出し.expiryDate}
+        {FIELD_LABELS.expiryDate}
         {/* YYYY-MM-DD を返す日付の欄（B-12 設計 10章）。書式の検めは置かない（規則4）。 */}
-        <input type="date" value={values.expiryDate} onChange={欄の書き換え('expiryDate')} />
+        <input type="date" value={values.expiryDate} onChange={changeField('expiryDate')} />
       </label>
 
-      {案内 !== null && <p>{保存できなかった案内[案内]}</p>}
+      {notice !== null && <p>{NOTICES[notice]}</p>}
 
       {/* 保存の操作は画面の下半分に置く（規則10 / NFR-14）。これ1つだけである（規則5）。 */}
-      <button type="submit" disabled={登録の入力 === null || 送っている}>
-        {送っている ? 送っている間の名札 : 保存の名札}
+      <button type="submit" disabled={registerInput === null || sending}>
+        {sending ? SENDING_LABEL : SAVE_LABEL}
       </button>
     </form>
   );

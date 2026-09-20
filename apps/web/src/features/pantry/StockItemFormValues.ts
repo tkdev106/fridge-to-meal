@@ -33,8 +33,8 @@ export const EMPTY_STOCK_ITEM_FORM: StockItemFormValues = {
  * 任意の欄を未設定に倒す（規則3）。空文字だけを `null`（未設定）にし、空白は落とさず
  * そのまま運ぶ（規則4）。contract は省略と `null` を同義と定めている。
  */
-function 未設定に倒す(欄: string): string | null {
-  return 欄 === '' ? null : 欄;
+function toNullWhenEmpty(field: string): string | null {
+  return field === '' ? null : field;
 }
 
 /** 登録の入力を作る。作れない＝保存できないときは null（規則2）。 */
@@ -49,7 +49,7 @@ export function registerStockItemInputOf(
   // 食材の指定は項目ごと持たせない（規則1）。カタログに無い名称でも登録が通る（FR-03）。
   return {
     name: values.name,
-    amount: 未設定に倒す(values.amount),
-    expiryDate: 未設定に倒す(values.expiryDate),
+    amount: toNullWhenEmpty(values.amount),
+    expiryDate: toNullWhenEmpty(values.expiryDate),
   };
 }
