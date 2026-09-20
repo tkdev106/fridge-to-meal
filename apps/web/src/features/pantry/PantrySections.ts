@@ -39,7 +39,7 @@ export function pantrySectionsOf(
   stockItems: readonly StockItemDto[],
   today: string,
 ): readonly PantrySection[] {
-  const 帯ごとの行 = new Map<ExpirySection, ListedStockItem[]>(
+  const rowsBySection = new Map<ExpirySection, ListedStockItem[]>(
     SECTION_ORDER.map((section) => [section, []]),
   );
 
@@ -47,13 +47,13 @@ export function pantrySectionsOf(
   // ListStockItems が既に満たしている。同じ名称の在庫品も統合しない（規則8 / ADR-007）。
   for (const stockItem of stockItems) {
     const remainingDays = remainingDaysOf(stockItem.expiryDate, today);
-    帯ごとの行.get(expirySectionOf(remainingDays))?.push({ stockItem, remainingDays });
+    rowsBySection.get(expirySectionOf(remainingDays))?.push({ stockItem, remainingDays });
   }
 
   // 中身が0件の帯は出さない（規則6）。在庫品が0件なら結果は空になり、画面は
   // 登録を促す表示に倒す（規則11）。
   return SECTION_ORDER.flatMap((section) => {
-    const rows = 帯ごとの行.get(section) ?? [];
+    const rows = rowsBySection.get(section) ?? [];
 
     return rows.length === 0 ? [] : [{ section, stockItems: rows }];
   });

@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { remainingDaysOf, todayOf } from '../../../src/features/pantry/RemainingDays.js';
 
 /** 本題でないほうを固定する。基準日を動かすテストだけが第2引数を渡す。 */
-const 既定の基準日 = '2026-09-11';
+const DEFAULT_AS_OF = '2026-09-11';
 
-function 残日数(期限: string | null, 基準日: string = 既定の基準日) {
-  return remainingDaysOf(期限, 基準日);
+function remainingDays(expiryDate: string | null, asOf: string = DEFAULT_AS_OF) {
+  return remainingDaysOf(expiryDate, asOf);
 }
 
 afterEach(() => {
@@ -15,82 +15,82 @@ afterEach(() => {
 describe('残日数 remainingDaysOf', () => {
   it('期限が基準日の翌日なら残り1日', () => {
     // FR-11: 期限までの残日数を出す（B-11 設計 規則1）。
-    expect(残日数('2026-09-12')).toBe(1);
+    expect(remainingDays('2026-09-12')).toBe(1);
   });
 
   it('期限が基準日と同じなら0', () => {
     // FR-12: 当日は0（B-11 設計 規則2）。
-    expect(残日数('2026-09-11')).toBe(0);
+    expect(remainingDays('2026-09-11')).toBe(0);
   });
 
   it('期限が基準日より前なら負の数', () => {
     // FR-12: 超過は負（B-11 設計 規則2）。
-    expect(残日数('2026-09-10')).toBe(-1);
+    expect(remainingDays('2026-09-10')).toBe(-1);
   });
 
   it('数日先の期限はその日数を返す', () => {
     // FR-11 / B-11 設計 規則1。
-    expect(残日数('2026-09-14')).toBe(3);
+    expect(remainingDays('2026-09-14')).toBe(3);
   });
 
   it('月をまたいでも暦日の差を数える', () => {
     // FR-11 / B-11 設計 規則1: 暦日の差であって、月内の引き算ではない。
-    expect(残日数('2026-10-02', '2026-09-30')).toBe(2);
+    expect(remainingDays('2026-10-02', '2026-09-30')).toBe(2);
   });
 
   it('年をまたいでも暦日の差を数える', () => {
     // FR-11 / B-11 設計 規則1。
-    expect(残日数('2027-01-01', '2026-12-31')).toBe(1);
+    expect(remainingDays('2027-01-01', '2026-12-31')).toBe(1);
   });
 
   it('うるう年の2月末をまたぐとき2月29日を1日として数える', () => {
     // FR-11 / B-11 設計 規則1: 2028 はうるう年。
-    expect(残日数('2028-03-01', '2028-02-28')).toBe(2);
+    expect(remainingDays('2028-03-01', '2028-02-28')).toBe(2);
   });
 
   it('平年の2月末をまたぐとき2月29日は数えない', () => {
     // FR-11 / B-11 設計 規則1: 2027 は平年。
-    expect(残日数('2027-03-01', '2027-02-28')).toBe(1);
+    expect(remainingDays('2027-03-01', '2027-02-28')).toBe(1);
   });
 
   it('期限が未設定なら残日数は無い', () => {
     // FR-13 / B-11 設計 規則3: 未設定は警告の対象外。
-    expect(残日数(null)).toBe(null);
+    expect(remainingDays(null)).toBe(null);
   });
 
   it('暦に無い月の期限は未設定と同じ扱いにする', () => {
     // B-11 設計 規則4 / 7章: 画面は例外を投げない。
-    expect(残日数('2026-13-01')).toBe(null);
+    expect(remainingDays('2026-13-01')).toBe(null);
   });
 
   it('暦に無い日の期限は未設定と同じ扱いにする', () => {
     // B-11 設計 規則4 / 7章。
-    expect(残日数('2026-02-30')).toBe(null);
+    expect(remainingDays('2026-02-30')).toBe(null);
   });
 
   it('ゼロ埋めされていない日付は未設定と同じ扱いにする', () => {
     // B-11 設計 規則4: 受け取るのは YYYY-MM-DD だけ。
-    expect(残日数('2026-9-1')).toBe(null);
+    expect(remainingDays('2026-9-1')).toBe(null);
   });
 
   it('日付でない文字列は未設定と同じ扱いにする', () => {
     // B-11 設計 規則4 / 7章。
-    expect(残日数('abc')).toBe(null);
+    expect(remainingDays('abc')).toBe(null);
   });
 
   it('空文字列の期限は未設定と同じ扱いにする', () => {
     // FR-13 / B-11 設計 規則4。
-    expect(残日数('')).toBe(null);
+    expect(remainingDays('')).toBe(null);
   });
 
   it('前後に空白のある期限は未設定と同じ扱いにする', () => {
     // B-11 設計 規則4: YYYY-MM-DD でない値。api を通った DTO に空白は届かない。
-    expect(残日数(' 2026-09-12 ')).toBe(null);
+    expect(remainingDays(' 2026-09-12 ')).toBe(null);
   });
 
   it('基準日が壊れていても例外を投げず残日数を無しにする', () => {
     // B-11 設計 規則4 の趣旨: 1件のために一覧が出せなくなるほうが悪い。
-    expect(残日数('2026-09-12', 'abc')).toBe(null);
+    expect(remainingDays('2026-09-12', 'abc')).toBe(null);
   });
 
   it('実行時の現在時刻を変えても同じ引数なら同じ残日数を返す', () => {
@@ -98,11 +98,11 @@ describe('残日数 remainingDaysOf', () => {
     vi.useFakeTimers();
 
     vi.setSystemTime(new Date(2020, 0, 1, 0, 0, 0));
-    const 一度目 = 残日数('2026-09-12');
+    const first = remainingDays('2026-09-12');
     vi.setSystemTime(new Date(2030, 5, 15, 23, 30, 0));
-    const 二度目 = 残日数('2026-09-12');
+    const second = remainingDays('2026-09-12');
 
-    expect([一度目, 二度目]).toEqual([1, 1]);
+    expect([first, second]).toEqual([1, 1]);
   });
 });
 

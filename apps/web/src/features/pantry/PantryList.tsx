@@ -26,17 +26,17 @@ import type { DeleteStockItem, StockItemsOutcome } from '../../server/StockItemR
  * 帯の見出し。**見出し自体がテキストの警告**になっていることで、色を使わなくても
  * 期限の近さが読める（NFR-17 / screen-design 5章）。以下すべて仮の文言である。
  */
-const 帯の見出し: Record<ExpirySection, string> = {
+const SECTION_HEADINGS: Record<ExpirySection, string> = {
   urgent: '期限 今日まで',
   soon: '期限が近い',
   rest: 'その他',
 };
 
 /** 期限が未設定のときに残日数の欄へ出す印（FR-13 / screen-design 5章）。 */
-const 残日数なしの印 = '－';
+const NO_REMAINING_DAYS_MARK = '－';
 
 /** 在庫が0件のときの案内。登録の導線そのものは B-12 で置くので、ここは文言だけ。 */
-const 在庫が0件のときの案内 = '冷蔵庫の中身がまだ登録されていません。登録すると、ここに並びます。';
+const EMPTY_NOTICE = '冷蔵庫の中身がまだ登録されていません。登録すると、ここに並びます。';
 
 /**
  * 読み込み中の案内（B-22 設計 7章 / 10章。**暫定**）。
@@ -45,7 +45,7 @@ const 在庫が0件のときの案内 = '冷蔵庫の中身がまだ登録され
  * `docs/screen-design.md` は在庫一覧の読み込み中の見せ方を決めていない（同書 9章の表は
  * オフラインの帯・LLM の縮退・生成の失敗だけ）ため、文言もこの1行も仮である。
  */
-const 読み込み中の案内 = '在庫を読み込んでいます。';
+const LOADING_NOTICE = '在庫を読み込んでいます。';
 
 /**
  * 取れなかったときの断り（B-22 設計 7章 / 10章。**暫定**）。
@@ -56,7 +56,7 @@ const 読み込み中の案内 = '在庫を読み込んでいます。';
  * 選ぶのは登録だけと決まった（`RegisterFailureNotice.ts` / ADR-032 決定3）。一覧が取れない原因は
  * どれも利用者の入力では直せず、言い分ける先が無い。
  */
-const 取れなかったときの断り = '在庫を読み込めませんでした。';
+const LOAD_FAILURE_NOTICE = '在庫を読み込めませんでした。';
 
 /**
  * 消せなかったときの断り（FR-06 / B-23。**暫定**）。**断りの種類から選ぶ**
@@ -67,7 +67,7 @@ const 取れなかったときの断り = '在庫を読み込めませんでし�
  * 見分ける材料が無い（取れなかったときの断りと同じ構え）。**「すでに消えている」ときは
  * ここへ来ない** — 案内そのものを出さない（ADR-050）。
  */
-const 消せなかった断り: Record<DeleteFailureNotice, string> = {
+const NOTICES: Record<DeleteFailureNotice, string> = {
   unavailable: 'いま消せませんでした。もう一度お試しください。',
 };
 
@@ -75,8 +75,8 @@ const 消せなかった断り: Record<DeleteFailureNotice, string> = {
  * 残日数を読める文にする（NFR-17 / screen-design 9章の「今日」「あと2日」）。
  * 数から文への言い換えだけを行い、どの帯に入るかはここで決めない（規則5 は純粋関数の側）。
  */
-function 残日数の文(remainingDays: number | null): string {
-  if (remainingDays === null) return 残日数なしの印;
+function remainingDaysText(remainingDays: number | null): string {
+  if (remainingDays === null) return NO_REMAINING_DAYS_MARK;
   if (remainingDays === 0) return '今日';
   if (remainingDays < 0) return `${-remainingDays}日過ぎ`;
 
@@ -92,7 +92,7 @@ function 残日数の文(remainingDays: number | null): string {
  */
 function StockItemRow({ row, onSwipe }: { row: ListedStockItem; onSwipe: (id: string) => void }) {
   // 覚えるだけで描き直す必要が無いので state にしない。
-  const 押した点 = useRef<SwipePoint | null>(null);
+  const pressedPoint = useRef<SwipePoint | null>(null);
 
   return (
     <li
@@ -100,28 +100,31 @@ function StockItemRow({ row, onSwipe }: { row: ListedStockItem; onSwipe: (id: st
       // 送りとして browser に取られ、離上が届かないことがある。
       style={{ touchAction: 'pan-y' }}
       onPointerDown={(event) => {
-        押した点.current = { x: event.clientX, y: event.clientY };
+        pressedPoint.current = { x: event.clientX, y: event.clientY };
         // 行の外で指を離しても離上がこの行に届くようにする。届かないと、押した点が
         // 残ったまま次の操作と混ざる。
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
       onPointerUp={(event) => {
-        const 始点 = 押した点.current;
-        押した点.current = null;
+        const startPoint = pressedPoint.current;
+        pressedPoint.current = null;
 
-        if (始点 !== null && isDeleteSwipe(始点, { x: event.clientX, y: event.clientY })) {
+        if (
+          startPoint !== null &&
+          isDeleteSwipe(startPoint, { x: event.clientX, y: event.clientY })
+        ) {
           onSwipe(row.stockItem.id);
         }
       }}
       // 送りに取られた・指が外れたなどで離上が来ない回は、押した点を捨てる。
       onPointerCancel={() => {
-        押した点.current = null;
+        pressedPoint.current = null;
       }}
     >
       <span>{row.stockItem.name}</span>
       {row.stockItem.amount !== null && <span>{row.stockItem.amount}</span>}
       {/* 期限の表現は色に頼らず、必ずテキストを出す（NFR-17）。 */}
-      <span>{残日数の文(row.remainingDays)}</span>
+      <span>{remainingDaysText(row.remainingDays)}</span>
     </li>
   );
 }
@@ -148,17 +151,17 @@ export type PantryListProps = {
 };
 
 export function PantryList({ stockItems, today, onDelete }: PantryListProps) {
-  const [案内, set案内] = useState<DeleteFailureNotice | null>(null);
+  const [notice, setNotice] = useState<DeleteFailureNotice | null>(null);
   // 送っている間は次のスワイプを受け取らない。描き直す必要が無いので state にしない。
-  const 消している = useRef(false);
+  const deleting = useRef(false);
 
-  function 消す(id: string) {
+  function deleteRow(id: string) {
     // 二重に送っても2度目は 404 になり、それを「すでに消えている」と読む（ADR-050）ので
     // 害は無いが、往復を1つ無駄にする。
-    if (消している.current) return;
+    if (deleting.current) return;
 
-    消している.current = true;
-    set案内(null);
+    deleting.current = true;
+    setNotice(null);
 
     // **`catch` を置かない。** 口は結末で返し投げない（`server/README.md`）ので、握り潰すと
     // 本当の不具合が案内に化ける。`finally` だけは残す — 投げられた回に操作が戻らなくなるため。
@@ -166,32 +169,32 @@ export function PantryList({ stockItems, today, onDelete }: PantryListProps) {
       try {
         // 消えたと読めた回は案内を出さない（`DeleteFailureNotice.ts`）。一覧は
         // `App.tsx` が同じ読みで取り直すので、ここで列から抜かない（B-22 設計 規則3）。
-        set案内(deleteFailureNoticeOf(await onDelete(id)));
+        setNotice(deleteFailureNoticeOf(await onDelete(id)));
       } finally {
-        消している.current = false;
+        deleting.current = false;
       }
     })();
   }
 
   // 出し分けだけを行い、計算を持たない（B-22 設計 8章末尾 / B-11 設計 規則7）。
-  if (stockItems.outcome === 'loading') return <p>{読み込み中の案内}</p>;
-  if (stockItems.outcome === 'failed') return <p>{取れなかったときの断り}</p>;
+  if (stockItems.outcome === 'loading') return <p>{LOADING_NOTICE}</p>;
+  if (stockItems.outcome === 'failed') return <p>{LOAD_FAILURE_NOTICE}</p>;
 
   const sections = pantrySectionsOf(stockItems.stockItems, today);
 
   // 在庫品が0件なら帯を1つも出さない（規則11）。
-  if (sections.length === 0) return <p>{在庫が0件のときの案内}</p>;
+  if (sections.length === 0) return <p>{EMPTY_NOTICE}</p>;
 
   return (
     <div>
-      {案内 !== null && <p>{消せなかった断り[案内]}</p>}
+      {notice !== null && <p>{NOTICES[notice]}</p>}
 
       {sections.map((section) => (
         <section key={section.section}>
-          <h2>{帯の見出し[section.section]}</h2>
+          <h2>{SECTION_HEADINGS[section.section]}</h2>
           <ul>
             {section.stockItems.map((row) => (
-              <StockItemRow key={row.stockItem.id} row={row} onSwipe={消す} />
+              <StockItemRow key={row.stockItem.id} row={row} onSwipe={deleteRow} />
             ))}
           </ul>
         </section>

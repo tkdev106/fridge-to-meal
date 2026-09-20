@@ -82,10 +82,9 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 **テストの `describe` は対象、`it` は振る舞いを日本語の文**で書く（`docs/testing.md` 6章）— 文字列であって
 識別子ではない。
 
-**移行の途中である。** `apps/api/src` と `apps/api/test` と `.claude/hooks/guard.mjs` は済んだ。
-`apps/web`（45件）にはまだ日本語のローカル名が残る（backlog B-30c）。
-**1ファイルの中で流儀を混ぜない** — 触るファイルは、そのファイルごと英語に揃えるか、
-そのファイルの既存の流儀に合わせるかのどちらかにする。
+**移行は済んだ**（B-30a〜d）。`apps/api/src` / `apps/api/test` / `.claude/hooks/` / `apps/web` の
+どこにも日本語の識別子は残っていない。**新しく書くコードもこの流儀に揃える** —
+`packages/contract` と `tools/` はもともと英語だけである。
 
 ---
 
