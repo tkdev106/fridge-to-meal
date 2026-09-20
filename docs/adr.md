@@ -809,7 +809,7 @@ flowchart TD
 
 ---
 
-### ADR-048　web から `apps/api` への到達を別 origin ＋ CORS の明示の許可一覧とし、経路の接頭辞を置かない　`提案`
+### ADR-048　web から `apps/api` への到達を別 origin ＋ CORS の明示の許可一覧とし、経路の接頭辞を置かない　`承認`
 
 - **状況** — **B-22 が `Authorization` を付けた瞬間に、web から api への要求は単純要求でなくなる。** ADR-043 がアクセストークンの検証を JWKS に定め、B-08 が api 層でそれを要求するため、在庫の取得には `Authorization: Bearer <token>` が要る。このヘッダは CORS の安全なヘッダの一覧に無いので、ブラウザは本要求の前に `OPTIONS` の事前確認を送る。**許可が返らなければ在庫は1件も画面に届かない。**
 
