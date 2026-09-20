@@ -13,3 +13,6 @@ tools/
 
 # drizzle-kit の生成物。整形すると生成のたびに差分が出る
 supabase/migrations/meta/
+
+# エージェントの git worktree（.gitignore と対。リポジトリの複製なので整形の対象にしない）
+.claude/worktrees/
