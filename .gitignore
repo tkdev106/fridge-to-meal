@@ -20,3 +20,6 @@ z-ai/
 
 # 個人ごとの Claude Code 設定。共有するのは .claude/settings.json だけ
 .claude/settings.local.json
+
+# 並列で走るエージェントが作る git worktree。リポジトリの複製そのものなのでコミットしない
+.claude/worktrees/
