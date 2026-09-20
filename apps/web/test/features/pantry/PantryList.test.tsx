@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { StockItemDto } from '@fridge-to-meal/contract';
-import { render, screen } from '../../support/dom/renderComponent.js';
+import { render, screen, within } from '../../support/dom/renderComponent.js';
 import { PantryList } from '../../../src/features/pantry/PantryList.js';
 
 const TODAY = '2026-09-20';
@@ -25,8 +25,16 @@ function stockItem(overrides: Partial<StockItemDto> & { id: string; name: string
   return { ingredientId: null, amount: null, expiryDate: null, ...overrides };
 }
 
+/** 並びを位置で見るための取り出し。件数は呼ぶ側が先に確かめている。 */
+function rowAt(rows: readonly HTMLElement[], index: number): HTMLElement {
+  const row = rows[index];
+  if (row === undefined) throw new Error(`${index} 番目の行が無い`);
+
+  return row;
+}
+
 describe('在庫一覧 PantryList', () => {
-  it('取れた在庫品を、期限の帯ごとに分けて渡された順に並べる', () => {
+  it('取れた在庫品を、渡された順に並べる', () => {
     render(
       <PantryList
         today={TODAY}
@@ -42,17 +50,42 @@ describe('在庫一覧 PantryList', () => {
       />,
     );
 
-    // 期限の近い順（FR-04）に3つの帯へ1件ずつ入る（FR-12 / B-11）。**帯の見出しの文言では
-    // なく数で見る** — 見出しは仮の文言である。
-    expect(screen.getAllByRole('heading')).toHaveLength(3);
+    // 並びはサーバが決めた順のまま（FR-04 / B-22 設計 規則3）。
+    //
+    // **当てるのはテストが渡した名称と分量だけである。** 行には残日数の言い換え（`今日` /
+    // `あと2日` / `－`）も出ているが、それは画面が持つ**仮の文言**であり（`PantryList.tsx` の
+    // `remainingDaysText` / `NO_REMAINING_DAYS_MARK`、`docs/screen-design.md` 論点3）、
+    // 期待値に留めると**文言を変えただけで赤くなる**（ADR-052 結果2 / `docs/testing.md` 4.1）。
+    // 残日数の言い換えそのものは `RemainingDays.ts` の純粋関数テストの持ち分である。
+    const rows = screen.getAllByRole('listitem');
+    expect(rows).toHaveLength(3);
+    expect(within(rowAt(rows, 0)).queryByText('豚こま肉')).not.toBeNull();
+    expect(within(rowAt(rows, 0)).queryByText('300g')).not.toBeNull();
+    expect(within(rowAt(rows, 1)).queryByText('白菜')).not.toBeNull();
+    expect(within(rowAt(rows, 2)).queryByText('にんじん')).not.toBeNull();
+    expect(within(rowAt(rows, 2)).queryByText('2本')).not.toBeNull();
+  });
 
-    // 並びはサーバが決めた順のまま（B-22 設計 規則3）。名称はこちらが渡したデータなので、
-    // 文言の未確定に引きずられない。
-    expect(screen.getAllByRole('listitem').map((row) => row.textContent)).toEqual([
-      '豚こま肉300g今日',
-      '白菜あと2日',
-      'にんじん2本－',
-    ]);
+  it('帯1つにつき見出しを1つ描く', () => {
+    render(
+      <PantryList
+        today={TODAY}
+        onDelete={neverDelete}
+        stockItems={{
+          outcome: 'loaded',
+          stockItems: [
+            stockItem({ id: '1', name: '豚こま肉', expiryDate: '2026-09-20' }),
+            stockItem({ id: '2', name: '白菜', expiryDate: '2026-09-22' }),
+            stockItem({ id: '3', name: 'にんじん' }),
+          ],
+        }}
+      />,
+    );
+
+    // 3件が3つの帯へ1件ずつ入る（FR-12 / B-11 設計 規則6）。**どう振り分けるかは
+    // `PantrySections.ts` の持ち分**で、ここで確かめるのは「帯の数だけ見出しが出ること」である。
+    // **見出しの文言は見ない** — 仮である（`docs/screen-design.md` 論点3）。
+    expect(screen.getAllByRole('heading')).toHaveLength(3);
   });
 
   it('在庫が0件なら帯も行も出さない', () => {

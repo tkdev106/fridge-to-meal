@@ -25,4 +25,3 @@ import { cleanup } from '@testing-library/react';
 afterEach(cleanup);
 
 export { render, screen, within } from '@testing-library/react';
-export { fireEvent } from '@testing-library/react';
