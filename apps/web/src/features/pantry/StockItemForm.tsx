@@ -38,6 +38,12 @@ const FIELD_LABELS: Record<keyof StockItemFormValues, string> = {
 /** 保存の操作の名札。操作は1つで、その振る舞いが「保存してもう1件」である（規則5 / FR-08）。 */
 const SAVE_LABEL = '保存してもう1件';
 
+/**
+ * 保存せずに閉じる操作の名札（B-39 設計 規則7。`docs/screen-design.md` 6章のワイヤーの「←」）。
+ * **仮の文言である**（同書 論点3）— 記号だけでは読み上げに乗らないため、いまは文字を添えてある。
+ */
+const CLOSE_LABEL = '← 戻る';
+
 /** 送っている間の名札。受け付けないこと（規則8）を、操作の見た目だけでなく文字でも伝える。 */
 const SENDING_LABEL = '保存しています…';
 
@@ -65,9 +71,18 @@ export type StockItemFormProps = {
    * 送り先も認証もこの画面は知らない。
    */
   onRegister: RegisterStockItem;
+  /**
+   * 一覧へ戻す（B-39 設計 5章 / 規則7）。**保存せずに閉じる**「←」を押した回に呼ぶ。
+   *
+   * 呼ぶ相手が一覧と登録の出し分けを持っている（`PantryTab`）。この画面は戻った先が何かを
+   * 知らず、閉じたあとに自分が木から外れることも前提にしない。
+   *
+   * **「保存して閉じる」からも呼ぶことになるが、その操作はまだ無い**（規則8〜9 は後続）。
+   */
+  onClose: () => void;
 };
 
-export function StockItemForm({ onRegister }: StockItemFormProps) {
+export function StockItemForm({ onRegister, onClose }: StockItemFormProps) {
   const [values, setValues] = useState<StockItemFormValues>(EMPTY_STOCK_ITEM_FORM);
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<RegisterFailureNotice | null>(null);
@@ -105,13 +120,23 @@ export function StockItemForm({ onRegister }: StockItemFormProps) {
 
   return (
     <form onSubmit={save}>
+      {/* 閉じる操作は見出しの行、つまり**画面のいちばん上**に置く（B-39 設計 規則7 /
+          `docs/screen-design.md` 6章のワイヤー）。**`type="submit"` にしない** — 押した回に
+          保存が走ってしまい、「捨てて戻る」ではなくなる。
+          **確認は出さない**（規則7 / 要件 5.5）。登録し直すコストが低く、削除で確認を出さないのと
+          同じ構えである。**送っている間も押せる** — 送った1件は結末を待たずに届いており、
+          押せなくしても取り消せるわけではない。 */}
+      <button type="button" onClick={onClose}>
+        {CLOSE_LABEL}
+      </button>
+
       <h2>{HEADING}</h2>
 
       <label>
         {FIELD_LABELS.name}
-        {/* 焦点は当てない（規則10 / 10b）。いまは `App.tsx` が一覧の下に並べて置くだけなので、
-            焦点を当てると起動した時点で一覧を飛ばして飛んでくる — 起動時に開く画面は未決である
-            （`docs/screen-design.md` 論点1）。独立した画面として開ける周で当てる。 */}
+        {/* 焦点はまだ当てない（B-12 設計 規則10b / B-39 設計 規則13）。独立した画面として
+            開けるようになった（`PantryTab`）ので当てられる場所には来たが、**2つの保存と焦点は
+            後続の持ち分**である。足すのはそちらの周で、mount のときに当てる。 */}
         <input value={values.name} onChange={changeField('name')} />
       </label>
 
