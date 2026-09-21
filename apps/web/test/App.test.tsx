@@ -100,7 +100,14 @@ function textboxes(): readonly HTMLElement[] {
   return screen.queryAllByRole('textbox');
 }
 
-/** 出ている案内。**数だけを見る**（設計 規則11）。 */
+/**
+ * 出ている案内。**数だけを見る**（設計 規則11）。
+ *
+ * **もろい引き方である。** 画面全体の `paragraph` を数えるため、**器が「選んだタブの中身だけを
+ * 描く」ことに暗に頼っている**（`TabbedScreen.tsx` / B-38 設計 6章 規則6）— 献立タブと履歴タブも
+ * 仮置きの `<p>` を持つので、3つとも描く形に変わると数が狂う。`passwordField` と同じ性質の
+ * もろさなので、崩れた回に理由が読めるようここに書き残す。
+ */
 function notices(): readonly HTMLElement[] {
   return screen.queryAllByRole('paragraph');
 }
@@ -254,7 +261,7 @@ describe('門 App が在庫を取りに行く条件', () => {
     expect(await screen.findByText(carrot.name)).not.toBeNull();
   });
 
-  it('取りに行っている間にサインアウトすると、遅れて届いた在庫品は画面に出ない', async () => {
+  it('取りに行っている最中にサインアウトしても、ログインの画面へ戻る', async () => {
     const { session, requests } = renderApp(
       { initialState: 'signedIn' },
       { list: [{ heldUntilSettled: loaded(carrot) }] },
@@ -263,10 +270,31 @@ describe('門 App が在庫を取りに行く条件', () => {
     emit(session, 'signedOut');
     await settle(requests);
 
-    // B-22 設計 規則10: **効果が解除されたら結果を捨てる** — 捨てないと、サインアウトした
-    // 画面に前の世帯の在庫が現れる。
+    // **この観点が見ているのは出し分けだけである**（設計 規則12）。サインアウトした枝では
+    // 一覧そのものが描かれないため、**`App.tsx` の `active` の守りを外してもここは緑のまま**
+    // になる — 規則10 を判別するのは次の観点のほうである。取り違えないよう書き分ける。
     expect(textboxes()).toHaveLength(1);
     expect(screen.queryByText(carrot.name)).toBeNull();
+  });
+
+  it('遅れて届いた古い取得は、後から取り直した一覧を上書きしない', async () => {
+    const { session, requests } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [{ heldUntilSettled: loaded(carrot) }, loaded(chineseCabbage)] },
+    );
+
+    // 1件目を取りに行ったまま、いったん出て入り直す。入り直した側の取得（台本の2件目）は
+    // 保留が無いので先に届き、**古いほうが後から届く**形になる。
+    emit(session, 'signedOut');
+    emit(session, 'signedIn');
+    await screen.findByText(chineseCabbage.name);
+
+    await settle(requests);
+
+    // B-22 設計 規則10: **効果が解除されたら結果を捨てる。** 捨てないと、解除済みの取得が
+    // 新しい一覧を上書きし、画面が古い在庫に戻る。**`active` の守りを外すとここが落ちる。**
+    expect(screen.queryByText(carrot.name)).toBeNull();
+    expect(screen.queryByText(chineseCabbage.name)).not.toBeNull();
   });
 });
 
