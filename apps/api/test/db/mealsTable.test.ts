@@ -170,7 +170,7 @@ describe('献立の表の作り', () => {
 
   eachChildTable('同じ献立で同じ位置の %s の行を2件は作れない', async (table) => {
     // C-3 / 設計 規則8・9: 位置が集約の中の並びを決める。同じ位置が2件あると
-    // 復元した集約の並びが決まらず、`on conflict do nothing` の当たり先も消える。
+    // 復元した集約の並びが決まらない。
     await expect(
       withMeal(duplicatePositionMealId, async (tx) => {
         await insertChildRow(tx, table, {
