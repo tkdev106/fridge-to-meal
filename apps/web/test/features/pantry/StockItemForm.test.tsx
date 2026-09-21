@@ -23,6 +23,8 @@
 import { describe, expect, it } from 'vitest';
 import type { RegisterStockItemInput } from '@fridge-to-meal/contract';
 import { fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
+import { FixedStockItemRequests } from '../../support/server/FixedStockItemRequests.js';
+import type { FixedStockItemRequestsOptions } from '../../support/server/FixedStockItemRequests.js';
 import { StockItemForm } from '../../../src/features/pantry/StockItemForm.js';
 import type {
   RegisterStockItem,
@@ -80,7 +82,7 @@ function pendingRegister(registrations: RegisterStockItemInput[]): {
 }
 
 function renderForm(onRegister: RegisterStockItem) {
-  render(<StockItemForm onRegister={onRegister} onClose={ignoreClose} />);
+  return render(<StockItemForm onRegister={onRegister} onClose={ignoreClose} />);
 }
 
 /**
@@ -323,5 +325,166 @@ describe('登録の画面 StockItemForm の2つの保存', () => {
 
     // 規則11 / B-12 設計 規則2: 食材名から登録の入力が作れないときは、どちらの保存も効かない。
     expect(registrations).toEqual([]);
+  });
+});
+
+/**
+ * **B-39 より前からあった振る舞い**（B-40 設計 2章 / 6章 規則1〜14 / 7章）。上の suite とは
+ * 1件も重ならない — こちらが観るのは3欄の通り道と、断りの案内の出し方・消え方である。
+ *
+ * 空欄をどう読み替えるかは `StockItemFormValues.test.ts`、断りから案内を**選ぶ判断**は
+ * `RegisterFailureNotice.test.ts` が既に押さえている（設計 規則9）。ここで確かめるのは
+ * **切り出せないもの**だけ、すなわち選ばれた案内が画面にどう現れるかである。
+ *
+ * **案内は文言で観ない**（設計 規則11）。出ていること／消えたことは
+ * `queryAllByRole('paragraph')` の**数**で、断りの別は**2回の描画の文字列が一致しないこと**で
+ * 観る。**文面そのものは期待値に書かない** — 未確定である（`docs/screen-design.md` 論点3）。
+ *
+ * 差し替えは `FixedStockItemRequests` を使う（設計 5章）。上の suite の局所の口と違い、
+ * **結末を順に配れて保留もできる**ため、「断られたあともう一度送る」「次の保存を始める」を
+ * 実時間を待たずに書ける（設計 規則7）。
+ */
+
+function renderFormWith(options: FixedStockItemRequestsOptions) {
+  const requests = new FixedStockItemRequests(options);
+
+  return { requests, rendered: renderForm(requests.registerStockItem) };
+}
+
+/** 出ている案内。**数だけを見る**（設計 規則11）。 */
+function notices(): readonly HTMLElement[] {
+  return screen.queryAllByRole('paragraph');
+}
+
+/**
+ * 出ている案内の文字列。**期待値に書くためではなく、2回の描画を突き合わせるためだけに読む**
+ * （設計 規則11）。同時に出る案内は1つまでである。
+ */
+function soleNoticeText(): string {
+  const [notice, ...rest] = notices();
+  if (notice === undefined || rest.length > 0) {
+    throw new Error('案内が1つだけ出ている状態ではない');
+  }
+
+  return notice.textContent ?? '';
+}
+
+/** 案内が届くまで待つ。**待つ条件に仮の文言を使わない**（設計 規則7・11）。 */
+async function waitForSoleNotice(): Promise<string> {
+  await waitFor(() => {
+    expect(notices()).toHaveLength(1);
+  });
+
+  return soleNoticeText();
+}
+
+describe('登録の画面 StockItemForm の3欄と案内', () => {
+  it('分量と期限を打たずに保存すると、どちらも未設定として登録の口へ届く', () => {
+    const { requests } = renderFormWith({ register: [{ outcome: 'registered' }] });
+
+    fireEvent.change(ingredientNameField(), { target: { value: 'にんじん' } });
+    fireEvent.click(saveAndStay());
+
+    // FR-13 / FR-01 / B-12 設計 規則3: 任意の2欄は空のまま保存でき、**空文字ではなく未設定**
+    // として届く（contract は省略と `null` を同義と定めている）。
+    expect(requests.registeredInputs).toEqual([
+      { name: 'にんじん', amount: null, expiryDate: null },
+    ]);
+  });
+
+  it('登録が断られると案内が1つ出る', async () => {
+    const { requests } = renderFormWith({
+      register: [{ outcome: 'rejected', rule: 'expiryDate.format' }],
+    });
+
+    fillThreeFields();
+
+    // 押す前には案内が出ていない（出ていたら「断りで出た」と読めない）。
+    expect(notices()).toHaveLength(0);
+
+    fireEvent.click(saveAndStay());
+
+    // ADR-032 決定3 / B-24: 断りは案内1つで伝える。**文面は見ない**（未確定である）。
+    await waitForSoleNotice();
+    expect(requests.registeredInputs).toHaveLength(1);
+  });
+
+  it('断りの理由が違えば、出る案内も違う', async () => {
+    const nameEmpty = renderFormWith({
+      register: [{ outcome: 'rejected', rule: 'name.empty' }],
+    });
+
+    fillThreeFields();
+    fireEvent.click(saveAndStay());
+    const nameEmptyNotice = await waitForSoleNotice();
+    nameEmpty.rendered.unmount();
+
+    renderFormWith({ register: [{ outcome: 'rejected', rule: 'expiryDate.format' }] });
+
+    fillThreeFields();
+    fireEvent.click(saveAndStay());
+    const expiryDateNotice = await waitForSoleNotice();
+
+    // ADR-032 決定3 / 設計 規則11: **どこを直せばよいかが読めること**を、2回の描画の文字列が
+    // 一致しないことで観る。**文面そのものは期待値に書かない。**
+    expect(expiryDateNotice).not.toBe(nameEmptyNotice);
+  });
+
+  it('登録が通った回は案内を出さない', async () => {
+    const { requests } = renderFormWith({ register: [{ outcome: 'registered' }] });
+
+    fillThreeFields();
+    fireEvent.click(saveAndStay());
+
+    // 結末が届いたことは**テストが打った値の記録**で待つ（設計 規則7）。
+    await waitFor(() => {
+      expect(requests.registeredInputs).toHaveLength(1);
+    });
+
+    // ADR-032 決定3: 通った回に案内は要らない（`registerFailureNoticeOf` が `null` を返す）。
+    expect(notices()).toHaveLength(0);
+  });
+
+  it('次の保存を始めると、前に出ていた案内が消える', async () => {
+    const { requests } = renderFormWith({
+      register: [
+        { outcome: 'rejected', rule: 'expiryDate.format' },
+        { heldUntilSettled: { outcome: 'registered' } },
+      ],
+    });
+
+    fillThreeFields();
+    fireEvent.click(saveAndStay());
+    await waitForSoleNotice();
+
+    fireEvent.click(saveAndStay());
+
+    // 設計 規則11 / B-12 設計 規則8: 新しい保存を始めたら前の案内を消す。**同時に出る案内は
+    // 1つまでである**ため、古い断りが残っていると、いまの結末がどれか読めなくなる。
+    expect(notices()).toHaveLength(0);
+
+    // 保留を解いてから終える — 届いた更新を `act` の中で起こすためである。
+    requests.settle();
+    await waitFor(() => {
+      expect(screen.queryByDisplayValue('にんじん')).toBeNull();
+    });
+  });
+
+  it('断られたあと、もう一度保存を押すと2件目が登録の口へ届く', async () => {
+    const { requests } = renderFormWith({
+      register: [{ outcome: 'rejected', rule: 'expiryDate.format' }, { outcome: 'registered' }],
+    });
+
+    fillThreeFields();
+    fireEvent.click(saveAndStay());
+    await waitForSoleNotice();
+
+    fireEvent.click(saveAndStay());
+
+    // ADR-007 / NFR-07 の構え / NFR-15: 自動で送り直さない代わりに、**入力を残したまま
+    // 利用者の操作でいつでも送り直せる。**
+    await waitFor(() => {
+      expect(requests.registeredInputs).toHaveLength(2);
+    });
   });
 });
