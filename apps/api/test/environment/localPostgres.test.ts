@@ -20,8 +20,9 @@ import { inspectMigrationSql } from '../support/migrations/InspectMigrationSql.j
  */
 const excludePatterns = vitestConfig.test?.exclude ?? [];
 
+// 表の一覧そのものが「表を作っているか」を表す（B-44 設計 5章・規則13）。
 const tableCreatingFiles = migrationSqlFiles.filter(
-  ([, sql]) => inspectMigrationSql(sql).createsTable,
+  ([, sql]) => inspectMigrationSql(sql).tables.length > 0,
 );
 
 const eachFile = it.each(tableCreatingFiles);

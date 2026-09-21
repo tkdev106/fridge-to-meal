@@ -29,8 +29,9 @@ pnpm --filter @fridge-to-meal/api db:generate --name create_stock_items
 | (c) | 4つのポリシー（select / insert / update / delete）。`to authenticated`、述語は `household_id = (select auth.uid())` |
 | (d) | `revoke all ... from anon` と `grant select, insert, update, delete ... to authenticated` |
 
-**足し忘れは `pnpm test` が止める** — `apps/api/test/migrations/stockItemsMigration.test.ts` が、
-`create table` を含むファイルに4点が同居していることを見る。**コメントに書いただけでは通らない。**
+**足し忘れは `pnpm test` が止める** — `apps/api/test/migrations/tableMigrations.test.ts` が、
+表を作るファイルに4点が同居していることを、**そのファイルが作る表ごとに**見る（B-44 設計 規則13）。
+**コメントに書いただけでは通らない。**
 
 ## RLS を書くときに落とさないこと
 

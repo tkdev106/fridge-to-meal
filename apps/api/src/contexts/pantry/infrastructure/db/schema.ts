@@ -7,7 +7,7 @@ import { sql } from 'drizzle-orm';
  *
  * **生成物には RLS の4点を手で足す**（有効化・強制・4ポリシー・権限）。落とすと、
  * 表だけが RLS 無しで実在する状態が生まれる。手順は `supabase/migrations/README.md`、
- * 落ちないことの守りは `apps/api/test/migrations/stockItemsMigration.test.ts`。
+ * 落ちないことの守りは `apps/api/test/migrations/tableMigrations.test.ts`（表ごとに見る。B-44 設計 規則13）。
  *
  * **ここは `drizzle-orm` 以外を import しない。** ドメインの型を持ち込まず、ドメインへ
  * 渡しもしない。行とドメインの変換は `StockItemRepositoryImpl` が担う（ADR-002）。
