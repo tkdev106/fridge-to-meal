@@ -116,7 +116,8 @@ export function StockItemForm({ onRegister, onClose }: StockItemFormProps) {
 
   const registerInput = registerStockItemInputOf(values);
   const sending = sendingFor !== null;
-  // 「←」はここに入れない — 保存の2つだけが効かなくなる（規則11 / 下の閉じる操作の注記）。
+  // 保存の2つに当てる条件。**「←」には `sending` だけが当たる**（下の閉じる操作の注記）—
+  // 食材名が空でも「捨てて戻る」は効かねばならないので、`registerInput === null` は含めない。
   const saveDisabled = registerInput === null || sending;
 
   function changeField(field: keyof StockItemFormValues) {
@@ -170,9 +171,12 @@ export function StockItemForm({ onRegister, onClose }: StockItemFormProps) {
           `docs/screen-design.md` 6章のワイヤー）。**`type="submit"` にしない** — 押した回に
           保存が走ってしまい、「捨てて戻る」ではなくなる。
           **確認は出さない**（規則7 / 要件 5.5）。登録し直すコストが低く、削除で確認を出さないのと
-          同じ構えである。**送っている間も押せる** — 送った1件は結末を待たずに届いており、
-          押せなくしても取り消せるわけではない。 */}
-      <button type="button" onClick={onClose}>
+          同じ構えである。
+          **送っている間は押せない**（規則10 / 規則11）。「送った1件はもう届いているので、閉じるのを
+          止めても取り消せない」は**通った回にしか成り立たない** — 断られた回と失敗した回は、
+          結末が届く前に閉じると**案内が出ないまま画面が消え、打った入力も捨てられる。**
+          利用者は保存できたと思い込む。規則10 が守ろうとしているものが、この経路だけ抜ける。 */}
+      <button type="button" disabled={sending} onClick={onClose}>
         {CLOSE_LABEL}
       </button>
 

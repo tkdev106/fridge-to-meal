@@ -385,6 +385,38 @@ describe('在庫タブの中身と2つの保存', () => {
     expect(await screen.findByText(chineseCabbage.name)).not.toBeNull();
   });
 
+  it('送っている間は閉じる操作も効かない', async () => {
+    // 結末を保留できる口。押した時点ではまだ返さない。
+    let settle: (outcome: RegisterStockItemOutcome) => void = () => undefined;
+    const pendingRegister: RegisterStockItem = () =>
+      new Promise<RegisterStockItemOutcome>((resolve) => {
+        settle = resolve;
+      });
+
+    render(pantryTab({ stockItems: loaded(chineseCabbage), onRegister: pendingRegister }));
+
+    fireEvent.click(operationAt(0));
+    fillRegisterFields();
+    fireEvent.click(saveAndStay());
+
+    // 送っている間に閉じようとする。`onClose` は onClick で**同期に**呼ばれるので、効いて
+    // しまえばこの時点で一覧が出る。
+    fireEvent.click(operationAt(0));
+
+    // 規則10 / 規則11: **送っている間に閉じられてはいけない。** 閉じると、断りの案内が出ない
+    // まま画面が消え、打った入力も捨てられる — 利用者は保存できたと思い込む。結末が届く前に
+    // 画面を捨てることは、規則10 が守ろうとしているものをこの経路だけ抜けさせる。
+    expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+
+    settle({ outcome: 'failed' });
+
+    // 結末が届いたあとも登録の画面のままである（`saveOperations` が3つを確かめる）。
+    await waitFor(() => {
+      expect(saveOperations()).toHaveLength(2);
+    });
+    expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+  });
+
   it('「保存してもう1件」が通っても一覧へ戻らない', async () => {
     const registrations: RegisterStockItemInput[] = [];
     render(
