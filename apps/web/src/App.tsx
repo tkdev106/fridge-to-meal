@@ -1,6 +1,8 @@
 /**
- * 画面の骨組みはこれから。構造は `docs/screen-design.md` に定めてある。
- * 下タブ3つ（献立 / 在庫 / 履歴）で、起動時にどれを開くかは判断待ち（同書 論点1）。
+ * 画面の骨組み。構造は `docs/screen-design.md` に定めてある。
+ * 下タブ3つ（献立 / 在庫 / 履歴）の器は `navigation/TabbedScreen.tsx` にあり、門は
+ * **3つの中身を組み立てて渡すだけ**である（B-38 設計 10章）。起動時に開くのは在庫タブで
+ * （要件 第7章）、献立を既定にするかは `判断待ち` のまま（同書 論点1）。
  *
  * **文言と配色は決まっていない**（同書 冒頭）。ここに書く日本語も仮である。
  *
@@ -11,11 +13,14 @@
 import { useEffect, useState } from 'react';
 import { SignInForm } from './features/identity/SignInForm.js';
 import { SignOutButton } from './features/identity/SignOutButton.js';
+import { HistoryTab } from './features/meal/HistoryTab.js';
+import { MealsTab } from './features/meal/MealsTab.js';
 import { deleteFailureNoticeOf } from './features/pantry/DeleteFailureNotice.js';
 import { PantryList } from './features/pantry/PantryList.js';
 import type { PantryListState } from './features/pantry/PantryList.js';
 import { StockItemForm } from './features/pantry/StockItemForm.js';
 import { todayOf } from './features/pantry/RemainingDays.js';
+import { TabbedScreen } from './navigation/TabbedScreen.js';
 import type { Session, SessionState } from './session/Session.js';
 import type {
   DeleteStockItem,
@@ -128,15 +133,36 @@ export function App({ session, listStockItems, registerStockItem, deleteStockIte
     );
   }
 
+  // **器を mount するのはこの枝だけである**（B-38 設計 6章 規則9）。サインアウトを挟んで
+  // 入り直すと器ごと作り直され、開くのは既定のタブに戻る（2.3 の `login --> pantry`）。
+  //
+  // **在庫を取りに行く効果は門に残したままである**（同 規則11 / B-22 設計 規則10）。タブを
+  // 移っても上の効果は走り直さず、取れていた在庫も失敗の結末もそのまま保たれる —
+  // 取り直すのは登録が通った回（B-24）と、消えたと読めた回（B-23）だけである。
+  //
   // 在庫はサーバから取った結末をそのまま渡す（B-22）。並べ替えも帯分けも `PantryList` の側の
   // 純粋関数が行う。
-  // 遷移がまだ無いので、登録の画面は一覧の下に並べて置く（B-12 設計 10章）。
-  // ログアウトはさらにその下（規則11。暫定 — 設定画面ができたら移す。ADR-046 結果4）。
+  // 登録の画面を一覧の下に並べて置くのは今までどおり（B-12 設計 10章。独立した画面にするのは B-39）。
+  // ログアウトはさらにその下（暫定 — 設定画面ができたら移す。ADR-046 結果4）。
+  //
+  // 献立タブと履歴タブは**中身が無いまま出す**（同 規則7。feature flag を置かない）。
   return (
     <main>
-      <PantryList stockItems={stockItems} today={todayOf(new Date())} onDelete={deleteAndReload} />
-      <StockItemForm onRegister={registerAndReload} />
-      <SignOutButton onSignOut={() => session.signOut()} />
+      <TabbedScreen
+        meals={<MealsTab />}
+        pantry={
+          <>
+            <PantryList
+              stockItems={stockItems}
+              today={todayOf(new Date())}
+              onDelete={deleteAndReload}
+            />
+            <StockItemForm onRegister={registerAndReload} />
+            <SignOutButton onSignOut={() => session.signOut()} />
+          </>
+        }
+        history={<HistoryTab />}
+      />
     </main>
   );
 }
