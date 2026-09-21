@@ -31,8 +31,6 @@
 | [`docs/workflow.md`](docs/workflow.md) | 開発ワークフロー。ブランチ運用・完了の定義・自律ループ |
 | [`docs/backlog.md`](docs/backlog.md) | 次にやることの一覧。自律ループの入力 |
 
-`docs/html/` に同じ内容の閲覧用 HTML がありますが、**Markdown に追いついていません**（backlog B-18）。**正は Markdown です。**
-
 AI エージェントで作業する場合は [`CLAUDE.md`](CLAUDE.md) を参照してください。
 
 ## 技術スタック

@@ -47,9 +47,6 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | 次に何をやるか（ループの入力になるタスク一覧） | `docs/backlog.md` |
 | 各層の置き場所の意味 | `apps/api/src/README.md` |
 
-`docs/html/` は同じ内容の閲覧用 HTML だが、**Markdown に追いついていない**（backlog B-18）。
-**正は Markdown。HTML だけを直さないこと。HTML を根拠に判断しないこと。**
-
 ---
 
 ## 実装の現在地
