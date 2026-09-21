@@ -86,13 +86,10 @@ function appliedStyleOf(tab: HTMLElement, selected: boolean): Record<string, str
 
 /**
  * 当たっているべき見た目。いったん要素に当てて読み戻し、木の側と同じ正規化を通す。
- *
- * **`document` は `globalThis` 越しに読む。** 裸で書くと、`tsc --build` が `dist-test/` へ
- * 出した `.js` の側で `no-undef` に当たる（先行 `StockItemForm.test.tsx` の `focused`）。
  */
 function expectedStyleOf(selected: boolean): Record<string, string> {
   const expected = tabStyleOf(selected);
-  const scratch = globalThis.document.createElement('button');
+  const scratch = document.createElement('button');
   Object.assign(scratch.style, expected);
 
   return styleValuesOf(scratch.style, Object.keys(expected));

@@ -101,9 +101,8 @@ function operationAt(index: number): HTMLElement {
 /**
  * 食材名の欄。登録の画面の `textbox` の先頭である（期限は `type="date"` で入らない）。
  *
- * **`instanceof HTMLInputElement` で絞らない** — 大域名を実行時に読むと、`tsc --build` が
- * `dist-test/` へ出した `.js` の側で `no-undef` に当たる（あちらには browser の大域が
- * 与えられていない）。役割で引いている以上、入力の欄であることは問い合わせが保証している。
+ * **`instanceof HTMLInputElement` で絞らない** — 役割で引いている以上、入力の欄であることは
+ * 問い合わせの側が保証している。**DOM の形を辿らない**（ADR-052 結果3）。
  */
 function ingredientNameField(): HTMLInputElement {
   const [field] = screen.getAllByRole('textbox');

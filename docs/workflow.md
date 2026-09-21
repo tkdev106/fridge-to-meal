@@ -106,6 +106,14 @@ pnpm test:db
 CI（`.github/workflows/ci.yml`）は PR と `main` への push で両方を走らせる（**別のジョブ**であり、
 `verify` は Docker を要さないまま）。
 
+**新しいビルド出力先（`outDir`）を作ったら、`eslint.config.js` の `ignores` と
+`.dependency-cruiser.cjs` の `exclude` の両方から外すところまでが1組である。** 外さないと
+**`pnpm lint` の対象がビルドの有無で変わる** — `verify` は `lint` → `typecheck` の順に走り、
+`typecheck`（`tsc --build`）が出力をあとから吐くため、clean clone の CI には無く、一度ビルドした
+手元には有る。**同じコードが CI では緑・手元では赤になる**（B-40 の周で実際に起きた。`dist-test/` が
+`ignores` から抜けており、コンパイル後の `.js` に browser の大域が与えられないまま `no-undef` で
+落ちた。B-46 で塞いだ）。
+
 **`pnpm test:db` はローカル Postgres を要する。** Docker が使えるなら `pnpm db:up`、
 使えないなら **`pnpm db:up:native`**（素の PostgreSQL を同じ 55432 に立てる。ADR-030）。
 エージェントのコンテナでは**セッション開始のフックが自動で立てる**ので、そのまま回る。
