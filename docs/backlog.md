@@ -38,20 +38,6 @@
   持つ提案だけを数える**（ADR-049 / NFR-C2）。**C-12（再利用の並びは決定的）と C-7（在庫が
   変わらなければ再生成しない）がこの口の上に乗っている**ので、並びのテストを必ず置く。
   RLS と変異テストの扱いは B-44 と同じ（ADR-036 / ADR-037 / ADR-038 / ADR-049 / C-7 / C-12 / C-14）
-- [ ] **B-46** **`dist-test/` を ESLint の対象から外す。** `eslint.config.js` の `ignores` に
-  `**/dist/**` と `**/dist-types/**` はあるが、**`**/dist-test/**` だけ抜けている**
-  （`apps/api/tsconfig.test.json` と `apps/web/tsconfig.test.json` の `outDir`。git 管理外）。
-  そのため **`pnpm lint` が、ビルド済みかどうかで別のものを検査する** —
-  `verify` は `lint` → `typecheck` の順に走り、`typecheck`（`tsc --build`）が `dist-test/` を
-  吐くので、**clean clone の CI では lint の時点でそのディレクトリが無く、一度ビルドした手元では有る。**
-  **同じコードが CI では緑・手元では赤になる**（B-40 の周で実際に踏んだ — `document` を裸で読んだ
-  コードが PR #56 の CI を通り、次の周の手元で `no-undef` で落ちた）。
-  **コンパイル後の JS を検査しても得るものが無い**（元の `.ts` を検査済み）ので、
-  他の2つと同じように無視するのが筋。**直したら、裸の `document` / `Element` を
-  `globalThis` 越しに読む既存の回避（`StockItemForm.test.tsx` の `focused` /
-  `support/dom/pointerCapture.ts` / `TabbedScreen.test.tsx`）が何のためだったかも
-  doc から辿れるようにしておく** — 規則の理由が消えると次に裸で書かれる
-  （`docs/workflow.md` 2章の「完了の定義」/ ADR-052）
 - [ ] **B-17** トランザクションの helper（`withHouseholdTransaction`）を
   `contexts/pantry/infrastructure/db/` から **`shared/` 側へ移す**。**2つ目のコンテキストが表を持つ日に着手する** —
   コンテキストをまたぐ import は禁止のため、そのままでは2つ目の実装が写しを作る。
