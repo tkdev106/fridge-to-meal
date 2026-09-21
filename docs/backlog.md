@@ -19,28 +19,25 @@
 
 ## 次にやること
 
-- [ ] **B-44** **献立（`Meal`）の永続化。** `contexts/meal/` は domain と usecase が一本通って
-  いるのに `infrastructure/` が空で、`MealRepository` の実装が無い。**LLM プロバイダ（ADR-019）を
-  待っているのは `MealGenerator` だけで、リポジトリの実装は待っていない。** 集約は名称・材料・
-  手順・調理記録を抱えるので、表は `meals` とその子（材料／手順／調理記録）になる。
-  **在庫で通した道をなぞる** — Drizzle の schema、移行 SQL、**表ごとに RLS 4本**、
-  `pnpm test:db` の振る舞いテスト、そして**新しいポリシーは1本ずつ `true` に緩めて
-  落ちることを確かめる**（`docs/testing.md` 4章）。**`householdId` は全メソッドで必須**（C-9）。
-  **`findByHousehold` は全件返す口なので並び順を約束しない**（先行 `StockItemRepository`）。
-  **C-3（献立は生成後に編集できない。追加されるのは調理記録のみ）を表の作りに効かせる。**
-  **これが片付くと B-17 の着手条件（2つ目のコンテキストが表を持つ）が満たされる**
-  （ADR-029 / ADR-036 / ADR-037 / C-3 / C-9 / `docs/domain-model.md`）
-- [ ] **B-45** **提案（`Suggestion`）の永続化。B-44 の後。** `SuggestionRepository` の実装。
+- [ ] **B-45** **提案（`Suggestion`）の永続化。** `SuggestionRepository` の実装。**献立の永続化（B-44）は済んでおり、着手条件は満たされている。**
   集約は提案項目1〜3件と**そのときの在庫スナップショット**（名称・分量・期限の3項目。
   ADR-036 / ADR-037）を抱え、**スナップショットは以後不変**である。口が4つあり、うち
   **`findRecentByHousehold(limit)` は順序を約束する**（ADR-038 — どの行を取るかが順序で決まる。
   同時刻は `SuggestionId` の降順で閉じる）。**`countGeneratedByHouseholdSince` は生成の由来を
   持つ提案だけを数える**（ADR-049 / NFR-C2）。**C-12（再利用の並びは決定的）と C-7（在庫が
   変わらなければ再生成しない）がこの口の上に乗っている**ので、並びのテストを必ず置く。
-  RLS と変異テストの扱いは B-44 と同じ（ADR-036 / ADR-037 / ADR-038 / ADR-049 / C-7 / C-12 / C-14）
+  **RLS と守りの扱いは献立の4表でやった道をなぞる** — Drizzle の schema、移行 SQL、**表ごとに
+  RLS 4本**（述語は `household_id = (select auth.uid())`。親への `exists` を書かない）、
+  `pnpm test:db` の振る舞いテスト、**新しいポリシーは1本ずつ `true` に緩めて落ちることを確かめる**
+  （`docs/testing.md` 4章）。**移行の守りは表ごとに判定する**（ADR-056）ので、1ファイルに複数の表を
+  置いても2表目以降が素通りしない。**`save` が保存済みと中身を読み比べて断るかは、提案では別の話**
+  — 献立は C-3（生成後に編集できない）のために `save.contentMismatch` を置いたが、提案の不変は
+  在庫スナップショットの側にある（ADR-036 / ADR-037 / ADR-038 / ADR-049 / ADR-056 / C-7 / C-12 / C-14）
 - [ ] **B-17** トランザクションの helper（`withHouseholdTransaction`）を
-  `contexts/pantry/infrastructure/db/` から **`shared/` 側へ移す**。**2つ目のコンテキストが表を持つ日に着手する** —
-  コンテキストをまたぐ import は禁止のため、そのままでは2つ目の実装が写しを作る。
+  `contexts/pantry/infrastructure/db/` から **`shared/` 側へ移す**。**着手条件は満たされた** —
+  B-44 で献立が表を持ち、**コンテキストをまたぐ import が禁止であるため
+  `contexts/meal/infrastructure/db/HouseholdTransaction.ts` に「型2つだけ」の写しが実際に置かれている**
+  （`withHouseholdTransaction` の本体＝`set local` の規則は写していない）。**この周でその写しを消す。**
   **移動であって決定の変更ではない**（ADR-029 決定3(a)）
 
 ## 人の操作（ループは着手しない）
