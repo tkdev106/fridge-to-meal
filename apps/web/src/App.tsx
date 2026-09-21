@@ -157,7 +157,10 @@ export function App({ session, listStockItems, registerStockItem, deleteStockIte
               today={todayOf(new Date())}
               onDelete={deleteAndReload}
             />
-            <StockItemForm onRegister={registerAndReload} />
+            {/* 閉じる先はまだ無い（B-12 設計 10章の暫定のまま）。`onClose` が置かれたのは
+                `PantryTab` を組めるようにするためで、**この行は B-39 の結線で消える** —
+                器へ渡す中身が `PantryTab` に替わり、閉じるのはその中の遷移になる。 */}
+            <StockItemForm onRegister={registerAndReload} onClose={() => undefined} />
             <SignOutButton onSignOut={() => session.signOut()} />
           </>
         }

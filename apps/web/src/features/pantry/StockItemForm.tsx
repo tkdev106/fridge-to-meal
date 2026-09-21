@@ -65,6 +65,13 @@ export type StockItemFormProps = {
    * 送り先も認証もこの画面は知らない。
    */
   onRegister: RegisterStockItem;
+  /**
+   * 一覧へ戻す（B-39 設計 5章）。「←」を押した回と、「保存して閉じる」が通った回に呼ぶ。
+   *
+   * **いまはまだ呼ばない。** 閉じる操作と2つ目の保存を足すのは後続であり、この props は
+   * 呼び出し側（`PantryTab`）を組める形にするために先に置いてある。
+   */
+  onClose: () => void;
 };
 
 export function StockItemForm({ onRegister }: StockItemFormProps) {
