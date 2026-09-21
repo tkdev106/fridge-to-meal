@@ -54,6 +54,193 @@ export type MigrationInspection = {
   readonly tables: readonly TableInspection[];
 };
 
-export function inspectMigrationSql(_sql: string): MigrationInspection {
-  throw new Error('未実装');
+const OPERATIONS: readonly Operation[] = ['select', 'insert', 'update', 'delete'];
+
+/** 引用符付き・無しのどちらでも書ける識別子。スキーマ修飾は `.` で繋がる。 */
+const IDENTIFIER = String.raw`(?:"[^"]+"|[a-z0-9_$]+)`;
+/** スキーマ修飾ごと1つの塊として捕まえる。落とすのは `unqualify` の仕事。 */
+const TABLE_REFERENCE = String.raw`(${IDENTIFIER}(?:\s*\.\s*${IDENTIFIER})*)`;
+
+/**
+ * SQL コメント（`--` 以降）を落とし、小文字に揃える。
+ *
+ * **コメントを落とすことが規則9b の要**である。落とさないと `force row level security` を
+ * 消したあと「後で足す」とコメントに書くだけで緑に戻り、守りが自分で穴を開ける。
+ * 小文字化は `drizzle-kit` が `CREATE TABLE "stock_items"` と大文字で吐き、手書きが
+ * 小文字であるため。どちらでも同じ判定になる。
+ */
+function normalize(sql: string): string {
+  return sql.replace(/--[^\n]*/g, ' ').toLowerCase();
+}
+
+/**
+ * 引用符とスキーマ修飾（`public.`）を落とす（規則14）。落とさないと
+ * `create table public."meals"` と `alter table meals` が別の表になり、**どちらの表も
+ * 4点が欠けたことになる。**
+ */
+function unqualify(tableReference: string): string {
+  const parts = tableReference.replaceAll('"', '').split('.');
+  return (parts[parts.length - 1] ?? '').trim();
+}
+
+/** 文の先頭の語（`create table` / `alter table` …）に続く表の名前。**位置で読む**（規則14）。 */
+function tableNameAfter(statement: string, keyword: RegExp): string | null {
+  const matched = new RegExp(`${keyword.source}\\s+${TABLE_REFERENCE}`).exec(statement);
+  return matched === null ? null : unqualify(matched[1] ?? '');
+}
+
+/** `on` と終端の語（`to` / `from`）に挟まれたカンマ区切りの表の並び（規則14）。 */
+function tableNamesBetween(statement: string, head: RegExp, tail: RegExp): readonly string[] {
+  const matched = new RegExp(
+    `${head.source}\\b([\\s\\S]*?)\\bon\\b([\\s\\S]*?)${tail.source}\\b`,
+  ).exec(statement);
+  if (matched === null) return [];
+
+  return (matched[2] ?? '')
+    .replace(/^\s*table\s+/, '')
+    .split(',')
+    .map((reference) => unqualify(reference))
+    .filter((tableName) => tableName !== '');
+}
+
+function readPolicy(statement: string): PolicyInspection | null {
+  const operation = OPERATIONS.find((candidate) =>
+    new RegExp(`\\bfor\\s+${candidate}\\b`).test(statement),
+  );
+  if (operation === undefined) return null;
+
+  const rolesMatch = /\bto\s+([a-z_]+(?:\s*,\s*[a-z_]+)*)/.exec(statement);
+  return {
+    operation,
+    targetRoles:
+      rolesMatch === null ? [] : (rolesMatch[1] ?? '').split(',').map((role) => role.trim()),
+    hasUsing: /\busing\s*\(/.test(statement),
+    hasWithCheck: /\bwith\s+check\s*\(/.test(statement),
+  };
+}
+
+/** 1つの表について読み取った途中の状態。**表ごとに閉じている**（規則13）。 */
+type TableReading = {
+  enablesRowLevelSecurity: boolean;
+  forcesRowLevelSecurity: boolean;
+  policies: { [K in Operation]: PolicyInspection | null };
+  revokesAllFromAnon: boolean;
+  grantedOperations: Set<Operation>;
+};
+
+function emptyReading(): TableReading {
+  return {
+    enablesRowLevelSecurity: false,
+    forcesRowLevelSecurity: false,
+    policies: { select: null, insert: null, update: null, delete: null },
+    revokesAllFromAnon: false,
+    grantedOperations: new Set<Operation>(),
+  };
+}
+
+/** この表に足りない点の名前。空ならこの表の4点が揃っている。 */
+function missingOf(reading: TableReading, grantedOperations: readonly Operation[]): string[] {
+  const missing: string[] = [];
+
+  if (!reading.enablesRowLevelSecurity) missing.push('enable row level security');
+  if (!reading.forcesRowLevelSecurity) missing.push('force row level security');
+  for (const operation of OPERATIONS) {
+    const policy = reading.policies[operation];
+    if (policy === null || !policy.targetRoles.includes('authenticated')) {
+      missing.push(`${operation} ポリシー（to authenticated）`);
+    }
+  }
+  if (reading.policies.insert !== null && !reading.policies.insert.hasWithCheck) {
+    missing.push('insert ポリシーの with check');
+  }
+  if (reading.policies.update !== null && !reading.policies.update.hasUsing) {
+    missing.push('update ポリシーの using');
+  }
+  if (reading.policies.update !== null && !reading.policies.update.hasWithCheck) {
+    missing.push('update ポリシーの with check');
+  }
+  if (!reading.revokesAllFromAnon) missing.push('revoke all ... from anon');
+  if (grantedOperations.length !== OPERATIONS.length) missing.push('grant ... to authenticated');
+
+  return missing;
+}
+
+export function inspectMigrationSql(sql: string): MigrationInspection {
+  const statements = normalize(sql).split(';');
+
+  // **表を作った文だけが表を生む**（5章）。ポリシーや grant が先に現れても、
+  // その表をこのファイルが作っていないなら守る対象ではない。
+  const readings = new Map<string, TableReading>();
+  for (const statement of statements) {
+    const created = tableNameAfter(statement, /\bcreate\s+table(?:\s+if\s+not\s+exists)?/);
+    if (created !== null) readings.set(created, emptyReading());
+  }
+
+  /** 作られた表を名指ししている文だけを数える（規則13）。 */
+  function readingsOf(tableNames: readonly string[]): TableReading[] {
+    return tableNames.flatMap((tableName) => {
+      const reading = readings.get(tableName);
+      return reading === undefined ? [] : [reading];
+    });
+  }
+
+  for (const statement of statements) {
+    const altered = tableNameAfter(statement, /\balter\s+table(?:\s+if\s+exists)?(?:\s+only)?/);
+    for (const reading of readingsOf(altered === null ? [] : [altered])) {
+      if (/\benable\s+row\s+level\s+security\b/.test(statement)) {
+        reading.enablesRowLevelSecurity = true;
+      }
+      if (/\bforce\s+row\s+level\s+security\b/.test(statement)) {
+        reading.forcesRowLevelSecurity = true;
+      }
+    }
+
+    if (/\bcreate\s+policy\b/.test(statement)) {
+      const target = tableNameAfter(
+        statement,
+        new RegExp(`\\bcreate\\s+policy\\s+${IDENTIFIER}\\s+on`),
+      );
+      const policy = readPolicy(statement);
+      for (const reading of readingsOf(target === null ? [] : [target])) {
+        if (policy !== null && reading.policies[policy.operation] === null) {
+          reading.policies[policy.operation] = policy;
+        }
+      }
+    }
+
+    if (/\brevoke\s+all\b/.test(statement) && /\bfrom\s+anon\b/.test(statement)) {
+      for (const reading of readingsOf(tableNamesBetween(statement, /\brevoke/, /\bfrom/))) {
+        reading.revokesAllFromAnon = true;
+      }
+    }
+
+    if (/\bgrant\b/.test(statement) && /\bto\s+authenticated\b/.test(statement)) {
+      const privileges = /\bgrant\b([\s\S]*?)\bon\b/.exec(statement)?.[1] ?? '';
+      for (const reading of readingsOf(tableNamesBetween(statement, /\bgrant/, /\bto/))) {
+        for (const operation of OPERATIONS) {
+          if (new RegExp(`\\b${operation}\\b`).test(privileges)) {
+            reading.grantedOperations.add(operation);
+          }
+        }
+      }
+    }
+  }
+
+  const tables = [...readings].map(([tableName, reading]): TableInspection => {
+    const grantedOperations = OPERATIONS.filter((operation) =>
+      reading.grantedOperations.has(operation),
+    );
+
+    return {
+      tableName,
+      enablesRowLevelSecurity: reading.enablesRowLevelSecurity,
+      forcesRowLevelSecurity: reading.forcesRowLevelSecurity,
+      policies: reading.policies,
+      revokesAllFromAnon: reading.revokesAllFromAnon,
+      operationsGrantedToAuthenticated: grantedOperations,
+      missing: missingOf(reading, grantedOperations),
+    };
+  });
+
+  return { tables };
 }
