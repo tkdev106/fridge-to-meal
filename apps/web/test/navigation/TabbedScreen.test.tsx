@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '../support/dom/renderComponent.js';
 import type { TabId } from '../../src/navigation/Tabs.js';
 import { TAB_ORDER } from '../../src/navigation/Tabs.js';
+import { tabStyleOf } from '../../src/navigation/TabAppearance.js';
 import type { TabbedScreenProps } from '../../src/navigation/TabbedScreen.js';
 import { TabbedScreen } from '../../src/navigation/TabbedScreen.js';
 
@@ -48,6 +49,48 @@ function tabFor(tab: TabId): HTMLElement {
   if (found === undefined) throw new Error(`${tab} のタブが帯に無い`);
 
   return found;
+}
+
+/**
+ * `CSSProperties` のキーを CSS の属性名に直す（`borderTopWidth` → `border-top-width`）。
+ */
+function cssPropertyNameOf(key: string): string {
+  return key.replace(/[A-Z]/g, (upper) => `-${upper.toLowerCase()}`);
+}
+
+/**
+ * 見た目を**同じ正規化を通してから**読み出す（`docs/testing.md` 3章 の「同じ正規化を通った
+ * 者どうしを比べる」— RLS の述語の突き合わせと同じ構え）。
+ *
+ * `CSSProperties` 側は数値でも書けるうえ、ブラウザ（jsdom）は `'currentColor'` のような値を
+ * 書き換えることがある。そこで**期待の側もいったん要素に当ててから読み戻し**、木から読んだ
+ * 値と同じ土俵に乗せる。**具体値はここにも書かない。**
+ *
+ * **読むキーは `tabStyleOf` が返したものすべてである。** 一部の項目だけを突き合わせると、
+ * **戻り値の一部しか当てていない実装でも緑になる**（B-41 設計 6章 規則6 は丸ごと当てることを
+ * 求めている）。
+ */
+function styleValuesOf(
+  source: CSSStyleDeclaration,
+  keys: readonly string[],
+): Record<string, string> {
+  return Object.fromEntries(
+    keys.map((key) => [key, source.getPropertyValue(cssPropertyNameOf(key))]),
+  );
+}
+
+/** 木に当たっている見た目。読むのは `tabStyleOf` が返したキーだけ。 */
+function appliedStyleOf(tab: HTMLElement, selected: boolean): Record<string, string> {
+  return styleValuesOf(tab.style, Object.keys(tabStyleOf(selected)));
+}
+
+/** 当たっているべき見た目。いったん要素に当てて読み戻し、木の側と同じ正規化を通す。 */
+function expectedStyleOf(selected: boolean): Record<string, string> {
+  const expected = tabStyleOf(selected);
+  const scratch = document.createElement('button');
+  Object.assign(scratch.style, expected);
+
+  return styleValuesOf(scratch.style, Object.keys(expected));
 }
 
 describe('下タブの器 TabbedScreen', () => {
@@ -152,5 +195,43 @@ describe('下タブの器 TabbedScreen', () => {
       (panel.compareDocumentPosition(tablist) & panel.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
     expect(tablistFollowsPanel).toBe(true);
+  });
+
+  it('選ばれているタブには、選んでいるときの見た目が当たっている', () => {
+    renderTabbedScreen();
+
+    // B-41 設計 6章 規則6・規則1: 見た目の値は `TabAppearance.ts` にだけ置く。
+    // **突き合わせる相手は `tabStyleOf` の戻り値**であり、太さの具体値は書かない。
+    expect(appliedStyleOf(tabFor('pantry'), true)).toEqual(expectedStyleOf(true));
+  });
+
+  it('選ばれていない2つのタブには、どちらも選んでいないときの見た目が当たっている', () => {
+    renderTabbedScreen();
+
+    // 同 規則6・規則7: 見た目は「選ばれているか」だけで決まり、`TabId` ごとに変わらない。
+    expect(appliedStyleOf(tabFor('meals'), false)).toEqual(expectedStyleOf(false));
+    expect(appliedStyleOf(tabFor('history'), false)).toEqual(expectedStyleOf(false));
+  });
+
+  it('献立タブを選ぶと、色に依らない手がかりが在庫タブから献立タブへ移る', () => {
+    renderTabbedScreen();
+
+    fireEvent.click(tabFor('meals'));
+
+    // 同 規則1・2 の波及。**移ることまでが規則である** — 手がかりが増えるだけでは1つに保てない。
+    expect(appliedStyleOf(tabFor('meals'), true)).toEqual(expectedStyleOf(true));
+    expect(appliedStyleOf(tabFor('pantry'), false)).toEqual(expectedStyleOf(false));
+  });
+
+  it('見た目の手がかりが付いたタブは aria-selected も true である', () => {
+    renderTabbedScreen();
+
+    fireEvent.click(tabFor('meals'));
+
+    // 同 規則5 / B-38 設計 6章 規則5: 見た目の手がかりは `aria-selected` の
+    // **置き換えではなく上乗せ**である。**同じ1つのタブで**両方が立つことを見る。
+    const tab = tabFor('meals');
+    expect(tab.getAttribute('aria-selected')).toBe('true');
+    expect(appliedStyleOf(tab, true)).toEqual(expectedStyleOf(true));
   });
 });
