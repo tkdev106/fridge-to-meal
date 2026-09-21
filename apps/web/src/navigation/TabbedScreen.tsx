@@ -18,6 +18,7 @@ import type { JSX, ReactNode } from 'react';
 import { useState } from 'react';
 import type { TabId } from './Tabs.js';
 import { DEFAULT_TAB, TAB_ORDER } from './Tabs.js';
+import { tabStyleOf } from './TabAppearance.js';
 
 /**
  * タブの帯に出す文言。**すべて仮である**（`docs/screen-design.md` 冒頭・論点3）。
@@ -75,6 +76,10 @@ export function TabbedScreen({ meals, pantry, history }: TabbedScreenProps): JSX
             // 選んでいるタブを**色に依らず**読み取れる形で示す（同 規則5。NFR-17 の構え）。
             aria-selected={tab === selectedTab}
             aria-controls={PANEL_ID}
+            // **色に依らない見た目の手がかりを上乗せする**（B-41 設計 6章 規則5・6）。
+            // `aria-selected` の置き換えではない。**値は `TabAppearance.ts` にだけ置き、
+            // ここに数値も色も書かない** — 戻り値を丸ごと当てる。
+            style={tabStyleOf(tab === selectedTab)}
             // **`tabIndex` を振り分けない。** 選んでいないタブを `-1` にするのは矢印キーで
             // 移れる実装と対になる作法であり、その鍵の扱いをまだ持たない今は、素の button の
             // ままにして Tab キーで3つとも辿れるようにしておく。

@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '../support/dom/renderComponent.js';
 import type { TabId } from '../../src/navigation/Tabs.js';
 import { TAB_ORDER } from '../../src/navigation/Tabs.js';
+import { tabStyleOf } from '../../src/navigation/TabAppearance.js';
 import type { TabbedScreenProps } from '../../src/navigation/TabbedScreen.js';
 import { TabbedScreen } from '../../src/navigation/TabbedScreen.js';
 
@@ -48,6 +49,29 @@ function tabFor(tab: TabId): HTMLElement {
   if (found === undefined) throw new Error(`${tab} のタブが帯に無い`);
 
   return found;
+}
+
+/**
+ * 文字の太さを**同じ形にそろえて**読む。`element.style.fontWeight` は文字列で返るのに対し
+ * `CSSProperties` 側は数値でも書けるため、どちらも文字列にしてから比べる。
+ * **具体値はここにも書かない** — 突き合わせる相手は `tabStyleOf` の戻り値である。
+ */
+function fontWeightOf(tab: HTMLElement): string {
+  return tab.style.fontWeight;
+}
+
+/** 見た目の側の文字の太さ。木から読んだ値と同じ形にそろえる。 */
+function expectedFontWeight(selected: boolean): string {
+  return String(tabStyleOf(selected).fontWeight);
+}
+
+/**
+ * 上辺の線の太さ。**文字の太さだけを見ると、`tabStyleOf` の戻り値の一部しか当てていない
+ * 実装でも緑になる**（B-41 設計 6章 規則6 は丸ごと当てることを求めている）。太さは
+ * jsdom が色のようには書き換えないため、2つ目の突き合わせに使える。**具体値は書かない。**
+ */
+function borderTopWidthOf(tab: HTMLElement): string {
+  return tab.style.borderTopWidth;
 }
 
 describe('下タブの器 TabbedScreen', () => {
@@ -152,5 +176,51 @@ describe('下タブの器 TabbedScreen', () => {
       (panel.compareDocumentPosition(tablist) & panel.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
     expect(tablistFollowsPanel).toBe(true);
+  });
+
+  it('選ばれているタブには、選んでいるときの見た目が当たっている', () => {
+    renderTabbedScreen();
+
+    // B-41 設計 6章 規則6・規則1: 見た目の値は `TabAppearance.ts` にだけ置く。
+    // **突き合わせる相手は `tabStyleOf` の戻り値**であり、太さの具体値は書かない。
+    expect(fontWeightOf(tabFor('pantry'))).toBe(expectedFontWeight(true));
+  });
+
+  it('選ばれているタブには、上辺の線の見た目も当たっている', () => {
+    renderTabbedScreen();
+
+    // 同 規則6: 当てるのは `tabStyleOf` の**戻り値そのもの**であって、その一部ではない。
+    // 文字の太さとは別の項目でもう一度突き合わせ、部分適用が緑にならないようにする。
+    expect(borderTopWidthOf(tabFor('pantry'))).toBe(String(tabStyleOf(true).borderTopWidth));
+  });
+
+  it('選ばれていない2つのタブには、どちらも選んでいないときの見た目が当たっている', () => {
+    renderTabbedScreen();
+
+    // 同 規則6・規則7: 見た目は「選ばれているか」だけで決まり、`TabId` ごとに変わらない。
+    expect(fontWeightOf(tabFor('meals'))).toBe(expectedFontWeight(false));
+    expect(fontWeightOf(tabFor('history'))).toBe(expectedFontWeight(false));
+  });
+
+  it('献立タブを選ぶと、色に依らない手がかりが在庫タブから献立タブへ移る', () => {
+    renderTabbedScreen();
+
+    fireEvent.click(tabFor('meals'));
+
+    // 同 規則1・2 の波及。**移ることまでが規則である** — 手がかりが増えるだけでは1つに保てない。
+    expect(fontWeightOf(tabFor('meals'))).toBe(expectedFontWeight(true));
+    expect(fontWeightOf(tabFor('pantry'))).toBe(expectedFontWeight(false));
+  });
+
+  it('見た目の手がかりが付いたタブは aria-selected も true である', () => {
+    renderTabbedScreen();
+
+    fireEvent.click(tabFor('meals'));
+
+    // 同 規則5 / B-38 設計 6章 規則5: 見た目の手がかりは `aria-selected` の
+    // **置き換えではなく上乗せ**である。**同じ1つのタブで**両方が立つことを見る。
+    const tab = tabFor('meals');
+    expect(tab.getAttribute('aria-selected')).toBe('true');
+    expect(fontWeightOf(tab)).toBe(expectedFontWeight(true));
   });
 });
