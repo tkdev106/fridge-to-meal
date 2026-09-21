@@ -32,4 +32,8 @@ afterEach(cleanup);
 // まだ更新されていない。`waitFor` は `act` の中で待つため、**待っている間に届いた更新まで
 // 画面へ反映される** — 素の `await Promise.resolve()` では警告と一緒に古い木を見せる。
 // **待つ条件に仮の文言を使わない**（`docs/testing.md` 4.1）。テストが渡したデータで書く。
-export { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+// **`act` もここから出す**（B-40）。操作から始まらない更新 — 差し替えたセッションが
+// 状態の変化を配る回（`FixedSession.emit`）と、保留していた結末を解く回（`settle()`）は
+// `fireEvent` を通らないため、包まないと React が「`act` の外の更新」として警告し、
+// テストは描き直される前の木を見る。**本体の振る舞いを変えるものではない。**
+export { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
