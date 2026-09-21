@@ -16,9 +16,8 @@ import { SignOutButton } from './features/identity/SignOutButton.js';
 import { HistoryTab } from './features/meal/HistoryTab.js';
 import { MealsTab } from './features/meal/MealsTab.js';
 import { deleteFailureNoticeOf } from './features/pantry/DeleteFailureNotice.js';
-import { PantryList } from './features/pantry/PantryList.js';
 import type { PantryListState } from './features/pantry/PantryList.js';
-import { StockItemForm } from './features/pantry/StockItemForm.js';
+import { PantryTab } from './features/pantry/PantryTab.js';
 import { todayOf } from './features/pantry/RemainingDays.js';
 import { TabbedScreen } from './navigation/TabbedScreen.js';
 import type { Session, SessionState } from './session/Session.js';
@@ -142,22 +141,28 @@ export function App({ session, listStockItems, registerStockItem, deleteStockIte
   //
   // 在庫はサーバから取った結末をそのまま渡す（B-22）。並べ替えも帯分けも `PantryList` の側の
   // 純粋関数が行う。
-  // 登録の画面を一覧の下に並べて置くのは今までどおり（B-12 設計 10章。独立した画面にするのは B-39）。
-  // ログアウトはさらにその下（暫定 — 設定画面ができたら移す。ADR-046 結果4）。
   //
-  // 献立タブと履歴タブは**中身が無いまま出す**（同 規則7。feature flag を置かない）。
+  // **一覧と登録の出し分けは `PantryTab` が持つ**（B-39 設計 規則1・4）。門は在庫タブの中身を
+  // 1つ渡すだけで、いまどちらの画面が出ているかを知らない — 知ると、上の「在庫を取りに行く
+  // 効果」と画面の遷移が同じ場所に混ざる。**取り直しても登録の画面は閉じない。**
+  //
+  // ログアウトはその下に**暫定のまま**置く（規則16 — 設定画面ができたら移す。ADR-046 結果4・
+  // 結果5）。登録の画面を出している間も下に並ぶが、`PantryTab` に identity を持ち込まないため
+  // ここに残す。
+  //
+  // 献立タブと履歴タブは**中身が無いまま出す**（B-38 設計 規則7。feature flag を置かない）。
   return (
     <main>
       <TabbedScreen
         meals={<MealsTab />}
         pantry={
           <>
-            <PantryList
+            <PantryTab
               stockItems={stockItems}
               today={todayOf(new Date())}
               onDelete={deleteAndReload}
+              onRegister={registerAndReload}
             />
-            <StockItemForm onRegister={registerAndReload} />
             <SignOutButton onSignOut={() => session.signOut()} />
           </>
         }

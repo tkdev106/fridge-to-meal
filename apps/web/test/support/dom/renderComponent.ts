@@ -28,4 +28,8 @@ afterEach(cleanup);
 // 起こし、警告と一緒に「描き直されていない木」をテストに見せる。`fireEvent` は
 // `@testing-library/react` が `act` で包んだものである。
 // **`@testing-library/user-event` は入れない** — 依存の追加は止まる条件である（`CLAUDE.md`）。
-export { fireEvent, render, screen, within } from '@testing-library/react';
+// **待つ手段もここから出す。** 結末が非同期に届く操作（登録を送る等）では、押した直後の木は
+// まだ更新されていない。`waitFor` は `act` の中で待つため、**待っている間に届いた更新まで
+// 画面へ反映される** — 素の `await Promise.resolve()` では警告と一緒に古い木を見せる。
+// **待つ条件に仮の文言を使わない**（`docs/testing.md` 4.1）。テストが渡したデータで書く。
+export { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
