@@ -20,12 +20,9 @@ type PointerCapturing = {
 /**
  * 実装が無ければ何もしないメソッドを足す。**既にあるなら触らない** —
  * jsdom が実装した日に、こちらの代役が本物を隠さないようにする。
- *
- * **`Element` は `globalThis` 越しに読む。** 裸で書くと、`tsc --build` が `dist-test/` へ
- * 出した `.js` の側で `no-undef` に当たる（先行 `StockItemForm.test.tsx` の `focused`）。
  */
 export function installPointerCapture(): void {
-  const prototype: PointerCapturing = globalThis.Element.prototype;
+  const prototype: PointerCapturing = Element.prototype;
   if (typeof prototype.setPointerCapture === 'function') return;
 
   prototype.setPointerCapture = () => {};

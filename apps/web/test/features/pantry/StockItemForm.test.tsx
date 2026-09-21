@@ -89,9 +89,9 @@ function renderForm(onRegister: RegisterStockItem) {
  * 欄を役割と文書順で引く。3欄のうち `textbox` になるのは食材名と分量の2つで、期限は
  * `type="date"` なのでこの役割に入らない（先行 `PantryTab.test.tsx`）。
  *
- * **`instanceof HTMLInputElement` で絞らない** — 大域名を実行時に読むと、`tsc --build` が
- * `dist-test/` へ出した `.js` の側で `no-undef` に当たる（先行 `PantryTab.test.tsx` の
- * `ingredientNameField` と同じ理由）。
+ * **`instanceof HTMLInputElement` で絞らない** — 役割で引いている以上、入力の欄であることは
+ * 問い合わせの側が保証している。**DOM の形を辿らない**（ADR-052 結果3。先行
+ * `PantryTab.test.tsx` の `ingredientNameField` と同じ理由）。
  */
 function textboxAt(index: number): HTMLElement {
   const found = screen.getAllByRole('textbox').at(index);
@@ -163,18 +163,14 @@ function saveAndClose(): HTMLElement {
  * **`autoFocus` 属性の有無を見ない**（ADR-052 結果3）— 属性は当て方（実装の手段）であり、
  * 利用者に見えるのは「打ち始めた文字がどの欄に入るか」である。**`textbox` の位置でも引かない** —
  * 欄の並びを変えただけで焦点のテストが赤くなる。
- *
- * **`document` は `globalThis` 越しに読む。** 裸で書くと、`tsc --build` が `dist-test/` へ出した
- * `.js` の側で `no-undef` に当たる（あちらには browser の大域が与えられていない。先行
- * `PantryTab.test.tsx` の `ingredientNameField` が `instanceof` を避けているのと同じ理由）。
  */
 function focused(): HTMLElement {
-  const element = globalThis.document.activeElement;
+  const element = document.activeElement;
 
   // **どこにも焦点が当たっていないとき、jsdom が返すのは `<body>` である。** そこへ打とうと
   // すると道具の側の例外（値を書ける要素ではない）になり、落ちた理由が読めなくなるので、
   // ここで「焦点の当たった欄が無い」と断つ。
-  if (element === null || element === globalThis.document.body) {
+  if (element === null || element === document.body) {
     throw new Error('開いた直後に焦点の当たった欄が無い（規則13）');
   }
 

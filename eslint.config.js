@@ -22,7 +22,20 @@ const FORBIDDEN_TERMS = [
 export default tseslint.config(
   {
     ignores: [
+      // ワークスペースのビルド成果物。**3つとも列挙する。**
+      //
+      // どれも `tsconfig*.json` の `outDir` であり git 管理外で、**コンパイル後の `.js` を
+      // 検査しても得るものが無い**（元の `.ts` は検査済み）。外さないと `pnpm lint` の対象が
+      // **ビルドの有無で変わる** — `verify` は `lint` → `typecheck` の順に走り、
+      // `typecheck`（`tsc --build`）があとから吐くため、clean clone の CI には無く、
+      // 一度ビルドした手元には有る。**同じコードが CI では緑・手元では赤になる**（B-40 / B-46）。
+      //
+      // **`**/dist/**` は `dist-test` にも `dist-types` にも当たらない。** glob のセグメントは
+      // **完全一致**であり、`.dependency-cruiser.cjs` の `exclude`（`^(apps|packages)/[^/]+/dist`）が
+      // **前方一致の正規表現**で3つとも外しているのとは当たり方が違う。**`**/dist*/**` のような
+      // 前方一致にもしない** — `dist` で始まる別のディレクトリまで黙って外れる。
       '**/dist/**',
+      '**/dist-test/**',
       '**/dist-types/**',
       '**/node_modules/**',
       'tools/**',
