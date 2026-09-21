@@ -52,26 +52,45 @@ function tabFor(tab: TabId): HTMLElement {
 }
 
 /**
- * 文字の太さを**同じ形にそろえて**読む。`element.style.fontWeight` は文字列で返るのに対し
- * `CSSProperties` 側は数値でも書けるため、どちらも文字列にしてから比べる。
- * **具体値はここにも書かない** — 突き合わせる相手は `tabStyleOf` の戻り値である。
+ * `CSSProperties` のキーを CSS の属性名に直す（`borderTopWidth` → `border-top-width`）。
  */
-function fontWeightOf(tab: HTMLElement): string {
-  return tab.style.fontWeight;
-}
-
-/** 見た目の側の文字の太さ。木から読んだ値と同じ形にそろえる。 */
-function expectedFontWeight(selected: boolean): string {
-  return String(tabStyleOf(selected).fontWeight);
+function cssPropertyNameOf(key: string): string {
+  return key.replace(/[A-Z]/g, (upper) => `-${upper.toLowerCase()}`);
 }
 
 /**
- * 上辺の線の太さ。**文字の太さだけを見ると、`tabStyleOf` の戻り値の一部しか当てていない
- * 実装でも緑になる**（B-41 設計 6章 規則6 は丸ごと当てることを求めている）。太さは
- * jsdom が色のようには書き換えないため、2つ目の突き合わせに使える。**具体値は書かない。**
+ * 見た目を**同じ正規化を通してから**読み出す（`docs/testing.md` 3章 の「同じ正規化を通った
+ * 者どうしを比べる」— RLS の述語の突き合わせと同じ構え）。
+ *
+ * `CSSProperties` 側は数値でも書けるうえ、ブラウザ（jsdom）は `'currentColor'` のような値を
+ * 書き換えることがある。そこで**期待の側もいったん要素に当ててから読み戻し**、木から読んだ
+ * 値と同じ土俵に乗せる。**具体値はここにも書かない。**
+ *
+ * **読むキーは `tabStyleOf` が返したものすべてである。** 一部の項目だけを突き合わせると、
+ * **戻り値の一部しか当てていない実装でも緑になる**（B-41 設計 6章 規則6 は丸ごと当てることを
+ * 求めている）。
  */
-function borderTopWidthOf(tab: HTMLElement): string {
-  return tab.style.borderTopWidth;
+function styleValuesOf(
+  source: CSSStyleDeclaration,
+  keys: readonly string[],
+): Record<string, string> {
+  return Object.fromEntries(
+    keys.map((key) => [key, source.getPropertyValue(cssPropertyNameOf(key))]),
+  );
+}
+
+/** 木に当たっている見た目。読むのは `tabStyleOf` が返したキーだけ。 */
+function appliedStyleOf(tab: HTMLElement, selected: boolean): Record<string, string> {
+  return styleValuesOf(tab.style, Object.keys(tabStyleOf(selected)));
+}
+
+/** 当たっているべき見た目。いったん要素に当てて読み戻し、木の側と同じ正規化を通す。 */
+function expectedStyleOf(selected: boolean): Record<string, string> {
+  const expected = tabStyleOf(selected);
+  const scratch = document.createElement('button');
+  Object.assign(scratch.style, expected);
+
+  return styleValuesOf(scratch.style, Object.keys(expected));
 }
 
 describe('下タブの器 TabbedScreen', () => {
@@ -183,23 +202,15 @@ describe('下タブの器 TabbedScreen', () => {
 
     // B-41 設計 6章 規則6・規則1: 見た目の値は `TabAppearance.ts` にだけ置く。
     // **突き合わせる相手は `tabStyleOf` の戻り値**であり、太さの具体値は書かない。
-    expect(fontWeightOf(tabFor('pantry'))).toBe(expectedFontWeight(true));
-  });
-
-  it('選ばれているタブには、上辺の線の見た目も当たっている', () => {
-    renderTabbedScreen();
-
-    // 同 規則6: 当てるのは `tabStyleOf` の**戻り値そのもの**であって、その一部ではない。
-    // 文字の太さとは別の項目でもう一度突き合わせ、部分適用が緑にならないようにする。
-    expect(borderTopWidthOf(tabFor('pantry'))).toBe(String(tabStyleOf(true).borderTopWidth));
+    expect(appliedStyleOf(tabFor('pantry'), true)).toEqual(expectedStyleOf(true));
   });
 
   it('選ばれていない2つのタブには、どちらも選んでいないときの見た目が当たっている', () => {
     renderTabbedScreen();
 
     // 同 規則6・規則7: 見た目は「選ばれているか」だけで決まり、`TabId` ごとに変わらない。
-    expect(fontWeightOf(tabFor('meals'))).toBe(expectedFontWeight(false));
-    expect(fontWeightOf(tabFor('history'))).toBe(expectedFontWeight(false));
+    expect(appliedStyleOf(tabFor('meals'), false)).toEqual(expectedStyleOf(false));
+    expect(appliedStyleOf(tabFor('history'), false)).toEqual(expectedStyleOf(false));
   });
 
   it('献立タブを選ぶと、色に依らない手がかりが在庫タブから献立タブへ移る', () => {
@@ -208,8 +219,8 @@ describe('下タブの器 TabbedScreen', () => {
     fireEvent.click(tabFor('meals'));
 
     // 同 規則1・2 の波及。**移ることまでが規則である** — 手がかりが増えるだけでは1つに保てない。
-    expect(fontWeightOf(tabFor('meals'))).toBe(expectedFontWeight(true));
-    expect(fontWeightOf(tabFor('pantry'))).toBe(expectedFontWeight(false));
+    expect(appliedStyleOf(tabFor('meals'), true)).toEqual(expectedStyleOf(true));
+    expect(appliedStyleOf(tabFor('pantry'), false)).toEqual(expectedStyleOf(false));
   });
 
   it('見た目の手がかりが付いたタブは aria-selected も true である', () => {
@@ -221,6 +232,6 @@ describe('下タブの器 TabbedScreen', () => {
     // **置き換えではなく上乗せ**である。**同じ1つのタブで**両方が立つことを見る。
     const tab = tabFor('meals');
     expect(tab.getAttribute('aria-selected')).toBe('true');
-    expect(fontWeightOf(tab)).toBe(expectedFontWeight(true));
+    expect(appliedStyleOf(tab, true)).toEqual(expectedStyleOf(true));
   });
 });
