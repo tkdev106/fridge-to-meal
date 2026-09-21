@@ -297,3 +297,175 @@ describe('在庫タブの中身と下タブの器', () => {
     expect(ingredientNameField().value).toBe('');
   });
 });
+
+/**
+ * 2つの保存を押したときに、**どちらの画面が出ているか**（B-39 設計 6章 規則8〜12 / 7章）。
+ *
+ * **閉じたことを「渡した関数が呼ばれた回数」で観ない**（`docs/testing.md` 2章 / 設計 8章）—
+ * `PantryTab` 越しに「一覧が出ている／出ていない」で観る。入力が残るかどうかは登録の画面の
+ * 持ち分であり、`StockItemForm.test.tsx` にある。
+ *
+ * 一覧に置く標本は**白菜1件だけ**にし、登録の欄には別の名称を打つ。同じ名称を使うと、
+ * 「一覧が出ている」のか「打った値が残っている」のかを取り違える。
+ */
+
+/** 分量の欄。`textbox` の2つ目である（期限は `type="date"` なのでこの役割に入らない）。 */
+function amountField(): HTMLInputElement {
+  const field = screen.getAllByRole('textbox')[1];
+  if (field === undefined) throw new Error('分量の欄が無い');
+
+  return field as HTMLInputElement;
+}
+
+/**
+ * 期限の欄。**この観点で唯一もろい引き方である。**
+ *
+ * `input[type="date"]` は ARIA の役割に写らないため `textbox` で引けず、ラベルの文言は仮である
+ * （規則15）。そこで**値が空の入力が1つだけになった状態**で引く — 食材名と分量を先に埋めて
+ * おくことが前提である。欄が増えたり順が変わったりすると、この引き方は壊れる。
+ */
+function expiryDateField(): HTMLElement {
+  return screen.getByDisplayValue('');
+}
+
+/** 登録の3欄を打つ。期限は最後に引く（`expiryDateField` の前提）。 */
+function fillRegisterFields(): void {
+  fireEvent.change(ingredientNameField(), { target: { value: 'にんじん' } });
+  fireEvent.change(amountField(), { target: { value: '2本' } });
+  fireEvent.change(expiryDateField(), { target: { value: '2026-09-25' } });
+}
+
+/**
+ * 保存の操作を**文書順**で返す（規則8）。
+ *
+ * 登録の画面の押せる操作は3つで、**先頭が閉じる操作**（規則7）、後ろ2つが保存である。
+ * **この数を先に確かめる** — 崩れた回に閉じる操作を保存として押してしまうと、テストは
+ * 「一覧へ戻らない」ではなく別の理由で落ち、何が壊れたか読めなくなる。**名札は見ない**（規則15）。
+ */
+function saveOperations(): readonly HTMLElement[] {
+  const operations = screen.getAllByRole('button');
+  expect(operations).toHaveLength(3);
+
+  return operations.slice(1);
+}
+
+function saveOperationAt(index: number): HTMLElement {
+  const found = saveOperations().at(index);
+  if (found === undefined) throw new Error(`${index} 番目の保存の操作が無い`);
+
+  return found;
+}
+
+/** 「保存してもう1件」。前に出すほうである（規則8）。 */
+function saveAndStay(): HTMLElement {
+  return saveOperationAt(0);
+}
+
+/** 「保存して閉じる」。文書順の最後である（規則8）。 */
+function saveAndClose(): HTMLElement {
+  return saveOperationAt(1);
+}
+
+describe('在庫タブの中身と2つの保存', () => {
+  it('「保存して閉じる」が通ったら一覧へ戻る', async () => {
+    const registrations: RegisterStockItemInput[] = [];
+    render(
+      pantryTab({
+        stockItems: loaded(chineseCabbage),
+        onRegister: recordingRegister(registrations, { outcome: 'registered' }),
+      }),
+    );
+
+    fireEvent.click(operationAt(0));
+    fillRegisterFields();
+    fireEvent.click(saveAndClose());
+
+    // 規則9 / `docs/screen-design.md` 6章: 通ったら一覧へ戻る。**待つ手がかりはテストが渡した
+    // 在庫品の名称である**（仮の文言を使わない。規則15）。
+    expect(await screen.findByText(chineseCabbage.name)).not.toBeNull();
+  });
+
+  it('「保存してもう1件」が通っても一覧へ戻らない', async () => {
+    const registrations: RegisterStockItemInput[] = [];
+    render(
+      pantryTab({
+        stockItems: loaded(chineseCabbage),
+        onRegister: recordingRegister(registrations, { outcome: 'registered' }),
+      }),
+    );
+
+    fireEvent.click(operationAt(0));
+    fillRegisterFields();
+    fireEvent.click(saveAndStay());
+
+    // 欄が空に戻ったことを待ってから断定する — 結末は非同期に届くので、押した直後の木を
+    // 見ると「まだ戻っていない」だけの状態を通してしまう。
+    await waitFor(() => {
+      expect(screen.queryByDisplayValue('にんじん')).toBeNull();
+    });
+
+    // 規則9 / FR-08: こちらは登録の画面に留まり、続けてもう1件入れられる。
+    expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+  });
+
+  it('登録が失敗したときは一覧へ戻らない', async () => {
+    const registrations: RegisterStockItemInput[] = [];
+    render(
+      pantryTab({
+        stockItems: loaded(chineseCabbage),
+        onRegister: recordingRegister(registrations, { outcome: 'failed' }),
+      }),
+    );
+
+    fireEvent.click(operationAt(0));
+    fillRegisterFields();
+    fireEvent.click(saveAndClose());
+
+    await waitFor(() => {
+      expect(registrations).toHaveLength(1);
+    });
+
+    // 規則10 / 7章 行2 / ADR-007: 失敗した回は閉じない。自動で送り直さないので、
+    // 送り直せる画面を残す必要がある。
+    expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+  });
+
+  it('食材名が空のまま「保存して閉じる」を押しても一覧へ戻らない', () => {
+    const registrations: RegisterStockItemInput[] = [];
+    render(
+      pantryTab({
+        stockItems: loaded(chineseCabbage),
+        onRegister: recordingRegister(registrations, { outcome: 'registered' }),
+      }),
+    );
+
+    fireEvent.click(operationAt(0));
+    // 分量だけを埋める。食材名が空のままでは登録の入力が作れない（B-12 設計 規則2）。
+    fireEvent.change(amountField(), { target: { value: '2本' } });
+    fireEvent.click(saveAndClose());
+
+    // 規則11: 効かない操作で画面が移らない。送っていないので待つものも無い。
+    expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+  });
+
+  it('保存して閉じたあとの一覧に、いま登録した食材名は出ない', async () => {
+    const registrations: RegisterStockItemInput[] = [];
+    render(
+      pantryTab({
+        stockItems: loaded(chineseCabbage),
+        onRegister: recordingRegister(registrations, { outcome: 'registered' }),
+      }),
+    );
+
+    fireEvent.click(operationAt(0));
+    fillRegisterFields();
+    fireEvent.click(saveAndClose());
+
+    await screen.findByText(chineseCabbage.name);
+
+    // 規則12 / B-22 設計 規則3 / B-24: 登録が通ったときに一覧を取り直すのは**門**である。
+    // 中身の側で列に足すと、並び（期限の近い順）を web が握り直すことになる。
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.queryByText('にんじん')).toBeNull();
+  });
+});
