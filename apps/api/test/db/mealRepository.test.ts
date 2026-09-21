@@ -548,14 +548,18 @@ describe('献立リポジトリの実装（保存と読み戻し）', () => {
         meal({
           id: noAmountMealId,
           householdId: noAmountHouseholdId,
-          ingredients: [ingredient({ name: 'しお', kind: 'seasoning', amount: null })],
+          // C-16: 主材料が1件も無い献立は作れない。分量なしの材料は調味料のほうに置く。
+          ingredients: [
+            ingredient({ name: 'にんじん', amount: '200g' }),
+            ingredient({ name: 'しお', kind: 'seasoning', amount: null }),
+          ],
         }),
       );
       return repository.findByHousehold(noAmountHouseholdId);
     });
 
     // ADR-010 / 設計 規則7: 「分量なし」は `null` の一通り。空文字に化けさせない。
-    expect(foundMealOf(foundMeals, noAmountMealId)?.ingredients[0]?.amount).toBeNull();
+    expect(foundMealOf(foundMeals, noAmountMealId)?.ingredients[1]?.amount).toBeNull();
   });
 
   it('生成日時は同じ瞬間として読み戻せる', async () => {

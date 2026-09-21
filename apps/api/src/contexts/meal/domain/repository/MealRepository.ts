@@ -27,6 +27,17 @@ export interface MealRepository {
    * 食い違いは呼び出し側の誤りであり、黙って引数の側に寄せない（先行
    * `StockItemRepository.save` / `SuggestionRepository.save`）。**interface では強制できない
    * 約束なので、実装ごとにテストで確かめる。**
+   *
+   * **同じ識別子で保存済みの献立と内容が食い違う保存も拒む**（B-44 設計 規則8・9 / C-3）。
+   * 献立は生成後に編集できない以上、名称・材料・手順は**件数と並び順を含めて**一致して
+   * いなければならず、調理記録は**保存済みが渡された記録の先頭からの並び**になっていな
+   * ければならない（追加のみ）。1つでも違えば実装は **`MealRuleViolation`
+   * （`rule: 'save.contentMismatch'`）を投げ、1行も書かない。** 黙って無視すると、
+   * 件数の変わる保存が**1度目にも2度目にも無い内容**を残しうる（設計 7章の注）。
+   *
+   * **同じ内容の保存はそのまま通る**（べき等）。`withCookingRecord` で記録を1件足した
+   * 献立の保存がこれに乗り、増えた記録だけが足される。**これも interface では強制できない
+   * 約束なので、実装ごとにテストで確かめる。**
    */
   save(householdId: HouseholdId, meal: Meal): Promise<void>;
 }
