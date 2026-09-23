@@ -40,6 +40,16 @@ export type SuggestionRowProps = {
 
 export type SuggestionChildRowProps = SuggestionRowProps & {
   readonly position?: number;
+  /**
+   * 提案の1件の行が指す献立。省けば `ENTRY_MEAL_ID`。位置ごとに変えて並びを見るケースが
+   * 渡す（B-45 設計 規則5）。在庫品の行では使わない。
+   */
+  readonly mealId?: string;
+  /**
+   * 在庫品の行の名称。省けば `'にんじん'`。位置ごとに変えて並びを見るケースが渡す
+   * （B-45 設計 規則5）。提案の1件の行では使わない。
+   */
+  readonly name?: string;
 };
 
 export function insertSuggestion(tx: TransactionSql, props: SuggestionRowProps): Promise<unknown> {
@@ -59,14 +69,14 @@ export function insertSuggestionChildRow(
   if (table === 'suggestion_entries') {
     return tx`
       insert into suggestion_entries (suggestion_id, household_id, position, meal_id, origin)
-      values (${props.suggestionId}, ${props.householdId}, ${position}, ${ENTRY_MEAL_ID}, 'generated')
+      values (${props.suggestionId}, ${props.householdId}, ${position}, ${props.mealId ?? ENTRY_MEAL_ID}, 'generated')
     `;
   }
 
   return tx`
     insert into pantry_snapshot_stock_items
       (suggestion_id, household_id, position, name, amount, expiry_date)
-    values (${props.suggestionId}, ${props.householdId}, ${position}, 'にんじん', '2本', '2026-09-25')
+    values (${props.suggestionId}, ${props.householdId}, ${position}, ${props.name ?? 'にんじん'}, '2本', '2026-09-25')
   `;
 }
 
