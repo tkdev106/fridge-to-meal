@@ -23,12 +23,6 @@
 > 期限は区別しない・献立は無期限に保持しユーザー操作の削除は MVP に置かない・食材マスタは置かない
 > （要件 11章 論点4〜6）。以下の行はこの決定から起こした（B-48 と B-50 は1 PR に収まらず、それぞれ a〜c の3行に割った。仮の生成器 `PlaceholderMealGenerator` は B-47 で置いた。ADR-060）。
 
-- [ ] **B-48b** **献立の api 層** — `contexts/meal/api/` に既定の提案（`SuggestMeals`）と新しい献立を求める明示操作
-  （`SuggestNewMeals`）の2経路を置く（ADR-051 結果3）。型はユースケースから導出し、規則違反は `name` で見分け、
-  断りの本体は `{ rule }` だけ（ADR-032 結果4 が献立側に写すと決めている）。**結末 S-4 / S-7 の状態コードと本文、
-  `MealRuleViolation` の写像（`mealGenerator.empty` = S-6 / NFR-07、`save.*` と `suggestion.*`）、2経路の method と
-  経路名（接頭辞は置かない。ADR-048 決定4）をこの周で決め、ADR を起こす**（ADR-041 結果1 / ADR-049 結果5 /
-  NFR-07 / FR-36）
 - [ ] **B-48c** **献立の経路を main.ts で結線する** — `PlaceholderMealGenerator`（ADR-060 決定1）・
   `MealRepositoryImpl` / `SuggestionRepositoryImpl`・献立と提案の識別子の発行（先行 `generateStockItemId`）・
   基準日時（要求の時刻。本体では読まない — `docs/testing.md` 5章）を組み、**在庫の読み出し（`listStockItems`）も
