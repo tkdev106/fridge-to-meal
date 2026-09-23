@@ -1,6 +1,6 @@
 # アーキテクチャ決定録（ADR）
 
-> ドラフト v0.23 / 2026-09-23 / ADR-001 〜 ADR-058
+> ドラフト v0.24 / 2026-09-23 / ADR-001 〜 ADR-059
 > **この文書がアーキテクチャ決定の正である。**
 
 決定を変更する場合は、既存の ADR を書き換えず、**新しい ADR を起こして旧 ADR の状態を「置き換え済み」に改める**。
@@ -75,8 +75,10 @@ flowchart TD
 | --- | --- |
 | `contexts/A/domain/` | `shared/domain/` のみ。**他コンテキストは一切不可** |
 | `contexts/A/usecase/` | `contexts/A/domain/` と `contexts/B/usecase/`（公開されたユースケースのみ） |
-| `contexts/A/infrastructure/` | `contexts/A/domain/` のみ |
+| `contexts/A/infrastructure/` | `contexts/A/domain/` と `shared/infrastructure/`（ADR-059） |
 | `contexts/A/api/` | `contexts/A/usecase/` のみ |
+| `shared/domain/` | 何も import しない。**`contexts/` は一切不可** |
+| `shared/infrastructure/` | `shared/domain/` のみ。**`contexts/` は一切不可**（ADR-059） |
 | `main.ts` | すべて（composition root） |
 
 コンテキストをまたいでよいのは `usecase/` どうしだけ。相手の `domain/` を直接 import した瞬間、2つのコンテキストは1つに融合し、将来の切り出しが不可能になる。
@@ -116,6 +118,7 @@ flowchart TD
 │     ├─ contexts/identity/   同じ
 │     │
 │     ├─ shared/domain/       HouseholdId.ts  Clock.ts
+│     ├─ shared/infrastructure/db/  HouseholdTransaction.ts   各 infrastructure/ と main.ts だけが引く（ADR-059）
 │     └─ main.ts              composition root — 全層を知る唯一の場所
 │
 └─ packages/contract/         API の型定義。web と api で共有する
@@ -1151,3 +1154,23 @@ flowchart TD
   3. **DB の権限としては、提案の `update` / `delete` が許されたままである**（ADR-057 結果4 と同じ理由。README の「4点」に従い、3表とも4ポリシー・4権限を置いた）。不変を支えているのは、リポジトリに更新の口が無いことだけである。**ADR-057 結果4 が「提案（B-45）と削除の要件が見えてから決める」とした宿題は、この周でも決めずに引き継ぐ** — 提案の側は見えたが、削除の要件（献立の保持期間）がまだ未決であり、いま `grant` から外すと保持期間が決まったときに戻すことになる。
 
 ---
+
+### ADR-059　コンテキストをまたぐインフラを `shared/infrastructure/` に置き、各コンテキストの `infrastructure/` と `main.ts` だけに引かせる　`提案`
+
+- **状況** — 1リクエスト1トランザクションの helper（`withHouseholdTransaction` と型 `HouseholdDatabase` / `HouseholdTransaction`。規則は ADR-029 決定3(a)）は、在庫が先に表を持ったため `contexts/pantry/infrastructure/db/` に置かれていた。B-44 で献立も表を持ったが、**コンテキストをまたぐ import は `usecase/` どうしにしか許されない**（A章）ため、献立側は `contexts/meal/infrastructure/db/HouseholdTransaction.ts` に**型2つだけの写し**を置き、本体は写さずにいた（1つの規則を2つに割らないため）。**本番の献立のリポジトリは、トランザクションを開く口を自分のコンテキストから引けない状態だった。** B-17 はこれを `shared/` 側へ移すタスクだが、A章が定めている共有の置き場は `shared/domain/`（共有カーネル。`HouseholdId` のみ）だけで、drizzle と SQL を持つ helper の置き場は無い。
+- **決定** — 3つ。
+  1. **`apps/api/src/shared/infrastructure/` を置き、helper をそこへ移す**（`shared/infrastructure/db/HouseholdTransaction.ts`）。名前も中身も変えない。pantry 側の本体と meal 側の写しは消す。
+  2. **`shared/infrastructure/` を import してよいのは、各コンテキストの `infrastructure/` と `main.ts` だけとする。** `contexts/*/domain` / `usecase` / `api` と `shared/domain` からは断る。`shared/infrastructure/` が import してよいのは `shared/domain/` だけで、`contexts/` は一切引かない。どちらも `.dependency-cruiser.cjs` に規則として置く。
+  3. **`shared/domain/`（共有カーネル）とは別物として扱う。** 共有カーネルが `HouseholdId` のみであること（`docs/domain-model.md` 第2章 / ADR-034 理由(1)）は動かさない。
+- **比較した案**
+
+  | 案 | 退ける理由 |
+  | --- | --- |
+  | **A. `shared/infrastructure/` に置く**（採用） | — |
+  | B. `shared/domain/` に置く | drizzle と SQL がドメイン層に入る（CLAUDE.md「ドメイン層に … SQL を持ち込まない」）。共有カーネルを太らせる |
+  | C. `shared/` の直下（層を切らない） | 層の呼び名とディレクトリ名が1対1で対応しなくなる（A章「この表以外の対応を作らないこと」）。どの規則を当てるかをパスで書けない |
+  | D. 写しを残す（コンテキストごとに本体を持つ） | `set local` とクレームの規則が2か所になり、片方だけ直す事故が起こる。ADR-029 理由(4) の「`local` を落とさない」を2か所で守ることになる |
+- **理由** — **(1) `contexts/` の外へ出すと、既存の層の規則はどれも当たらなくなる。** pantry に居たときは `domain/` `usecase/` `api/` から helper を引く辺が既存の規則で断られていた。決定2 はその守りを移動の前と同じ強さに保つためのもので、新しい制限ではない。**(2) 層の名前を `shared/` の下でも揃える**ことで、「インフラ層はドメイン層を引いてよい」という A章の表がそのまま当たる。**(3) ADR-029 決定3(a) の中身は1つも動かない**（移動であって決定の変更ではない）。したがって ADR-029 は書き換えず `承認` のまま残す。
+- **結果** — 2つ。
+  1. **A章の「コンテキストをまたぐ依存」の表と構成図に `shared/infrastructure/` の行を足した**（`.dependency-cruiser.cjs` の冒頭が「A章の表と1対1」と言うため、この ADR が `提案` のうちに同じ周で足している）。**退けられたら表・規則・置き場を戻す。**
+  2. `shared/infrastructure/` は「両コンテキストの infrastructure が同じ規則を使う」ものだけの置き場であり、**迷ったら置かない**（`shared/domain/README.md` と同じ構え）。テスト側の写し `apps/api/test/support/db/WithTransaction.ts` は、本番の helper に持たせてはならない「クレームを張らない経路」を RLS のテストのために持つため、統合しない。

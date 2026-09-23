@@ -57,6 +57,29 @@ module.exports = {
       },
     },
 
+    // ---- 共有の置き場（ADR-059） ----
+    {
+      name: 'shared-infrastructureはinfraとmainからだけ引く',
+      comment:
+        'shared/infrastructure/ はコンテキストの外にあるため、上の層の規則が当たらない。' +
+        'contexts/*/infrastructure/ に置かれていたときと同じ範囲（domain / usecase / api と shared/domain）を断る。' +
+        'SQL と drizzle をドメイン層・ユースケース層・HTTP 層に持ち込まない。',
+      severity: 'error',
+      from: {
+        path: '^apps/api/src/',
+        pathNot: '^apps/api/src/(main\\.ts$|contexts/[^/]+/infrastructure/|shared/infrastructure/)',
+      },
+      to: { path: '^apps/api/src/shared/infrastructure/' },
+    },
+    {
+      name: 'sharedはcontextsをimportしない',
+      comment:
+        '共有の置き場がコンテキストに依存すると向きが逆になり、共有した意味がなくなる（ADR-001 / ADR-004）。',
+      severity: 'error',
+      from: { path: '^apps/api/src/shared/' },
+      to: { path: '^apps/api/src/contexts/' },
+    },
+
     // ---- 実装の生成場所（CLAUDE.md） ----
     {
       name: 'infraの実装をmain以外から名指ししない',

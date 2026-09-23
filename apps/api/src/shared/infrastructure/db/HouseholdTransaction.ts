@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
-import type { HouseholdId } from '../../../../shared/domain/HouseholdId.js';
+import type { HouseholdId } from '../../domain/HouseholdId.js';
 
 /**
  * 接続そのものではなく、**問い合わせを受け付ける口**（B-07 設計 5章）。

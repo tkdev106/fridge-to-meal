@@ -16,7 +16,7 @@ import { createSuggestionEntry } from '../domain/value/SuggestionEntry.js';
 import { suggestionIdOf } from '../domain/value/SuggestionId.js';
 import type { HouseholdId } from '../../../shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../../shared/domain/HouseholdId.js';
-import type { HouseholdTransaction } from './db/HouseholdTransaction.js';
+import type { HouseholdTransaction } from '../../../shared/infrastructure/db/HouseholdTransaction.js';
 import type { PantrySnapshotStockItemRow, SuggestionEntryRow, SuggestionRow } from './db/schema.js';
 import { pantrySnapshotStockItems, suggestionEntries, suggestions } from './db/schema.js';
 

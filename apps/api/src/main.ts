@@ -21,8 +21,8 @@ import { identifyHousehold } from './contexts/identity/usecase/IdentifyHousehold
 import { createStockItemRoutes } from './contexts/pantry/api/StockItemRoutes.js';
 import type { StockItemIdGenerator } from './contexts/pantry/domain/port/StockItemIdGenerator.js';
 import { stockItemIdOf } from './contexts/pantry/domain/value/StockItemId.js';
-import type { HouseholdTransaction } from './contexts/pantry/infrastructure/db/HouseholdTransaction.js';
-import { withHouseholdTransaction } from './contexts/pantry/infrastructure/db/HouseholdTransaction.js';
+import type { HouseholdTransaction } from './shared/infrastructure/db/HouseholdTransaction.js';
+import { withHouseholdTransaction } from './shared/infrastructure/db/HouseholdTransaction.js';
 import { StockItemRepositoryImpl } from './contexts/pantry/infrastructure/StockItemRepositoryImpl.js';
 import { deleteStockItem } from './contexts/pantry/usecase/DeleteStockItem.js';
 import { listStockItems } from './contexts/pantry/usecase/ListStockItems.js';

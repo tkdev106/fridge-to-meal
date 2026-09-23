@@ -14,7 +14,7 @@ import type { MealIngredient, MealIngredientKind } from '../domain/value/MealIng
 import { createMealIngredient } from '../domain/value/MealIngredient.js';
 import type { HouseholdId } from '../../../shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../../shared/domain/HouseholdId.js';
-import type { HouseholdTransaction } from './db/HouseholdTransaction.js';
+import type { HouseholdTransaction } from '../../../shared/infrastructure/db/HouseholdTransaction.js';
 import type { CookingRecordRow, CookingStepRow, MealIngredientRow, MealRow } from './db/schema.js';
 import { cookingRecords, cookingSteps, mealIngredients, meals } from './db/schema.js';
 

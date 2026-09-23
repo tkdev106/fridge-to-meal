@@ -19,12 +19,7 @@
 
 ## 次にやること
 
-- [ ] **B-17** トランザクションの helper（`withHouseholdTransaction`）を
-  `contexts/pantry/infrastructure/db/` から **`shared/` 側へ移す**。**着手条件は満たされた** —
-  B-44 で献立が表を持ち、**コンテキストをまたぐ import が禁止であるため
-  `contexts/meal/infrastructure/db/HouseholdTransaction.ts` に「型2つだけ」の写しが実際に置かれている**
-  （`withHouseholdTransaction` の本体＝`set local` の規則は写していない）。**この周でその写しを消す。**
-  **移動であって決定の変更ではない**（ADR-029 決定3(a)）
+（なし — 判断待ちの節を見る）
 
 ## 人の操作（ループは着手しない）
 

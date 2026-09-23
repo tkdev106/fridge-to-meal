@@ -10,8 +10,8 @@ import { ingredientIdOf } from '../../src/contexts/pantry/domain/value/Ingredien
 import type { StockItemId } from '../../src/contexts/pantry/domain/value/StockItemId.js';
 import { stockItemIdOf } from '../../src/contexts/pantry/domain/value/StockItemId.js';
 import { StockItemRepositoryImpl } from '../../src/contexts/pantry/infrastructure/StockItemRepositoryImpl.js';
-import type { HouseholdTransaction } from '../../src/contexts/pantry/infrastructure/db/HouseholdTransaction.js';
-import { withHouseholdTransaction } from '../../src/contexts/pantry/infrastructure/db/HouseholdTransaction.js';
+import type { HouseholdTransaction } from '../../src/shared/infrastructure/db/HouseholdTransaction.js';
+import { withHouseholdTransaction } from '../../src/shared/infrastructure/db/HouseholdTransaction.js';
 import type { HouseholdId } from '../../src/shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../src/shared/domain/HouseholdId.js';
 import { APP_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
