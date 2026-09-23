@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/main.js';
 import { householdIdOf } from '../src/shared/domain/HouseholdId.js';
 import { FixedIdentifyHousehold } from './support/identity/FixedIdentifyHousehold.js';
+import { FixedSuggestMeals, FixedSuggestNewMeals } from './support/meal/FixedSuggestMeals.js';
 import {
   FixedDeleteStockItem,
   FixedListStockItems,
@@ -12,7 +13,7 @@ import {
 const ourHousehold = householdIdOf('11111111-1111-4111-8111-111111111111');
 
 /**
- * 疎通確認の本題は在庫でも認証でもないので、依存はすべて代役で足りる（B-09 規則1）。
+ * 疎通確認の本題は在庫でも提案でも認証でもないので、依存はすべて代役で足りる（B-09 規則1）。
  * default export は Workers の `fetch` ハンドラになり `.request()` を持たないため、
  * `createApp` で組んだ Hono を叩く。
  */
@@ -31,6 +32,10 @@ function app() {
     listStockItems: new FixedListStockItems({ returns: { stockItems: [] } }).list,
     updateStockItem: new FixedUpdateStockItem({ returns: stockItem }).update,
     deleteStockItem: new FixedDeleteStockItem({ succeeds: true }).delete,
+    suggestMeals: new FixedSuggestMeals({ returns: { outcome: 'insufficientStockItems' } }).suggest,
+    suggestNewMeals: new FixedSuggestNewMeals({ returns: { outcome: 'insufficientStockItems' } })
+      .suggest,
+    now: () => '2026-09-23T12:00:00.000Z',
   });
 }
 

@@ -1,4 +1,8 @@
-import type { ListStockItemsOutput, StockItemDto } from '@fridge-to-meal/contract';
+import type {
+  ListStockItemsOutput,
+  StockItemDto,
+  SuggestMealsOutput,
+} from '@fridge-to-meal/contract';
 import { describe, expect, it } from 'vitest';
 import type { Bindings } from '../src/main.js';
 import { accessTokenVerificationOf, composeDependencies, createApp } from '../src/main.js';
@@ -7,6 +11,7 @@ import type { AccessTokenClaims } from './support/identity/AccessSigning.js';
 import { accessTokenOf, publicAccessTokenKey } from './support/identity/AccessSigning.js';
 import { FixedFetchJwks } from './support/identity/FixedFetchJwks.js';
 import { FixedIdentifyHousehold } from './support/identity/FixedIdentifyHousehold.js';
+import { FixedSuggestMeals, FixedSuggestNewMeals } from './support/meal/FixedSuggestMeals.js';
 import {
   FixedDeleteStockItem,
   FixedListStockItems,
@@ -64,10 +69,35 @@ function stockItemDto(overrides: Partial<StockItemDto> = {}): StockItemDto {
 }
 
 /**
+ * 既定の提案の入口の代役が返す結末（B-48c）。新しい献立の入口とは**違う結末**にしておく —
+ * 経路が2つの入口を取り違えたとき（規則2 / ADR-051 決定2）に本体の違いとして現れるように。
+ */
+const suggestMealsOutcome: SuggestMealsOutput = { outcome: 'insufficientStockItems' };
+
+/** 新しい献立を求める入口（FR-36）の代役が返す結末。上とは違う値である。 */
+const suggestNewMealsOutcome: SuggestMealsOutput = { outcome: 'generationLimitReached' };
+
+/** 組み立てに渡す固定の基準日時（B-48c 規則7）。テストは時計を読まない（`docs/testing.md` 5章）。 */
+const fixedNow = '2026-09-23T12:00:00.000Z';
+
+/**
  * 依存をすべて代役にして組んだ app（規則1・2 の確認）。結線の相手を差し替えるのではなく、
  * **経路がどこに置かれるか**だけを見るためのもの（設計書 8章末尾）。
+ *
+ * 提案の2つの入口の代役は、受け取った世帯と基準日時を観察するテストが外から渡す（B-48c）。
  */
-function appWithFixedDependencies(overrides: { listOutput?: ListStockItemsOutput } = {}) {
+function appWithFixedDependencies(
+  overrides: {
+    listOutput?: ListStockItemsOutput;
+    suggestMeals?: FixedSuggestMeals;
+    suggestNewMeals?: FixedSuggestNewMeals;
+  } = {},
+) {
+  const suggestMeals =
+    overrides.suggestMeals ?? new FixedSuggestMeals({ returns: suggestMealsOutcome });
+  const suggestNewMeals =
+    overrides.suggestNewMeals ?? new FixedSuggestNewMeals({ returns: suggestNewMealsOutcome });
+
   return createApp({
     identifyHousehold: new FixedIdentifyHousehold({ returns: ourHousehold }).identify,
     registerStockItem: new FixedRegisterStockItem({ returns: stockItemDto() }).register,
@@ -76,6 +106,9 @@ function appWithFixedDependencies(overrides: { listOutput?: ListStockItemsOutput
     }).list,
     updateStockItem: new FixedUpdateStockItem({ returns: stockItemDto() }).update,
     deleteStockItem: new FixedDeleteStockItem({ succeeds: true }).delete,
+    suggestMeals: suggestMeals.suggest,
+    suggestNewMeals: suggestNewMeals.suggest,
+    now: () => fixedNow,
   });
 }
 
@@ -186,6 +219,189 @@ describe('composition root main', () => {
       });
 
       expect(response.status).toBe(204);
+    });
+  });
+
+  describe('提案の経路の配置', () => {
+    // B-48c。代役の deps で組み、経路がどこに置かれ、どちらの入口に何が届くかだけを見る。
+    const webOrigin = 'http://localhost:5173';
+
+    it('既定の提案の経路を接頭辞なしの POST /suggestions に置き、既定の提案の入口の結末を返す', async () => {
+      // 規則1・2 / FR-16 / ADR-048 決定4 / ADR-051 決定2: 本体まで見る — 取り違えれば別の結末になる。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/suggestions', {
+        method: 'POST',
+        headers: bearerHeaders('x'),
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ outcome: 'insufficientStockItems' });
+    });
+
+    it('新しい献立を求める経路を接頭辞なしの POST /suggestions/new-meals に置き、新しい献立の入口の結末を返す', async () => {
+      // 規則1・2 / FR-36 / ADR-051 決定2: 明示操作の入口は既定の提案の入口を兼ねない。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/suggestions/new-meals', {
+        method: 'POST',
+        headers: bearerHeaders('x'),
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ outcome: 'generationLimitReached' });
+    });
+
+    it('提案の経路には組み立てに渡した now の値が基準日時として届く', async () => {
+      // 規則7 / ADR-062 決定1: 基準日時は要求から受け取らず、deps の now() を読む。
+      const suggestMeals = new FixedSuggestMeals({ returns: suggestMealsOutcome });
+      const app = appWithFixedDependencies({ suggestMeals });
+
+      await app.request('/suggestions', { method: 'POST', headers: bearerHeaders('x') });
+
+      expect(suggestMeals.receivedAsOf).toBe('2026-09-23T12:00:00.000Z');
+    });
+
+    it('提案の経路には識別の口で定まった世帯が届く', async () => {
+      // C-9 / 規則9: 世帯はアクセストークンから定まり、ユースケースの第1引数に渡る。
+      const suggestNewMeals = new FixedSuggestNewMeals({ returns: suggestNewMealsOutcome });
+      const app = appWithFixedDependencies({ suggestNewMeals });
+
+      await app.request('/suggestions/new-meals', { method: 'POST', headers: bearerHeaders('x') });
+
+      expect(suggestNewMeals.receivedHouseholdId).toBe('11111111-1111-4111-8111-111111111111');
+    });
+
+    it('アクセストークンを付けない OPTIONS /suggestions は 401 にならず 204 で通る', async () => {
+      // 規則11 / ADR-048 決定3: preflight は認証を要さずに通る。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/suggestions', {
+        method: 'OPTIONS',
+        headers: { Origin: webOrigin, 'Access-Control-Request-Method': 'POST' },
+      });
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+    });
+
+    it('/suggestions への preflight が許す method は GET・POST・PUT・DELETE の4つのままである', async () => {
+      // 規則11 / ADR-062 結果4: 提案の2経路は POST だけで、新しい method を足さない。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/suggestions', {
+        method: 'OPTIONS',
+        headers: { Origin: webOrigin, 'Access-Control-Request-Method': 'POST' },
+      });
+
+      const allowMethodsHeader: string = response.headers.get('Access-Control-Allow-Methods') ?? '';
+      const allowedMethods = allowMethodsHeader
+        .split(',')
+        .map((each) => each.trim())
+        .filter((each) => each !== '')
+        .sort();
+      expect(allowedMethods).toEqual(['DELETE', 'GET', 'POST', 'PUT']);
+    });
+
+    it('アクセストークンの無い POST /suggestions の 401 にも許可の origin が付く', async () => {
+      // 7章 / ADR-048 決定2: 断りの応答にも許可の origin が付かなければ、web は断られた理由を読めない。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/suggestions', {
+        method: 'POST',
+        headers: { Origin: webOrigin },
+      });
+
+      expect(response.status).toBe(401);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'accessToken.missing' });
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://localhost:5173');
+    });
+  });
+
+  describe('提案の経路の結線', () => {
+    // B-48c 7章。composeDependencies の本物の結線で、差し替えるのは JWKS を取りに行く口だけ。
+
+    it('SUPABASE_URL が空の環境で提案を要求すると 500 unexpected になり 401 にならない', async () => {
+      // ADR-045 決定3: サーバ側の不備を利用者のアクセストークンのせいにしない。
+      const { app } = composedApp({ ...env, SUPABASE_URL: '' });
+
+      const response = await app.request('/suggestions', {
+        method: 'POST',
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+    });
+
+    it('JWKS を取りに行けないと提案は 500 unexpected になり 401 にならない', async () => {
+      // ADR-045 / NFR-09: 取得の失敗は 500 に畳まれ、message は本体に出さない。
+      const { app } = composedApp(
+        env,
+        FixedFetchJwks.delivering({ throws: new Error('kagi-server-todokanai') }),
+      );
+
+      const response = await app.request('/suggestions', {
+        method: 'POST',
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      const text = await response.text();
+      expect(parseBody(text)).toEqual({ rule: 'unexpected' });
+      expect(text).not.toContain('kagi-server-todokanai');
+    });
+
+    it('認証を通ったあと HYPERDRIVE の binding が無ければ既定の提案は 500 unexpected になる', async () => {
+      // 規則12 / ADR-045: 接続文字列が読めないのはサーバ側の不備である。
+      const { app } = composedApp(envWithoutHyperdrive);
+
+      const response = await app.request('/suggestions', {
+        method: 'POST',
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+    });
+
+    it('認証を通ったあと HYPERDRIVE の binding が無ければ新しい献立の要求も 500 unexpected になる', async () => {
+      // 規則12 / FR-36 / ADR-045。
+      const { app } = composedApp(envWithoutHyperdrive);
+
+      const response = await app.request('/suggestions/new-meals', {
+        method: 'POST',
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+    });
+
+    it('HYPERDRIVE の binding が無くても、アクセストークンの無い提案の要求は 401 accessToken.missing のままである', async () => {
+      // 規則12 / NFR-C2: 世帯を定めるのが常に先。認証を通らない要求は DB に触れず、生成も呼ばない。
+      const { app } = composedApp(envWithoutHyperdrive);
+
+      const response = await app.request('/suggestions', { method: 'POST' });
+
+      expect(response.status).toBe(401);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'accessToken.missing' });
+    });
+
+    it('在庫の経路と提案の経路に続けて要求しても JWKS の取得は1回である', async () => {
+      // 規則8 / ADR-043 結果2: 認証器は環境1つにつき1つで、在庫と提案で共有する。
+      // 認証を通ったあとは binding 欠落で 500 になる — 2つとも同じ結末であることも見る。
+      const { app, fetchJwks } = composedApp(envWithoutHyperdrive);
+      const accessToken = await accessTokenOf(validClaims());
+
+      const stockItems = await app.request('/stock-items', { headers: bearerHeaders(accessToken) });
+      const suggestions = await app.request('/suggestions', {
+        method: 'POST',
+        headers: bearerHeaders(accessToken),
+      });
+
+      expect([stockItems.status, suggestions.status]).toEqual([500, 500]);
+      expect(fetchJwks.callCount).toBe(1);
     });
   });
 

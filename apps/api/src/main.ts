@@ -3,9 +3,9 @@
 // **実装クラスを new してよいのはこのファイルだけである**（ADR-002 / CLAUDE.md）。
 // ここでリポジトリとポートの実装を組み立て、ユースケースに注入し、api 層に渡す。
 //
-// 結線するのは在庫（pantry）の4経路と、その前に立つ世帯の認証（identity）である。
-// コンテキストをまたいで両方の全層を import してよいのは、依存表の `main.ts` の行だけ
-// （CLAUDE.md「依存は外から内へ」）。
+// 結線するのは在庫（pantry）の4経路と献立（meal）の提案の2経路、その前に立つ世帯の認証
+// （identity）である。コンテキストをまたいで全層を import してよいのは、依存表の `main.ts` の
+// 行だけ（CLAUDE.md「依存は外から内へ」）。
 
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { Hono } from 'hono';
@@ -18,6 +18,16 @@ import type {
 } from './contexts/identity/infrastructure/HouseholdAuthenticatorImpl.js';
 import { HouseholdAuthenticatorImpl } from './contexts/identity/infrastructure/HouseholdAuthenticatorImpl.js';
 import { identifyHousehold } from './contexts/identity/usecase/IdentifyHousehold.js';
+import type { SuggestionRoutesDeps } from './contexts/meal/api/SuggestionRoutes.js';
+import { createSuggestionRoutes } from './contexts/meal/api/SuggestionRoutes.js';
+import type { MealIdGenerator } from './contexts/meal/domain/port/MealIdGenerator.js';
+import type { SuggestionIdGenerator } from './contexts/meal/domain/port/SuggestionIdGenerator.js';
+import { mealIdOf } from './contexts/meal/domain/value/MealId.js';
+import { suggestionIdOf } from './contexts/meal/domain/value/SuggestionId.js';
+import { MealRepositoryImpl } from './contexts/meal/infrastructure/MealRepositoryImpl.js';
+import { PlaceholderMealGenerator } from './contexts/meal/infrastructure/PlaceholderMealGenerator.js';
+import { SuggestionRepositoryImpl } from './contexts/meal/infrastructure/SuggestionRepositoryImpl.js';
+import { suggestMeals, suggestNewMeals } from './contexts/meal/usecase/SuggestMeals.js';
 import { createStockItemRoutes } from './contexts/pantry/api/StockItemRoutes.js';
 import type { StockItemIdGenerator } from './contexts/pantry/domain/port/StockItemIdGenerator.js';
 import { stockItemIdOf } from './contexts/pantry/domain/value/StockItemId.js';
@@ -69,7 +79,7 @@ export function accessTokenVerificationOf(supabaseUrl: string): AccessTokenVerif
 }
 
 /** api 層が受け取る形そのもの。ユースケースから導出し、ここで型を新設しない（ADR-032 決定1 と同じ手）。 */
-export type AppDependencies = Parameters<typeof createStockItemRoutes>[0];
+export type AppDependencies = Parameters<typeof createStockItemRoutes>[0] & SuggestionRoutesDeps;
 
 /** 差し替えられる出口。既定は実行環境の `fetch`。テストは `FixedFetchJwks` を渡す。 */
 export type CompositionPorts = { readonly fetchJwks?: FetchJwks };
@@ -82,7 +92,21 @@ export type CompositionPorts = { readonly fetchJwks?: FetchJwks };
 const generateStockItemId: StockItemIdGenerator = () => stockItemIdOf(crypto.randomUUID());
 
 /**
- * 在庫のユースケース1つを **1要求1トランザクション**で包む（B-09 設計書 規則7・8 /
+ * 献立と提案の識別子の発行（B-48c）。`meals.id` / `suggestions.id` はどちらも `uuid` 列。
+ * 在庫品と同じく、乱数を読むのはここだけである。
+ */
+const generateMealId: MealIdGenerator = () => mealIdOf(crypto.randomUUID());
+const generateSuggestionId: SuggestionIdGenerator = () => suggestionIdOf(crypto.randomUUID());
+
+/**
+ * 基準日時（ADR-062 決定1）。**呼ばれるたびに時計を読む** — 組み立て時に1度だけ読んで固定すると、
+ * isolate が生きている間ずっと同じ時刻で期限と1日の上限を判じることになる。
+ * 時計を読むのはここだけで、ユースケースにも経路にも書かない（`docs/testing.md` 5章）。
+ */
+const now = (): string => new Date().toISOString();
+
+/**
+ * ユースケース1つを **1要求1トランザクション**で包む（B-09 設計書 規則7・8 /
  * ADR-029 決定3(a) / ADR-042 決定2・決定3）。
  *
  * ユースケースの工場はリポジトリを構築時に取るため、**工場の呼び出し自体をトランザクションの
@@ -131,6 +155,22 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
     accessTokenVerificationOf(supabaseUrl ?? ''),
     ports?.fetchJwks,
   );
+  // 状態を持たないので2つの入口で共有する（B-47 規則11）。選ぶ設定は置かない（ADR-060）。
+  const mealGenerator = new PlaceholderMealGenerator();
+
+  /**
+   * 提案の依存を1つの `tx` から組む（B-48c）。`listStockItems` は**同じ `tx` の素のもの**を渡す —
+   * 在庫の経路用の包み済みを渡すと、1要求に2本目の接続とトランザクションが開き、
+   * 在庫の読みと提案の書き込みが別の時点になる（ADR-029 決定3(a) / ADR-033 決定2）。
+   */
+  const mealSuggestionDepsOf = (tx: HouseholdTransaction) => ({
+    listStockItems: listStockItems({ stockItemRepository: new StockItemRepositoryImpl(tx) }),
+    mealRepository: new MealRepositoryImpl(tx),
+    suggestionRepository: new SuggestionRepositoryImpl(tx),
+    mealGenerator,
+    generateMealId,
+    generateSuggestionId,
+  });
 
   return {
     identifyHousehold: identifyHousehold({ householdAuthenticator }),
@@ -149,6 +189,9 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
     deleteStockItem: transactionPerRequest(env, (tx) =>
       deleteStockItem({ stockItemRepository: new StockItemRepositoryImpl(tx) }),
     ),
+    suggestMeals: transactionPerRequest(env, (tx) => suggestMeals(mealSuggestionDepsOf(tx))),
+    suggestNewMeals: transactionPerRequest(env, (tx) => suggestNewMeals(mealSuggestionDepsOf(tx))),
+    now,
   };
 }
 
@@ -167,7 +210,7 @@ const ALLOWED_WEB_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'];
 
 /**
  * CORS で許す method。**画面の有無ではなく結線済みの経路に合わせる**（B-22 設計書 規則13 / B-09）。
- * 在庫の4経路がそのまま4つであり、Worker が持たない `HEAD` / `PATCH` は挙げない。
+ * 在庫の4経路と提案の2経路（どちらも `POST`）で使うのがこの4つであり、Worker が持たない `HEAD` / `PATCH` は挙げない。
  *
  * **`OPTIONS` も挙げない。** preflight に応えるのはミドルウェア自身であり、`next()` を呼ぶ前に
  * 204 を返す — 経路に届かないものを許可の一覧に並べる必要はない（ADR-048 決定3）。
@@ -182,11 +225,12 @@ const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'DELETE'];
 const ALLOWED_HEADERS = ['Authorization', 'Content-Type'];
 
 /**
- * `/health` と在庫の4経路を1つの Hono にする。`new` するのは Hono だけ（B-09 設計書 規則1・2）。
+ * `/health` と在庫の4経路、提案の2経路を1つの Hono にする。`new` するのは Hono だけ（B-09 設計書 規則1・2）。
  *
  * 在庫の経路は**接頭辞なし**で根にマウントする（`POST /stock-items` 等。FR-01 / FR-04 /
- * FR-05 / FR-06 / ADR-003）。**接頭辞は増やさない**（B-22 設計書 規則15）— この Worker の origin は
- * 在庫の API と `/health` しか出さないので、`/api` で切り分ける相手が居ない。接頭辞が効くのは
+ * FR-05 / FR-06 / ADR-003）。提案の経路も同じく根に置く（`POST /suggestions` と
+ * `POST /suggestions/new-meals`。ADR-062 決定1 / B-48c）。**接頭辞は増やさない**（B-22 設計書 規則15）— この Worker の origin は
+ * 在庫と献立の API と `/health` しか出さないので、`/api` で切り分ける相手が居ない。接頭辞が効くのは
  * web と api が1つのドメインを分け合うときで、**その配信先はまだ決まっていない。**
  *
  * **CORS は経路より前に `app.use('*', …)` で置く**（B-22 設計書 規則11・14 / ADR-046 結果3）。
@@ -213,6 +257,7 @@ export function createApp(deps: AppDependencies): Hono {
   app.get('/health', (c) => c.json({ status: 'ok' }));
 
   app.route('/', createStockItemRoutes(deps));
+  app.route('/', createSuggestionRoutes(deps));
 
   return app;
 }
