@@ -41,7 +41,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | --- | --- |
 | 何を作るか（機能要件・非機能要件・コスト設計） | `docs/requirements.md` |
 | どう表現するか（ドメインモデル・用語・不変条件・確定事項） | `docs/domain-model.md` |
-| なぜその作りなのか（アーキテクチャ決定 ADR-001〜058） | `docs/adr.md` |
+| なぜその作りなのか（アーキテクチャ決定 ADR-001〜059） | `docs/adr.md` |
 | LLM に何を渡し何を受け取るか（プロンプト全文・応答の検証規則） | `docs/prompt-design.md` |
 | 画面に何をどう出すか（遷移・状態・再利用の見せ方） | `docs/screen-design.md` |
 | どうテストするか（古典派・観察可能な振る舞い・TDD の1周） | `docs/testing.md` |
@@ -58,11 +58,11 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 
 | コンテキスト | domain | usecase | infrastructure | api | 備考 |
 | --- | --- | --- | --- | --- | --- |
-| `pantry`（在庫） | `StockItem` 集約、`Amount` / `ExpiryDate` / `IngredientId` / `StockItemId`、`StockItemRepository`«if»、`StockItemIdGenerator`«if» | `RegisterStockItem` / `ListStockItems` / `UpdateStockItem` / `DeleteStockItem`、`StockItemDto` | `StockItemRepositoryImpl`（Drizzle）、`db/schema.ts`、`db/HouseholdTransaction.ts`（`set local role` とクレーム） | `StockItemRoutes`、`RuleViolationStatus` | **縦に一本通り、`main.ts` で結線されている**（B-09）。4経路は接頭辞なしで根に置かれる（`POST /stock-items` 等） |
-| `meal`（献立） | `Meal` / `Suggestion` 集約、`MealIngredient` / `MealCoverage` / `CookableMeal` / `Amount` / `CookingStep` / `CookingRecord` / `DateTime` / `MealId` / `StockItem` / `ExpiryDate` / `PantrySnapshot` / `SuggestionEntry` / `SuggestionId` / `GeneratedMeal`（value）、`MealCoverageService` / `CookableMealFinder`、`MealGenerator`«if» / `SuggestionIdGenerator`«if» / `MealIdGenerator`«if»、`MealRepository`«if» / `SuggestionRepository`«if»、`MealRuleViolation` | `SuggestMeals`（**再利用と生成の両方**）／ `SuggestNewMeals`（**FR-36 の明示操作**） | `MealRepositoryImpl` / `SuggestionRepositoryImpl`（Drizzle）、`db/schema.ts`（`meals` と子3表、`suggestions` と子2表）、`db/HouseholdTransaction.ts`（**型2つだけの写し。本体は写していない — B-17 で消える**） | — | **提案の経路が一本通った。** 在庫が前回の提案から変わっていなければ保存済みの提案をそのまま返し（C-7）、変わっていれば作れる献立を C-11 で除いて上位3件を提案にする。**0件のときは `MealGenerator` を呼び、既存と同じ名称の生成結果は既存を参照する**（C-4）。**ただし期限切れを落とした在庫が2件に満たなければ呼ばず、在庫が足りない結末を返す**（S-4 / ADR-040 / ADR-041。結末は `outcome` で判別する戻り値）。**直近24時間の生成が10回に達している回も呼ばず、上限に達した結末を返す**（S-7 / NFR-C2 / ADR-049。数えるのは生成の由来を持つ保存済みの提案で、「1日」は遡る24時間の窓）。**`SuggestNewMeals` は FR-36 の明示操作の入口**（B-32 / ADR-050）— 再利用せず必ず生成を呼び、**C-7 の短絡も通らない**（根拠は FR-21「再生成は明示的な操作でのみ行う」）。**上書きするのはその2つだけで、在庫の下限も1日の上限もこの入口に当たる**（ADR-049 結果7）。本体は `SuggestMeals` と共有し、写しを作らない。**背後の腐敗防止層はプロバイダ待ち**（ADR-019）。在庫品と期限は献立側にも起こしてあり、在庫品は名称・分量・期限の3項目（ADR-036 / ADR-037）。**献立の永続化は通った**（B-44）— `meals` と子3表（材料・手順・調理記録）に**表ごとの RLS 4本**を置き、**子表は `household_id` を自分で持ち、述語は4表とも `household_id = (select auth.uid())`**（親への `exists` を書かない。ADR-056）。**`save` は保存済みと名称・材料・手順を読み比べ、食い違えば `save.contentMismatch` で断って1行も書かない**（**C-3。2026-09-21 にユーザーが決定** — 子表の主キーが `(meal_id, position)` のため、件数の変わる `save` が「増えた位置だけが入る」形で C-3 を破る）。**調理記録だけは追加のみ通し**、同じ内容の `save` はべき等。**`on conflict … do nothing` は置かない** — 他世帯との識別子の衝突で子も飛ばされ、外部キーの検査に到達しないため、素の insert で DB の一意制約に拒ませる。**提案の永続化も通った**（B-45）— `suggestions` と子2表（提案の1件 `suggestion_entries`・在庫スナップショットの在庫品 `pantry_snapshot_stock_items`）に同じ形の RLS を置いた。**並びは生成日時の降順、同時刻は `SuggestionId` の降順**で、最新の1件は同じ順の先頭（ADR-038）。**生成の回数は世帯・生成の由来・窓の下端（含む）で絞った提案の件数**（ADR-049）。**`save` は読み比べず素の insert で、2度目は主キーが拒む。提案の1件から献立へ外部キーを張らない**（ADR-058＝`提案`）。**`main.ts` への結線と `api/` はまだ無い**（献立の経路が無く、結線しても呼ぶ口が無い） |
+| `pantry`（在庫） | `StockItem` 集約、`Amount` / `ExpiryDate` / `IngredientId` / `StockItemId`、`StockItemRepository`«if»、`StockItemIdGenerator`«if» | `RegisterStockItem` / `ListStockItems` / `UpdateStockItem` / `DeleteStockItem`、`StockItemDto` | `StockItemRepositoryImpl`（Drizzle）、`db/schema.ts` | `StockItemRoutes`、`RuleViolationStatus` | **縦に一本通り、`main.ts` で結線されている**（B-09）。4経路は接頭辞なしで根に置かれる（`POST /stock-items` 等） |
+| `meal`（献立） | `Meal` / `Suggestion` 集約、`MealIngredient` / `MealCoverage` / `CookableMeal` / `Amount` / `CookingStep` / `CookingRecord` / `DateTime` / `MealId` / `StockItem` / `ExpiryDate` / `PantrySnapshot` / `SuggestionEntry` / `SuggestionId` / `GeneratedMeal`（value）、`MealCoverageService` / `CookableMealFinder`、`MealGenerator`«if» / `SuggestionIdGenerator`«if» / `MealIdGenerator`«if»、`MealRepository`«if» / `SuggestionRepository`«if»、`MealRuleViolation` | `SuggestMeals`（**再利用と生成の両方**）／ `SuggestNewMeals`（**FR-36 の明示操作**） | `MealRepositoryImpl` / `SuggestionRepositoryImpl`（Drizzle）、`db/schema.ts`（`meals` と子3表、`suggestions` と子2表） | — | **提案の経路が一本通った。** 在庫が前回の提案から変わっていなければ保存済みの提案をそのまま返し（C-7）、変わっていれば作れる献立を C-11 で除いて上位3件を提案にする。**0件のときは `MealGenerator` を呼び、既存と同じ名称の生成結果は既存を参照する**（C-4）。**ただし期限切れを落とした在庫が2件に満たなければ呼ばず、在庫が足りない結末を返す**（S-4 / ADR-040 / ADR-041。結末は `outcome` で判別する戻り値）。**直近24時間の生成が10回に達している回も呼ばず、上限に達した結末を返す**（S-7 / NFR-C2 / ADR-049。数えるのは生成の由来を持つ保存済みの提案で、「1日」は遡る24時間の窓）。**`SuggestNewMeals` は FR-36 の明示操作の入口**（B-32 / ADR-050）— 再利用せず必ず生成を呼び、**C-7 の短絡も通らない**（根拠は FR-21「再生成は明示的な操作でのみ行う」）。**上書きするのはその2つだけで、在庫の下限も1日の上限もこの入口に当たる**（ADR-049 結果7）。本体は `SuggestMeals` と共有し、写しを作らない。**背後の腐敗防止層はプロバイダ待ち**（ADR-019）。在庫品と期限は献立側にも起こしてあり、在庫品は名称・分量・期限の3項目（ADR-036 / ADR-037）。**献立の永続化は通った**（B-44）— `meals` と子3表（材料・手順・調理記録）に**表ごとの RLS 4本**を置き、**子表は `household_id` を自分で持ち、述語は4表とも `household_id = (select auth.uid())`**（親への `exists` を書かない。ADR-056）。**`save` は保存済みと名称・材料・手順を読み比べ、食い違えば `save.contentMismatch` で断って1行も書かない**（**C-3。2026-09-21 にユーザーが決定** — 子表の主キーが `(meal_id, position)` のため、件数の変わる `save` が「増えた位置だけが入る」形で C-3 を破る）。**調理記録だけは追加のみ通し**、同じ内容の `save` はべき等。**`on conflict … do nothing` は置かない** — 他世帯との識別子の衝突で子も飛ばされ、外部キーの検査に到達しないため、素の insert で DB の一意制約に拒ませる。**提案の永続化も通った**（B-45）— `suggestions` と子2表（提案の1件 `suggestion_entries`・在庫スナップショットの在庫品 `pantry_snapshot_stock_items`）に同じ形の RLS を置いた。**並びは生成日時の降順、同時刻は `SuggestionId` の降順**で、最新の1件は同じ順の先頭（ADR-038）。**生成の回数は世帯・生成の由来・窓の下端（含む）で絞った提案の件数**（ADR-049）。**`save` は読み比べず素の insert で、2度目は主キーが拒む。提案の1件から献立へ外部キーを張らない**（ADR-058＝`提案`）。**`main.ts` への結線と `api/` はまだ無い**（献立の経路が無く、結線しても呼ぶ口が無い） |
 | `identity`（世帯） | `HouseholdAuthenticator`«if»、`IdentityRuleViolation` | `IdentifyHousehold` | `HouseholdAuthenticatorImpl`（**JWKS で ES256 を検証**。鍵は `kid` で引き、`alg` が設定と一致するものだけに絞る。**最初の検証で1度だけ取りに行って保持し、失敗した取得は捨てる**） | — | **実環境と噛み合った**（B-07f で実測、B-07g で実装。ADR-043）。**取得の失敗と設定の空は `IdentityRuleViolation` に包まない** — 包むと 401 に化け、サーバ側の不備を利用者のせいにする（ADR-045）。**`main.ts` で結線されている**（B-09）— 認証器は環境1つにつき1つで、要求ごとに作り直さない（ADR-043 結果2） |
 | `catalog`（食材） | — | — | — | — | `.gitkeep` のみ。食材マスタの初期データが判断待ち |
-| `shared/domain` | `HouseholdId` | | | | |
+| `shared/` | `HouseholdId`（`shared/domain`） | | `db/HouseholdTransaction.ts`（`shared/infrastructure`。`set local role` とクレーム。**両コンテキストの infrastructure と `main.ts` だけが引く**。B-17 / ADR-059＝`提案`） | | |
 
 | 場所 | 現在地 |
 | --- | --- |
@@ -230,7 +230,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 実装上の必須事項:
 
 - **Supabase の Postgres には `authenticated` ロールで繋ぐ。`service_role` キーと、表の所有者ロールの接続文字列を使わない。** どちらも RLS を迂回してしまい、Supabase を選んだ理由（世帯分離の安全網）が消える。
-- **1リクエスト1トランザクションとし、その中で `set local role` と `set local request.jwt.claims` を張る。`local` を落とさない。** 接続プーラは接続を貸し回すため、セッションに残した設定は他人のリクエストに漏れる。**クレームを張り忘れた問い合わせは0行になる**（他世帯が見えるのではない）。実装は `contexts/pantry/infrastructure/db/HouseholdTransaction.ts`（`shared/` への移動は B-17）。
+- **1リクエスト1トランザクションとし、その中で `set local role` と `set local request.jwt.claims` を張る。`local` を落とさない。** 接続プーラは接続を貸し回すため、セッションに残した設定は他人のリクエストに漏れる。**クレームを張り忘れた問い合わせは0行になる**（他世帯が見えるのではない）。実装は `shared/infrastructure/db/HouseholdTransaction.ts`（B-17 で pantry から移った。ADR-059）。
 - **受け取った JWT はサーバ側で検証してからクレームに張る。** PostgREST を通らなくなったため、署名と有効期限の検証はアプリの責務である。検証せずに `sub` を張ることは、任意の世帯になりすませることと同じ（ADR-029 の結果2）。実装は `contexts/identity/infrastructure/HouseholdAuthenticatorImpl.ts`。**検証は JWKS（ES256）で行う** — 実環境が非対称鍵で署名していることを確かめた（ADR-043 / B-07f、実装は B-07g）。**鍵が引けないことと設定が空であることを `IdentityRuleViolation` に包まない** — 包むと api 層の写像が 401 を返し、サーバ側の不備を利用者のアクセストークンのせいにする。**`issuer` / `audience` は省略できない** — hono は空文字を「照合しない」と読むため、空を通すと照合が消えたことに気づけない。
 - **Workers から Postgres へは Hyperdrive 経由で繋ぐ。直接 TCP で繋がない。** 到達はできるが、**TLS を要求すると接続のやり直しが繰り返され、1リクエストあたりの外向き接続数の上限に当たって落ちる**（B-07f で実測）。NFR-08 は例外を認めていないため、TLS を捨てる選択肢は無い（ADR-042）。**`prepare: false` と `fetch_types: false` をドライバに与える。**
 - **Hyperdrive の問い合わせキャッシュを切る**（`caching.disabled`。ADR-044）。読み取りはすべて世帯で絞られており**キャッシュから得るものが無い**のに、噛み合わなければ他世帯の在庫が**例外も警告もなく**返る。**リポジトリの側からは検査できない設定である** — 新しい環境を立てるときは `wrangler hyperdrive get <id>` で確かめる。
@@ -267,10 +267,11 @@ apps/api/                  Hono on Cloudflare Workers
     usecase/
     infrastructure/        ← 腐敗防止層はここ
     api/
-  src/contexts/pantry/     同じ5つのディレクトリ。infrastructure/db/ に Drizzle の schema とトランザクション helper
+  src/contexts/pantry/     同じ5つのディレクトリ。infrastructure/db/ に Drizzle の schema
   src/contexts/catalog/
   src/contexts/identity/
   src/shared/domain/
+  src/shared/infrastructure/  コンテキストをまたぐインフラ（トランザクションの helper）。infrastructure/ と main.ts だけが引く（ADR-059）
   src/main.ts              composition root
   test/contexts/           単体テスト（src と同じ木）
   test/contract/           packages/contract との突き合わせ

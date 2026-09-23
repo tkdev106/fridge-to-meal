@@ -15,6 +15,7 @@ contexts/<ctx>/
   infrastructure/    repository/port の実装。腐敗防止層はここ
   api/               HTTP のハンドラ。usecase だけを呼ぶ
 shared/domain/       コンテキストをまたいで共有する最小限の型（HouseholdId など）
+shared/infrastructure/  コンテキストをまたぐインフラ（withHouseholdTransaction）。各 infrastructure/ と main.ts だけが引く（ADR-059）
 main.ts              composition root。実装クラスを new してよい唯一の場所
 ```
 

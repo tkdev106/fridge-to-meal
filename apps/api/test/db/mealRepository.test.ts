@@ -18,8 +18,8 @@ import type {
 } from '../../src/contexts/meal/domain/value/MealIngredient.js';
 import { createMealIngredient } from '../../src/contexts/meal/domain/value/MealIngredient.js';
 import { MealRepositoryImpl } from '../../src/contexts/meal/infrastructure/MealRepositoryImpl.js';
-import type { HouseholdTransaction } from '../../src/contexts/pantry/infrastructure/db/HouseholdTransaction.js';
-import { withHouseholdTransaction } from '../../src/contexts/pantry/infrastructure/db/HouseholdTransaction.js';
+import type { HouseholdTransaction } from '../../src/shared/infrastructure/db/HouseholdTransaction.js';
+import { withHouseholdTransaction } from '../../src/shared/infrastructure/db/HouseholdTransaction.js';
 import type { HouseholdId } from '../../src/shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../src/shared/domain/HouseholdId.js';
 import { APP_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
@@ -32,8 +32,8 @@ import { APP_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
  * 繋ぐのは `authenticator` だけ。所有者（`postgres`）の接続を使うと行レベルセキュリティが
  * 素通りし、**RLS が無くても緑になる**（B-44 設計 9章）。
  *
- * **トランザクションを開くのは `withHouseholdTransaction`（pantry のもの）である**
- * （設計 9章 — テストは依存ルールの対象外なので、1つの規則を2つに割らない）。
+ * **トランザクションを開くのは `withHouseholdTransaction`（`shared/infrastructure/` のもの）である**
+ * （B-17 で pantry から移った。本番と同じ1つの規則を通る）。
  *
  * **世帯 ID と献立 ID はケースごとに固有の固定値を使い、使い回さない。** 表は
  * `globalSetup` で1度だけ作られ、ファイルとケースをまたいで共有されるため。

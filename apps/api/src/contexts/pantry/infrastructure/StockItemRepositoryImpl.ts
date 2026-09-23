@@ -10,7 +10,7 @@ import { expiryDateOf } from '../domain/value/ExpiryDate.js';
 import { ingredientIdOf } from '../domain/value/IngredientId.js';
 import type { HouseholdId } from '../../../shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../../shared/domain/HouseholdId.js';
-import type { HouseholdTransaction } from './db/HouseholdTransaction.js';
+import type { HouseholdTransaction } from '../../../shared/infrastructure/db/HouseholdTransaction.js';
 import type { StockItemRow } from './db/schema.js';
 import { stockItems } from './db/schema.js';
 
