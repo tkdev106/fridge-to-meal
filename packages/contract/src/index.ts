@@ -15,3 +15,14 @@ export type {
   StockItemDto,
   UpdateStockItemInput,
 } from './pantry.js';
+
+export type {
+  CoveredMealIngredientDto,
+  MealCoverageDto,
+  MealIngredientDto,
+  MealIngredientKind,
+  SuggestionEntryOrigin,
+  SuggestionEntryOutput,
+  SuggestionOutput,
+  SuggestMealsOutput,
+} from './meal.js';

@@ -1,4 +1,9 @@
-import type { StockItemDto } from '@fridge-to-meal/contract';
+import type {
+  MealIngredientDto,
+  StockItemDto,
+  SuggestionEntryOutput,
+  SuggestMealsOutput,
+} from '@fridge-to-meal/contract';
 import type { HouseholdId } from '../../../shared/domain/HouseholdId.js';
 import type { ListStockItems } from '../../pantry/usecase/ListStockItems.js';
 import { createMeal } from '../domain/entity/Meal.js';
@@ -11,12 +16,14 @@ import type { SuggestionIdGenerator } from '../domain/port/SuggestionIdGenerator
 import type { MealRepository } from '../domain/repository/MealRepository.js';
 import type { SuggestionRepository } from '../domain/repository/SuggestionRepository.js';
 import { cookableMealsOf } from '../domain/service/CookableMealFinder.js';
+import { mealCoverageOf } from '../domain/service/MealCoverageService.js';
 import { amountOf } from '../domain/value/Amount.js';
 import type { CookableMeal } from '../domain/value/CookableMeal.js';
 import { dateTimeOf, hoursBeforeOf } from '../domain/value/DateTime.js';
 import type { DateTime } from '../domain/value/DateTime.js';
 import { expiryDateOf } from '../domain/value/ExpiryDate.js';
 import type { MealId } from '../domain/value/MealId.js';
+import type { MealIngredient } from '../domain/value/MealIngredient.js';
 import {
   createPantrySnapshot,
   pantrySnapshotEquals,
@@ -27,41 +34,6 @@ import { createStockItem } from '../domain/value/StockItem.js';
 import type { StockItem } from '../domain/value/StockItem.js';
 import { createSuggestionEntry } from '../domain/value/SuggestionEntry.js';
 import type { SuggestionEntry, SuggestionEntryOrigin } from '../domain/value/SuggestionEntry.js';
-
-/** 提案の1件。抱えるのは献立の識別子と由来だけである（ADR-008）。 */
-export type SuggestionEntryOutput = {
-  readonly mealId: string;
-  readonly origin: SuggestionEntryOrigin;
-};
-
-/**
- * 提案1回ぶんの出力。**HTTP の契約ではない**（B-27 10章）。献立側の DTO を
- * `packages/contract` に置くのは api 経路を作る周であり、この周はここに置く。
- *
- * **いまの `SuggestMealsOutput` の改名であり、中身は1つも変えない**（ADR-041 決定2・結果3）。
- */
-export type SuggestionOutput = {
-  readonly id: string;
-  readonly entries: readonly SuggestionEntryOutput[];
-  /** 生成日時。UTC の正準形に正規化された文字列（`DateTime`）。 */
-  readonly generatedAt: string;
-};
-
-/**
- * ユースケースの結末。**`outcome` で判別する**（ADR-041 決定1）。
- * 在庫が足りない回も上限に達した回も失敗でも規則違反でもないので、投げも `null` も使わない。
- *
- * `<ユースケース>Output` がそのユースケースの戻り値である先行（`ListStockItemsOutput`）に
- * 合わせ、union のほうが `SuggestMealsOutput` を名乗る。判別子に `kind` を使わないのは、
- * `MealIngredient.kind`（主材料／調味料。C-16）が同じ語を別の意味で持っているためである。
- *
- * **`'generationLimitReached'` が S-7 である**（NFR-C2 / ADR-049 結果5）。ADR-041 結果2 の
- * とおり、上限の数え方がどう決まっても足すのはこの1行と、それを返す分岐だけであった。
- */
-export type SuggestMealsOutput =
-  | { readonly outcome: 'suggested'; readonly suggestion: SuggestionOutput }
-  | { readonly outcome: 'insufficientStockItems' }
-  | { readonly outcome: 'generationLimitReached' };
 
 /**
  * 在庫で作れる献立から提案を組む（FR-16 / FR-34 / FR-35）。世帯は第1引数で受け取り、
@@ -253,9 +225,12 @@ async function suggest(
 
   // 在庫が最新の提案のときから動いていなければ、その提案をそのまま返してここで終える
   // （C-7 / FR-21 / NFR-C1 / B-28 規則1）。**既定の提案では最初の分岐がこれである**
-  // （domain-model 6章）。献立も直近3回の提案も引かず、提案を組まず、識別子も発行せず、
+  // （domain-model 6章）。直近3回の提案を引かず、提案を組まず、識別子も発行せず、
   // 保存もしない — 返す識別子も由来も生成日時も保存済みの提案のものであって、
   // 引数の基準日時でも新しく発行した識別子でもない。
+  //
+  // **ただし献立だけは世帯で引く**（B-48a 規則4 / FR-21）。短絡した回も提案の1件ごとに献立の
+  // 中身を載せて返すためであり、直近の提案は従来どおり引かない。
   //
   // **明示操作はこの分岐を通らず、最新の提案を引きもしない**（FR-36 / B-32 / ADR-051 決定1）。
   // C-7 は「**再生成の判定**」の規則であり、FR-21 が「**再生成は明示的な操作（FR-36）でのみ
@@ -268,7 +243,8 @@ async function suggest(
       latestSuggestion !== null &&
       pantrySnapshotEquals(latestSuggestion.pantrySnapshot, pantrySnapshot)
     ) {
-      return toOutput(latestSuggestion);
+      const mealsOfHousehold = await deps.mealRepository.findByHousehold(householdId);
+      return toOutput(latestSuggestion, mealByIdOf(mealsOfHousehold), mealStockItems);
     }
   }
 
@@ -345,7 +321,12 @@ async function suggest(
     }
   }
 
-  const suggestionEntries = shouldGenerate
+  // 出力に載せる献立の中身は、**この要求で読んだ献立**から引き当てる（B-48a 規則5）。引き当ての
+  // 表は生成を呼ぶ前に組み終える — 保存した献立は `findByHousehold` が返した列に積まれうるため、
+  // あとで組むとその回の保存に引きずられる（`buildExistingMealIdByTitle` と同じ構え）。
+  const storedMealById = mealByIdOf(storedMeals);
+
+  const { entries: suggestionEntries, savedMeals } = shouldGenerate
     ? await generateSuggestionEntries(
         deps,
         householdId,
@@ -354,7 +335,7 @@ async function suggest(
         buildAvoidTitles(storedMeals, recentSuggestions),
         buildExistingMealIdByTitle(storedMeals),
       )
-    : selectedCookableMeals.map(toReusedEntry);
+    : { entries: selectedCookableMeals.map(toReusedEntry), savedMeals: [] };
 
   // 検証を保存の前に済ませる。規則違反で終わったときに何も残らないのはこの順序による
   // （B-27 規則11 / 先行 `registerStockItem`）。**提案を保存するのはどちらの経路でも同じ**で、
@@ -370,7 +351,12 @@ async function suggest(
 
   await deps.suggestionRepository.save(householdId, suggestion);
 
-  return toOutput(suggestion);
+  // **保存のあとに読み直さない**（B-48a 規則5）。この回に保存した献立は手元にあるものを足す。
+  // C-4 で既存を参照した1件は既存の献立を指しているので、既存の中身がそのまま載る。
+  const mealById = new Map(storedMealById);
+  for (const savedMeal of savedMeals) mealById.set(savedMeal.id, savedMeal);
+
+  return toOutput(suggestion, mealById, mealStockItems);
 }
 
 /**
@@ -428,7 +414,7 @@ async function generateSuggestionEntries(
   asOfDateTime: DateTime,
   avoidTitles: readonly string[],
   existingMealIdByTitle: ReadonlyMap<string, MealId>,
-): Promise<readonly SuggestionEntry[]> {
+): Promise<{ entries: readonly SuggestionEntry[]; savedMeals: readonly Meal[] }> {
   // 出口には世帯を渡さない（NFR-11 / B-28 9章）。避けるべき名称は組み終えたものを受け取る
   // だけで、ここで並べ替えも切り取りもしない（規則6・8 / `buildAvoidTitles`）。
   const generatedMeals = await deps.mealGenerator.generate({
@@ -439,6 +425,7 @@ async function generateSuggestionEntries(
   });
 
   const suggestionEntries: SuggestionEntry[] = [];
+  const savedMeals: Meal[] = [];
   for (const generatedMeal of generatedMeals) {
     // 同じ名称の献立がすでに手元にあれば、それを指して次へ進む（規則10 / C-4）。突き合わせは
     // **両者の値をそのまま**比べるだけで、ここで詰め直しも畳み直しもしない — `createMeal` と
@@ -471,11 +458,12 @@ async function generateSuggestionEntries(
     // 保存にも第1引数の世帯を渡す（C-9）。1件ずつ待つのは、保存できたものだけを
     // 提案に並べるためである（C-1）。
     await deps.mealRepository.save(householdId, meal);
+    savedMeals.push(meal);
 
     suggestionEntries.push(createSuggestionEntry({ mealId: meal.id, origin: GENERATED_ORIGIN }));
   }
 
-  return suggestionEntries;
+  return { entries: suggestionEntries, savedMeals };
 }
 
 /**
@@ -637,26 +625,88 @@ function toReusedEntry(cookableMeal: CookableMeal): SuggestionEntry {
 }
 
 /**
+ * 献立を識別子で引けるようにする（B-48a 規則5・11）。受け取った列は読むだけである（ADR-009）。
+ * 渡すのは世帯で引いた献立だけであり、他世帯の献立を指す識別子は引けない（C-9）。
+ */
+function mealByIdOf(meals: readonly Meal[]): ReadonlyMap<MealId, Meal> {
+  const mealById = new Map<MealId, Meal>();
+  for (const meal of meals) {
+    if (!mealById.has(meal.id)) mealById.set(meal.id, meal);
+  }
+  return mealById;
+}
+
+/**
  * 提案を、**提案を返したことを名乗る結末**に写す（B-31b 規則1・2 / ADR-041 決定1・決定2）。
  * **この周で組んで保存した提案と、C-7 で短絡して返す保存済みの提案の両方が通る** —
  * どちらも同じ写し方であり、短絡した回だけ識別子や生成日時を作り替えない（B-28 規則1）。
  *
- * **判別子が付くだけで、提案の中身は1つも変わらない**（B-31b 規則2）。結末を名乗る場所を
- * ここ1か所に閉じているので、変種が増えても提案を組む側は動かない。
+ * 1件ごとに、指す献立の名称・材料・手順と、**現在の在庫**での充足を載せる（FR-17 / FR-19 /
+ * B-48a 規則2〜6）。世帯・調理記録・献立の生成日時は載せない（規則12 / NFR-09）。
  *
  * `entries` の並びは**組んだ順そのまま**である — 再利用なら C-12 の順、生成なら生成側が
  * 返した並びであり、ここで並べ替えない（FR-35 / C-2 / C-12 / B-27 規則16 / B-28 規則9）。
+ *
+ * @throws {Error} 提案の1件が指す献立が引けないとき（B-48a 決定1）
  */
-function toOutput(suggestion: Suggestion): SuggestMealsOutput {
+function toOutput(
+  suggestion: Suggestion,
+  mealById: ReadonlyMap<MealId, Meal>,
+  mealStockItems: readonly StockItem[],
+): SuggestMealsOutput {
+  const stockItemNames = mealStockItems.map((stockItem) => stockItem.name);
+
   return {
     outcome: 'suggested',
     suggestion: {
       id: suggestion.id,
-      entries: suggestion.entries.map((entry) => ({
-        mealId: entry.mealId,
-        origin: entry.origin,
-      })),
+      entries: suggestion.entries.map((entry) => toEntryOutput(entry, mealById, stockItemNames)),
       generatedAt: suggestion.generatedAt,
     },
   };
+}
+
+/**
+ * 提案の1件を、指す献立の中身とともに写す（B-48a 規則2〜7・11）。
+ *
+ * **指す献立が引けなければ提案を返さずに断る**（決定1 / ADR-058 結果2）。献立は無期限に保持され
+ * 消す口も無い（Q-2）ので、引けないのはデータの不整合である。1件だけ落とすと FR-21 の
+ * 「同じものが表示される」が黙って崩れ、全件落ちれば C-15 を割る。利用者が入力を直しても
+ * 解消しないため **`MealRuleViolation` に包まない** — 包むと api 層の写像が 4xx に化けさせる
+ * （ADR-045 決定1）。**message に世帯の識別子を含めない**（ADR-045 決定3）。
+ */
+function toEntryOutput(
+  entry: SuggestionEntry,
+  mealById: ReadonlyMap<MealId, Meal>,
+  stockItemNames: readonly string[],
+): SuggestionEntryOutput {
+  const meal = mealById.get(entry.mealId);
+  if (meal === undefined) {
+    throw new Error(`提案の1件が指す献立が見つからない（mealId: ${entry.mealId}）`);
+  }
+
+  // 充足は現在の在庫の名称で算出する（FR-17 / ADR-009 / C-6 / C-16）。
+  const coverage = mealCoverageOf(meal.ingredients, stockItemNames);
+
+  return {
+    mealId: entry.mealId,
+    origin: entry.origin,
+    title: meal.title,
+    // 材料も手順も保存された並びのまま写す。並べ替えも補完もしない（規則3 / C-5）。
+    ingredients: meal.ingredients.map(toIngredientDto),
+    steps: [...meal.steps],
+    coverage: {
+      // 賄える材料の期限は B-48a 2周目で載せる（規則8）。
+      covered: coverage.covered.map((ingredient) => ({
+        ...toIngredientDto(ingredient),
+        expiryDate: null,
+      })),
+      missing: coverage.missing.map(toIngredientDto),
+    },
+  };
+}
+
+/** 材料を DTO に写す。分量の未設定は `null` のまま（ADR-010）。 */
+function toIngredientDto(ingredient: MealIngredient): MealIngredientDto {
+  return { name: ingredient.name, kind: ingredient.kind, amount: ingredient.amount };
 }
