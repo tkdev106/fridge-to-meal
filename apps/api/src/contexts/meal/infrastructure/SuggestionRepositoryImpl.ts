@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray } from 'drizzle-orm';
 import type { Suggestion } from '../domain/entity/Suggestion.js';
 import { createSuggestion } from '../domain/entity/Suggestion.js';
 import { MealRuleViolation } from '../domain/error/MealRuleViolation.js';
@@ -148,9 +148,40 @@ export class SuggestionRepositoryImpl implements SuggestionRepository {
     );
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 3周目で実装する。引数は interface の約束そのもの
-  countGeneratedByHouseholdSince(householdId: HouseholdId, since: DateTime): Promise<number> {
-    throw new Error('未実装');
+  /**
+   * 世帯・生成の由来・窓の下端の3つで絞った**提案の件数**を返す（設計 規則10 /
+   * ADR-049 決定1・結果4 / NFR-C2）。0件なら 0。
+   *
+   * **数えるのは親の行であって、提案の1件の行ではない** — 生成3件の提案も1回である。
+   * 由来は子表にしか無いため、子は「由来が生成の提案の識別子」を引く副問い合わせに
+   * だけ使い、親を1行ずつ数える（子へ結合して数えると件数が提案の1件ぶん膨らむ）。
+   *
+   * **親も子も引数の世帯で絞る**（設計 規則2 / C-9 / ADR-056）。RLS に任せない。
+   * **下端は含む**（`generated_at >= since`）。`count` は `number` に写して返す。
+   */
+  async countGeneratedByHouseholdSince(householdId: HouseholdId, since: DateTime): Promise<number> {
+    const generatedSuggestionIds = this.tx
+      .select({ suggestionId: suggestionEntries.suggestionId })
+      .from(suggestionEntries)
+      .where(
+        and(
+          eq(suggestionEntries.householdId, householdId),
+          eq(suggestionEntries.origin, 'generated'),
+        ),
+      );
+
+    const [row] = await this.tx
+      .select({ count: count() })
+      .from(suggestions)
+      .where(
+        and(
+          eq(suggestions.householdId, householdId),
+          // `timestamptz` とは `Date` で比べる（設計 規則7）。
+          gte(suggestions.generatedAt, new Date(since)),
+          inArray(suggestions.id, generatedSuggestionIds),
+        ),
+      );
+    return row?.count ?? 0;
   }
 }
 

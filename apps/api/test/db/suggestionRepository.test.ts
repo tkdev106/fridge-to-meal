@@ -30,9 +30,9 @@ import { withTransaction } from '../support/db/WithTransaction.js';
 
 /**
  * ローカル Postgres に対する `SuggestionRepositoryImpl` の2周目
- * （B-45 設計 規則1〜9 と 7章 / C-7 / C-9 / C-12 / C-14 / C-15 / ADR-029 / ADR-038）。
+ * （B-45 設計 規則1〜9 と 7章 / C-7 / C-9 / C-12 / C-14 / C-15 / ADR-029 / ADR-038）と、
+ * 3周目の `countGeneratedByHouseholdSince`（規則10 / NFR-C2 / ADR-049 / C-4c）。
  * **`pnpm test:db` でだけ走る** — `pnpm test` は `apps/api/test/db/**` を除外する。
- * `countGeneratedByHouseholdSince` はこの周の対象ではない。
  *
  * 繋ぐのは `authenticator` だけ。所有者（`postgres`）の接続を使うと行レベルセキュリティが
  * 素通りし、**RLS が無くても緑になる**（先行 `mealRepository.test.ts`）。
@@ -146,6 +146,12 @@ function findRecent(householdId: HouseholdId, limit: number): Promise<Suggestion
 function findLatest(householdId: HouseholdId): Promise<Suggestion | null> {
   return withHouseholdTransaction(db, householdId, (tx) =>
     new SuggestionRepositoryImpl(tx).findLatestByHousehold(householdId),
+  );
+}
+
+function countGenerated(householdId: HouseholdId, since: string): Promise<number> {
+  return withHouseholdTransaction(db, householdId, (tx) =>
+    new SuggestionRepositoryImpl(tx).countGeneratedByHouseholdSince(householdId, dateTimeOf(since)),
   );
 }
 
@@ -859,5 +865,162 @@ describe('提案リポジトリの実装（トランザクションを持たな�
     expect(foundWithoutClaims).toEqual([]);
     // ADR-029 理由(4): 張り直して見えることで、0行の理由を「見えない」に絞り込む。
     expect(foundAfterReapplyingClaims).toHaveLength(1);
+  });
+});
+
+describe('提案リポジトリの実装（生成の回数）', () => {
+  // 窓の下端（ADR-049: 遡る24時間の窓）。内側は `newerGeneratedAt`。
+  const since = middleGeneratedAt;
+  const justBeforeSince = '2026-09-22T08:59:59.999Z';
+
+  it('提案が1件も無い世帯では、生成の回数は0になる', async () => {
+    const count = await countGenerated(householdOf('32'), since);
+
+    // 設計 規則10: 0件なら 0。
+    expect(count).toBe(0);
+  });
+
+  it('窓の内側にある生成の由来の提案を数える', async () => {
+    const householdId = householdOf('33');
+    await saveAll(householdId, [
+      suggestion({
+        id: suggestionIdOfCase('33', 'a1'),
+        householdId,
+        generatedAt: newerGeneratedAt,
+      }),
+      suggestion({
+        id: suggestionIdOfCase('33', 'a2'),
+        householdId,
+        generatedAt: newerGeneratedAt,
+      }),
+    ]);
+
+    const count = await countGenerated(householdId, since);
+
+    // 設計 規則10 / NFR-C2
+    expect(count).toBe(2);
+  });
+
+  it('提案の1件が複数ある生成の提案も、1回と数える', async () => {
+    const householdId = householdOf('34');
+    await saveAll(householdId, [
+      suggestion({
+        id: suggestionIdOfCase('34', 'a1'),
+        householdId,
+        entries: [entry(mealId1), entry(mealId2), entry(mealId3)],
+        stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'たまねぎ' })],
+        generatedAt: newerGeneratedAt,
+      }),
+    ]);
+
+    const count = await countGenerated(householdId, since);
+
+    // 設計 規則10: 数えるのは提案の件数で、提案の1件や在庫品の件数ではない（ADR-049 決定1）。
+    expect(count).toBe(1);
+  });
+
+  it('再利用の由来の提案は、生成の回数に入れない', async () => {
+    const householdId = householdOf('35');
+    await saveAll(householdId, [
+      suggestion({
+        id: suggestionIdOfCase('35', 'a1'),
+        householdId,
+        generatedAt: newerGeneratedAt,
+      }),
+      suggestion({
+        id: suggestionIdOfCase('35', 'a2'),
+        householdId,
+        entries: [entry(mealId1, 'reused'), entry(mealId2, 'reused')],
+        generatedAt: newerGeneratedAt,
+      }),
+    ]);
+
+    const count = await countGenerated(householdId, since);
+
+    // 設計 規則10 / C-15 / C-4c: 由来が生成のものだけを数える。
+    expect(count).toBe(1);
+  });
+
+  it('窓の下端より前の提案は、生成の回数に入れない', async () => {
+    const householdId = householdOf('36');
+    await saveAll(householdId, [
+      suggestion({
+        id: suggestionIdOfCase('36', 'a1'),
+        householdId,
+        generatedAt: newerGeneratedAt,
+      }),
+      suggestion({
+        id: suggestionIdOfCase('36', 'a2'),
+        householdId,
+        generatedAt: justBeforeSince,
+      }),
+    ]);
+
+    const count = await countGenerated(householdId, since);
+
+    // 設計 規則10 / ADR-049 結果4
+    expect(count).toBe(1);
+  });
+
+  it('窓の下端ちょうどの提案は、生成の回数に入れる', async () => {
+    const householdId = householdOf('37');
+    await saveAll(householdId, [
+      suggestion({
+        id: suggestionIdOfCase('37', 'a1'),
+        householdId,
+        generatedAt: since,
+      }),
+    ]);
+
+    const count = await countGenerated(householdId, since);
+
+    // 設計 規則10: 下端を含む（`generated_at >= since`）。
+    expect(count).toBe(1);
+  });
+
+  it('他世帯が保存した生成の提案は、生成の回数に入れない', async () => {
+    const ownHouseholdId = householdOf('38');
+    const otherHouseholdId = householdOf('38', true);
+    await saveAll(ownHouseholdId, [
+      suggestion({
+        id: suggestionIdOfCase('38', 'a1'),
+        householdId: ownHouseholdId,
+        generatedAt: newerGeneratedAt,
+      }),
+    ]);
+    await saveAll(otherHouseholdId, [
+      suggestion({
+        id: suggestionIdOfCase('38', 'a2'),
+        householdId: otherHouseholdId,
+        generatedAt: newerGeneratedAt,
+      }),
+    ]);
+
+    const count = await countGenerated(ownHouseholdId, since);
+
+    // C-9 / NFR-09
+    expect(count).toBe(1);
+  });
+
+  it('クレームで見えている生成の提案でも、引数の世帯が食い違えば数えない', async () => {
+    const claimedHouseholdId = householdOf('39');
+    const passedHouseholdId = householdOf('39', true);
+
+    const count = await withHouseholdTransaction(db, claimedHouseholdId, async (tx) => {
+      const repository = new SuggestionRepositoryImpl(tx);
+      await repository.save(
+        claimedHouseholdId,
+        suggestion({
+          id: suggestionIdOfCase('39', 'a1'),
+          householdId: claimedHouseholdId,
+          generatedAt: newerGeneratedAt,
+        }),
+      );
+      // 設計 規則2: RLS で見えていても、引数の世帯で必ず絞る（網は二重）。
+      return repository.countGeneratedByHouseholdSince(passedHouseholdId, dateTimeOf(since));
+    });
+
+    // C-9
+    expect(count).toBe(0);
   });
 });
