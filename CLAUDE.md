@@ -130,6 +130,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 
 - **`usecase/` は `domain/` の兄弟であって、下ではない。** `contexts/meal/usecase/` が正しく、`contexts/meal/domain/usecase/` は誤り。
 - **ユースケースの引数と戻り値にフレームワーク由来の型を入れない。** `Request` / `Response` / `Context` が1つでも現れたら、その層は Web に固定される（ADR-003）。DTO だけを受け渡す。
+- **`shared/infrastructure/`（トランザクションの helper）を import してよいのは各コンテキストの `infrastructure/` と `main.ts` だけ。** `shared/` は `contexts/` を import しない（ADR-059）。
 - **`new MealRepositoryImpl()` を書いてよいのは `apps/api/src/main.ts` だけ。** 他所で実装クラスを直接生成しない。
 - **実装クラスは `<interface 名>Impl` と名づける。** `Db` / `Supabase` / `Drizzle` の接頭辞を付けない — 手段を名前に焼き付けると、差し替えるために interface を置いた意味が薄れる（ADR-029）。
 - **ドメイン層に LLM・プロンプト・JSON・モデル名・SQL を持ち込まない。** 禁じているのは**手段への依存**であって語そのものではない — 型・識別子・ロジックがそれらを知ってはならない。**設計の意図を記録するコメントに語が現れるのは可**（`pantry/domain/value/Amount.ts` が ADR-010 の理由を写している）。**上の「1. 用語表にない語をコードに書かない」の禁止語とは扱いが違う** — あちらは同義語の混在を断つためにコメントも含めて語そのものを禁じ、`pnpm lint:code` が機械的に検査する。外部との変換は `infrastructure/` の腐敗防止層が担う（ADR-005）。

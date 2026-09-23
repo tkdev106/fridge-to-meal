@@ -77,6 +77,7 @@ flowchart TD
 | `contexts/A/usecase/` | `contexts/A/domain/` と `contexts/B/usecase/`（公開されたユースケースのみ） |
 | `contexts/A/infrastructure/` | `contexts/A/domain/` と `shared/infrastructure/`（ADR-059） |
 | `contexts/A/api/` | `contexts/A/usecase/` のみ |
+| `shared/domain/` | 何も import しない。**`contexts/` は一切不可** |
 | `shared/infrastructure/` | `shared/domain/` のみ。**`contexts/` は一切不可**（ADR-059） |
 | `main.ts` | すべて（composition root） |
 
