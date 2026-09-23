@@ -1,5 +1,6 @@
 import {
   check,
+  date,
   foreignKey,
   index,
   integer,
@@ -156,6 +157,98 @@ export const cookingRecords = pgTable(
   ],
 );
 
+/**
+ * 提案（`Suggestion`）の3表（B-45）。献立の4表と同じ決めごとに従う — 識別子と世帯に
+ * 既定値を置かない、子表は世帯を自分で持つ、`(suggestion_id, household_id)` の複合外部キーで
+ * 親と食い違う行を DB の側で断つ、外部キーに `on delete` を書かない（ADR-056）。
+ *
+ * **生成物には RLS の4点を手で足す**（3表ぶん＝12本のポリシー）。
+ */
+export const suggestions = pgTable(
+  'suggestions',
+  {
+    id: uuid('id').primaryKey(),
+    householdId: uuid('household_id').notNull(),
+
+    /** 1日の上限（NFR-C2）と「最新の提案」（C-7）の両方がこの時点で数え・並べる。 */
+    generatedAt: timestamp('generated_at', { withTimezone: true, mode: 'date' }).notNull(),
+  },
+  (t) => [
+    /** 子表の複合外部キーの相手になる（参照先には参照する列の組そのものへの一意が要る）。 */
+    unique('suggestions_id_household_id_unique').on(t.id, t.householdId),
+    // generated_at の索引は先回りして置かない（B-45 設計 2章「作らないもの」）。
+    index('suggestions_household_id_idx').on(t.householdId),
+  ],
+);
+
+export const suggestionEntries = pgTable(
+  'suggestion_entries',
+  {
+    suggestionId: uuid('suggestion_id').notNull(),
+    householdId: uuid('household_id').notNull(),
+
+    /** 集約の配列の添字そのもの。C-12 で呼ぶ側が決めた順を保つ（詰め直さない）。 */
+    position: integer('position').notNull(),
+
+    /**
+     * **献立への外部キーを張らない**（B-45 設計 規則11 / ADR-008）。集約をまたぐ参照は
+     * 識別子であり、張ると献立を消す経路（保持期間は未決）を先回りして決めることになる。
+     */
+    mealId: uuid('meal_id').notNull(),
+
+    /** `generated` か `reused`（C-15）。enum 型を作らず check で断つ。 */
+    origin: text('origin').notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'suggestion_entries_pkey', columns: [t.suggestionId, t.position] }),
+    foreignKey({
+      name: 'suggestion_entries_suggestion_id_household_id_fk',
+      columns: [t.suggestionId, t.householdId],
+      foreignColumns: [suggestions.id, suggestions.householdId],
+    }),
+    index('suggestion_entries_household_id_idx').on(t.householdId),
+    check('suggestion_entries_position_not_negative', sql`${t.position} >= 0`),
+    check('suggestion_entries_origin_known', sql`${t.origin} in ('generated', 'reused')`),
+  ],
+);
+
+export const pantrySnapshotStockItems = pgTable(
+  'pantry_snapshot_stock_items',
+  {
+    suggestionId: uuid('suggestion_id').notNull(),
+    householdId: uuid('household_id').notNull(),
+
+    /** 在庫スナップショットの中の並び（ADR-037）。配列の添字そのもの。 */
+    position: integer('position').notNull(),
+
+    name: text('name').notNull(),
+
+    /** 自由文字列（ADR-010）。「無い」を null の一通りに保つ。 */
+    amount: text('amount'),
+
+    /** 期限（ADR-036 決定1）。`YYYY-MM-DD` のまま往復させる。 */
+    expiryDate: date('expiry_date'),
+  },
+  (t) => [
+    primaryKey({
+      name: 'pantry_snapshot_stock_items_pkey',
+      columns: [t.suggestionId, t.position],
+    }),
+    foreignKey({
+      name: 'pantry_snapshot_stock_items_suggestion_id_household_id_fk',
+      columns: [t.suggestionId, t.householdId],
+      foreignColumns: [suggestions.id, suggestions.householdId],
+    }),
+    index('pantry_snapshot_stock_items_household_id_idx').on(t.householdId),
+    check('pantry_snapshot_stock_items_position_not_negative', sql`${t.position} >= 0`),
+    check('pantry_snapshot_stock_items_name_not_blank', sql`btrim(${t.name}) <> ''`),
+    check(
+      'pantry_snapshot_stock_items_amount_not_blank',
+      sql`${t.amount} is null or btrim(${t.amount}) <> ''`,
+    ),
+  ],
+);
+
 export type MealRow = typeof meals.$inferSelect;
 export type NewMealRow = typeof meals.$inferInsert;
 export type MealIngredientRow = typeof mealIngredients.$inferSelect;
@@ -164,3 +257,9 @@ export type CookingStepRow = typeof cookingSteps.$inferSelect;
 export type NewCookingStepRow = typeof cookingSteps.$inferInsert;
 export type CookingRecordRow = typeof cookingRecords.$inferSelect;
 export type NewCookingRecordRow = typeof cookingRecords.$inferInsert;
+export type SuggestionRow = typeof suggestions.$inferSelect;
+export type NewSuggestionRow = typeof suggestions.$inferInsert;
+export type SuggestionEntryRow = typeof suggestionEntries.$inferSelect;
+export type NewSuggestionEntryRow = typeof suggestionEntries.$inferInsert;
+export type PantrySnapshotStockItemRow = typeof pantrySnapshotStockItems.$inferSelect;
+export type NewPantrySnapshotStockItemRow = typeof pantrySnapshotStockItems.$inferInsert;

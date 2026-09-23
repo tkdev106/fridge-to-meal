@@ -15,6 +15,13 @@
       "when": 1789993173125,
       "tag": "20260921121933_create_meals",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790130507292,
+      "tag": "20260923022827_create_suggestions",
+      "breakpoints": true
     }
   ]
 }
