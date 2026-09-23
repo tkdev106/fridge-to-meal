@@ -23,14 +23,6 @@
 > 期限は区別しない・献立は無期限に保持しユーザー操作の削除は MVP に置かない・食材マスタは置かない
 > （要件 11章 論点4〜6）。以下の行はこの決定から起こした（B-48 は1 PR に収まらず a〜c の3行に割った。仮の生成器 `PlaceholderMealGenerator` は B-47 で置いた。ADR-060）。
 
-- [ ] **B-48a** **提案の結末に献立の中身と充足を載せる** — `packages/contract` に献立の型（`meal.ts`）を置き、
-  `SuggestMeals` / `SuggestNewMeals` の結末をその型で返す（先行 `ListStockItemsOutput`。`SuggestMealsOutput` と
-  `SuggestionOutput` は contract へ移る）。提案の1件ごとに、由来（FR-35）・献立の名称・材料（名称・分量・種別。
-  主材料が先の並びは画面が決める）・手順（FR-19）と、**現在の在庫での充足**（`mealCoverageOf`。FR-17 / ADR-009 /
-  C-6 / C-16）を載せる。**C-7 で短絡した回も同じ形で返す**（保存済みの提案が指す献立を引く。FR-21）。
-  結末の3変種（`outcome`。ADR-041 / ADR-051 結果1）は変えない。**この周で決めること:** 提案の1件が指す献立が
-  引けないときの扱い（ADR-058 で外部キーを張っていない）と、screen-design D-4 の「使う:」に要る
-  在庫品の期限を載せるか（FR-18）（FR-16 / FR-17 / FR-19 / FR-21 / FR-35 / ADR-008 / ADR-009 / ADR-041）
 - [ ] **B-48b** **献立の api 層** — `contexts/meal/api/` に既定の提案（`SuggestMeals`）と新しい献立を求める明示操作
   （`SuggestNewMeals`）の2経路を置く（ADR-051 結果3）。型はユースケースから導出し、規則違反は `name` で見分け、
   断りの本体は `{ rule }` だけ（ADR-032 結果4 が献立側に写すと決めている）。**結末 S-4 / S-7 の状態コードと本文、
