@@ -1175,7 +1175,7 @@ flowchart TD
   1. **A章の「コンテキストをまたぐ依存」の表と構成図に `shared/infrastructure/` の行を足した**（`.dependency-cruiser.cjs` の冒頭が「A章の表と1対1」と言うため、この ADR が `提案` のうちに同じ周で足している）。**退けられたら表・規則・置き場を戻す。**
   2. `shared/infrastructure/` は「両コンテキストの infrastructure が同じ規則を使う」ものだけの置き場であり、**迷ったら置かない**（`shared/domain/README.md` と同じ構え）。テスト側の写し `apps/api/test/support/db/WithTransaction.ts` は、本番の helper に持たせてはならない「クレームを張らない経路」を RLS のテストのために持つため、統合しない。
 
-### ADR-060　プロバイダが決まるまで、`MealGenerator` の背後に仮の生成器 `PlaceholderMealGenerator` を置いて本番の結線に挿す　`提案`
+### ADR-060　プロバイダが決まるまで、`MealGenerator` の背後に仮の生成器 `PlaceholderMealGenerator` を置いて本番の結線に挿す　`承認`
 
 - **状況** — 献立の生成は `MealGenerator` ポートの背後に隔離されており（ADR-005）、その実装を担う LLM プロバイダは意図的に未決である（ADR-019）。ポートの定義（B-15）と、再利用・生成・在庫の下限・1日の上限を持つ `SuggestMeals` / `SuggestNewMeals` は通っているが、**本番の結線に渡せる生成器が1つも無い**ため、献立の API（B-48）と画面（B-49）を通せない。**2026-09-23 にユーザーが「プロバイダが決まるまで、仮の生成器（モック）で献立の経路を通す」と決定した**（backlog B-47）。ADR-029 決定5 はポートの実装クラスを `<interface 名>Impl` と名づけると定めているが、`MealGeneratorImpl` は本物（プロバイダの腐敗防止層）のために空けておく名前である。
 - **決定** — 4つ。
