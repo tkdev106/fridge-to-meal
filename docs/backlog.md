@@ -21,15 +21,29 @@
 
 > **2026-09-23 にユーザーが決定:** プロバイダが決まるまで、**`MealGenerator` の背後を仮の生成器（モック）で埋めて献立の経路を通す。**
 > 期限は区別しない・献立は無期限に保持しユーザー操作の削除は MVP に置かない・食材マスタは置かない
-> （要件 11章 論点4〜6）。以下の3行はこの決定から起こした（仮の生成器 `PlaceholderMealGenerator` は B-47 で置いた。ADR-060）。
+> （要件 11章 論点4〜6）。以下の行はこの決定から起こした（B-48 は1 PR に収まらず a〜c の3行に割った。仮の生成器 `PlaceholderMealGenerator` は B-47 で置いた。ADR-060）。
 
-- [ ] **B-48** **献立の API** — `packages/contract` に献立の型を置き、`contexts/meal/api/` に提案を取る経路
-  （`SuggestMeals`）と新しい献立を求める経路（`SuggestNewMeals`。FR-36）を置いて、`main.ts` で結線する。
-  **生成器は仮物 `PlaceholderMealGenerator`（B-47 で置いた。ADR-060）を渡す。** 献立のユースケースは在庫と同じく1要求1トランザクションで包む
-  （ADR-029 決定3(a) / ADR-059）。在庫はコンテキストをまたぐため `usecase/` どうしで受け取る
-  （ADR-033）。結末（在庫が足りない S-4・上限に達した S-7）を状態コードと本文にどう写すかはこの周で決める
-  （ADR-032 / ADR-041 / ADR-049）。**1 PR に収まらなければ、先に分割する**（FR-16 / FR-21 / FR-34 / FR-36）
-- [ ] **B-49** **web の献立タブ** — B-48 の経路から提案を取り、献立1〜3件を出す。在庫で賄える材料と
+- [ ] **B-48a** **提案の結末に献立の中身と充足を載せる** — `packages/contract` に献立の型（`meal.ts`）を置き、
+  `SuggestMeals` / `SuggestNewMeals` の結末をその型で返す（先行 `ListStockItemsOutput`。`SuggestMealsOutput` と
+  `SuggestionOutput` は contract へ移る）。提案の1件ごとに、由来（FR-35）・献立の名称・材料（名称・分量・種別。
+  主材料が先の並びは画面が決める）・手順（FR-19）と、**現在の在庫での充足**（`mealCoverageOf`。FR-17 / ADR-009 /
+  C-6 / C-16）を載せる。**C-7 で短絡した回も同じ形で返す**（保存済みの提案が指す献立を引く。FR-21）。
+  結末の3変種（`outcome`。ADR-041 / ADR-051 結果1）は変えない。**この周で決めること:** 提案の1件が指す献立が
+  引けないときの扱い（ADR-058 で外部キーを張っていない）と、screen-design D-4 の「使う:」に要る
+  在庫品の期限を載せるか（FR-18）（FR-16 / FR-17 / FR-19 / FR-21 / FR-35 / ADR-008 / ADR-009 / ADR-041）
+- [ ] **B-48b** **献立の api 層** — `contexts/meal/api/` に既定の提案（`SuggestMeals`）と新しい献立を求める明示操作
+  （`SuggestNewMeals`）の2経路を置く（ADR-051 結果3）。型はユースケースから導出し、規則違反は `name` で見分け、
+  断りの本体は `{ rule }` だけ（ADR-032 結果4 が献立側に写すと決めている）。**結末 S-4 / S-7 の状態コードと本文、
+  `MealRuleViolation` の写像（`mealGenerator.empty` = S-6 / NFR-07、`save.*` と `suggestion.*`）、2経路の method と
+  経路名（接頭辞は置かない。ADR-048 決定4）をこの周で決め、ADR を起こす**（ADR-041 結果1 / ADR-049 結果5 /
+  NFR-07 / FR-36）
+- [ ] **B-48c** **献立の経路を main.ts で結線する** — `PlaceholderMealGenerator`（ADR-060 決定1）・
+  `MealRepositoryImpl` / `SuggestionRepositoryImpl`・献立と提案の識別子の発行（先行 `generateStockItemId`）・
+  基準日時（要求の時刻。本体では読まない — `docs/testing.md` 5章）を組み、**在庫の読み出し（`listStockItems`）も
+  含めて1要求1トランザクション**で包む（ADR-029 決定3(a) / ADR-059 / ADR-033 決定2）。CORS の method の一覧を
+  経路に合わせる（ADR-048 決定3）。`test/main.test.ts` に献立の経路の配置と、鍵・設定の失敗が 401 に化けないこと
+  を足す（ADR-045）（FR-16 / FR-36 / ADR-060）
+- [ ] **B-49** **web の献立タブ** — B-48a〜c の経路から提案を取り、献立1〜3件を出す。在庫で賄える材料と
   不足する材料の区別（FR-17）、手順（FR-19）、注意表示（FR-20）、再利用の印（FR-35）、新しい献立を
   求める操作（FR-36）。**S-4（在庫が足りない）と S-7（上限に達した）もここで拾う**（B-31 を割ったときの宿題）。
   **見た目は素の HTML のまま**（画面デザインは判断待ち）。`docs/screen-design.md` の献立の節に従う。
