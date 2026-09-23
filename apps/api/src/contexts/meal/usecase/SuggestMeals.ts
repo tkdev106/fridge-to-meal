@@ -16,12 +16,14 @@ import type { SuggestionIdGenerator } from '../domain/port/SuggestionIdGenerator
 import type { MealRepository } from '../domain/repository/MealRepository.js';
 import type { SuggestionRepository } from '../domain/repository/SuggestionRepository.js';
 import { cookableMealsOf } from '../domain/service/CookableMealFinder.js';
+import { earliestExpiryDateByName } from '../domain/service/EarliestExpiryDates.js';
 import { mealCoverageOf } from '../domain/service/MealCoverageService.js';
 import { amountOf } from '../domain/value/Amount.js';
 import type { CookableMeal } from '../domain/value/CookableMeal.js';
 import { dateTimeOf, hoursBeforeOf } from '../domain/value/DateTime.js';
 import type { DateTime } from '../domain/value/DateTime.js';
 import { expiryDateOf } from '../domain/value/ExpiryDate.js';
+import type { ExpiryDate } from '../domain/value/ExpiryDate.js';
 import type { MealId } from '../domain/value/MealId.js';
 import type { MealIngredient } from '../domain/value/MealIngredient.js';
 import {
@@ -655,12 +657,17 @@ function toOutput(
   mealStockItems: readonly StockItem[],
 ): SuggestMealsOutput {
   const stockItemNames = mealStockItems.map((stockItem) => stockItem.name);
+  // 賄える材料の期限は、名称の突き合わせと同じ在庫の列から引く（B-48a 規則6・8）。
+  // 期限切れの在庫品も落とさない — 期限は賄えるかに関わらず、日付として見せるだけである。
+  const earliestExpiryDates = earliestExpiryDateByName(mealStockItems);
 
   return {
     outcome: 'suggested',
     suggestion: {
       id: suggestion.id,
-      entries: suggestion.entries.map((entry) => toEntryOutput(entry, mealById, stockItemNames)),
+      entries: suggestion.entries.map((entry) =>
+        toEntryOutput(entry, mealById, stockItemNames, earliestExpiryDates),
+      ),
       generatedAt: suggestion.generatedAt,
     },
   };
@@ -679,6 +686,7 @@ function toEntryOutput(
   entry: SuggestionEntry,
   mealById: ReadonlyMap<MealId, Meal>,
   stockItemNames: readonly string[],
+  earliestExpiryDates: ReadonlyMap<string, ExpiryDate>,
 ): SuggestionEntryOutput {
   const meal = mealById.get(entry.mealId);
   if (meal === undefined) {
@@ -696,10 +704,12 @@ function toEntryOutput(
     ingredients: meal.ingredients.map(toIngredientDto),
     steps: [...meal.steps],
     coverage: {
-      // 賄える材料の期限は B-48a 2周目で載せる（規則8）。
+      // 賄える材料には、同じ名称の在庫品のうち最も早い期限を日付のまま載せる（規則8 /
+      // ADR-036 決定1(ii)(iii)）。名称の前後空白は畳む側と同じく落として引く（C-6）。
+      // 残日数や「今日」かどうかは基準時刻に依存するため載せない — それは画面が持つ。
       covered: coverage.covered.map((ingredient) => ({
         ...toIngredientDto(ingredient),
-        expiryDate: null,
+        expiryDate: earliestExpiryDates.get(ingredient.name.trim()) ?? null,
       })),
       missing: coverage.missing.map(toIngredientDto),
     },

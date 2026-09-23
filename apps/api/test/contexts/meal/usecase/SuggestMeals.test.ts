@@ -2837,8 +2837,8 @@ function firstEntryOf(output: SuggestMealsOutput) {
 
 describe('提案の結末が載せる献立の中身 SuggestMeals / SuggestNewMeals', () => {
   // ここから B-48a 1周目。**提案の1件に、指す献立の名称・材料・手順を載せる**（FR-19 / 規則2〜5）。
-  // 充足（`coverage`）はこの周の本題ではないので、どの it も検査しない（2周目）。1件を丸ごと
-  // 比べず、項目ごとに取り出して比べる。
+  // 充足（`coverage`）は下の describe「提案の1件が載せる充足」が見るので、ここでは検査しない。
+  // 1件を丸ごと比べず、項目ごとに取り出して比べる。
 
   it('在庫が足りない結末は、結末の名乗りのほかに何も持たない', async () => {
     // B-48a 規則1 / ADR-041 決定1: 変種は変えない。在庫不足の変種には何も足さない。
@@ -3147,5 +3147,276 @@ describe('提案の結末が載せる献立の中身 SuggestMeals / SuggestNewMe
     const output = await suggestNew(ourHousehold, asOf);
 
     expect(firstEntryOf(output).title).toBe('ごま和え');
+  });
+});
+
+/** 提案の先頭の1件が載せる、充足の賄える材料の名称の列。期限は見ない。 */
+function coveredNamesOf(output: SuggestMealsOutput): string[] {
+  return firstEntryOf(output).coverage.covered.map((ingredient) => ingredient.name);
+}
+
+/** 提案の先頭の1件が載せる、充足の不足する材料の名称の列。 */
+function missingNamesOf(output: SuggestMealsOutput): string[] {
+  return firstEntryOf(output).coverage.missing.map((ingredient) => ingredient.name);
+}
+
+/** 提案の先頭の1件が載せる、充足の賄える材料の期限の列。名称は見ない。 */
+function coveredExpiryDatesOf(output: SuggestMealsOutput): (string | null)[] {
+  return firstEntryOf(output).coverage.covered.map((ingredient) => ingredient.expiryDate);
+}
+
+describe('提案の1件が載せる充足 SuggestMeals', () => {
+  // ここから B-48a 2周目。**提案の1件に、現在の在庫での充足を載せる**（規則6〜9）。
+  // 充足の行は賄える材料・不足する材料の名称だけを見て期限を見ず、期限の行は期限だけを見る。
+
+  it('再利用した提案の1件は、在庫で賄える主材料を充足の賄える材料に載せる', async () => {
+    // B-48a 規則6 / FR-17 / C-6: 充足はその要求で読んだ在庫の名称で算出する。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' })],
+      meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(coveredNamesOf(output)).toEqual(['にんじん']);
+  });
+
+  it('再利用した提案の1件は、不足する材料を持たない', async () => {
+    // B-48a 規則9 / C-10: 再利用の判定と同じ在庫・同じ関数で算出するので食い違わない。
+    // 在庫に無い調味料があっても不足に数えない（C-16）。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'たまねぎ' })],
+      meals: [
+        meal({
+          id: mealIdOf(idA),
+          ingredients: [
+            mainIngredient('にんじん'),
+            mainIngredient('たまねぎ'),
+            seasoning('醤油', '大さじ1'),
+          ],
+        }),
+      ],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(firstEntryOf(output).coverage.missing).toEqual([]);
+  });
+
+  it('生成した献立の1件は、在庫に無い主材料を充足の不足する材料に載せる', async () => {
+    // B-48a 規則6: 生成した献立も同じ在庫で充足を算出する。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      generatedMeals: [
+        generatedMeal({
+          title: 'ごま和え',
+          ingredients: [mainIngredient('にんじん'), mainIngredient('豚肉')],
+        }),
+      ],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(missingNamesOf(output)).toEqual(['豚肉']);
+  });
+
+  it('在庫に同じ名称があっても、調味料は賄える材料に載らない', async () => {
+    // C-16: 充足の突き合わせに載るのは主材料だけである。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: '醤油' })],
+      meals: [
+        meal({
+          id: mealIdOf(idA),
+          ingredients: [mainIngredient('にんじん'), seasoning('醤油', '大さじ1')],
+        }),
+      ],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(coveredNamesOf(output)).toEqual(['にんじん']);
+  });
+
+  it('在庫に無くても、調味料は不足する材料に載らない', async () => {
+    // C-16: 調味料は不足にも数えない。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      generatedMeals: [
+        generatedMeal({ ingredients: [mainIngredient('豚肉'), seasoning('みりん', '大さじ1')] }),
+      ],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(missingNamesOf(output)).toEqual(['豚肉']);
+  });
+
+  it('賄える材料は、在庫の並びではなく献立の材料の並びで載る', async () => {
+    // B-48a 規則7 / C-12: 並びは mealCoverageOf が返したまま、つまり材料の並びである。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'たまねぎ' })],
+      meals: [
+        meal({
+          id: mealIdOf(idA),
+          ingredients: [mainIngredient('たまねぎ'), mainIngredient('にんじん')],
+        }),
+      ],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(coveredNamesOf(output)).toEqual(['たまねぎ', 'にんじん']);
+  });
+
+  it('期限切れの在庫品の名称も突き合わせに入り、その主材料は賄える材料に載る', async () => {
+    // B-48a 規則6 / ADR-036 結果3: 期限は賄えるかに関わらない。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん', expiryDate: '2026-09-10' })],
+      meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(coveredNamesOf(output)).toEqual(['にんじん']);
+  });
+
+  it('在庫が変わっていない回も、提案の1件に現在の在庫での充足を載せる', async () => {
+    // B-48a 規則4・6 / FR-21 / C-7: 短絡した回も同じ形で、現在の在庫で算出した充足を載せる。
+    const { suggest } = unchangedStockItemsSetUp({
+      mealIds: [idA],
+      meals: [
+        meal({
+          id: mealIdOf(idA),
+          ingredients: [mainIngredient('にんじん'), mainIngredient('豚肉')],
+        }),
+      ],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(firstEntryOf(output).coverage).toEqual({
+      covered: [{ name: 'にんじん', kind: 'main', amount: null, expiryDate: '2026-09-20' }],
+      missing: [{ name: '豚肉', kind: 'main', amount: null }],
+    });
+  });
+
+  it('賄える材料は、同じ名称の在庫品の期限を載せる', async () => {
+    // B-48a 規則8 / FR-18: 画面の「使う:」が期限の近い在庫を示すための日付である。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん', expiryDate: '2026-09-20' })],
+      meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(coveredExpiryDatesOf(output)).toEqual(['2026-09-20']);
+  });
+
+  it('同じ名称の在庫品が複数あれば、賄える材料には最も早い期限を載せる', async () => {
+    // B-48a 規則8 / ADR-036 決定1: 同じ名称の在庫品は最も早い期限の1件に畳む。
+    const { suggest } = setUp({
+      stockItems: [
+        stockItem({ name: 'にんじん', expiryDate: '2026-09-20' }),
+        stockItem({ name: 'にんじん', expiryDate: '2026-09-16' }),
+        stockItem({ name: 'にんじん', expiryDate: '2026-09-18' }),
+      ],
+      meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(coveredExpiryDatesOf(output)).toEqual(['2026-09-16']);
+  });
+
+  it('期限を持たない在庫品が同じ名称にあっても、期限を持つ在庫品の期限を載せる', async () => {
+    // B-48a 規則8 / ADR-036 結果3: 期限なしは最も早い期限の座を奪わない。
+    const { suggest } = setUp({
+      stockItems: [
+        stockItem({ name: 'にんじん', expiryDate: null }),
+        stockItem({ name: 'にんじん', expiryDate: '2026-09-20' }),
+      ],
+      meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(coveredExpiryDatesOf(output)).toEqual(['2026-09-20']);
+  });
+
+  it('同じ名称の在庫品がどれも期限を持たなければ、賄える材料の期限は null である', async () => {
+    // B-48a 規則8: 期限を持つ在庫品が1件も無い名称は null で表す。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん', expiryDate: null })],
+      meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(coveredExpiryDatesOf(output)).toEqual([null]);
+  });
+
+  it('期限切れの在庫品の期限も、過去の日付のまま載せる', async () => {
+    // B-48a 規則8: 載せるのは日付であって、基準時刻で落としも読み替えもしない（見せ方は画面）。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん', expiryDate: '2026-09-10' })],
+      meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(coveredExpiryDatesOf(output)).toEqual(['2026-09-10']);
+  });
+
+  it('賄える材料の期限は材料ごとに、それぞれの名称の在庫品のものを載せる', async () => {
+    // B-48a 規則8 / C-6: 期限は名称の完全一致で引いた在庫品のものである。
+    const { suggest } = setUp({
+      stockItems: [
+        stockItem({ name: 'にんじん', expiryDate: '2026-09-20' }),
+        stockItem({ name: 'たまねぎ', expiryDate: '2026-09-15' }),
+      ],
+      meals: [
+        meal({
+          id: mealIdOf(idA),
+          ingredients: [mainIngredient('たまねぎ'), mainIngredient('にんじん')],
+        }),
+      ],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(
+      firstEntryOf(output).coverage.covered.map((ingredient) => [
+        ingredient.name,
+        ingredient.expiryDate,
+      ]),
+    ).toEqual([
+      ['たまねぎ', '2026-09-15'],
+      ['にんじん', '2026-09-20'],
+    ]);
+  });
+
+  it('不足する材料には期限を載せない', async () => {
+    // B-48a 規則8: 期限を載せるのは賄える材料だけである。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+      meals: [],
+      generatedMeals: [
+        generatedMeal({
+          title: 'ごま和え',
+          ingredients: [mainIngredient('にんじん'), mainIngredient('豚肉')],
+        }),
+      ],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    const missingIngredient = firstEntryOf(output).coverage.missing[0];
+    if (missingIngredient === undefined) throw new Error('不足する材料が無い');
+    expect(missingIngredient).not.toHaveProperty('expiryDate');
   });
 });

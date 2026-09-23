@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type {
+  MealCoverageDto,
   MealIngredientDto,
   SuggestionEntryOutput,
   SuggestMealsOutput,
@@ -138,5 +139,46 @@ describe('材料 MealIngredientDto', () => {
     const ingredient: MealIngredientDto = { name: 'にんじん', kind: 'main' };
 
     expect(ingredient).toBeDefined();
+  });
+});
+
+describe('充足 MealCoverageDto', () => {
+  it('賄える材料の期限を null で表せる', () => {
+    // B-48a 規則8: 同じ名称の在庫品がどれも期限を持たなければ null で表す。
+    const coverage: MealCoverageDto = {
+      covered: [{ name: 'にんじん', kind: 'main', amount: null, expiryDate: null }],
+      missing: [],
+    };
+
+    expect(coverage.covered[0]?.expiryDate).toBeNull();
+  });
+
+  it('不足する材料に期限を持たせられない', () => {
+    // B-48a 規則8: 期限を載せるのは賄える材料だけである。
+    const coverage: MealCoverageDto = {
+      covered: [],
+      missing: [
+        {
+          name: '豚肉',
+          kind: 'main',
+          amount: null,
+          // @ts-expect-error 不足する材料に期限は無い
+          expiryDate: '2026-09-20',
+        },
+      ],
+    };
+
+    expect(coverage).toBeDefined();
+  });
+
+  it('賄える材料では期限のキーを省略できない', () => {
+    // B-48a 規則8: 返す側は必ず null を載せる。省略と null の2通りの表し方を作らない。
+    const coverage: MealCoverageDto = {
+      // @ts-expect-error 期限のキーが無い値は賄える材料の表現ではない
+      covered: [{ name: 'にんじん', kind: 'main', amount: null }],
+      missing: [],
+    };
+
+    expect(coverage).toBeDefined();
   });
 });
