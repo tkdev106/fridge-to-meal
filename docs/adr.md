@@ -1155,7 +1155,7 @@ flowchart TD
 
 ---
 
-### ADR-059　コンテキストをまたぐインフラを `shared/infrastructure/` に置き、各コンテキストの `infrastructure/` と `main.ts` だけに引かせる　`提案`
+### ADR-059　コンテキストをまたぐインフラを `shared/infrastructure/` に置き、各コンテキストの `infrastructure/` と `main.ts` だけに引かせる　`承認`
 
 - **状況** — 1リクエスト1トランザクションの helper（`withHouseholdTransaction` と型 `HouseholdDatabase` / `HouseholdTransaction`。規則は ADR-029 決定3(a)）は、在庫が先に表を持ったため `contexts/pantry/infrastructure/db/` に置かれていた。B-44 で献立も表を持ったが、**コンテキストをまたぐ import は `usecase/` どうしにしか許されない**（A章）ため、献立側は `contexts/meal/infrastructure/db/HouseholdTransaction.ts` に**型2つだけの写し**を置き、本体は写さずにいた（1つの規則を2つに割らないため）。**本番の献立のリポジトリは、トランザクションを開く口を自分のコンテキストから引けない状態だった。** B-17 はこれを `shared/` 側へ移すタスクだが、A章が定めている共有の置き場は `shared/domain/`（共有カーネル。`HouseholdId` のみ）だけで、drizzle と SQL を持つ helper の置き場は無い。
 - **決定** — 3つ。
