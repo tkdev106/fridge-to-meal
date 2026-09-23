@@ -61,7 +61,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | `pantry`（在庫） | `StockItem` 集約、`Amount` / `ExpiryDate` / `IngredientId` / `StockItemId`、`StockItemRepository`«if»、`StockItemIdGenerator`«if» | `RegisterStockItem` / `ListStockItems` / `UpdateStockItem` / `DeleteStockItem`、`StockItemDto` | `StockItemRepositoryImpl`（Drizzle）、`db/schema.ts` | `StockItemRoutes`、`RuleViolationStatus` | **縦に一本通り、`main.ts` で結線されている**（B-09）。4経路は接頭辞なしで根に置かれる（`POST /stock-items` 等） |
 | `meal`（献立） | `Meal` / `Suggestion` 集約、`MealIngredient` / `MealCoverage` / `CookableMeal` / `Amount` / `CookingStep` / `CookingRecord` / `DateTime` / `MealId` / `StockItem` / `ExpiryDate` / `PantrySnapshot` / `SuggestionEntry` / `SuggestionId` / `GeneratedMeal`（value）、`MealCoverageService` / `CookableMealFinder`、`MealGenerator`«if» / `SuggestionIdGenerator`«if» / `MealIdGenerator`«if»、`MealRepository`«if» / `SuggestionRepository`«if»、`MealRuleViolation` | `SuggestMeals`（**再利用と生成の両方**）／ `SuggestNewMeals`（**FR-36 の明示操作**） | `MealRepositoryImpl` / `SuggestionRepositoryImpl`（Drizzle）、`db/schema.ts`（`meals` と子3表、`suggestions` と子2表） | — | **提案の経路が一本通った。** 在庫が前回の提案から変わっていなければ保存済みの提案をそのまま返し（C-7）、変わっていれば作れる献立を C-11 で除いて上位3件を提案にする。**0件のときは `MealGenerator` を呼び、既存と同じ名称の生成結果は既存を参照する**（C-4）。**ただし期限切れを落とした在庫が2件に満たなければ呼ばず、在庫が足りない結末を返す**（S-4 / ADR-040 / ADR-041。結末は `outcome` で判別する戻り値）。**直近24時間の生成が10回に達している回も呼ばず、上限に達した結末を返す**（S-7 / NFR-C2 / ADR-049。数えるのは生成の由来を持つ保存済みの提案で、「1日」は遡る24時間の窓）。**`SuggestNewMeals` は FR-36 の明示操作の入口**（B-32 / ADR-050）— 再利用せず必ず生成を呼び、**C-7 の短絡も通らない**（根拠は FR-21「再生成は明示的な操作でのみ行う」）。**上書きするのはその2つだけで、在庫の下限も1日の上限もこの入口に当たる**（ADR-049 結果7）。本体は `SuggestMeals` と共有し、写しを作らない。**背後の腐敗防止層はプロバイダ待ち**（ADR-019）。在庫品と期限は献立側にも起こしてあり、在庫品は名称・分量・期限の3項目（ADR-036 / ADR-037）。**献立の永続化は通った**（B-44）— `meals` と子3表（材料・手順・調理記録）に**表ごとの RLS 4本**を置き、**子表は `household_id` を自分で持ち、述語は4表とも `household_id = (select auth.uid())`**（親への `exists` を書かない。ADR-056）。**`save` は保存済みと名称・材料・手順を読み比べ、食い違えば `save.contentMismatch` で断って1行も書かない**（**C-3。2026-09-21 にユーザーが決定** — 子表の主キーが `(meal_id, position)` のため、件数の変わる `save` が「増えた位置だけが入る」形で C-3 を破る）。**調理記録だけは追加のみ通し**、同じ内容の `save` はべき等。**`on conflict … do nothing` は置かない** — 他世帯との識別子の衝突で子も飛ばされ、外部キーの検査に到達しないため、素の insert で DB の一意制約に拒ませる。**提案の永続化も通った**（B-45）— `suggestions` と子2表（提案の1件 `suggestion_entries`・在庫スナップショットの在庫品 `pantry_snapshot_stock_items`）に同じ形の RLS を置いた。**並びは生成日時の降順、同時刻は `SuggestionId` の降順**で、最新の1件は同じ順の先頭（ADR-038）。**生成の回数は世帯・生成の由来・窓の下端（含む）で絞った提案の件数**（ADR-049）。**`save` は読み比べず素の insert で、2度目は主キーが拒む。提案の1件から献立へ外部キーを張らない**（ADR-058＝`提案`）。**`main.ts` への結線と `api/` はまだ無い**（献立の経路が無く、結線しても呼ぶ口が無い） |
 | `identity`（世帯） | `HouseholdAuthenticator`«if»、`IdentityRuleViolation` | `IdentifyHousehold` | `HouseholdAuthenticatorImpl`（**JWKS で ES256 を検証**。鍵は `kid` で引き、`alg` が設定と一致するものだけに絞る。**最初の検証で1度だけ取りに行って保持し、失敗した取得は捨てる**） | — | **実環境と噛み合った**（B-07f で実測、B-07g で実装。ADR-043）。**取得の失敗と設定の空は `IdentityRuleViolation` に包まない** — 包むと 401 に化け、サーバ側の不備を利用者のせいにする（ADR-045）。**`main.ts` で結線されている**（B-09）— 認証器は環境1つにつき1つで、要求ごとに作り直さない（ADR-043 結果2） |
-| `catalog`（食材） | — | — | — | — | `.gitkeep` のみ。食材マスタの初期データが判断待ち |
+| `catalog`（食材） | — | — | — | — | `.gitkeep` のみ。**MVP では食材マスタを置かない**（2026-09-23 にユーザーが決定。要件 11章 論点4） |
 | `shared/` | `HouseholdId`（`shared/domain`） | | `db/HouseholdTransaction.ts`（`shared/infrastructure`。`set local role` とクレーム。**両コンテキストの infrastructure と `main.ts` だけが引く**。B-17 / ADR-059） | | |
 
 | 場所 | 現在地 |
@@ -159,10 +159,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 
 | # | 未決の内容 |
 | --- | --- |
-| LLM プロバイダ | Claude / Gemini など。**意図的に未決**（ADR-019）。`MealGenerator` ポートの背後にあるので実装は進められる |
-| 食材マスタの初期データ | 出所と件数。**再利用率がここに懸かっている**（C-6 経由） |
-| 献立の保持期間 | 無制限か期限付きか。再利用は蓄積が多いほど効くため安易に消さない |
-| 賞味期限と消費期限の区別 | MVP では単一の「期限」に統合している |
+| LLM プロバイダ | Claude / Gemini など。**意図的に未決**（ADR-019）。`MealGenerator` ポートの背後にあるので実装は進められる。**決まるまでは仮の生成器（モック）で献立の経路を通す**（2026-09-23 にユーザーが決定。backlog B-47） |
 | Supabase 無料プランの一時停止対応 | 1週間アクセスがないと停止する |
 | 起動時に開く画面 | 「献立」にしてよいか（`docs/screen-design.md` 論点1） |
 
