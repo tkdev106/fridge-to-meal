@@ -7,7 +7,7 @@ import { SessionImpl } from './session/SessionImpl.js';
 import { apiBaseUrlOf } from './server/ApiBaseUrl.js';
 import type { StockItemRequestsDeps } from './server/StockItemRequests.js';
 import { deleteStockItem, listStockItems, registerStockItem } from './server/StockItemRequests.js';
-import { showLatestSuggestion } from './server/SuggestionRequests.js';
+import { requestNewMeals, showLatestSuggestion } from './server/SuggestionRequests.js';
 
 // 継ぎ目の実装を `new` するのはここだけ（`SessionImpl.ts` 規則2 / B-35 設計 6章 規則3）。
 // 設定が欠けていれば `sessionConfigOf` の `Error` を**包まずそのまま外へ**出す（規則12 / ADR-045）
@@ -36,6 +36,8 @@ const requestStockItemDeletion = deleteStockItem(stockItemRequests);
 // 見ている状態を作れてしまう（B-24 と同じ理由）。`SuggestionRequestsDeps` は
 // `StockItemRequestsDeps` と同じ3項目なので、そのまま渡せる。
 const requestLatestSuggestion = showLatestSuggestion(stockItemRequests);
+// 「新しい献立を求める」操作（B-49b）も同じ基点・同じトークンの組で作る。
+const requestNewMealsFn = requestNewMeals(stockItemRequests);
 
 const container = document.getElementById('root');
 if (!container) throw new Error('#root が見つからない');
@@ -48,6 +50,7 @@ createRoot(container).render(
       registerStockItem={sendStockItem}
       deleteStockItem={requestStockItemDeletion}
       showLatestSuggestion={requestLatestSuggestion}
+      requestNewMeals={requestNewMealsFn}
     />
   </StrictMode>,
 );

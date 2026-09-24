@@ -11,6 +11,8 @@
 
 import type {
   LatestSuggestionOutcome,
+  RequestNewMeals,
+  RequestNewMealsOutcome,
   ShowLatestSuggestion,
 } from '../../../src/server/SuggestionRequests.js';
 import type { Delivery } from '../HeldDelivery.js';
@@ -19,18 +21,27 @@ import { DeliveryLine, PendingReleases } from '../HeldDelivery.js';
 export type FixedSuggestionRequestsOptions = {
   /** 提案の結末の台本。**渡さなかったら呼ばれた時点で落ちる**（先行 `FixedStockItemRequests`）。 */
   readonly show?: readonly Delivery<LatestSuggestionOutcome>[];
+  /** 「新しい献立を求める」の結末の台本（B-49b）。同じく渡さなかったら呼ばれた時点で落ちる。 */
+  readonly requestNewMeals?: readonly Delivery<RequestNewMealsOutcome>[];
 };
 
 export class FixedSuggestionRequests {
   readonly #pending = new PendingReleases();
   readonly #show: DeliveryLine<LatestSuggestionOutcome>;
+  readonly #requestNewMealsLine: DeliveryLine<RequestNewMealsOutcome>;
   #showCount = 0;
+  #requestNewMealsCount = 0;
 
   constructor(options: FixedSuggestionRequestsOptions = {}) {
     this.#show = new DeliveryLine(
       options.show ?? [],
       this.#pending,
       'この観点では提案を取りに行かない',
+    );
+    this.#requestNewMealsLine = new DeliveryLine(
+      options.requestNewMeals ?? [],
+      this.#pending,
+      'この観点では新しい献立を求めない',
     );
   }
 
@@ -40,9 +51,24 @@ export class FixedSuggestionRequests {
     return this.#show.deliver();
   };
 
+  /** 「新しい献立を求める」操作の口（B-49b）。 */
+  readonly requestNewMeals: RequestNewMeals = () => {
+    this.#requestNewMealsCount += 1;
+
+    return this.#requestNewMealsLine.deliver();
+  };
+
   /** 取りに行った回数。**使いどころは「取りに行かないこと」の観点に限る。** */
   get showCount(): number {
     return this.#showCount;
+  }
+
+  /**
+   * 「新しい献立を求める」を呼んだ回数。**使いどころは「2度目の要求を出さないこと」の
+   * 観点に限る**（検分の指示）。
+   */
+  get requestNewMealsCount(): number {
+    return this.#requestNewMealsCount;
   }
 
   /** 保留している結末を解く（先行 `FixedStockItemRequests.settle`）。 */
