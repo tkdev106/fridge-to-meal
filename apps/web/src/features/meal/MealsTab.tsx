@@ -16,7 +16,7 @@
  * - 手順と材料の内訳（FR-19 / FR-31）… **B-53**（献立詳細）。カードから開く導線もそちらである
  */
 
-import type { MealCardStockItem } from './MealCards.js';
+import type { MealCardIngredient } from './MealCards.js';
 import { mealCardsOf } from './MealCards.js';
 import type { LatestSuggestionOutcome } from '../../server/SuggestionRequests.js';
 
@@ -43,8 +43,12 @@ const NO_SUGGESTION_YET_NOTICE = 'まだ献立の提案がありません。';
  * 提案が0件だったときの断り。**サーバはこの形を返さない** — 提案は1件以上の献立を持つ
  * （C-15）。届いたら継ぎ目かサーバの不具合なので、**0件の一覧として静かに描かず**、
  * 献立が無いことを言う。
+ *
+ * **S-8 ではなく「取れなかった」に寄せる**（文言はどちらも仮である）。S-8 に畳むと、
+ * 起こるはずのない事象が「まだ提案していないだけ」に見え、**画面からは不具合だと
+ * 読めなくなる。** 利用者にできることは取り直しであり、そこは失敗と同じである。
  */
-const EMPTY_SUGGESTION_NOTICE = NO_SUGGESTION_YET_NOTICE;
+const EMPTY_SUGGESTION_NOTICE = LOAD_FAILURE_NOTICE;
 
 /** 再利用の印（FR-35 / D-3。**文言と形は未確定**である）。 */
 const REUSED_MARK = '前に見た献立';
@@ -67,18 +71,18 @@ function coverageText(ingredientCount: number, missingCount: number): string {
 }
 
 /** 「使う:」の欄（FR-18 の結果を見せる。D-4）。**並べ替えは `MealCards.ts` の持ち分。** */
-function UsedStockItems({ stockItems }: { stockItems: readonly MealCardStockItem[] }) {
-  if (stockItems.length === 0) return null;
+function UsedIngredients({ ingredients }: { ingredients: readonly MealCardIngredient[] }) {
+  if (ingredients.length === 0) return null;
 
   return (
     <p>
       <span>使う:</span>
-      {stockItems.map((stockItem) => (
+      {ingredients.map((ingredient) => (
         // 名称と印を別の要素に分けておく。**印を名称に混ぜると、利用者が読む単位と
         // 画面が持つ単位がずれる**（読み上げも名称で止まれなくなる）。
-        <span key={stockItem.name}>
-          <span>{stockItem.name}</span>
-          {stockItem.expiringToday && <span>（{TODAY_MARK}）</span>}
+        <span key={ingredient.name}>
+          <span>{ingredient.name}</span>
+          {ingredient.expiringToday && <span>（{TODAY_MARK}）</span>}
         </span>
       ))}
     </p>
@@ -125,7 +129,7 @@ export function MealsTab({ suggestion, today }: MealsTabProps) {
                 読み上げにも印として届く。**色は1つも使わない**（NFR-17 の構え）。 */}
             {card.reused && <span role="note">{REUSED_MARK}</span>}
             <p>{coverageText(card.ingredientCount, card.missingCount)}</p>
-            <UsedStockItems stockItems={card.usedStockItems} />
+            <UsedIngredients ingredients={card.usedIngredients} />
           </li>
         ))}
       </ul>

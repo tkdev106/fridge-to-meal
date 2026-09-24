@@ -31,10 +31,14 @@ import type { CoveredMealIngredientDto, SuggestionEntryOutput } from '@fridge-to
  * （同書 論点3）。在庫一覧の側（`RemainingDays.ts`）は「N日過ぎ」を出すが、**献立のカードへ
  * 持ち込むのはこの周の決めごとではない。**
  */
-export type MealCardStockItem = {
+export type MealCardIngredient = {
   readonly name: string;
   readonly expiringToday: boolean;
 };
+// **名は材料である**（用語表 / C-5）。畳んでいるのは献立の材料のうち賄えるもの
+// （`CoveredMealIngredientDto`）であって、在庫品（`StockItem`）ではない — 材料は
+// `StockItemId` を持たず、名称を文字列として複製したものである。画面が「使う:」と
+// 読ませるのは D-4 が決めた**見出しの文言**であり、型名をそちらに寄せない。
 
 /** カード1枚（D-4）。**材料の内訳は持たない** — 内訳は献立詳細（B-53）の持ち分である。 */
 export type MealCard = {
@@ -46,8 +50,8 @@ export type MealCard = {
   readonly ingredientCount: number;
   /** 不足する材料の件数。**同じく主材料だけである**（C-16 / ADR-023）。 */
   readonly missingCount: number;
-  /** 「使う:」に出す在庫。**期限の早い順に3件まで**（FR-18 / D-4）。 */
-  readonly usedStockItems: readonly MealCardStockItem[];
+  /** 「使う:」に出す材料。**期限の早い順に3件まで**（FR-18 / D-4）。 */
+  readonly usedIngredients: readonly MealCardIngredient[];
 };
 
 /**
@@ -55,7 +59,7 @@ export type MealCard = {
  *
  * カードに材料を全部並べると縦に伸び、**3件を見比べられなくなる。**
  */
-const MAX_USED_STOCK_ITEMS = 3;
+const MAX_USED_INGREDIENTS = 3;
 
 /**
  * 賄える材料を期限の早い順に畳む。
@@ -108,8 +112,8 @@ export function mealCardsOf(
     reused: entry.origin === 'reused',
     ingredientCount: entry.coverage.covered.length + entry.coverage.missing.length,
     missingCount: entry.coverage.missing.length,
-    usedStockItems: byEarliestExpiryDate(entry.coverage.covered)
-      .slice(0, MAX_USED_STOCK_ITEMS)
+    usedIngredients: byEarliestExpiryDate(entry.coverage.covered)
+      .slice(0, MAX_USED_INGREDIENTS)
       .map((ingredient) => ({
         name: ingredient.name,
         expiringToday: ingredient.expiryDate === today,

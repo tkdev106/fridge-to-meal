@@ -147,6 +147,15 @@ describe('献立タブ MealsTab', () => {
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
 
+  it('提案の1件が0件で届いても、0件の一覧として静かに描かない', () => {
+    // **サーバはこの形を返さない**（提案は1件以上の献立を持つ。C-15）。届いたら継ぎ目か
+    // サーバの不具合なので、注意表示だけが残る形にしない。
+    renderTab(suggested());
+
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    expect(screen.queryAllByRole('complementary')).toHaveLength(0);
+  });
+
   it('まだ提案が無い回は、献立も注意表示も出さない', () => {
     // S-8。**失敗ではない**が、提案として描くものが1つも無い。「新しい献立を求める」
     // 操作を置くのは B-49b の持ち分である。

@@ -96,7 +96,7 @@ describe('献立カードの組み立て MealCards', () => {
       }),
     );
 
-    expect(card.usedStockItems.map((used) => used.name)).toEqual(['豚こま肉', 'にんじん', '白菜']);
+    expect(card.usedIngredients.map((used) => used.name)).toEqual(['豚こま肉', 'にんじん', '白菜']);
   });
 
   it('期限を持たない在庫を、期限を持つ在庫より後ろに置く', () => {
@@ -110,7 +110,7 @@ describe('献立カードの組み立て MealCards', () => {
       }),
     );
 
-    expect(card.usedStockItems.map((used) => used.name)).toEqual(['豚こま肉', 'にんじん']);
+    expect(card.usedIngredients.map((used) => used.name)).toEqual(['豚こま肉', 'にんじん']);
   });
 
   it('期限が同じ在庫は材料の並びのまま保つ', () => {
@@ -124,7 +124,7 @@ describe('献立カードの組み立て MealCards', () => {
       }),
     );
 
-    expect(card.usedStockItems.map((used) => used.name)).toEqual(['白菜', 'にんじん']);
+    expect(card.usedIngredients.map((used) => used.name)).toEqual(['白菜', 'にんじん']);
   });
 
   it('使う在庫を3件までに絞る', () => {
@@ -143,7 +143,7 @@ describe('献立カードの組み立て MealCards', () => {
       }),
     );
 
-    expect(card.usedStockItems.map((used) => used.name)).toEqual(['豚こま肉', '白菜', 'にんじん']);
+    expect(card.usedIngredients.map((used) => used.name)).toEqual(['豚こま肉', '白菜', 'にんじん']);
   });
 
   it('期限が基準日と同じ在庫にだけ、今日の印を付ける', () => {
@@ -161,7 +161,7 @@ describe('献立カードの組み立て MealCards', () => {
       }),
     );
 
-    expect(card.usedStockItems).toEqual([
+    expect(card.usedIngredients).toEqual([
       { name: '豚こま肉', expiringToday: true },
       { name: '白菜', expiringToday: false },
       { name: 'にんじん', expiringToday: false },
@@ -171,7 +171,7 @@ describe('献立カードの組み立て MealCards', () => {
   it('賄える主材料が1件も無ければ、使う在庫を1件も出さない', () => {
     const card = cardOf(entry({ coverage: { covered: [], missing: [missing('白菜')] } }));
 
-    expect(card.usedStockItems).toEqual([]);
+    expect(card.usedIngredients).toEqual([]);
   });
 
   it('再利用にだけ印を付ける', () => {
