@@ -35,12 +35,12 @@ const PANEL_ID = 'tab-panel';
 const tabElementId = (tab: TabId) => `tab-${tab}`;
 
 export type TabbedScreenProps = {
-  /** 献立タブの中身。中身が無いまま出す回もある（B-38 設計 6章 規則7）。 */
-  meals: ReactNode;
   /**
-   * 在庫タブの中身。**いま `DEFAULT_TAB` が指しているのはこのタブである**（同 規則1）。
-   * **既定は献立タブと決まっており**（ADR-064）、**B-49 がその反映を持つ。**
+   * 献立タブの中身。**`DEFAULT_TAB` が指しているのはこのタブである**（同 規則1 / ADR-064）。
+   * 中身が無いまま出す回もある（同 規則7）。
    */
+  meals: ReactNode;
+  /** 在庫タブの中身。 */
   pantry: ReactNode;
   /** 履歴タブの中身。献立タブと同じく、中身が無くても帯から消さない（同 規則7）。 */
   history: ReactNode;

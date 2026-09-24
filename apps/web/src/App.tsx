@@ -1,9 +1,8 @@
 /**
  * 画面の骨組み。構造は `docs/screen-design.md` に定めてある。
  * 下タブ3つ（献立 / 在庫 / 履歴）の器は `navigation/TabbedScreen.tsx` にあり、門は
- * **3つの中身を組み立てて渡すだけ**である（B-38 設計 10章）。**起動時に開くのは献立タブと
- * 決まった**（2026-09-24 にユーザーが決定。ADR-064 / 要件 第7章 / 同書 2.2）。**反映は B-49 が持つ** —
- * それまで `DEFAULT_TAB` は在庫のままである（ADR-064 結果3）。
+ * **3つの中身を組み立てて渡すだけ**である（B-38 設計 10章）。**起動時に開くのは献立タブである**
+ * （2026-09-24 にユーザーが決定。ADR-064 / 要件 第7章 / 同書 2.2。反映は B-49a）。
  *
  * **文言と配色は決まっていない**（同書 冒頭）。ここに書く日本語も仮である。
  *
@@ -11,7 +10,7 @@
  * 「何も出さない／ログイン／今の画面」を出し分ける。セッションは props で受け取り、
  * 実装を `new` するのは `main.tsx` だけ（規則3）。
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SignInForm } from './features/identity/SignInForm.js';
 import { SignOutButton } from './features/identity/SignOutButton.js';
 import { HistoryTab } from './features/meal/HistoryTab.js';
@@ -28,7 +27,7 @@ import type {
   ListStockItems,
   RegisterStockItem,
 } from './server/StockItemRequests.js';
-import type { SuggestMeals } from './server/SuggestionRequests.js';
+import type { ShowLatestSuggestion } from './server/SuggestionRequests.js';
 
 export type AppProps = {
   /** セッションの継ぎ目。画面はこの型だけを見る（ADR-046 決定3）。 */
@@ -43,11 +42,12 @@ export type AppProps = {
   /** 在庫を削除しに行く口（B-23）。同じく組み立てるのは `main.tsx` だけである。 */
   deleteStockItem: DeleteStockItem;
   /**
-   * 提案を取りに行く口（B-49a）。組み立てるのはやはり `main.tsx` だけである。
+   * 保存済みの提案を取りに行く口（B-49a / B-58）。組み立てるのはやはり `main.tsx` だけである。
    *
-   * **在庫の口と違い、門は起動と同時にこれを呼ばない**（下の効果を見よ）。
+   * **在庫の口と同じく、門はサインイン済みになったら1度だけ呼ぶ。** この経路は生成を
+   * 呼ばないので（ADR-065 決定1）、開かれるまで待つ理由が無い。
    */
-  suggestMeals: SuggestMeals;
+  showLatestSuggestion: ShowLatestSuggestion;
 };
 
 export function App({
@@ -55,7 +55,7 @@ export function App({
   listStockItems,
   registerStockItem,
   deleteStockItem,
-  suggestMeals,
+  showLatestSuggestion,
 }: AppProps) {
   // 購読を始めた時点の状態は subscribe が1度目に渡す（`Session.ts` 規則5）ので、
   // ここで先に決めない。最初の描画は購読が始まるまでの一瞬だけ 'unknown' でよい。
@@ -71,11 +71,6 @@ export function App({
 
   // 提案も取りに行くまでは「読み込み中」である（在庫と同じ構え。B-22 設計 7章）。
   const [suggestion, setSuggestion] = useState<MealsTabState>({ outcome: 'loading' });
-
-  // **献立タブが1度でも開かれたか**（B-49a）。**起動と同時には取りに行かない** —
-  // 既定の提案でも、作れる既存の献立が0件なら生成を呼ぶ（C-4 / ADR-022）ため、開かれても
-  // いない画面のために1日10回の枠（NFR-C2）と費用を使うことになる。
-  const [mealsOpened, setMealsOpened] = useState(false);
 
   // 購読は1本。`session` が同じなら張り替えず、外れるとき戻り値で解除する（規則2）。
   useEffect(() => session.subscribe(setState), [session]);
@@ -104,10 +99,15 @@ export function App({
   }, [state, listStockItems, reloadCount]);
 
   /**
-   * 献立タブが開かれてから**1度だけ**提案を取りに行く（FR-16 / FR-21 / B-49a）。
+   * サインイン済みになったら保存済みの提案を**1度だけ**取りに行く（FR-16 / FR-21 / B-49a）。
    *
-   * **取り直さない。** タブを移って戻るたびに呼ぶと、そのたびに生成を呼びうる（C-4 / NFR-C2）。
-   * `mealsOpened` は一度立つと下がらないので、この効果は状態が変わるまで走り直さない。
+   * **在庫の一覧と同じ構えである。** 献立タブが開かれるのを待たない — 取りに行く先は
+   * 生成を一度も呼ばない読み取り専用の経路であり（ADR-065 決定1・決定2）、費用も
+   * 1日10回の枠（NFR-C2）も使わない。生成は「新しい献立を求める」（FR-36 / B-49b）だけで
+   * 起こる。**起動時に開くタブが献立になった**（ADR-064）いま、開かれるのを待つ形は
+   * 「起動＝開かれた」と同じであり、待つ意味がそもそも無い。
+   *
+   * **自動で取り直さない**（在庫と同じ。B-22 設計 規則11）。
    *
    * **効果が解除されたら結果を捨てる**（在庫と同じ。B-22 設計 規則10）。StrictMode の
    * 二重呼び出しと、サインアウトが割り込んだ場合に、古い結果を画面に置かないため。
@@ -115,45 +115,32 @@ export function App({
    * **`catch` は要らない。** 継ぎ目は例外を投げず結末で返す（`SuggestionRequests.ts`）。
    */
   useEffect(() => {
-    if (state !== 'signedIn' || !mealsOpened) return;
+    if (state !== 'signedIn') return;
 
     let active = true;
     setSuggestion({ outcome: 'loading' });
 
-    void suggestMeals().then((outcome) => {
+    void showLatestSuggestion().then((outcome) => {
       if (active) setSuggestion(outcome);
     });
 
     return () => {
       active = false;
     };
-  }, [state, suggestMeals, mealsOpened]);
+  }, [state, showLatestSuggestion]);
 
   /**
    * **サインイン済みでなくなったら、献立タブの状態を初期に戻す**（B-49a）。
    *
-   * 戻さないと2つ壊れる。**(1) 開いてもいない献立タブのために取りに行く** — `mealsOpened` は
-   * 一度立つと下がらないので、サインアウトを挟んで入り直した瞬間に上の効果が走る。器は
-   * 既定のタブから始まる（B-38 設計 規則9）ため、献立タブは開かれていない。
-   * **(2) 前の世帯の提案が残る** — 別の世帯で入り直したとき、取り直しが届くまで前の献立が
-   * 画面に出る（NFR-09）。在庫の側は取りに行く効果が毎回「読み込み中」に戻すので起きないが、
-   * 提案の効果は開かれるまで走らないため、ここで戻す。
+   * 戻さないと**前の世帯の提案が残る** — 別の世帯で入り直したとき、取り直しが届くまで
+   * 前の献立が画面に出る（NFR-09）。上の効果は `signedIn` になった時点で「読み込み中」へ
+   * 戻すが、**サインアウトしている間も出たままになる。**
    */
   useEffect(() => {
     if (state === 'signedIn') return;
 
-    setMealsOpened(false);
     setSuggestion({ outcome: 'loading' });
   }, [state]);
-
-  /**
-   * 献立タブが描かれたという合図を受ける（B-49a）。
-   *
-   * **`useCallback` で同じ関数を渡し続ける。** 毎回新しい関数を渡すと、子の効果が描き直しの
-   * たびに走る。`setMealsOpened(true)` は2度目以降を React が取り下げるので害は無いが、
-   * **合図が何度も走る形そのものを残さない。**
-   */
-  const openMeals = useCallback(() => setMealsOpened(true), []);
 
   /**
    * 登録が通ったら一覧を取り直す（FR-01 / FR-04 / B-24）。
@@ -208,8 +195,7 @@ export function App({
   }
 
   // **器を mount するのはこの枝だけである**（B-38 設計 6章 規則9）。サインアウトを挟んで
-  // 入り直すと器ごと作り直され、開くのは既定のタブに戻る（2.3 の `login --> meals`。**遷移図は
-  // 献立に改訂済みで、`DEFAULT_TAB` の反映は B-49 が持つ。ADR-064 結果3**）。
+  // 入り直すと器ごと作り直され、開くのは既定のタブに戻る（2.3 の `login --> meals`）。
   //
   // **在庫を取りに行く効果は門に残したままである**（同 規則11 / B-22 設計 規則10）。タブを
   // 移っても上の効果は走り直さず、取れていた在庫も失敗の結末もそのまま保たれる —
@@ -230,9 +216,7 @@ export function App({
   return (
     <main>
       <TabbedScreen
-        meals={
-          <MealsTab suggestion={suggestion} today={todayOf(new Date())} onOpened={openMeals} />
-        }
+        meals={<MealsTab suggestion={suggestion} today={todayOf(new Date())} />}
         pantry={
           <>
             <PantryTab

@@ -15,14 +15,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { SuggestMealsOutput, SuggestionEntryOutput } from '@fridge-to-meal/contract';
+import type { ShowLatestSuggestionOutput, SuggestionEntryOutput } from '@fridge-to-meal/contract';
 import { render, screen, within } from '../../support/dom/renderComponent.js';
 import { MealsTab } from '../../../src/features/meal/MealsTab.js';
 
 const TODAY = '2026-09-20';
-
-/** この観点では開いたことを誰も受け取らない。呼ばれても害が無いので素の関数にしておく。 */
-const ignoreOpened = () => {};
 
 function entry(overrides: Partial<SuggestionEntryOutput> = {}): SuggestionEntryOutput {
   return {
@@ -36,9 +33,12 @@ function entry(overrides: Partial<SuggestionEntryOutput> = {}): SuggestionEntryO
   };
 }
 
-function suggested(...entries: readonly SuggestionEntryOutput[]): SuggestMealsOutput {
+function suggested(
+  ...entries: readonly SuggestionEntryOutput[]
+): Extract<ShowLatestSuggestionOutput, { outcome: 'suggested' }> {
   return {
     outcome: 'suggested',
+    pantryChanged: false,
     suggestion: {
       id: 'suggestion-1',
       generatedAt: '2026-09-20T09:00:00.000Z',
@@ -48,7 +48,7 @@ function suggested(...entries: readonly SuggestionEntryOutput[]): SuggestMealsOu
 }
 
 function renderTab(suggestion: Parameters<typeof MealsTab>[0]['suggestion']) {
-  render(<MealsTab suggestion={suggestion} today={TODAY} onOpened={ignoreOpened} />);
+  render(<MealsTab suggestion={suggestion} today={TODAY} />);
 }
 
 /** 並びを位置で見るための取り出し。件数は呼ぶ側が先に確かめている。 */
@@ -147,30 +147,25 @@ describe('献立タブ MealsTab', () => {
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
 
-  it('在庫が足りない回は、献立も注意表示も出さない', () => {
-    // S-4 の見せ方そのものは B-49c の持ち分である。ここで確かめるのは
-    // **提案として描かないこと**だけ（`docs/screen-design.md` D-7）。
-    renderTab({ outcome: 'insufficientStockItems' });
+  it('まだ提案が無い回は、献立も注意表示も出さない', () => {
+    // S-8。**失敗ではない**が、提案として描くものが1つも無い。「新しい献立を求める」
+    // 操作を置くのは B-49b の持ち分である。
+    renderTab({ outcome: 'none' });
 
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
     expect(screen.queryAllByRole('complementary')).toHaveLength(0);
   });
 
-  it('上限に達した回も、献立も注意表示も出さない', () => {
-    renderTab({ outcome: 'generationLimitReached' });
+  it('在庫が変わっていても、出すのは保存済みの提案のままである', () => {
+    // ADR-065 決定4・結果2: `pantryChanged` は手がかりであって、献立の出し分けではない。
+    // **見せ方を決めるのは後の周**なので、ここでは描くものが変わらないことだけを確かめる。
+    renderTab({
+      ...suggested(entry({ title: '肉じゃが' })),
+      outcome: 'suggested',
+      pantryChanged: true,
+    });
 
-    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
-    expect(screen.queryAllByRole('complementary')).toHaveLength(0);
-  });
-
-  it('描かれたことを、開いた合図として呼び出し側へ返す', () => {
-    // 提案は保存と生成の費用を伴う（ADR-062 決定1 / NFR-C2）ので、**タブが開かれるまで
-    // 取りに行かない。** 取りに行く条件を持つのは門であり、ここはその合図を出すだけである。
-    let opened = 0;
-    render(
-      <MealsTab suggestion={{ outcome: 'loading' }} today={TODAY} onOpened={() => (opened += 1)} />,
-    );
-
-    expect(opened).toBe(1);
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.queryByText('肉じゃが')).not.toBeNull();
   });
 });

@@ -16,10 +16,9 @@
  * - 手順と材料の内訳（FR-19 / FR-31）… **B-53**（献立詳細）。カードから開く導線もそちらである
  */
 
-import { useEffect } from 'react';
 import type { MealCardStockItem } from './MealCards.js';
 import { mealCardsOf } from './MealCards.js';
-import type { SuggestMealsOutcome } from '../../server/SuggestionRequests.js';
+import type { LatestSuggestionOutcome } from '../../server/SuggestionRequests.js';
 
 /** 読み込み中の案内（**暫定**）。`docs/screen-design.md` は S-5 しか決めていない。 */
 const LOADING_NOTICE = '献立を読み込んでいます。';
@@ -32,20 +31,20 @@ const LOADING_NOTICE = '献立を読み込んでいます。';
 const LOAD_FAILURE_NOTICE = '献立を読み込めませんでした。';
 
 /**
- * 献立を伴わない結末の仮置き（S-4 / S-7。**B-49c が置き換える**）。
+ * まだ1件も提案していない世帯への案内（S-8。**文言は暫定**）。
  *
- * **2つを1つの文言に畳んでいるのは、この周が見せ方を決めないためである。** S-4 は在庫タブへ
- * 送る案内（D-7）、S-7 は今日はもう出せないことの案内であり、**別の画面になる。**
- * feature flag で隠さず、そのまま出す（`CLAUDE.md`）。
+ * **失敗ではない。** この経路は保存済みを読むだけで生成を呼ばないので（ADR-065 決定1）、
+ * 一度も生成していなければ取れるものが無い。**出すべきは「新しい献立を求める」操作**だが、
+ * それを置くのは B-49b なので、この周は案内だけを出す（feature flag で隠さない。`CLAUDE.md`）。
  */
-const NO_MEALS_NOTICE = 'いま出せる献立がありません。';
+const NO_SUGGESTION_YET_NOTICE = 'まだ献立の提案がありません。';
 
 /**
- * 提案が0件だったときの断り。**サーバはこの形を返さない** — 献立が無い回は S-4 か S-7 の
- * 結末になる（`SuggestMeals`）。届いたら継ぎ目かサーバの不具合なので、**0件の一覧として
- * 静かに描かず**、献立が無いことを言う。
+ * 提案が0件だったときの断り。**サーバはこの形を返さない** — 提案は1件以上の献立を持つ
+ * （C-15）。届いたら継ぎ目かサーバの不具合なので、**0件の一覧として静かに描かず**、
+ * 献立が無いことを言う。
  */
-const EMPTY_SUGGESTION_NOTICE = NO_MEALS_NOTICE;
+const EMPTY_SUGGESTION_NOTICE = NO_SUGGESTION_YET_NOTICE;
 
 /** 再利用の印（FR-35 / D-3。**文言と形は未確定**である）。 */
 const REUSED_MARK = '前に見た献立';
@@ -90,7 +89,7 @@ function UsedStockItems({ stockItems }: { stockItems: readonly MealCardStockItem
  * 画面が受け取る結末。取得の結末に「読み込み中」を1つ足しただけのものである
  * （先行 `PantryListState`）。
  */
-export type MealsTabState = { readonly outcome: 'loading' } | SuggestMealsOutcome;
+export type MealsTabState = { readonly outcome: 'loading' } | LatestSuggestionOutcome;
 
 export type MealsTabProps = {
   suggestion: MealsTabState;
@@ -99,39 +98,17 @@ export type MealsTabProps = {
    * ここで `new Date()` を読むと、現在時刻が本体に埋まる（`docs/testing.md` 5章）。
    */
   today: string;
-  /**
-   * **この画面が出たという合図**（B-49a）。取りに行く条件を持つのは門であり、ここは
-   * 描かれたことを伝えるだけである。
-   *
-   * **なぜ門が起動と同時に取りに行かないか。** 既定の提案でも、作れる既存の献立が0件なら
-   * 生成を呼ぶ（C-4 / ADR-022）。開かれてもいない画面のために1日10回の枠（NFR-C2）と費用を
-   * 使わないよう、**開かれてから1度だけ**取りに行く。器は選んだタブの中身しか描かないので
-   * （B-38 設計 6章 規則6）、この合図は「タブが開かれた」と同じ意味になる。
-   *
-   * **この形は起動時に開くタブが在庫であることに支えられている。** 献立が既定になれば
-   * 「起動＝タブが開かれた」になり、費用を避ける効き目が消える。**既定を献立にする決定は
-   * 別の周が `提案` の ADR として起こしている最中で、まだ `main` に無い** — 反映もそちらが
-   * 持つ。**取りに行く置き方はユーザーの判断を仰いでいる**ので、この doc はいまの形の理由を
-   * 書き残すだけにとどめる。
-   *
-   * **「保存済みの提案だけ出して明示操作を待つ」形は、いまのサーバでは作れない。**
-   * `POST /suggestions` は在庫が前回から変われば生成を呼び（C-4 / C-7）、保存済みだけを返す
-   * 経路が api に無い（`SuggestionRoutes.ts` は2経路とも生成を通りうる）。採るなら
-   * **読み取り専用の経路を足す周が先**であり、その行は backlog にまだ無い。
-   */
-  onOpened: () => void;
 };
 
-export function MealsTab({ suggestion, today, onOpened }: MealsTabProps) {
-  // 描かれたことだけを伝える。**取りに行き直す判断はここに無い** — 門が持つ。
-  useEffect(() => {
-    onOpened();
-  }, [onOpened]);
-
+export function MealsTab({ suggestion, today }: MealsTabProps) {
   // 出し分けだけを行い、計算を持たない（先行 `PantryList`）。
+  //
+  // **取りに行く条件はここに無い** — 門が持つ（先行 `PantryList`）。この画面は
+  // 「開かれた」ことを誰にも伝えない。**読み取り専用の経路には費用が無い**ので
+  // （ADR-065 決定2）、開かれるまで待つ理由がそもそも無い。
   if (suggestion.outcome === 'loading') return <p>{LOADING_NOTICE}</p>;
   if (suggestion.outcome === 'failed') return <p>{LOAD_FAILURE_NOTICE}</p>;
-  if (suggestion.outcome !== 'suggested') return <p>{NO_MEALS_NOTICE}</p>;
+  if (suggestion.outcome !== 'suggested') return <p>{NO_SUGGESTION_YET_NOTICE}</p>;
 
   const cards = mealCardsOf(suggestion.suggestion.entries, today);
   if (cards.length === 0) return <p>{EMPTY_SUGGESTION_NOTICE}</p>;

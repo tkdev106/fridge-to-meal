@@ -265,6 +265,8 @@ describe('在庫タブの中身と下タブの器', () => {
   it('登録の画面を出していても、下タブの帯は出たままである', () => {
     tabbedPantryTab();
 
+    // **起動時に開くのは献立タブである**（ADR-064 / `navigation/Tabs.ts`）。
+    fireEvent.click(tabFor('pantry'));
     fireEvent.click(operationAt(0));
 
     // 規則5 / NFR-14: 帯は下位の画面でも隠さない。隠すには器か門が「在庫タブが下位の画面に
@@ -275,6 +277,7 @@ describe('在庫タブの中身と下タブの器', () => {
   it('別のタブへ移って在庫タブへ戻ると、一覧が出ている', () => {
     tabbedPantryTab();
 
+    fireEvent.click(tabFor('pantry'));
     fireEvent.click(operationAt(0));
     fireEvent.click(tabFor('meals'));
     fireEvent.click(tabFor('pantry'));
@@ -286,6 +289,7 @@ describe('在庫タブの中身と下タブの器', () => {
   it('別のタブを挟むと、打ちかけの食材名は残らない', () => {
     tabbedPantryTab();
 
+    fireEvent.click(tabFor('pantry'));
     fireEvent.click(operationAt(0));
     fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
     fireEvent.click(tabFor('meals'));

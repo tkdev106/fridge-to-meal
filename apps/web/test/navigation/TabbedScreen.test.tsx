@@ -96,13 +96,12 @@ function expectedStyleOf(selected: boolean): Record<string, string> {
 }
 
 describe('下タブの器 TabbedScreen', () => {
-  it('最初に出すのは在庫タブに渡された中身である', () => {
+  it('最初に出すのは献立タブに渡された中身である', () => {
     renderTabbedScreen();
 
-    // B-38 設計 6章 規則6。**いま `DEFAULT_TAB` が指しているのは在庫タブである** —
-    // **既定は献立と決まったが**（ADR-064 / 要件 第7章 / `docs/screen-design.md` 2.2）、
-    // **反映は B-49 が持つ**（ADR-064 結果3）。**この行も B-49 が献立に書き換える。**
-    expect(screen.queryByText(contents.pantry)).not.toBeNull();
+    // B-38 設計 6章 規則6。`DEFAULT_TAB` が指しているのは献立タブである
+    // （ADR-064 / 要件 第7章 / `docs/screen-design.md` 2.2）。
+    expect(screen.queryByText(contents.meals)).not.toBeNull();
   });
 
   it('選んでいないタブの中身は描かない（隠して置くのでもない）', () => {
@@ -112,26 +111,26 @@ describe('下タブの器 TabbedScreen', () => {
     // `queryByText` は hidden な要素も**見つける**ので、`null` であることが
     // 「そもそも描いていない」を意味する。**この行を役割で書かない** —
     // `queryAllByRole` は既定で hidden を除くため、隠した実装でも緑になってしまう。
-    expect(screen.queryByText(contents.meals)).toBeNull();
+    expect(screen.queryByText(contents.pantry)).toBeNull();
     expect(screen.queryByText(contents.history)).toBeNull();
   });
 
-  it('献立タブを選ぶと、献立に渡された中身が出る', () => {
+  it('在庫タブを選ぶと、在庫に渡された中身が出る', () => {
     renderTabbedScreen();
 
-    fireEvent.click(tabFor('meals'));
+    fireEvent.click(tabFor('pantry'));
 
     // B-38 設計 6章 規則6。
-    expect(screen.queryByText(contents.meals)).not.toBeNull();
+    expect(screen.queryByText(contents.pantry)).not.toBeNull();
   });
 
-  it('献立タブを選ぶと、在庫に渡された中身は出なくなる', () => {
+  it('在庫タブを選ぶと、献立に渡された中身は出なくなる', () => {
     renderTabbedScreen();
 
-    fireEvent.click(tabFor('meals'));
+    fireEvent.click(tabFor('pantry'));
 
     // **入れ替わりであって、足し算ではない**（同 規則6）。
-    expect(screen.queryByText(contents.pantry)).toBeNull();
+    expect(screen.queryByText(contents.meals)).toBeNull();
   });
 
   it('履歴タブを選ぶと、履歴に渡された中身が出る', () => {
@@ -147,7 +146,7 @@ describe('下タブの器 TabbedScreen', () => {
     renderTabbedScreen();
 
     // B-38 設計 6章 規則5・規則1（NFR-17 の構え）。`aria-selected` は色を使わずに読める。
-    expect(tabFor('pantry').getAttribute('aria-selected')).toBe('true');
+    expect(tabFor('meals').getAttribute('aria-selected')).toBe('true');
   });
 
   it('選ばれているタブは常に1つだけである', () => {
@@ -155,18 +154,18 @@ describe('下タブの器 TabbedScreen', () => {
 
     // 同 規則5 の境界。**選ばれていない示し方は断定しない**（`'false'` とは限らず、
     // 属性が無いこともある）ので、`'true'` でないことだけを見る。
-    expect(tabFor('meals').getAttribute('aria-selected')).not.toBe('true');
+    expect(tabFor('pantry').getAttribute('aria-selected')).not.toBe('true');
     expect(tabFor('history').getAttribute('aria-selected')).not.toBe('true');
   });
 
-  it('献立タブを選ぶと、選ばれている印が在庫タブから献立タブへ移る', () => {
+  it('在庫タブを選ぶと、選ばれている印が献立タブから在庫タブへ移る', () => {
     renderTabbedScreen();
 
-    fireEvent.click(tabFor('meals'));
+    fireEvent.click(tabFor('pantry'));
 
     // 同 規則5。**移ることまでが規則である** — 印が増えるだけでは1つに保てない。
-    expect(tabFor('meals').getAttribute('aria-selected')).toBe('true');
-    expect(tabFor('pantry').getAttribute('aria-selected')).not.toBe('true');
+    expect(tabFor('pantry').getAttribute('aria-selected')).toBe('true');
+    expect(tabFor('meals').getAttribute('aria-selected')).not.toBe('true');
   });
 
   it('中身がまだ無いタブも帯から消さない', () => {
@@ -176,15 +175,15 @@ describe('下タブの器 TabbedScreen', () => {
     expect(screen.getAllByRole('tab')).toHaveLength(3);
   });
 
-  it('中身がまだ無い献立タブも押して開ける', () => {
-    renderTabbedScreen({ meals: null });
+  it('中身がまだ無い履歴タブも押して開ける', () => {
+    renderTabbedScreen({ history: null });
 
-    fireEvent.click(tabFor('meals'));
+    fireEvent.click(tabFor('history'));
 
     // 同 規則7: **タブも無効化しない。** `disabled` 属性そのものは断定せず、
     // 「押したら開く」という観察できる結果で見る。
-    expect(tabFor('meals').getAttribute('aria-selected')).toBe('true');
-    expect(screen.queryByText(contents.pantry)).toBeNull();
+    expect(tabFor('history').getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByText(contents.meals)).toBeNull();
   });
 
   it('タブの帯は中身より後ろに置く', () => {
@@ -206,25 +205,25 @@ describe('下タブの器 TabbedScreen', () => {
 
     // B-41 設計 6章 規則6・規則1: 見た目の値は `TabAppearance.ts` にだけ置く。
     // **突き合わせる相手は `tabStyleOf` の戻り値**であり、太さの具体値は書かない。
-    expect(appliedStyleOf(tabFor('pantry'), true)).toEqual(expectedStyleOf(true));
+    expect(appliedStyleOf(tabFor('meals'), true)).toEqual(expectedStyleOf(true));
   });
 
   it('選ばれていない2つのタブには、どちらも選んでいないときの見た目が当たっている', () => {
     renderTabbedScreen();
 
     // 同 規則6・規則7: 見た目は「選ばれているか」だけで決まり、`TabId` ごとに変わらない。
-    expect(appliedStyleOf(tabFor('meals'), false)).toEqual(expectedStyleOf(false));
+    expect(appliedStyleOf(tabFor('pantry'), false)).toEqual(expectedStyleOf(false));
     expect(appliedStyleOf(tabFor('history'), false)).toEqual(expectedStyleOf(false));
   });
 
-  it('献立タブを選ぶと、色に依らない手がかりが在庫タブから献立タブへ移る', () => {
+  it('在庫タブを選ぶと、色に依らない手がかりが献立タブから在庫タブへ移る', () => {
     renderTabbedScreen();
 
-    fireEvent.click(tabFor('meals'));
+    fireEvent.click(tabFor('pantry'));
 
     // 同 規則1・2 の波及。**移ることまでが規則である** — 手がかりが増えるだけでは1つに保てない。
-    expect(appliedStyleOf(tabFor('meals'), true)).toEqual(expectedStyleOf(true));
-    expect(appliedStyleOf(tabFor('pantry'), false)).toEqual(expectedStyleOf(false));
+    expect(appliedStyleOf(tabFor('pantry'), true)).toEqual(expectedStyleOf(true));
+    expect(appliedStyleOf(tabFor('meals'), false)).toEqual(expectedStyleOf(false));
   });
 
   it('見た目の手がかりが付いたタブは aria-selected も true である', () => {

@@ -1,5 +1,5 @@
 /**
- * `POST /suggestions`（B-48b / B-49a）を叩く工場と、その結末。
+ * `GET /suggestions/latest`（B-58 / B-49a）を叩く工場と、その結末。
  *
  * **ここは画面ではない。** 経路の継ぎ目であり、`@supabase/*` を1つも触らない —
  * トークンは `accessToken()` の1引数で受け取る（ADR-046 決定3 / 先行 `StockItemRequests`）。
@@ -8,23 +8,23 @@
  * **`POST /suggestions/new-meals`（FR-36 の明示操作）はここに無い。** 置くのは B-49b であり、
  * 押す操作と待ち時間の見せ方（S-5 / S-6）と1組でないと画面に届かない。
  */
-import type { SuggestMealsOutput, SuggestionOutput } from '@fridge-to-meal/contract';
+import type { ShowLatestSuggestionOutput, SuggestionOutput } from '@fridge-to-meal/contract';
 import type { HttpFetch } from './HttpFetch.js';
 
 /**
- * 提案の結末。**サーバの3つの結末をそのまま持ち、失敗を1つ足しただけ**である。
+ * 保存済みの提案の結末。**サーバの2つの結末をそのまま持ち、失敗を1つ足しただけ**である。
  *
- * **在庫が足りない回（S-4）と上限に達した回（S-7）を `failed` に畳まない。** どちらも
- * 失敗でも規則違反でもなく 200 で返る結末であり（ADR-041 / ADR-062 決定2）、畳むと
- * 画面が「在庫を足せば出る」「今日はもう出ない」を言い分けられなくなる（`docs/screen-design.md` D-7）。
+ * **在庫が足りない回（S-4）も上限に達した回（S-7）もここには無い。** どちらも生成を試みた
+ * ときにしか起きず、この経路は生成を一度も呼ばない（ADR-065 決定3）。**代わりに
+ * 「まだ1件も保存されていない」（S-8）が起こる。**
  *
  * **`failed` は手がかりの無い1つである**（先行 `StockItemsOutcome`）。通信の失敗・401・500・
  * 壊れた応答を分けない — どれも利用者の入力では直せず、画面に見分ける材料が無い。
  */
-export type SuggestMealsOutcome = SuggestMealsOutput | { readonly outcome: 'failed' };
+export type LatestSuggestionOutcome = ShowLatestSuggestionOutput | { readonly outcome: 'failed' };
 
 /** 画面が受け取る口。**この口は例外を投げない**（先行 `ListStockItems`）。 */
-export type SuggestMeals = () => Promise<SuggestMealsOutcome>;
+export type ShowLatestSuggestion = () => Promise<LatestSuggestionOutcome>;
 
 export type SuggestionRequestsDeps = {
   readonly baseUrl: string;
@@ -36,19 +36,13 @@ export type SuggestionRequestsDeps = {
 /**
  * 叩く先は基点にこれを足した1つだけ。**接頭辞を web の側で足さない**（ADR-048 決定4）。
  */
-const SUGGESTIONS_PATH = '/suggestions';
+const LATEST_SUGGESTION_PATH = '/suggestions/latest';
 
 /** 畳んだ失敗（先行 `StockItemRequests` の `FAILED`）。 */
 const FAILED = { outcome: 'failed' } as const;
 
 /** 既定の出口。**実行環境の `fetch` をそのまま使う**（先行 `StockItemRequests`）。 */
 const environmentHttpFetch: HttpFetch = (url, init) => fetch(url, init);
-
-/**
- * 献立を伴わない2つの結末（S-4 / S-7）。**値そのものを持たせる** — api 層が返す
- * `outcome` の綴りは contract の union が正であり、ここで別の名に写さない。
- */
-const MEAL_LESS_OUTCOMES: readonly string[] = ['insufficientStockItems', 'generationLimitReached'];
 
 /**
  * 応答の本体のうち、この層が読むところだけ。
@@ -58,9 +52,11 @@ const MEAL_LESS_OUTCOMES: readonly string[] = ['insufficientStockItems', 'genera
  * `SuggestionEntryOutput` として受ける。**0件の提案に倒さない** — 献立があるのに
  * 無いように見せることになる。
  */
-function isSuggested(
-  body: unknown,
-): body is { readonly outcome: 'suggested'; readonly suggestion: SuggestionOutput } {
+function isSuggested(body: unknown): body is {
+  readonly outcome: 'suggested';
+  readonly suggestion: SuggestionOutput;
+  readonly pantryChanged: boolean;
+} {
   if (typeof body !== 'object' || body === null) return false;
   if (!('outcome' in body) || body.outcome !== 'suggested') return false;
   if (!('suggestion' in body)) return false;
@@ -75,23 +71,20 @@ function isSuggested(
   );
 }
 
-/** 献立を伴わない結末かどうか（S-4 / S-7）。 */
-function mealLessOutcomeOf(body: unknown): SuggestMealsOutput | null {
-  if (typeof body !== 'object' || body === null || !('outcome' in body)) return null;
-
-  const { outcome } = body;
-  if (typeof outcome !== 'string' || !MEAL_LESS_OUTCOMES.includes(outcome)) return null;
-
-  return { outcome } as SuggestMealsOutput;
+/** まだ1件も保存されていない結末かどうか（S-8）。 */
+function isNone(body: unknown): boolean {
+  return typeof body === 'object' && body !== null && 'outcome' in body && body.outcome === 'none';
 }
 
 /**
- * 提案を取りに行く口を組む（FR-16 / FR-21 / B-49a）。
+ * 保存済みの提案を取りに行く口を組む（FR-16 / FR-21 / B-49a / B-58）。
  *
- * **`POST` に置く**（ADR-062 決定1）— 提案は保存と生成の費用を伴い、安全な method に載せない。
- * **本体もクエリも送らない**（B-48b 規則3・4）— 世帯はアクセストークンから、基準日時は
- * サーバの時刻から定まり、利用者が動かせる入力がこの経路に無い。本体が無いので
- * `Content-Type` も付けない（付けると preflight の許可対象が増える。ADR-048）。
+ * **`GET` である**（ADR-065 決定2）— この経路は生成を一度も呼ばず、費用も副作用も無い。
+ * **画面を出すだけで1日10回の枠（NFR-C2）を使わないのはこのためである。** 生成は
+ * 「新しい献立を求める」（FR-36 / B-49b）だけで起こる。
+ * **本体もクエリも送らない**（B-48b 規則3・4）— 世帯はアクセストークンから定まり、
+ * 利用者が動かせる入力がこの経路に無い。本体が無いので `Content-Type` も付けない
+ * （付けると preflight の許可対象が増える。ADR-048）。
  *
  * **DTO を詰め替えない**（先行 `listStockItems` 規則2）。並べ替えもしない — 提案の1件の
  * 並びはサーバが決めたものであり、決定的でなければならない（C-12）。
@@ -100,11 +93,9 @@ function mealLessOutcomeOf(body: unknown): SuggestMealsOutput | null {
  * 本体が読めない・知らない `outcome`、のすべてを `failed` に畳む。外へ出すと門の効果で
  * 誰も受け止めず、読み込み中のまま画面が止まる（FR-41）。
  *
- * **自分では取りに行き直さない**（同 規則10）— 呼ばれた1回で1往復だけする。**再試行は
- * とりわけ避けたい経路である** — 既定の提案でも作れる献立が0件なら生成を呼ぶため（C-4）、
- * 自動の再試行が1日10回の枠（NFR-C2）を黙って削る。
+ * **自分では取りに行き直さない**（同 規則10）— 呼ばれた1回で1往復だけする。
  */
-export function suggestMeals(deps: SuggestionRequestsDeps): SuggestMeals {
+export function showLatestSuggestion(deps: SuggestionRequestsDeps): ShowLatestSuggestion {
   const { baseUrl, accessToken, httpFetch = environmentHttpFetch } = deps;
 
   return async () => {
@@ -117,8 +108,8 @@ export function suggestMeals(deps: SuggestionRequestsDeps): SuggestMeals {
         return FAILED;
       }
 
-      const response = await httpFetch(`${baseUrl}${SUGGESTIONS_PATH}`, {
-        method: 'POST',
+      const response = await httpFetch(`${baseUrl}${LATEST_SUGGESTION_PATH}`, {
+        method: 'GET',
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -129,10 +120,14 @@ export function suggestMeals(deps: SuggestionRequestsDeps): SuggestMeals {
       const body = await response.json();
 
       if (isSuggested(body)) {
-        return { outcome: 'suggested', suggestion: body.suggestion };
+        return {
+          outcome: 'suggested',
+          suggestion: body.suggestion,
+          pantryChanged: body.pantryChanged === true,
+        };
       }
 
-      return mealLessOutcomeOf(body) ?? FAILED;
+      return isNone(body) ? { outcome: 'none' } : FAILED;
     } catch {
       return FAILED;
     }

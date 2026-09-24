@@ -1,5 +1,5 @@
 /**
- * 提案を取りに行く継ぎ目（B-49a。先行 `StockItemRequests.test.ts`）。
+ * 保存済みの提案を取りに行く継ぎ目（B-49a / B-58。先行 `StockItemRequests.test.ts`）。
  *
  * **観るのは戻り値と、出口が受け取った要求だけ**である（`docs/testing.md` 2章）。
  * `vi.fn()` で呼び出し回数を数えず、差し替えは `FixedHttpFetch` を渡す。
@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import type { SuggestionOutput } from '@fridge-to-meal/contract';
 import { FixedHttpFetch } from '../support/server/FixedHttpFetch.js';
 import type { HttpDelivery } from '../support/server/FixedHttpFetch.js';
-import { suggestMeals } from '../../src/server/SuggestionRequests.js';
+import { showLatestSuggestion } from '../../src/server/SuggestionRequests.js';
 
 const BASE_URL = 'https://api.example.test';
 const TOKEN = 'access-token';
@@ -37,25 +37,42 @@ const heldToken = () => Promise.resolve<string | null>(TOKEN);
 
 function requestWith(delivery: HttpDelivery, accessToken = heldToken) {
   const httpFetch = new FixedHttpFetch(delivery);
-  const request = suggestMeals({ baseUrl: BASE_URL, accessToken, httpFetch: httpFetch.httpFetch });
+  const request = showLatestSuggestion({
+    baseUrl: BASE_URL,
+    accessToken,
+    httpFetch: httpFetch.httpFetch,
+  });
 
   return { httpFetch, request };
 }
 
-describe('提案を取りに行く継ぎ目 suggestMeals', () => {
-  it('基点に /suggestions を足した先を POST で叩く', async () => {
-    // 接頭辞を web の側で足さない（ADR-048 決定4）。提案は保存と生成の費用を伴うので
-    // 安全な method に載せない（ADR-062 決定1）。
+describe('保存済みの提案を取りに行く継ぎ目 showLatestSuggestion', () => {
+  it('基点に /suggestions/latest を足した先を GET で叩く', async () => {
+    // 接頭辞を web の側で足さない（ADR-048 決定4）。この経路は生成を呼ばず費用も
+    // 副作用も無いので GET である（ADR-065 決定2）。
     const { httpFetch, request } = requestWith({
       ok: true,
-      body: { outcome: 'suggested', suggestion },
+      body: { outcome: 'suggested', suggestion, pantryChanged: false },
     });
 
     await request();
 
     expect(httpFetch.receivedRequests).toHaveLength(1);
-    expect(httpFetch.receivedRequests[0]?.url).toBe(`${BASE_URL}/suggestions`);
-    expect(httpFetch.receivedRequests[0]?.method).toBe('POST');
+    expect(httpFetch.receivedRequests[0]?.url).toBe(`${BASE_URL}/suggestions/latest`);
+    expect(httpFetch.receivedRequests[0]?.method).toBe('GET');
+  });
+
+  it('生成を呼ぶ経路（POST /suggestions）を叩かない', async () => {
+    // **画面を出すだけで1日10回の枠（NFR-C2）を使わないことが、この継ぎ目の要点である。**
+    const { httpFetch, request } = requestWith({
+      ok: true,
+      body: { outcome: 'suggested', suggestion, pantryChanged: false },
+    });
+
+    await request();
+
+    expect(httpFetch.receivedRequests[0]?.url).not.toBe(`${BASE_URL}/suggestions`);
+    expect(httpFetch.receivedRequests[0]?.url).not.toBe(`${BASE_URL}/suggestions/new-meals`);
   });
 
   it('アクセストークンを Bearer で載せ、本体を1つも送らない', async () => {
@@ -63,7 +80,7 @@ describe('提案を取りに行く継ぎ目 suggestMeals', () => {
     // `Content-Type` も付けない — 付けると preflight の許可対象が増える。
     const { httpFetch, request } = requestWith({
       ok: true,
-      body: { outcome: 'suggested', suggestion },
+      body: { outcome: 'suggested', suggestion, pantryChanged: false },
     });
 
     await request();
@@ -76,7 +93,7 @@ describe('提案を取りに行く継ぎ目 suggestMeals', () => {
     // 出しても 401 が返るだけで、往復を1つ無駄にする（先行 `listStockItems` 規則7）。
     // **件数を断定してよいのは「要求を出さない」が要件のこの1件だけである。**
     const { httpFetch, request } = requestWith(
-      { ok: true, body: { outcome: 'suggested', suggestion } },
+      { ok: true, body: { outcome: 'suggested', suggestion, pantryChanged: false } },
       () => Promise.resolve(null),
     );
 
@@ -86,23 +103,30 @@ describe('提案を取りに行く継ぎ目 suggestMeals', () => {
 
   it('提案が返れば、その結末をそのまま返す', async () => {
     // **DTO を詰め替えない**（先行 `listStockItems` 規則2）。
-    const { request } = requestWith({ ok: true, body: { outcome: 'suggested', suggestion } });
+    const { request } = requestWith({
+      ok: true,
+      body: { outcome: 'suggested', suggestion, pantryChanged: false },
+    });
 
-    expect(await request()).toEqual({ outcome: 'suggested', suggestion });
+    expect(await request()).toEqual({ outcome: 'suggested', suggestion, pantryChanged: false });
   });
 
-  it('在庫が足りない結末を、失敗に畳まずそのまま返す', async () => {
-    // S-4 は失敗でも規則違反でもなく、200 で返る結末である（ADR-041 / ADR-062 決定2）。
-    const { request } = requestWith({ ok: true, body: { outcome: 'insufficientStockItems' } });
+  it('在庫が変わっているという手がかりもそのまま返す', async () => {
+    // ADR-065 決定4。見せ方を決めるのは画面であり、継ぎ目は写すだけである。
+    const { request } = requestWith({
+      ok: true,
+      body: { outcome: 'suggested', suggestion, pantryChanged: true },
+    });
 
-    expect(await request()).toEqual({ outcome: 'insufficientStockItems' });
+    expect(await request()).toEqual({ outcome: 'suggested', suggestion, pantryChanged: true });
   });
 
-  it('上限に達した結末を、失敗に畳まずそのまま返す', async () => {
-    // S-7 も同じく 200 で返る結末である（NFR-C2 / ADR-049 結果5）。
-    const { request } = requestWith({ ok: true, body: { outcome: 'generationLimitReached' } });
+  it('まだ提案が無い結末を、失敗に畳まずそのまま返す', async () => {
+    // S-8 は失敗ではなく 200 で返る結末である（ADR-041 / ADR-065 決定3）。畳むと
+    // 「一度も提案していない」と「取りに行けなかった」を画面が言い分けられなくなる。
+    const { request } = requestWith({ ok: true, body: { outcome: 'none' } });
 
-    expect(await request()).toEqual({ outcome: 'generationLimitReached' });
+    expect(await request()).toEqual({ outcome: 'none' });
   });
 
   it('応答が ok でなければ失敗を返す', async () => {
@@ -134,7 +158,10 @@ describe('提案を取りに行く継ぎ目 suggestMeals', () => {
   it('提案の1件の列が無い本体を、提案として受け取らない', async () => {
     // 0件の提案に倒さない — **献立があるのに無いように見せる**ことになる
     // （先行 `listStockItems` 規則9）。
-    const { request } = requestWith({ ok: true, body: { outcome: 'suggested', suggestion: {} } });
+    const { request } = requestWith({
+      ok: true,
+      body: { outcome: 'suggested', suggestion: {}, pantryChanged: false },
+    });
 
     expect(await request()).toEqual({ outcome: 'failed' });
   });
