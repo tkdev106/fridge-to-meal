@@ -31,9 +31,12 @@ import { FixedSession } from './support/session/FixedSession.js';
 import type { FixedSessionOptions } from './support/session/FixedSession.js';
 import { FixedStockItemRequests } from './support/server/FixedStockItemRequests.js';
 import type { FixedStockItemRequestsOptions } from './support/server/FixedStockItemRequests.js';
+import { FixedSuggestionRequests } from './support/server/FixedSuggestionRequests.js';
+import type { FixedSuggestionRequestsOptions } from './support/server/FixedSuggestionRequests.js';
 import { App } from '../src/App.js';
 import type { SessionState } from '../src/session/Session.js';
 import type { StockItemsOutcome } from '../src/server/StockItemRequests.js';
+import type { SuggestMealsOutcome } from '../src/server/SuggestionRequests.js';
 
 // 行をなぞる経路は jsdom に無いメソッドを通る（`support/dom/pointerCapture.ts`）。
 // **本体の振る舞いではなく、道具の欠けを道具の側で埋めるものである。**
@@ -55,9 +58,11 @@ function loaded(...stockItems: readonly StockItemDto[]): StockItemsOutcome {
 function renderApp(
   sessionOptions: FixedSessionOptions = {},
   requestOptions: FixedStockItemRequestsOptions = {},
+  suggestionOptions: FixedSuggestionRequestsOptions = {},
 ) {
   const session = new FixedSession(sessionOptions);
   const requests = new FixedStockItemRequests(requestOptions);
+  const suggestions = new FixedSuggestionRequests(suggestionOptions);
 
   render(
     <App
@@ -65,10 +70,11 @@ function renderApp(
       listStockItems={requests.listStockItems}
       registerStockItem={requests.registerStockItem}
       deleteStockItem={requests.deleteStockItem}
+      suggestMeals={suggestions.suggestMeals}
     />,
   );
 
-  return { session, requests };
+  return { session, requests, suggestions };
 }
 
 /**
@@ -398,5 +404,101 @@ describe('門 App が在庫一覧を取り直す条件', () => {
     // その取得も失敗すれば断りが一覧全体の断りに置き換わってしまう。
     expect(screen.queryByText(carrot.name)).not.toBeNull();
     expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+  });
+});
+
+describe('門 App が提案を取りに行く条件', () => {
+  /** 献立1件だけの提案を組む。**当てるのは渡した名称だけである**（設計 規則6）。 */
+  function suggesting(mealId: string, title: string): SuggestMealsOutcome {
+    return {
+      outcome: 'suggested',
+      suggestion: {
+        id: `suggestion-${mealId}`,
+        generatedAt: '2026-09-20T09:00:00.000Z',
+        entries: [
+          {
+            mealId,
+            origin: 'generated',
+            title,
+            ingredients: [],
+            steps: [],
+            coverage: { covered: [], missing: [] },
+          },
+        ],
+      },
+    };
+  }
+
+  const GINGER_PORK = '豚こま肉と白菜の生姜焼き';
+  /** 取り直していないことを観るための、2件目の台本に置く標本。 */
+  const STIR_FRY = 'にんじんと卵の炒めもの';
+
+  const suggestedMeal = suggesting('meal-1', GINGER_PORK);
+  const anotherSuggestedMeal = suggesting('meal-2', STIR_FRY);
+
+  /** 献立タブ。`TAB_ORDER` の先頭である（`navigation/Tabs.ts`）。 */
+  function mealsTab(): HTMLElement {
+    const [tab] = tabs();
+    if (tab === undefined) throw new Error('献立タブが無い');
+
+    return tab;
+  }
+
+  /** 在庫タブ。`TAB_ORDER` の2つめである。 */
+  function pantryTab(): HTMLElement {
+    const tab = tabs().at(1);
+    if (tab === undefined) throw new Error('在庫タブが無い');
+
+    return tab;
+  }
+
+  it('献立タブを開くまでは提案を取りに行かない', async () => {
+    // 提案は保存と生成の費用を伴う（ADR-062 決定1）。開かれてもいない画面のために
+    // 1日10回の枠（NFR-C2）を使わない。**件数を断定してよいのはこの観点である**（設計 規則6）。
+    const { suggestions } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { suggest: [suggestedMeal] },
+    );
+
+    await screen.findByText(carrot.name);
+
+    expect(suggestions.suggestCount).toBe(0);
+  });
+
+  it('献立タブを開くと提案を取りに行き、取れた献立を出す', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { suggest: [suggestedMeal] },
+    );
+
+    await screen.findByText(carrot.name);
+    fireEvent.click(mealsTab());
+
+    // 待つ条件は**テストが渡した名称**である（設計 規則7）。
+    expect(await screen.findByText(GINGER_PORK)).not.toBeNull();
+  });
+
+  it('タブを移って戻っても提案を取り直さない', async () => {
+    // 取り直すと、そのたびに生成を呼びうる（C-4 / NFR-C2）。**2件目の台本が出ないこと**で
+    // 検める（設計 規則6）。
+    const { suggestions } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { suggest: [suggestedMeal, anotherSuggestedMeal] },
+    );
+
+    await screen.findByText(carrot.name);
+    fireEvent.click(mealsTab());
+    await screen.findByText(GINGER_PORK);
+
+    fireEvent.click(pantryTab());
+    await screen.findByText(carrot.name);
+    fireEvent.click(mealsTab());
+    await screen.findByText(GINGER_PORK);
+
+    expect(screen.queryByText(STIR_FRY)).toBeNull();
+    expect(suggestions.suggestCount).toBe(1);
   });
 });

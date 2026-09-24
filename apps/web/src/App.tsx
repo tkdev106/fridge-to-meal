@@ -10,10 +10,11 @@
  * 「何も出さない／ログイン／今の画面」を出し分ける。セッションは props で受け取り、
  * 実装を `new` するのは `main.tsx` だけ（規則3）。
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { SignInForm } from './features/identity/SignInForm.js';
 import { SignOutButton } from './features/identity/SignOutButton.js';
 import { HistoryTab } from './features/meal/HistoryTab.js';
+import type { MealsTabState } from './features/meal/MealsTab.js';
 import { MealsTab } from './features/meal/MealsTab.js';
 import { deleteFailureNoticeOf } from './features/pantry/DeleteFailureNotice.js';
 import type { PantryListState } from './features/pantry/PantryList.js';
@@ -26,6 +27,7 @@ import type {
   ListStockItems,
   RegisterStockItem,
 } from './server/StockItemRequests.js';
+import type { SuggestMeals } from './server/SuggestionRequests.js';
 
 export type AppProps = {
   /** セッションの継ぎ目。画面はこの型だけを見る（ADR-046 決定3）。 */
@@ -39,9 +41,21 @@ export type AppProps = {
   registerStockItem: RegisterStockItem;
   /** 在庫を削除しに行く口（B-23）。同じく組み立てるのは `main.tsx` だけである。 */
   deleteStockItem: DeleteStockItem;
+  /**
+   * 提案を取りに行く口（B-49a）。組み立てるのはやはり `main.tsx` だけである。
+   *
+   * **在庫の口と違い、門は起動と同時にこれを呼ばない**（下の効果を見よ）。
+   */
+  suggestMeals: SuggestMeals;
 };
 
-export function App({ session, listStockItems, registerStockItem, deleteStockItem }: AppProps) {
+export function App({
+  session,
+  listStockItems,
+  registerStockItem,
+  deleteStockItem,
+  suggestMeals,
+}: AppProps) {
   // 購読を始めた時点の状態は subscribe が1度目に渡す（`Session.ts` 規則5）ので、
   // ここで先に決めない。最初の描画は購読が始まるまでの一瞬だけ 'unknown' でよい。
   const [state, setState] = useState<SessionState>('unknown');
@@ -53,6 +67,14 @@ export function App({ session, listStockItems, registerStockItem, deleteStockIte
   // 一覧を取り直した回数。登録が通るたび（B-24）と、消えたと読めるたび（B-23）に1つ増やし、
   // 下の効果をもう1度走らせる。
   const [reloadCount, setReloadCount] = useState(0);
+
+  // 提案も取りに行くまでは「読み込み中」である（在庫と同じ構え。B-22 設計 7章）。
+  const [suggestion, setSuggestion] = useState<MealsTabState>({ outcome: 'loading' });
+
+  // **献立タブが1度でも開かれたか**（B-49a）。**起動と同時には取りに行かない** —
+  // 既定の提案でも、作れる既存の献立が0件なら生成を呼ぶ（C-4 / ADR-022）ため、開かれても
+  // いない画面のために1日10回の枠（NFR-C2）と費用を使うことになる。
+  const [mealsOpened, setMealsOpened] = useState(false);
 
   // 購読は1本。`session` が同じなら張り替えず、外れるとき戻り値で解除する（規則2）。
   useEffect(() => session.subscribe(setState), [session]);
@@ -79,6 +101,41 @@ export function App({ session, listStockItems, registerStockItem, deleteStockIte
       active = false;
     };
   }, [state, listStockItems, reloadCount]);
+
+  /**
+   * 献立タブが開かれてから**1度だけ**提案を取りに行く（FR-16 / FR-21 / B-49a）。
+   *
+   * **取り直さない。** タブを移って戻るたびに呼ぶと、そのたびに生成を呼びうる（C-4 / NFR-C2）。
+   * `mealsOpened` は一度立つと下がらないので、この効果は状態が変わるまで走り直さない。
+   *
+   * **効果が解除されたら結果を捨てる**（在庫と同じ。B-22 設計 規則10）。StrictMode の
+   * 二重呼び出しと、サインアウトが割り込んだ場合に、古い結果を画面に置かないため。
+   *
+   * **`catch` は要らない。** 継ぎ目は例外を投げず結末で返す（`SuggestionRequests.ts`）。
+   */
+  useEffect(() => {
+    if (state !== 'signedIn' || !mealsOpened) return;
+
+    let active = true;
+    setSuggestion({ outcome: 'loading' });
+
+    void suggestMeals().then((outcome) => {
+      if (active) setSuggestion(outcome);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [state, suggestMeals, mealsOpened]);
+
+  /**
+   * 献立タブが描かれたという合図を受ける（B-49a）。
+   *
+   * **`useCallback` で同じ関数を渡し続ける。** 毎回新しい関数を渡すと、子の効果が描き直しの
+   * たびに走る。`setMealsOpened(true)` は2度目以降を React が取り下げるので害は無いが、
+   * **合図が何度も走る形そのものを残さない。**
+   */
+  const openMeals = useCallback(() => setMealsOpened(true), []);
 
   /**
    * 登録が通ったら一覧を取り直す（FR-01 / FR-04 / B-24）。
@@ -154,7 +211,9 @@ export function App({ session, listStockItems, registerStockItem, deleteStockIte
   return (
     <main>
       <TabbedScreen
-        meals={<MealsTab />}
+        meals={
+          <MealsTab suggestion={suggestion} today={todayOf(new Date())} onOpened={openMeals} />
+        }
         pantry={
           <>
             <PantryTab
