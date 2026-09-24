@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type {
   MealCoverageDto,
   MealIngredientDto,
+  MealOutput,
   SuggestionEntryOutput,
   SuggestMealsOutput,
 } from '@fridge-to-meal/contract';
@@ -180,5 +181,110 @@ describe('充足 MealCoverageDto', () => {
     };
 
     expect(coverage).toBeDefined();
+  });
+});
+
+// ここから下は B-52 周A（`MealOutput` の切り出し。ADR-066 論点1）。
+// 上の既存のケースはそのまま緑である — **切り出しで JSON の形を1バイトも変えない**ことを、
+// 既存の全件が1行も変わらずに通ることで観察する（設計書 11章）。
+
+/** 献立1件の出力を作る。本題でない値をここに隠す。 */
+function mealOutput(): MealOutput {
+  return {
+    mealId,
+    title: '肉じゃが',
+    ingredients: [{ name: 'にんじん', kind: 'main', amount: '1本' }],
+    steps: ['煮る'],
+    coverage: { covered: [], missing: [] },
+  };
+}
+
+describe('献立1件の出力 MealOutput', () => {
+  it('献立1件の出力は識別子・名称・材料・手順・充足を持つ', () => {
+    // 設計書5章 / FR-30: 献立詳細が要るのはこの5つである。
+    const output: MealOutput = mealOutput();
+
+    expect(output.mealId).toBe(mealId);
+    expect(output.title).toBe('肉じゃが');
+    expect(output.ingredients[0]?.name).toBe('にんじん');
+    expect(output.steps).toEqual(['煮る']);
+    expect(output.coverage).toEqual({ covered: [], missing: [] });
+  });
+
+  it('提案の1件は献立1件の出力として読める', () => {
+    // 規則16 / ADR-066 論点1: `SuggestionEntryOutput = MealOutput & { origin }`。
+    // 提案の1件は献立1件の中身をそのまま含み、由来だけを足したものである。
+    const entry: SuggestionEntryOutput = suggestionEntryOutput();
+
+    const output: MealOutput = entry;
+
+    expect(output.title).toBe(entry.title);
+  });
+
+  it('献立1件の出力に由来を持たせられない', () => {
+    // 規則8 / FR-35: 由来は提案の1件の性質であって献立の性質ではない。
+    const output: MealOutput = {
+      ...mealOutput(),
+      // @ts-expect-error 由来は献立1件の出力に無い
+      origin: 'reused',
+    };
+
+    expect(output).toBeDefined();
+  });
+
+  it('献立1件の出力に世帯を持たせられない', () => {
+    // 規則9 / B-48a 規則12 / NFR-09: 世帯は認証された利用者から定まる。出力には載せない。
+    const output: MealOutput = {
+      ...mealOutput(),
+      // @ts-expect-error 世帯は契約に無い
+      householdId: '11111111-1111-4111-8111-111111111111',
+    };
+
+    expect(output).toBeDefined();
+  });
+
+  it('献立1件の出力に調理記録を持たせられない', () => {
+    // 規則9 / B-48a 規則12: 調理記録はどの型にも載せない。
+    const output: MealOutput = {
+      ...mealOutput(),
+      // @ts-expect-error 調理記録は契約に無い
+      cookingRecords: [],
+    };
+
+    expect(output).toBeDefined();
+  });
+
+  it('献立1件の出力に生成日時を持たせられない', () => {
+    // 規則9 / B-48a 規則12: 献立の生成日時は載せない（提案の側が持つ）。
+    const output: MealOutput = {
+      ...mealOutput(),
+      // @ts-expect-error 生成日時は契約に無い
+      generatedAt: '2026-09-14T03:00:00.000Z',
+    };
+
+    expect(output).toBeDefined();
+  });
+
+  it('賄える材料の期限が未設定のときは null を持てる', () => {
+    // 規則6 / ADR-061 決定2: 期限を持つ在庫品が無ければ null である。
+    const output: MealOutput = {
+      ...mealOutput(),
+      coverage: {
+        covered: [{ name: 'にんじん', kind: 'main', amount: null, expiryDate: null }],
+        missing: [],
+      },
+    };
+
+    expect(output.coverage.covered[0]?.expiryDate).toBeNull();
+  });
+
+  it('材料の分量の未設定は null で表す', () => {
+    // 規則7 / ADR-010: 分量は自由文字列で、未設定は null で表す。
+    const output: MealOutput = {
+      ...mealOutput(),
+      ingredients: [{ name: 'にんじん', kind: 'main', amount: null }],
+    };
+
+    expect(output.ingredients[0]?.amount).toBeNull();
   });
 });

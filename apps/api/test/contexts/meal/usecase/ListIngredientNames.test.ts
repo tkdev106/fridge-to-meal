@@ -267,6 +267,9 @@ describe('listIngredientNames', () => {
         async findByHousehold() {
           throw failure;
         },
+        async findById() {
+          throw failure;
+        },
         async save() {},
       };
       const list = listIngredientNames({
