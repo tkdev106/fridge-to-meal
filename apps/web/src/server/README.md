@@ -24,6 +24,8 @@
 | `HttpFetch.ts` | 差し替える出口と、その要求・応答の**構造型**。`Response` も `Request` も `fetch` も型として口に出さない |
 | `ApiBaseUrl.ts` | `VITE_API_BASE_URL` の読み取りと正規化 |
 | `StockItemRequests.ts` | 在庫の要求を組む工場と、読み込み・登録・削除の結末 |
+| `SuggestionRequests.ts` | 保存済みの提案を取りに行く工場と、その結末 |
+| `IngredientNameRequests.ts` | 補完の元になる食材名を取りに行く工場と、その結末 |
 
 ## ここで守ること
 

@@ -80,6 +80,7 @@ function pantryTab(overrides: Partial<PantryTabProps> = {}) {
       today={today}
       onDelete={neverDelete}
       onRegister={neverRegister}
+      ingredientNames={{ outcome: 'loading' }}
       {...overrides}
     />
   );
@@ -99,16 +100,14 @@ function operationAt(index: number): HTMLElement {
 }
 
 /**
- * 食材名の欄。登録の画面の `textbox` の先頭である（期限は `type="date"` で入らない）。
+ * 食材名の欄。**補完の `list` を持つため役割は `combobox` である**（B-50c）— 補完が0件の
+ * 回も欄はこの役割のままである。
  *
  * **`instanceof HTMLInputElement` で絞らない** — 役割で引いている以上、入力の欄であることは
  * 問い合わせの側が保証している。**DOM の形を辿らない**（ADR-052 結果3）。
  */
 function ingredientNameField(): HTMLInputElement {
-  const [field] = screen.getAllByRole('textbox');
-  if (field === undefined) throw new Error('食材名の欄が無い');
-
-  return field as HTMLInputElement;
+  return screen.getByRole('combobox') as HTMLInputElement;
 }
 
 describe('在庫タブの中身 PantryTab', () => {
@@ -312,9 +311,12 @@ describe('在庫タブの中身と下タブの器', () => {
  * 「一覧が出ている」のか「打った値が残っている」のかを取り違える。
  */
 
-/** 分量の欄。`textbox` の2つ目である（期限は `type="date"` なのでこの役割に入らない）。 */
+/**
+ * 分量の欄。**`textbox` はこれ1つだけである** — 食材名は `combobox`（B-50c）、期限は
+ * `type="date"` なので、どちらもこの役割に入らない。
+ */
 function amountField(): HTMLInputElement {
-  const field = screen.getAllByRole('textbox')[1];
+  const field = screen.getAllByRole('textbox')[0];
   if (field === undefined) throw new Error('分量の欄が無い');
 
   return field as HTMLInputElement;
