@@ -22,12 +22,14 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import type { ReactNode } from 'react';
+import { useState } from 'react';
 import type { RegisterStockItemInput, StockItemDto } from '@fridge-to-meal/contract';
 import { fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
 import type { PantryTabProps } from '../../../src/features/pantry/PantryTab.js';
 import { PantryTab } from '../../../src/features/pantry/PantryTab.js';
 import type { TabId } from '../../../src/navigation/Tabs.js';
-import { TAB_ORDER } from '../../../src/navigation/Tabs.js';
+import { DEFAULT_TAB, TAB_ORDER } from '../../../src/navigation/Tabs.js';
 import { TabbedScreen } from '../../../src/navigation/TabbedScreen.js';
 import type {
   DeleteStockItem,
@@ -242,14 +244,27 @@ const otherContents = {
   history: '渡された履歴の中身',
 } as const;
 
-function tabbedPantryTab(overrides: Partial<PantryTabProps> = {}) {
-  render(
+/**
+ * 器は選んでいるタブを持たない（ADR-066 決定1）ので、**このテストの側で持つ。**
+ * 門（`App.tsx`）が持つのと同じ形であり、ここで確かめたいのは器の持ち方ではなく
+ * 「在庫タブの中身が、タブを挟んだときにどうなるか」である。
+ */
+function TabbedPantryTab({ pantry }: { pantry: ReactNode }) {
+  const [selectedTab, setSelectedTab] = useState<TabId>(DEFAULT_TAB);
+
+  return (
     <TabbedScreen
       meals={otherContents.meals}
-      pantry={pantryTab(overrides)}
+      pantry={pantry}
       history={otherContents.history}
-    />,
+      selectedTab={selectedTab}
+      onSelectTab={setSelectedTab}
+    />
   );
+}
+
+function tabbedPantryTab(overrides: Partial<PantryTabProps> = {}) {
+  render(<TabbedPantryTab pantry={pantryTab(overrides)} />);
 }
 
 /** タブは並びの位置で引く（`TAB_ORDER` の何番目か。先行 `TabbedScreen.test.tsx`）。 */

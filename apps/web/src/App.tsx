@@ -21,6 +21,8 @@ import type { IngredientNamesState } from './features/pantry/IngredientNameOptio
 import type { PantryListState } from './features/pantry/PantryList.js';
 import { PantryTab } from './features/pantry/PantryTab.js';
 import { todayOf } from './features/pantry/RemainingDays.js';
+import type { TabId } from './navigation/Tabs.js';
+import { DEFAULT_TAB } from './navigation/Tabs.js';
 import { TabbedScreen } from './navigation/TabbedScreen.js';
 import type { Session, SessionState } from './session/Session.js';
 import type {
@@ -97,6 +99,13 @@ export function App({
   const [ingredientNames, setIngredientNames] = useState<IngredientNamesState>({
     outcome: 'loading',
   });
+
+  // **いま選んでいるタブ**（ADR-066 決定2 / B-49c 規則10）。器は自分では持たず、
+  // props で受け取るだけである（同 決定1）— そうでないと、画面の側からタブを移す手段が
+  // 1つも無い（`docs/screen-design.md` D-7）。**開くのは既定の献立タブ**（ADR-064）。
+  //
+  // **URL にも `localStorage` にも書かない**（同 結果1）ので、再読み込みは既定に戻る。
+  const [selectedTab, setSelectedTab] = useState<TabId>(DEFAULT_TAB);
 
   // 「新しい献立を求める」（B-49b / FR-36）を送っている間か（S-5）。
   const [requestingNewMeals, setRequestingNewMeals] = useState(false);
@@ -215,6 +224,20 @@ export function App({
   }, [state]);
 
   /**
+   * **サインイン済みでなくなったら、開いているタブも既定に戻す**（ADR-066 結果1 /
+   * B-38 設計 6章 規則9 / `docs/screen-design.md` 2.3 の `login --> meals`）。
+   *
+   * 状態が器の中にあったころは、門がサインイン済みの枝でだけ器を mount することで
+   * 自然に戻っていた。**門へ持ち上げた以上、門は signedOut の間も生き続ける**ので、
+   * ここで明示的に戻さないと**前に開いていたタブのまま入り直す**ことになる。
+   */
+  useEffect(() => {
+    if (state === 'signedIn') return;
+
+    setSelectedTab(DEFAULT_TAB);
+  }, [state]);
+
+  /**
    * 登録が通ったら一覧を取り直す（FR-01 / FR-04 / B-24）。
    *
    * **登録した在庫品を web で列に足さない。** 並び（期限の近い順）を決めるのはサーバであり
@@ -309,8 +332,10 @@ export function App({
     );
   }
 
-  // **器を mount するのはこの枝だけである**（B-38 設計 6章 規則9）。サインアウトを挟んで
-  // 入り直すと器ごと作り直され、開くのは既定のタブに戻る（2.3 の `login --> meals`）。
+  // **器を mount するのはこの枝だけである。** ただし**開くのが既定のタブに戻る根拠は
+  // mount ではない**（ADR-066 結果1 で置き換わった。B-38 設計 6章 規則9）— 選んでいるタブは
+  // 門が持つようになり、門はサインアウトの間も生き続けるので、**上の効果が明示的に
+  // `DEFAULT_TAB` へ戻す**（2.3 の `login --> meals`）。
   //
   // **在庫を取りに行く効果は門に残したままである**（同 規則11 / B-22 設計 規則10）。タブを
   // 移っても上の効果は走り直さず、取れていた在庫も失敗の結末もそのまま保たれる —
@@ -331,6 +356,10 @@ export function App({
   return (
     <main>
       <TabbedScreen
+        // 選んでいるタブは門が持つ（ADR-066 決定2）。器へは値と、押されたことを受ける口を
+        // 渡すだけで、**運ばれてくるのは `TabId` だけ**である（同 決定3）。
+        selectedTab={selectedTab}
+        onSelectTab={setSelectedTab}
         meals={
           <MealsTab
             suggestion={suggestion}
@@ -338,6 +367,13 @@ export function App({
             onRequestNewMeals={handleRequestNewMeals}
             requestingNewMeals={requestingNewMeals}
             newMealsFailed={newMealsFailed}
+            // **在庫タブへ送る**（`docs/screen-design.md` D-7 / B-49c 規則9 / ADR-066 決定2）。
+            // 門がするのは `'pantry'` にすることだけで、**「在庫が足りないから在庫タブへ」
+            // という意味は `MealsTab` が持つ**（同 決定3）。
+            //
+            // **移しても何も取り直さない**（同 結果3 / D-8）— 提案も在庫一覧も食材名も
+            // 触らない。取り直す経路は在庫の登録・削除が通った回に既にある。
+            onGoToPantry={() => setSelectedTab('pantry')}
           />
         }
         pantry={
