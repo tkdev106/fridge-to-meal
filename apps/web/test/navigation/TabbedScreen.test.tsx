@@ -99,7 +99,9 @@ describe('下タブの器 TabbedScreen', () => {
   it('最初に出すのは在庫タブに渡された中身である', () => {
     renderTabbedScreen();
 
-    // 要件 第7章（ホームは在庫一覧）/ B-38 設計 6章 規則6。
+    // B-38 設計 6章 規則6。**いま `DEFAULT_TAB` が指しているのは在庫タブである** —
+    // **既定は献立と決まったが**（ADR-064 / 要件 第7章 / `docs/screen-design.md` 2.2）、
+    // **反映は B-49 が持つ**（ADR-064 結果3）。**この行も B-49 が献立に書き換える。**
     expect(screen.queryByText(contents.pantry)).not.toBeNull();
   });
 
