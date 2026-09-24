@@ -23,6 +23,7 @@
 
 import type { JSX } from 'react';
 import { useState } from 'react';
+import type { IngredientNamesState } from './IngredientNameOptions.js';
 import { PantryList } from './PantryList.js';
 import type { PantryListState } from './PantryList.js';
 import { StockItemForm } from './StockItemForm.js';
@@ -47,6 +48,11 @@ export type PantryTabProps = {
   onDelete: DeleteStockItem;
   /** 登録の実行（B-24）。登録の画面へ素通しする。 */
   onRegister: RegisterStockItem;
+  /**
+   * 補完の元になる食材名の3値（FR-02 / B-50c）。**登録の画面へ素通しする** — 一覧では
+   * 使わず、この画面は中身も読まない（読むのは `StockItemForm` の側である）。
+   */
+  ingredientNames: IngredientNamesState;
 };
 
 export function PantryTab({
@@ -54,6 +60,7 @@ export function PantryTab({
   today,
   onDelete,
   onRegister,
+  ingredientNames,
 }: PantryTabProps): JSX.Element {
   // 開いた直後は一覧である（規則2 / 要件 第7章）。
   const [registering, setRegistering] = useState(false);
@@ -61,7 +68,13 @@ export function PantryTab({
   // 登録の画面は一覧と**入れ替わる**（規則1）。閉じたときに木から外れるので、打ちかけの入力は
   // そのまま捨てられる（規則7）— 下書きをここで抱えない。
   if (registering) {
-    return <StockItemForm onRegister={onRegister} onClose={() => setRegistering(false)} />;
+    return (
+      <StockItemForm
+        onRegister={onRegister}
+        onClose={() => setRegistering(false)}
+        ingredientNames={ingredientNames}
+      />
+    );
   }
 
   // 登録を開く操作は一覧より前に置く（規則3。`docs/screen-design.md` 5章の見出しの行の右端）。
