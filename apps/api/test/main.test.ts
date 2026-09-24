@@ -12,6 +12,7 @@ import type { AccessTokenClaims } from './support/identity/AccessSigning.js';
 import { accessTokenOf, publicAccessTokenKey } from './support/identity/AccessSigning.js';
 import { FixedFetchJwks } from './support/identity/FixedFetchJwks.js';
 import { FixedIdentifyHousehold } from './support/identity/FixedIdentifyHousehold.js';
+import { FixedAddCookingRecord } from './support/meal/FixedAddCookingRecord.js';
 import { FixedListIngredientNames } from './support/meal/FixedListIngredientNames.js';
 import {
   FixedShowLatestSuggestion,
@@ -107,6 +108,7 @@ function appWithFixedDependencies(
     suggestNewMeals?: FixedSuggestNewMeals;
     showLatestSuggestion?: FixedShowLatestSuggestion;
     listIngredientNames?: FixedListIngredientNames;
+    addCookingRecord?: FixedAddCookingRecord;
   } = {},
 ) {
   const suggestMeals =
@@ -119,6 +121,8 @@ function appWithFixedDependencies(
   const listIngredientNames =
     overrides.listIngredientNames ??
     new FixedListIngredientNames({ returns: ingredientNamesOutcome });
+  const addCookingRecord =
+    overrides.addCookingRecord ?? new FixedAddCookingRecord({ succeeds: true });
 
   return createApp({
     identifyHousehold: new FixedIdentifyHousehold({ returns: ourHousehold }).identify,
@@ -132,6 +136,7 @@ function appWithFixedDependencies(
     suggestNewMeals: suggestNewMeals.suggest,
     showLatestSuggestion: showLatestSuggestion.show,
     listIngredientNames: listIngredientNames.list,
+    addCookingRecord: addCookingRecord.add,
     now: () => fixedNow,
   });
 }
@@ -552,6 +557,101 @@ describe('composition root main', () => {
       const { app } = composedApp(envWithoutHyperdrive);
 
       const response = await app.request('/ingredient-names', {
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+    });
+  });
+
+  describe('調理記録の経路の配置', () => {
+    // B-51 2周目。代役の deps で組み、経路がどこに置かれ、どの口に何が届くかだけを見る。
+    const cookingRecordsPath = '/meals/m-1/cooking-records';
+
+    it('調理記録の経路を接頭辞なしの POST /meals/:id/cooking-records に置く', async () => {
+      // 規則12 / FR-22 / ADR-003: `createCookingRecordRoutes` の経路をそのまま根にマウントする。
+      const addCookingRecord = new FixedAddCookingRecord({ succeeds: true });
+      const app = appWithFixedDependencies({ addCookingRecord });
+
+      const response = await app.request(cookingRecordsPath, {
+        method: 'POST',
+        headers: bearerHeaders('x'),
+      });
+
+      expect(response.status).toBe(204);
+      expect(addCookingRecord.callCount).toBe(1);
+    });
+
+    it('接頭辞を付けた /api/meals/:id/cooking-records には経路を置かない', async () => {
+      // ADR-048 決定4: 接頭辞は増やさない。
+      const addCookingRecord = new FixedAddCookingRecord({ succeeds: true });
+      const app = appWithFixedDependencies({ addCookingRecord });
+
+      const response = await app.request(`/api${cookingRecordsPath}`, {
+        method: 'POST',
+        headers: bearerHeaders('x'),
+      });
+
+      expect(response.status).toBe(404);
+      expect(addCookingRecord.callCount).toBe(0);
+    });
+
+    it('調理記録の経路には識別の口で定まった世帯が届く', async () => {
+      // C-9 / 規則12: 世帯はアクセストークンから定まり、ユースケースの第1引数に渡る。
+      const addCookingRecord = new FixedAddCookingRecord({ succeeds: true });
+      const app = appWithFixedDependencies({ addCookingRecord });
+
+      await app.request(cookingRecordsPath, { method: 'POST', headers: bearerHeaders('x') });
+
+      expect(addCookingRecord.receivedHouseholdId).toBe('11111111-1111-4111-8111-111111111111');
+    });
+
+    it('調理記録の経路には組み立てに渡した now の値が基準日時として届く', async () => {
+      // 規則4 / ADR-062 決定1: 記録の日時は要求から受け取らず、deps の now() を読む。
+      const addCookingRecord = new FixedAddCookingRecord({ succeeds: true });
+      const app = appWithFixedDependencies({ addCookingRecord });
+
+      await app.request(cookingRecordsPath, { method: 'POST', headers: bearerHeaders('x') });
+
+      expect(addCookingRecord.receivedCookedAt).toBe('2026-09-23T12:00:00.000Z');
+    });
+  });
+
+  describe('調理記録の経路の結線', () => {
+    // B-51 2周目。composeDependencies の本物の結線で、差し替えるのは JWKS を取りに行く口だけ。
+    const cookingRecordsPath = '/meals/m-1/cooking-records';
+
+    it('アクセストークンが無い調理記録の要求は結線後も 401 accessToken.missing になる', async () => {
+      // 規則1 / ADR-032: 世帯を定めるのが常に先。認証を通らない要求は DB に触れない。
+      const { app } = composedApp(envWithoutHyperdrive);
+
+      const response = await app.request(cookingRecordsPath, { method: 'POST' });
+
+      expect(response.status).toBe(401);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'accessToken.missing' });
+    });
+
+    it('SUPABASE_URL が空の環境で調理記録を要求すると 500 unexpected になり 401 にならない', async () => {
+      // ADR-045 決定3 / 結果4: サーバ側の不備を利用者のアクセストークンのせいにしない。
+      const { app } = composedApp({ ...env, SUPABASE_URL: '' });
+
+      const response = await app.request(cookingRecordsPath, {
+        method: 'POST',
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+    });
+
+    it('認証を通ったあと HYPERDRIVE の binding が無ければ調理記録の要求は 500 unexpected になる', async () => {
+      // 規則12 / ADR-029 決定3(a) / ADR-045: 接続文字列が読めないのはサーバ側の不備である。
+      // 500 になること自体が、DB に触れるのが認証の**あと**であることの印でもある。
+      const { app } = composedApp(envWithoutHyperdrive);
+
+      const response = await app.request(cookingRecordsPath, {
+        method: 'POST',
         headers: bearerHeaders(await accessTokenOf(validClaims())),
       });
 

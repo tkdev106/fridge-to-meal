@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/main.js';
 import { householdIdOf } from '../src/shared/domain/HouseholdId.js';
 import { FixedIdentifyHousehold } from './support/identity/FixedIdentifyHousehold.js';
+import { FixedAddCookingRecord } from './support/meal/FixedAddCookingRecord.js';
 import { FixedListIngredientNames } from './support/meal/FixedListIngredientNames.js';
 import {
   FixedShowLatestSuggestion,
@@ -42,6 +43,7 @@ function app() {
     suggestNewMeals: new FixedSuggestNewMeals({ returns: { outcome: 'insufficientStockItems' } })
       .suggest,
     listIngredientNames: new FixedListIngredientNames({ returns: { ingredientNames: [] } }).list,
+    addCookingRecord: new FixedAddCookingRecord({ succeeds: true }).add,
     now: () => '2026-09-23T12:00:00.000Z',
   });
 }

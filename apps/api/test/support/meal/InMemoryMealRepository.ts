@@ -28,8 +28,15 @@ export type SaveFailure = {
  * 同じ筋で、決まった応答を持たせるだけである。**可変長の構築は壊さない** — 前提の献立を置く
  * 口はそのままで、失敗の設定だけを別の入口から受け取る。
  *
- * 同じ識別子の献立でも置き換えない。献立は生成後に編集できず（C-3）、同じ識別子が2度
- * 発行されるのは発行器の誤りである（先行 `InMemorySuggestionRepository`）。
+ * **同じ世帯に同じ識別子の献立が保存済みなら、その位置の要素を置き換える**（B-51 1周目）。
+ * 押し込むと、記録を1件足した保存のあと `findByHousehold` が同じ識別子の献立を2件返し、
+ * 本物（`MealRepositoryImpl`）では通る振る舞い（ADR-057 決定1・決定2 の「同じ内容＋記録の
+ * 追加はべき等に通り、増えた記録だけが足される」）が**二重の側の事情で観察できなくなる。**
+ *
+ * **読み比べ（`save.contentMismatch`）は二重に持ち込まない。** 本物の読み比べは DB の
+ * テストが押さえており、必要な回は `withSaveFailure` で注入する。**二重の側の約束を
+ * どこまで本物に揃えるかは B-57 が持つ** — この周は「同じ識別子の2度目が置き換わること」
+ * だけを揃えている。
  *
  * **`findByHousehold` は世帯ごとの配列を毎回同じ参照で返す。** 複製して返すと、呼ぶ側が
  * 受け取った列をその場で並べ替えていても気づけない（B-27 規則17 / ADR-009）。世帯で分けて
@@ -91,6 +98,15 @@ export class InMemoryMealRepository implements MealRepository {
       // 用意した回だけ落ちる。それより前の回で積んだ献立はそのまま残る（B-28 7章4行目）。
       throw saveFailure.throws;
     }
-    this.#arrayOf(householdId).push(meal);
+
+    // 同じ識別子が保存済みなら、その位置で置き換える。`findByHousehold` が世帯ごとに
+    // 同じ配列参照を返す性質を保つため、配列を作り直さず in-place で入れ替える。
+    const stored = this.#arrayOf(householdId);
+    const storedIndex = stored.findIndex((candidate) => candidate.id === meal.id);
+    if (storedIndex === -1) {
+      stored.push(meal);
+      return;
+    }
+    stored[storedIndex] = meal;
   }
 }
