@@ -29,7 +29,7 @@ import type {
   RegisterStockItem,
 } from './server/StockItemRequests.js';
 import type { ListIngredientNames } from './server/IngredientNameRequests.js';
-import type { ShowLatestSuggestion } from './server/SuggestionRequests.js';
+import type { RequestNewMeals, ShowLatestSuggestion } from './server/SuggestionRequests.js';
 
 export type AppProps = {
   /** セッションの継ぎ目。画面はこの型だけを見る（ADR-046 決定3）。 */
@@ -59,6 +59,13 @@ export type AppProps = {
    * 読み取りだけの `GET` なので、取り直しても費用も 1日10回の枠（NFR-C2）も使わない。
    */
   listIngredientNames: ListIngredientNames;
+  /**
+   * 「新しい献立を求める」操作（B-49b / FR-36）。組み立てるのはやはり `main.tsx` だけである。
+   *
+   * 送信中フラグ・失敗フラグの state、結果の反映、在庫の登録・削除が通った回の取り直しは
+   * 下の `handleRequestNewMeals` と `showLatestSuggestion` の効果が持つ。
+   */
+  requestNewMeals: RequestNewMeals;
 };
 
 export function App({
@@ -68,6 +75,7 @@ export function App({
   deleteStockItem,
   showLatestSuggestion,
   listIngredientNames,
+  requestNewMeals,
 }: AppProps) {
   // 購読を始めた時点の状態は subscribe が1度目に渡す（`Session.ts` 規則5）ので、
   // ここで先に決めない。最初の描画は購読が始まるまでの一瞬だけ 'unknown' でよい。
@@ -89,6 +97,11 @@ export function App({
   const [ingredientNames, setIngredientNames] = useState<IngredientNamesState>({
     outcome: 'loading',
   });
+
+  // 「新しい献立を求める」（B-49b / FR-36）を送っている間か（S-5）。
+  const [requestingNewMeals, setRequestingNewMeals] = useState(false);
+  // 直前の要求が失敗したか（S-6）。押し直した時点で消す（規則: 同時に出さない）。
+  const [newMealsFailed, setNewMealsFailed] = useState(false);
 
   // 購読は1本。`session` が同じなら張り替えず、外れるとき戻り値で解除する（規則2）。
   useEffect(() => session.subscribe(setState), [session]);
@@ -145,7 +158,9 @@ export function App({
     return () => {
       active = false;
     };
-  }, [state, showLatestSuggestion]);
+    // `reloadCount` を依存に足す: 在庫の登録・削除が通った回に、保存済みの提案も取り直す
+    // （B-49b 規則10）。在庫の一覧を取り直す効果と同じ回数を読んで揃える。
+  }, [state, showLatestSuggestion, reloadCount]);
 
   /**
    * 補完の元になる食材名を取りに行く（FR-02 / B-50c 設計 規則6）。
@@ -236,6 +251,49 @@ export function App({
     return outcome;
   };
 
+  /**
+   * 「新しい献立を求める」操作の配線（B-49b / FR-36）。
+   *
+   * **押している間は2度目の要求を出さない** — `requestingNewMeals` が真なら何もしない。
+   * 1度の求めで生成が2回走ると、**1日10回の枠（NFR-C2）が利用者の意図の倍で減る。**
+   * **押した時点で前回の失敗の案内を消す**（役割の割り当て。送信中と失敗は同時に出ない）。
+   *
+   * **必ず生成を呼ぶ**（ADR-051）ので、届く結末は3つ（提案・在庫が足りない・上限に達した）に
+   * 加えて継ぎ目の `failed` がある。**提案が届いた回だけ `suggestion` を差し替え、`pantryChanged`
+   * を `false` に決め打つ**（規則: 生成直後は在庫と食い違いようがない）。在庫が足りない・上限に
+   * 達した回も `suggestion` を置き換える（見せ方は B-49c）。失敗は `newMealsFailed` に載せるだけで、
+   * **渡された提案のカードは消さない**（S-6 / D-6）。
+   */
+  const handleRequestNewMeals = () => {
+    if (requestingNewMeals) return;
+
+    setRequestingNewMeals(true);
+    setNewMealsFailed(false);
+
+    void requestNewMeals().then((outcome) => {
+      setRequestingNewMeals(false);
+
+      if (outcome.outcome === 'suggested') {
+        setSuggestion({
+          outcome: 'suggested',
+          suggestion: outcome.suggestion,
+          pantryChanged: false,
+        });
+        return;
+      }
+
+      if (
+        outcome.outcome === 'insufficientStockItems' ||
+        outcome.outcome === 'generationLimitReached'
+      ) {
+        setSuggestion(outcome);
+        return;
+      }
+
+      setNewMealsFailed(true);
+    });
+  };
+
   // **`'unknown'` をログイン画面に倒さない**（規則1 / `Session.ts` 規則6）。保存されたセッションの
   // 復元は非同期で、倒すとサインイン済みの利用者にログイン画面が一瞬見える。
   if (state === 'unknown') return null;
@@ -273,7 +331,15 @@ export function App({
   return (
     <main>
       <TabbedScreen
-        meals={<MealsTab suggestion={suggestion} today={todayOf(new Date())} />}
+        meals={
+          <MealsTab
+            suggestion={suggestion}
+            today={todayOf(new Date())}
+            onRequestNewMeals={handleRequestNewMeals}
+            requestingNewMeals={requestingNewMeals}
+            newMealsFailed={newMealsFailed}
+          />
+        }
         pantry={
           <>
             <PantryTab

@@ -38,7 +38,10 @@ import type { FixedIngredientNameRequestsOptions } from './support/server/FixedI
 import { App } from '../src/App.js';
 import type { SessionState } from '../src/session/Session.js';
 import type { StockItemsOutcome } from '../src/server/StockItemRequests.js';
-import type { LatestSuggestionOutcome } from '../src/server/SuggestionRequests.js';
+import type {
+  LatestSuggestionOutcome,
+  RequestNewMealsOutcome,
+} from '../src/server/SuggestionRequests.js';
 
 // 行をなぞる経路は jsdom に無いメソッドを通る（`support/dom/pointerCapture.ts`）。
 // **本体の振る舞いではなく、道具の欠けを道具の側で埋めるものである。**
@@ -86,6 +89,7 @@ function renderApp(
       registerStockItem={requests.registerStockItem}
       deleteStockItem={requests.deleteStockItem}
       showLatestSuggestion={suggestions.showLatestSuggestion}
+      requestNewMeals={suggestions.requestNewMeals}
       listIngredientNames={ingredientNames.listIngredientNames}
     />,
   );
@@ -109,6 +113,13 @@ function emit(session: FixedSession, state: SessionState): void {
 async function settle(requests: FixedStockItemRequests): Promise<void> {
   await act(async () => {
     requests.settle();
+  });
+}
+
+/** 提案の側（`FixedSuggestionRequests`）の保留を解く。上と同じ理由。 */
+async function settleSuggestions(suggestions: FixedSuggestionRequests): Promise<void> {
+  await act(async () => {
+    suggestions.settle();
   });
 }
 
@@ -614,5 +625,288 @@ describe('門 App が食材名を取りに行く条件', () => {
     await waitFor(() => {
       expect(ingredientNames.listCount).toBe(before + 1);
     });
+  });
+});
+
+/**
+ * 「新しい献立を求める」操作の配線（B-49b / FR-36 / S-5 / S-6 / ADR-065 決定4）。
+ *
+ * 操作そのものの出し分け（役割ごとの出す条件）は `MealsTab.test.tsx` の持ち分であり、
+ * ここでは**門が送信中フラグ・失敗フラグを更新し、結果を反映し、在庫の変更後に取り直す**
+ * ことだけを見る。**献立タブは起動時に開いている**（ADR-064）ので、タブを開く操作は要らない。
+ */
+describe('門 App の「新しい献立を求める」操作の配線', () => {
+  const OLD_MEAL = '肉じゃが';
+  const NEW_MEAL = '新しいご飯';
+
+  /** 保存済みの提案（`show` の台本用）。**在庫が変わっている**ことにして手がかりの note を持たせる。 */
+  function savedSuggestion(mealId: string, title: string): LatestSuggestionOutcome {
+    return {
+      outcome: 'suggested',
+      pantryChanged: true,
+      suggestion: {
+        id: `suggestion-${mealId}`,
+        generatedAt: '2026-09-20T09:00:00.000Z',
+        entries: [
+          {
+            mealId,
+            origin: 'generated',
+            title,
+            ingredients: [],
+            steps: [],
+            coverage: { covered: [], missing: [] },
+          },
+        ],
+      },
+    };
+  }
+
+  /** 「新しい献立を求める」が返す提案（`requestNewMeals` の台本用）。 */
+  function newSuggestion(
+    mealId: string,
+    title: string,
+  ): Extract<RequestNewMealsOutcome, { outcome: 'suggested' }> {
+    return {
+      outcome: 'suggested',
+      suggestion: {
+        id: `suggestion-${mealId}`,
+        generatedAt: '2026-09-21T09:00:00.000Z',
+        entries: [
+          {
+            mealId,
+            origin: 'generated',
+            title,
+            ingredients: [],
+            steps: [],
+            coverage: { covered: [], missing: [] },
+          },
+        ],
+      },
+    };
+  }
+
+  /** 献立タブの唯一の操作（「新しい献立を求める」）。 */
+  function requestNewMealsOperation(): HTMLElement {
+    return screen.getByRole('button');
+  }
+
+  it('押している間は操作が押せず、結末が届くと押せるようになる', async () => {
+    const { suggestions } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { requestNewMeals: [{ heldUntilSettled: newSuggestion('meal-new', NEW_MEAL) }] },
+    );
+
+    await screen.findByRole('button');
+    fireEvent.click(requestNewMealsOperation());
+
+    // `@testing-library/jest-dom` は入れない（依存の追加は止まる条件）ので、素の
+    // `disabled` プロパティで見る。
+    expect((requestNewMealsOperation() as HTMLButtonElement).disabled).toBe(true);
+
+    await settleSuggestions(suggestions);
+
+    expect((requestNewMealsOperation() as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('送信中にもう一度押しても、2度目の要求を出さない', async () => {
+    const { suggestions } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { requestNewMeals: [{ heldUntilSettled: newSuggestion('meal-new', NEW_MEAL) }] },
+    );
+
+    await screen.findByRole('button');
+    fireEvent.click(requestNewMealsOperation());
+    fireEvent.click(requestNewMealsOperation());
+
+    // この観点だけ件数を断定してよい（検分の指示）。
+    expect(suggestions.requestNewMealsCount).toBe(1);
+
+    await settleSuggestions(suggestions);
+  });
+
+  it('新しい献立が届くと、画面が新しい献立に入れ替わり、在庫が変わっている手がかりは出ない', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {
+        show: [savedSuggestion('meal-old', OLD_MEAL)],
+        requestNewMeals: [
+          { outcome: 'suggested', suggestion: newSuggestion('meal-new', NEW_MEAL).suggestion },
+        ],
+      },
+    );
+
+    await screen.findByText(OLD_MEAL);
+    const noteCountBefore = screen.getAllByRole('note').length;
+
+    fireEvent.click(requestNewMealsOperation());
+
+    await screen.findByText(NEW_MEAL);
+    expect(screen.queryByText(OLD_MEAL)).toBeNull();
+
+    // 規則4: 生成直後は `pantryChanged` を `false` に決め打つ。手がかりの note が1つ減る。
+    expect(screen.getAllByRole('note').length).toBe(noteCountBefore - 1);
+  });
+
+  it('生成が失敗しても、画面の献立は前のまま残り、失敗の案内が出る', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [savedSuggestion('meal-old', OLD_MEAL)], requestNewMeals: [{ outcome: 'failed' }] },
+    );
+
+    await screen.findByText(OLD_MEAL);
+    fireEvent.click(requestNewMealsOperation());
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+    });
+    expect(screen.queryByText(OLD_MEAL)).not.toBeNull();
+  });
+
+  it('在庫が足りない結末は、失敗にも提案にも畳まれない', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {
+        show: [savedSuggestion('meal-old', OLD_MEAL)],
+        requestNewMeals: [{ outcome: 'insufficientStockItems' }],
+      },
+    );
+
+    await screen.findByText(OLD_MEAL);
+    fireEvent.click(requestNewMealsOperation());
+
+    await waitFor(() => {
+      expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    });
+    expect(screen.queryAllByRole('status')).toHaveLength(0);
+  });
+
+  it('生成の上限に達した結末も、失敗にも提案にも畳まれない', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {
+        show: [savedSuggestion('meal-old', OLD_MEAL)],
+        requestNewMeals: [{ outcome: 'generationLimitReached' }],
+      },
+    );
+
+    await screen.findByText(OLD_MEAL);
+    fireEvent.click(requestNewMealsOperation());
+
+    await waitFor(() => {
+      expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    });
+    expect(screen.queryAllByRole('status')).toHaveLength(0);
+  });
+
+  it('押し直すと、前回の失敗の案内は消える', async () => {
+    const { suggestions } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {
+        show: [savedSuggestion('meal-old', OLD_MEAL)],
+        requestNewMeals: [
+          { outcome: 'failed' },
+          { heldUntilSettled: newSuggestion('meal-new', NEW_MEAL) },
+        ],
+      },
+    );
+
+    await screen.findByText(OLD_MEAL);
+    fireEvent.click(requestNewMealsOperation());
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+    });
+
+    fireEvent.click(requestNewMealsOperation());
+
+    // 役割の割り当て（検分）: 送信中の案内と失敗の案内はどちらも role="status" で、
+    // 同時には出ない（押した時点で失敗の案内を消す）。2回目を押した直後は送信中の案内
+    // 1つだけになり、前回の失敗の案内と積み重ならない。
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+
+    await settleSuggestions(suggestions);
+  });
+
+  it('在庫の登録が通ると、保存済みの提案を取り直す', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      {
+        list: [loaded(carrot), loaded(chineseCabbage)],
+        register: [{ outcome: 'registered' }],
+      },
+      { show: [savedSuggestion('meal-old', OLD_MEAL), savedSuggestion('meal-new', NEW_MEAL)] },
+    );
+
+    await screen.findByText(OLD_MEAL);
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    fireEvent.click(openRegisterOperation());
+    fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
+    fireEvent.click(saveAndCloseOperation());
+    await screen.findByText(chineseCabbage.name);
+
+    fireEvent.click(mealsTab());
+
+    // B-49b 規則10: 登録が通った回に、保存済みの提案（台本の2件目）を取り直す。
+    expect(await screen.findByText(NEW_MEAL)).not.toBeNull();
+  });
+
+  it('在庫の削除が通ると、保存済みの提案を取り直す', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      {
+        list: [loaded(carrot), loaded(chineseCabbage)],
+        remove: [{ outcome: 'deleted' }],
+      },
+      { show: [savedSuggestion('meal-old', OLD_MEAL), savedSuggestion('meal-new', NEW_MEAL)] },
+    );
+
+    await screen.findByText(OLD_MEAL);
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    swipeSoleRow();
+    await screen.findByText(chineseCabbage.name);
+
+    fireEvent.click(mealsTab());
+
+    expect(await screen.findByText(NEW_MEAL)).not.toBeNull();
+  });
+
+  it('在庫の登録が断られた回は、提案を取り直さない', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      {
+        list: [loaded(carrot), loaded(chineseCabbage)],
+        register: [{ outcome: 'rejected', rule: 'expiryDate.format' }],
+      },
+      { show: [savedSuggestion('meal-old', OLD_MEAL), savedSuggestion('meal-new', NEW_MEAL)] },
+    );
+
+    await screen.findByText(OLD_MEAL);
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    fireEvent.click(openRegisterOperation());
+    fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
+    fireEvent.click(saveAndCloseOperation());
+
+    await waitFor(() => {
+      expect(notices()).toHaveLength(1);
+    });
+    fireEvent.click(closeRegisterOperation());
+
+    fireEvent.click(mealsTab());
+
+    expect(screen.queryByText(OLD_MEAL)).not.toBeNull();
+    expect(screen.queryByText(NEW_MEAL)).toBeNull();
   });
 });

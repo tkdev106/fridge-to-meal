@@ -16,7 +16,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ShowLatestSuggestionOutput, SuggestionEntryOutput } from '@fridge-to-meal/contract';
-import { render, screen, within } from '../../support/dom/renderComponent.js';
+import { fireEvent, render, screen, within } from '../../support/dom/renderComponent.js';
 import { MealsTab } from '../../../src/features/meal/MealsTab.js';
 
 const TODAY = '2026-09-20';
@@ -47,8 +47,25 @@ function suggested(
   };
 }
 
-function renderTab(suggestion: Parameters<typeof MealsTab>[0]['suggestion']) {
-  render(<MealsTab suggestion={suggestion} today={TODAY} />);
+type RenderTabOverrides = Partial<Omit<Parameters<typeof MealsTab>[0], 'suggestion' | 'today'>>;
+
+/**
+ * 「新しい献立を求める」操作まわりの3つの props は**既定値を持たせておく**（B-49b）。
+ * 表示の分岐だけを見る既存の観点が、新しい props を意識せずに済むようにする。
+ */
+function renderTab(
+  suggestion: Parameters<typeof MealsTab>[0]['suggestion'],
+  overrides: RenderTabOverrides = {},
+) {
+  return render(
+    <MealsTab
+      suggestion={suggestion}
+      today={TODAY}
+      onRequestNewMeals={overrides.onRequestNewMeals ?? (() => {})}
+      requestingNewMeals={overrides.requestingNewMeals ?? false}
+      newMealsFailed={overrides.newMealsFailed ?? false}
+    />,
+  );
 }
 
 /** 並びを位置で見るための取り出し。件数は呼ぶ側が先に確かめている。 */
@@ -176,5 +193,121 @@ describe('献立タブ MealsTab', () => {
 
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(screen.queryByText('肉じゃが')).not.toBeNull();
+  });
+});
+
+/**
+ * 「新しい献立を求める」操作（B-49b / FR-36 / NFR-04 / S-5 / S-6 / ADR-065 決定4）。
+ *
+ * 役割の割り当ては検分で決めた（設計8章の一部として `/tdd` が引き継いだもの）。
+ * - 押す前からの待ち時間の案内（NFR-04）… `role="note"`。送信中かどうかによらず常に出す
+ * - `pantryChanged` の手がかり（規則9）… これも `role="note"`。真のときだけ1つ増える
+ * - 送信中の案内（S-5）と失敗の案内（S-6）… どちらも `role="status"`。同時には出ない
+ *
+ * **仮の文言を期待値に固定しない**（ADR-052 結果2）。観察は役割と、渡したデータ（献立の名称）で行う。
+ */
+describe('献立タブ MealsTab の「新しい献立を求める」操作', () => {
+  it('提案が出ている回、末尾に「新しい献立を求める」操作を1つ出す', () => {
+    renderTab(suggested(entry()));
+
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+  });
+
+  it('まだ提案が無い回にも、操作を出す', () => {
+    renderTab({ outcome: 'none' });
+
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+  });
+
+  it('取れなかった回にも、操作を出す', () => {
+    renderTab({ outcome: 'failed' });
+
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+  });
+
+  it('読み込み中は操作を出さない', () => {
+    renderTab({ outcome: 'loading' });
+
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('押す前から待ち時間の案内を出し、送信中も出したままにする', () => {
+    // カードなし・pantryChanged なしの結末（'none'）で観る — カードの中の再利用の印も
+    // `note` であるため、そちらと混ざらない結末を選ぶ（検分の指示）。
+    const before = renderTab({ outcome: 'none' }, { requestingNewMeals: false });
+    expect(screen.getAllByRole('note')).toHaveLength(1);
+    before.unmount();
+
+    renderTab({ outcome: 'none' }, { requestingNewMeals: true });
+    expect(screen.getAllByRole('note')).toHaveLength(1);
+  });
+
+  it('送信中は操作が押せない', () => {
+    renderTab(suggested(entry()), { requestingNewMeals: true });
+
+    // `@testing-library/jest-dom` は入れない（依存の追加は止まる条件。`CLAUDE.md`）ので、
+    // 素の `disabled` プロパティで見る。
+    const operation = screen.getByRole('button') as HTMLButtonElement;
+    expect(operation.disabled).toBe(true);
+  });
+
+  it('送信中でも、渡された提案のカードはそのまま描かれ続ける', () => {
+    renderTab(suggested(entry({ title: '肉じゃが' })), { requestingNewMeals: true });
+
+    expect(screen.queryByText('肉じゃが')).not.toBeNull();
+  });
+
+  it('失敗の直後も、渡された提案のカードはそのまま描かれ続ける', () => {
+    renderTab(suggested(entry({ title: '肉じゃが' })), { newMealsFailed: true });
+
+    expect(screen.queryByText('肉じゃが')).not.toBeNull();
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('失敗したときは、失敗の案内を出す', () => {
+    renderTab({ outcome: 'none' }, { newMealsFailed: true });
+
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('失敗していないときは、失敗の案内を出さない', () => {
+    renderTab({ outcome: 'none' }, { newMealsFailed: false });
+
+    expect(screen.queryAllByRole('status')).toHaveLength(0);
+  });
+
+  it('送信中は、失敗ではなく送信中の案内を出す', () => {
+    renderTab({ outcome: 'none' }, { requestingNewMeals: true, newMealsFailed: false });
+
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('操作を押すと、渡された口が呼ばれる', () => {
+    // **回数は数えない**（検分の指示）。実行されたことだけを観る。
+    let called = false;
+    renderTab(suggested(entry()), {
+      onRequestNewMeals: () => {
+        called = true;
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button'));
+
+    expect(called).toBe(true);
+  });
+
+  it('在庫が変わっている回だけ、操作へ誘う手がかりを1つ増やす', () => {
+    // カードの中の再利用の印も `note` であるため、混ざらないよう `origin: 'generated'` にする
+    // （検分の指示）。
+    const unchanged = suggested(entry({ origin: 'generated' }));
+
+    const unchangedRendered = renderTab(unchanged);
+    const unchangedNoteCount = screen.getAllByRole('note').length;
+    unchangedRendered.unmount();
+
+    renderTab({ ...unchanged, pantryChanged: true });
+    const changedNoteCount = screen.getAllByRole('note').length;
+
+    expect(changedNoteCount).toBe(unchangedNoteCount + 1);
   });
 });
