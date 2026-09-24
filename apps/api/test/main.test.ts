@@ -1,4 +1,5 @@
 import type {
+  ListIngredientNamesOutput,
   ListStockItemsOutput,
   StockItemDto,
   SuggestMealsOutput,
@@ -11,6 +12,7 @@ import type { AccessTokenClaims } from './support/identity/AccessSigning.js';
 import { accessTokenOf, publicAccessTokenKey } from './support/identity/AccessSigning.js';
 import { FixedFetchJwks } from './support/identity/FixedFetchJwks.js';
 import { FixedIdentifyHousehold } from './support/identity/FixedIdentifyHousehold.js';
+import { FixedListIngredientNames } from './support/meal/FixedListIngredientNames.js';
 import {
   FixedShowLatestSuggestion,
   FixedSuggestMeals,
@@ -81,6 +83,14 @@ const suggestMealsOutcome: SuggestMealsOutput = { outcome: 'insufficientStockIte
 /** 新しい献立を求める入口（FR-36）の代役が返す結末。上とは違う値である。 */
 const suggestNewMealsOutcome: SuggestMealsOutput = { outcome: 'generationLimitReached' };
 
+/**
+ * 食材名の口の代役が返す結末（B-50b）。**在庫の一覧とも提案とも違う中身**にしておく —
+ * 経路が別の口に繋がっていたら本体の違いとして現れるように。名称順でない2件である。
+ */
+const ingredientNamesOutcome: ListIngredientNamesOutput = {
+  ingredientNames: ['れんこん', 'ごぼう'],
+};
+
 /** 組み立てに渡す固定の基準日時（B-48c 規則7）。テストは時計を読まない（`docs/testing.md` 5章）。 */
 const fixedNow = '2026-09-23T12:00:00.000Z';
 
@@ -96,6 +106,7 @@ function appWithFixedDependencies(
     suggestMeals?: FixedSuggestMeals;
     suggestNewMeals?: FixedSuggestNewMeals;
     showLatestSuggestion?: FixedShowLatestSuggestion;
+    listIngredientNames?: FixedListIngredientNames;
   } = {},
 ) {
   const suggestMeals =
@@ -105,6 +116,9 @@ function appWithFixedDependencies(
   const showLatestSuggestion =
     overrides.showLatestSuggestion ??
     new FixedShowLatestSuggestion({ returns: { outcome: 'none' } });
+  const listIngredientNames =
+    overrides.listIngredientNames ??
+    new FixedListIngredientNames({ returns: ingredientNamesOutcome });
 
   return createApp({
     identifyHousehold: new FixedIdentifyHousehold({ returns: ourHousehold }).identify,
@@ -117,6 +131,7 @@ function appWithFixedDependencies(
     suggestMeals: suggestMeals.suggest,
     suggestNewMeals: suggestNewMeals.suggest,
     showLatestSuggestion: showLatestSuggestion.show,
+    listIngredientNames: listIngredientNames.list,
     now: () => fixedNow,
   });
 }
@@ -435,6 +450,113 @@ describe('composition root main', () => {
 
       expect([stockItems.status, suggestions.status]).toEqual([500, 500]);
       expect(fetchJwks.callCount).toBe(1);
+    });
+
+    it('在庫の経路と食材名の経路に続けて要求しても JWKS の取得は1回である', async () => {
+      // ADR-043 結果2: 認証器は環境1つにつき1つで、経路が増えても共有する。
+      // 認証を通ったあとは binding 欠落で 500 になる — 2つとも同じ結末であることも見る。
+      const { app, fetchJwks } = composedApp(envWithoutHyperdrive);
+      const accessToken = await accessTokenOf(validClaims());
+
+      const stockItems = await app.request('/stock-items', { headers: bearerHeaders(accessToken) });
+      const ingredientNames = await app.request('/ingredient-names', {
+        headers: bearerHeaders(accessToken),
+      });
+
+      expect([stockItems.status, ingredientNames.status]).toEqual([500, 500]);
+      expect(fetchJwks.callCount).toBe(1);
+    });
+  });
+
+  describe('食材名の経路の配置', () => {
+    // B-50b。代役の deps で組み、経路がどこに置かれ、どの口に何が届くかだけを見る。
+
+    it('食材名の経路を接頭辞なしの GET /ingredient-names に置き、その口の結末を返す', async () => {
+      // 規則1 / FR-02 / ADR-048 決定4: 本体まで見る — 別の口に繋がれば違う結末になる。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/ingredient-names', { headers: bearerHeaders('x') });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ ingredientNames: ['れんこん', 'ごぼう'] });
+    });
+
+    it('接頭辞を付けた /api/ingredient-names には経路を置かない', async () => {
+      // ADR-048 決定4: 接頭辞は増やさない。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/api/ingredient-names', {
+        headers: bearerHeaders('x'),
+      });
+
+      expect(response.status).toBe(404);
+    });
+
+    it('食材名の経路には識別の口で定まった世帯が届く', async () => {
+      // C-9: 世帯はアクセストークンから定まり、ユースケースの第1引数に渡る。
+      const listIngredientNames = new FixedListIngredientNames({
+        returns: ingredientNamesOutcome,
+      });
+      const app = appWithFixedDependencies({ listIngredientNames });
+
+      await app.request('/ingredient-names', { headers: bearerHeaders('x') });
+
+      expect(listIngredientNames.receivedHouseholdId).toBe('11111111-1111-4111-8111-111111111111');
+    });
+  });
+
+  describe('食材名の経路の結線', () => {
+    // B-50b 10章。composeDependencies の本物の結線で、差し替えるのは JWKS を取りに行く口だけ。
+
+    it('アクセストークンが無い食材名の要求は結線後も 401 accessToken.missing になる', async () => {
+      // NFR-09 / 規則4: 世帯を定めるのが常に先。認証を通らない要求は DB に触れない。
+      const { app } = composedApp(envWithoutHyperdrive);
+
+      const response = await app.request('/ingredient-names');
+
+      expect(response.status).toBe(401);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'accessToken.missing' });
+    });
+
+    it('SUPABASE_URL が空の環境で食材名を要求すると 500 unexpected になり 401 にならない', async () => {
+      // ADR-045 決定3: サーバ側の不備を利用者のアクセストークンのせいにしない。
+      const { app } = composedApp({ ...env, SUPABASE_URL: '' });
+
+      const response = await app.request('/ingredient-names', {
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+    });
+
+    it('JWKS を取りに行けないと食材名の要求は 500 unexpected になり message を本体に出さない', async () => {
+      // ADR-045 / NFR-09: 取得の失敗は 500 に畳まれ、message は本体に出さない。
+      const { app } = composedApp(
+        env,
+        FixedFetchJwks.delivering({ throws: new Error('kagi-server-todokanai') }),
+      );
+
+      const response = await app.request('/ingredient-names', {
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      const text = await response.text();
+      expect(parseBody(text)).toEqual({ rule: 'unexpected' });
+      expect(text).not.toContain('kagi-server-todokanai');
+    });
+
+    it('認証を通ったあと HYPERDRIVE の binding が無ければ食材名の要求は 500 unexpected になる', async () => {
+      // ADR-045: 接続文字列が読めないのはサーバ側の不備である。
+      const { app } = composedApp(envWithoutHyperdrive);
+
+      const response = await app.request('/ingredient-names', {
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
     });
   });
 
