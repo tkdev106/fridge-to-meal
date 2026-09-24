@@ -1,0 +1,62 @@
+import type { HouseholdId } from '../../../shared/domain/HouseholdId.js';
+import type { ListStockItems } from '../../pantry/usecase/ListStockItems.js';
+import type { MealRepository } from '../domain/repository/MealRepository.js';
+
+/**
+ * 食材名の列。補完（FR-02）の元になる。**型を `packages/contract` へ移すのは経路を置く周
+ * （B-50b）である** — この周ではまだ外へ出ない。
+ */
+export type ListIngredientNamesOutput = { readonly ingredientNames: readonly string[] };
+
+/**
+ * その世帯の在庫品の名称と、保存済みの献立の主材料の名称を、重複なく決まった順に集める
+ * （FR-02 / ADR-063）。世帯は第1引数で受け取る（C-9）。
+ *
+ * **在庫と献立の2コンテキストにまたがる口を献立の usecase に置く**（ADR-063 決定1）。
+ * 献立の usecase はすでに在庫の `ListStockItems` を引いており、在庫の側に置くと
+ * コンテキストが互いに依存する。在庫は名称の列（プリミティブ）としてだけ受け取る（ADR-033）。
+ *
+ * **消した在庫品の名称は、献立の材料に残っていない限り出ない**（ADR-063 決定2）。在庫品は
+ * 物理削除されるためであり、入力の履歴を持つのは別の行（B-50d）である。
+ */
+export type ListIngredientNames = (householdId: HouseholdId) => Promise<ListIngredientNamesOutput>;
+
+/**
+ * 食材名を集めるユースケースを組み立てる。依存は引数で受け取り、実装の生成は `main.ts` に
+ * 任せる（ADR-002）。受け取った例外は握りつぶさず、そのまま呼び出し側へ伝える
+ * （先行 `ListStockItems`）。
+ */
+export function listIngredientNames(deps: {
+  listStockItems: ListStockItems;
+  mealRepository: MealRepository;
+}): ListIngredientNames {
+  return async (householdId) => {
+    const { stockItems } = await deps.listStockItems(householdId);
+    const meals = await deps.mealRepository.findByHousehold(householdId);
+
+    // 重複は名称の完全一致で畳む（ADR-063 決定4 / C-6）。表記ゆれを吸収すると、補完で選んだ
+    // 名称が献立の材料名と一致しなくなり、充足の判定が静かにずれる。前後の空白は在庫品も
+    // 材料も生成時に落としているので、ここでは何も正規化しない。
+    const names = new Set<string>();
+    for (const stockItem of stockItems) names.add(stockItem.name);
+    for (const meal of meals) {
+      for (const ingredient of meal.ingredients) {
+        // 調味料は補完に出さない（prompt-design 論点3 / ADR-063 決定3）。在庫品の名称は種別を
+        // 持たないため、利用者が登録した名称は調味料であっても上で入っている。
+        if (ingredient.kind === 'main') names.add(ingredient.name);
+      }
+    }
+
+    return { ingredientNames: [...names].sort(compareCodeUnits) };
+  };
+}
+
+/**
+ * コード単位の大小で比べる（ADR-063 決定4）。照合順序は実行環境の ICU に依存するため
+ * `localeCompare` を使わない（先行 `ListStockItems`）。
+ */
+function compareCodeUnits(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
