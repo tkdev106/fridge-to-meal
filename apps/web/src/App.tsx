@@ -338,6 +338,9 @@ export function App({
             onRequestNewMeals={handleRequestNewMeals}
             requestingNewMeals={requestingNewMeals}
             newMealsFailed={newMealsFailed}
+            // B-49c の2周目でここが在庫タブへ移す口になる（規則9〜11 / ADR-066）。
+            // 1周目は型を満たすだけの何もしない口である。
+            onGoToPantry={() => {}}
           />
         }
         pantry={

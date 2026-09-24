@@ -64,6 +64,7 @@ function renderTab(
       onRequestNewMeals={overrides.onRequestNewMeals ?? (() => {})}
       requestingNewMeals={overrides.requestingNewMeals ?? false}
       newMealsFailed={overrides.newMealsFailed ?? false}
+      onGoToPantry={overrides.onGoToPantry ?? (() => {})}
     />,
   );
 }
@@ -309,5 +310,218 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
     const changedNoteCount = screen.getAllByRole('note').length;
 
     expect(changedNoteCount).toBe(unchangedNoteCount + 1);
+  });
+});
+
+/**
+ * 出せない回の見せ方（B-49c / S-4 / S-7 / `docs/screen-design.md` D-7 / ADR-041 / ADR-049）。
+ *
+ * どちらの結末も **200 で届く**（ADR-062 決定2）ので、失敗として扱わない。役割の割り当ては
+ * 検分で決めた — **S-4 / S-7 の案内は `status`**（この2つは利用者が「新しい献立を求める」を
+ * 押した結果としてしか届かないため、B-49b の割り当てに揃える）。
+ *
+ * **仮の文言を期待値に書かない**（ADR-052 結果2）。観察は操作の有無・件数・押した先の口で行う。
+ */
+describe('献立タブ MealsTab の在庫が足りない回（S-4）', () => {
+  it('在庫が足りない回は、在庫タブへ送る操作を1つだけ出す', () => {
+    // 規則1・2: 案内と在庫タブへの導線を1つ。**「新しい献立を求める」は出さない** —
+    // 押しても呼べない操作を置かない（D-7）。
+    renderTab({ outcome: 'insufficientStockItems' });
+
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+  });
+
+  it('在庫が足りない回の操作を押すと、在庫タブへ送る口が呼ばれる', () => {
+    // **回数は数えない**（`docs/testing.md` 2章）。実行されたことだけを観る。
+    let wentToPantry = false;
+    renderTab(
+      { outcome: 'insufficientStockItems' },
+      {
+        onGoToPantry: () => {
+          wentToPantry = true;
+        },
+      },
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+
+    expect(wentToPantry).toBe(true);
+  });
+
+  it('在庫が足りない回は、「新しい献立を求める」を出さない', () => {
+    // 規則2: 在庫が足りないまま求めても同じ結末が返る（S-4）。
+    let requested = false;
+    renderTab(
+      { outcome: 'insufficientStockItems' },
+      {
+        onRequestNewMeals: () => {
+          requested = true;
+        },
+      },
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+
+    expect(requested).toBe(false);
+  });
+
+  it('在庫が足りない回は、献立を1件も出さない', () => {
+    // 規則6: 提案として描くものが無い。
+    renderTab({ outcome: 'insufficientStockItems' });
+
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  });
+
+  it('在庫が足りない回は、注意表示を出さない', () => {
+    // 規則6: 注意表示（FR-20）は提案に添えるものである。
+    renderTab({ outcome: 'insufficientStockItems' });
+
+    expect(screen.queryAllByRole('complementary')).toHaveLength(0);
+  });
+
+  it('在庫が足りない回は、案内を1つ出す', () => {
+    renderTab({ outcome: 'insufficientStockItems' });
+
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('在庫が足りない回は、直前の要求が失敗していても案内を増やさない', () => {
+    // 規則4: **失敗として扱わない**。S-6 の失敗の案内と同時に出さない（ADR-041）。
+    const notFailed = renderTab({ outcome: 'insufficientStockItems' }, { newMealsFailed: false });
+    const notFailedCount = screen.getAllByRole('status').length;
+    notFailed.unmount();
+
+    renderTab({ outcome: 'insufficientStockItems' }, { newMealsFailed: true });
+
+    expect(screen.getAllByRole('status')).toHaveLength(notFailedCount);
+  });
+});
+
+describe('献立タブ MealsTab の上限に達した回（S-7）', () => {
+  it('上限に達した回は、操作を1つも出さない', () => {
+    // 規則3: 案内だけを出す。**在庫タブへは送らない**（在庫は原因ではない）。
+    renderTab({ outcome: 'generationLimitReached' });
+
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('上限に達した回は、案内を1つ出す', () => {
+    renderTab({ outcome: 'generationLimitReached' });
+
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('上限に達した回は、献立を1件も出さない', () => {
+    renderTab({ outcome: 'generationLimitReached' });
+
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  });
+
+  it('上限に達した回は、注意表示を出さない', () => {
+    renderTab({ outcome: 'generationLimitReached' });
+
+    expect(screen.queryAllByRole('complementary')).toHaveLength(0);
+  });
+
+  it('上限に達した回は、直前の要求が失敗していても案内を増やさない', () => {
+    // 規則4: **失敗として扱わない**（ADR-041 / ADR-062 決定2）。
+    const notFailed = renderTab({ outcome: 'generationLimitReached' }, { newMealsFailed: false });
+    const notFailedCount = screen.getAllByRole('status').length;
+    notFailed.unmount();
+
+    renderTab({ outcome: 'generationLimitReached' }, { newMealsFailed: true });
+
+    expect(screen.getAllByRole('status')).toHaveLength(notFailedCount);
+  });
+});
+
+describe('献立タブ MealsTab の出せない回と他の枝の見分け', () => {
+  it('上限に達した回は、まだ提案が無い回と違って操作を1つも出さない', () => {
+    // 規則5: S-8 に畳まない。畳まれていれば両方に操作が出る。
+    const limitReached = renderTab({ outcome: 'generationLimitReached' });
+    const limitReachedButtons = screen.queryAllByRole('button').length;
+    limitReached.unmount();
+
+    renderTab({ outcome: 'none' });
+
+    expect(limitReachedButtons).toBe(0);
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+  });
+
+  it('在庫が足りない回の操作は、まだ提案が無い回の操作とは別の口を呼ぶ', () => {
+    // 規則5: S-4 も S-8 に畳まない。**押した先が違うこと**で見分ける。
+    let wentToPantry = false;
+    let requested = false;
+    const record = {
+      onGoToPantry: () => {
+        wentToPantry = true;
+      },
+      onRequestNewMeals: () => {
+        requested = true;
+      },
+    };
+
+    const insufficient = renderTab({ outcome: 'insufficientStockItems' }, record);
+    fireEvent.click(screen.getByRole('button'));
+    const wentToPantryOnInsufficient = wentToPantry;
+    const requestedOnInsufficient = requested;
+    insufficient.unmount();
+
+    renderTab({ outcome: 'none' }, record);
+    fireEvent.click(screen.getByRole('button'));
+
+    expect(wentToPantryOnInsufficient).toBe(true);
+    expect(requestedOnInsufficient).toBe(false);
+    expect(requested).toBe(true);
+  });
+
+  it('提案が出ている回は、在庫タブへ送る操作を出さない', () => {
+    // 規則14: 提案ありの見せ方は変えない（B-49b のまま）。
+    let wentToPantry = false;
+    let requested = false;
+    renderTab(suggested(entry()), {
+      onGoToPantry: () => {
+        wentToPantry = true;
+      },
+      onRequestNewMeals: () => {
+        requested = true;
+      },
+    });
+
+    fireEvent.click(screen.getByRole('button'));
+
+    expect(requested).toBe(true);
+    expect(wentToPantry).toBe(false);
+  });
+
+  it('取れなかった回は、在庫タブへ送る操作を出さない', () => {
+    // 規則14: S-6 の枝も変えない。
+    let wentToPantry = false;
+    let requested = false;
+    renderTab(
+      { outcome: 'failed' },
+      {
+        onGoToPantry: () => {
+          wentToPantry = true;
+        },
+        onRequestNewMeals: () => {
+          requested = true;
+        },
+      },
+    );
+
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button'));
+
+    expect(requested).toBe(true);
+    expect(wentToPantry).toBe(false);
+  });
+
+  it('読み込み中は、在庫タブへ送る操作も出さない', () => {
+    // 規則14: 読み込み中は操作を1つも出さない（B-49b のまま）。
+    renderTab({ outcome: 'loading' });
+
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
 });

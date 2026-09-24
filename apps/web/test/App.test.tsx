@@ -782,7 +782,12 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
     await waitFor(() => {
       expect(screen.queryAllByRole('listitem')).toHaveLength(0);
     });
-    expect(screen.queryAllByRole('status')).toHaveLength(0);
+    // B-49c で、この結末は案内を1つ持つようになった（`docs/screen-design.md` D-7）。
+    // **失敗（S-6）の枝と見分けるのは `note` の件数である** — 失敗の案内は
+    // 「新しい献立を求める」の面に出るため、待ち時間の手がかり（`note`）を必ず伴う。
+    // S-4 の枝はその操作ごと出さないので `note` が1つも無い。
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.queryAllByRole('note')).toHaveLength(0);
   });
 
   it('生成の上限に達した結末も、失敗にも提案にも畳まれない', async () => {
@@ -801,7 +806,12 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
     await waitFor(() => {
       expect(screen.queryAllByRole('listitem')).toHaveLength(0);
     });
-    expect(screen.queryAllByRole('status')).toHaveLength(0);
+    // S-4 と同じ理由で案内を1つ持つ。**こちらは操作を1つも出さない**ので
+    // （在庫は原因ではない。NFR-C2 / ADR-049）、`button` が0件であることでも
+    // 失敗の枝と見分けられる。
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.queryAllByRole('note')).toHaveLength(0);
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
   });
 
   it('押し直すと、前回の失敗の案内は消える', async () => {
