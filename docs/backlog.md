@@ -45,6 +45,15 @@
   コンテキストとし、名称を返す usecase を在庫側に置いて `ListIngredientNames` から引く**（依存の向きを献立 → 在庫の
   1本に保つ。ADR-063 決定2）。重複と並びは ADR-063 決定4 のまま。**1 PR に収まらなければ、先に分割する**
   （FR-02 / ADR-033 / ADR-063）
+- [ ] **B-57** **`InMemorySuggestionRepository` を実装の振る舞いに揃える** — 同じ `SuggestionId` の2度目の
+  `save` を拒ませる。本番の `SuggestionRepositoryImpl` は親の主キーが拒む（ADR-058 決定1）のに、単体テストの
+  差し替えは世帯の食い違いだけを見て**同じ識別子の提案をもう1件積む**（`test/support/meal/InMemorySuggestionRepository.ts`
+  の `save`）。**差し替えのほうが本物より甘い。** `SuggestMeals` は1回の提案で1度しか `save` しないため
+  今あるテストは赤くならないが、**その前提が崩れた周に単体テストだけが気づかない**。同じファイルの doc は
+  既に「同じ識別子が2度発行されるのは発行器の誤りである」と書いており、**そう書きながら通している**。
+  ADR-058 結果1 が「揃えるかどうかは、この ADR が承認されてから決める」と残した宿題で、
+  **2026-09-24 にユーザーが ADR-058 を承認した**ため着手できる。拒み方は DB の失敗を模さず
+  `MealRuleViolation` でよい（先行は同じ `save` の `save.householdMismatch`）（ADR-058）
 
 ## 人の操作（ループは着手しない）
 
