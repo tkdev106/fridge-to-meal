@@ -76,4 +76,4 @@ pnpm typecheck
 1. **在庫の削除を画面から通す** — B-23。一覧の取得（B-22。CORS と api の基点もそこで決めた。ADR-048）と登録（B-24）は通った。残るのは削除で、取りこぼした再送が受け取る 404 の扱いを決めるところから（ADR-027 の宿題）
 2. **献立生成のプロンプトを試行する** — 設計は [`docs/prompt-design.md`](docs/prompt-design.md) に完了、道具は [`tools/prompt-trial/`](tools/prompt-trial/)。7つの在庫パターンでの試行・費用の実測・プロバイダ比較（ADR-019）が未実行
 3. **LLM プロバイダを決める** — [`docs/adr.md`](docs/adr.md) ADR-019。意図的に未決で、`MealGenerator` ポートの背後だけが待っている
-4. **起動時の画面をどれにするか決める** — [`docs/screen-design.md`](docs/screen-design.md) 論点1。判断待ち
+4. ~~**起動時の画面をどれにするか決める**~~ — **決まった。** 起動時に開くのは「献立」である（2026-09-24 にユーザーが決定。[`docs/adr.md`](docs/adr.md) ADR-064）。既定タブの反映は backlog の B-49 が持つ
