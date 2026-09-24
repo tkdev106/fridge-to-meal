@@ -10,7 +10,7 @@ import { mealByIdOf, suggestionOutputOf, toMealStockItem } from './SuggestMeals.
  * 保存済みの提案をそのまま返す（B-58 / FR-21 / NFR-03）。世帯は第1引数で受け取る（C-9）。
  *
  * **生成を一度も呼ばない。** `SuggestMeals` は在庫が前回の提案から変わっていれば作り直し、
- * 作れる既存の献立が0件なら `MealGenerator` を呼ぶ（C-4 / C-7 / ADR-022）。**画面を開いただけで
+ * 作れる既存の献立が0件なら `MealGenerator` を呼ぶ（C-15 / ADR-022。C-7 で短絡しなかった回である）。**画面を開いただけで
  * それが起きると、利用者の求めなしに1日10回の枠（NFR-C2）と費用を使う** — 2026-09-24 に
  * ユーザーが「生成済みの献立は表示しておきたい」と決め、ADR-065 決定1 がそれを経路として置いた。
  * 生成は明示操作（FR-36 / `SuggestNewMeals`）だけで起こる。

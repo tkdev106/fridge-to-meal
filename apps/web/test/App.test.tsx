@@ -31,9 +31,12 @@ import { FixedSession } from './support/session/FixedSession.js';
 import type { FixedSessionOptions } from './support/session/FixedSession.js';
 import { FixedStockItemRequests } from './support/server/FixedStockItemRequests.js';
 import type { FixedStockItemRequestsOptions } from './support/server/FixedStockItemRequests.js';
+import { FixedSuggestionRequests } from './support/server/FixedSuggestionRequests.js';
+import type { FixedSuggestionRequestsOptions } from './support/server/FixedSuggestionRequests.js';
 import { App } from '../src/App.js';
 import type { SessionState } from '../src/session/Session.js';
 import type { StockItemsOutcome } from '../src/server/StockItemRequests.js';
+import type { LatestSuggestionOutcome } from '../src/server/SuggestionRequests.js';
 
 // 行をなぞる経路は jsdom に無いメソッドを通る（`support/dom/pointerCapture.ts`）。
 // **本体の振る舞いではなく、道具の欠けを道具の側で埋めるものである。**
@@ -55,9 +58,16 @@ function loaded(...stockItems: readonly StockItemDto[]): StockItemsOutcome {
 function renderApp(
   sessionOptions: FixedSessionOptions = {},
   requestOptions: FixedStockItemRequestsOptions = {},
+  suggestionOptions: FixedSuggestionRequestsOptions = {},
 ) {
   const session = new FixedSession(sessionOptions);
   const requests = new FixedStockItemRequests(requestOptions);
+  // **既定は「まだ提案が無い」を1度だけ配る**（S-8）。門はサインイン済みになると必ず
+  // 取りに行くので（ADR-065 決定1）、提案が本題でない観点でも台本が1つ要る。
+  const suggestions = new FixedSuggestionRequests({
+    show: [{ outcome: 'none' }],
+    ...suggestionOptions,
+  });
 
   render(
     <App
@@ -65,10 +75,11 @@ function renderApp(
       listStockItems={requests.listStockItems}
       registerStockItem={requests.registerStockItem}
       deleteStockItem={requests.deleteStockItem}
+      showLatestSuggestion={suggestions.showLatestSuggestion}
     />,
   );
 
-  return { session, requests };
+  return { session, requests, suggestions };
 }
 
 /**
@@ -177,6 +188,30 @@ function swipeSoleRow(): void {
   fireEvent.pointerUp(row, { pointerId: 1, clientX: 100, clientY: 0 });
 }
 
+/** 献立タブ。`TAB_ORDER` の先頭であり、**起動時に開かれている**（ADR-064 / `navigation/Tabs.ts`）。 */
+function mealsTab(): HTMLElement {
+  const [tab] = tabs();
+  if (tab === undefined) throw new Error('献立タブが無い');
+
+  return tab;
+}
+
+/** 在庫タブ。`TAB_ORDER` の2つめである。 */
+function pantryTab(): HTMLElement {
+  const tab = tabs().at(1);
+  if (tab === undefined) throw new Error('在庫タブが無い');
+
+  return tab;
+}
+
+/**
+ * 在庫タブを開く。**起動時に開くのは献立タブである**（ADR-064）ため、在庫が本題の観点は
+ * まずここを通る。器は選んだタブの中身しか描かない（B-38 設計 6章 規則6）。
+ */
+function openPantry(): void {
+  fireEvent.click(pantryTab());
+}
+
 describe('門 App のセッションの出し分け', () => {
   it('セッションの状態が分かるまでは、入力の欄もタブも1つも出さない', () => {
     renderApp({ initialState: 'unknown' });
@@ -199,6 +234,7 @@ describe('門 App のセッションの出し分け', () => {
     renderApp({ initialState: 'signedIn' }, { list: [loaded(carrot)] });
 
     // 取れた結末が届くまで待つ（待つ条件は**テストが渡した名称**である。設計 規則7）。
+    openPantry();
     await screen.findByText(carrot.name);
 
     // B-38 / 要件 第7章 / 設計 規則12: 器を mount するのはこの枝だけである。
@@ -211,6 +247,7 @@ describe('門 App のセッションの出し分け', () => {
     expect(tabs()).toHaveLength(0);
 
     emit(session, 'signedIn');
+    openPantry();
     await screen.findByText(carrot.name);
 
     // `Session.ts` 規則5・6: 購読の1度目で渡された状態のまま止まらず、変化を受けて切り替わる。
@@ -220,6 +257,7 @@ describe('門 App のセッションの出し分け', () => {
   it('サインアウトすると、ログインの画面へ戻る', async () => {
     const { session } = renderApp({ initialState: 'signedIn' }, { list: [loaded(carrot)] });
 
+    openPantry();
     await screen.findByText(carrot.name);
     emit(session, 'signedOut');
 
@@ -231,6 +269,7 @@ describe('門 App のセッションの出し分け', () => {
   it('ログアウトの操作を押すと、ログインの画面へ戻る', async () => {
     renderApp({ initialState: 'signedIn' }, { list: [loaded(carrot)] });
 
+    openPantry();
     await screen.findByText(carrot.name);
     fireEvent.click(signOutOperation());
 
@@ -258,6 +297,7 @@ describe('門 App が在庫を取りに行く条件', () => {
     emit(session, 'signedIn');
 
     // FR-04 / B-22 設計 規則10: 取りに行くのはサインイン済みのときだけ1度である。
+    openPantry();
     expect(await screen.findByText(carrot.name)).not.toBeNull();
   });
 
@@ -287,6 +327,7 @@ describe('門 App が在庫を取りに行く条件', () => {
     // 保留が無いので先に届き、**古いほうが後から届く**形になる。
     emit(session, 'signedOut');
     emit(session, 'signedIn');
+    openPantry();
     await screen.findByText(chineseCabbage.name);
 
     await settle(requests);
@@ -308,6 +349,7 @@ describe('門 App が在庫一覧を取り直す条件', () => {
       },
     );
 
+    openPantry();
     await screen.findByText(carrot.name);
     fireEvent.click(openRegisterOperation());
     fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
@@ -327,6 +369,7 @@ describe('門 App が在庫一覧を取り直す条件', () => {
       },
     );
 
+    openPantry();
     await screen.findByText(carrot.name);
     fireEvent.click(openRegisterOperation());
     fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
@@ -352,6 +395,7 @@ describe('門 App が在庫一覧を取り直す条件', () => {
       },
     );
 
+    openPantry();
     await screen.findByText(carrot.name);
     swipeSoleRow();
 
@@ -368,6 +412,7 @@ describe('門 App が在庫一覧を取り直す条件', () => {
       },
     );
 
+    openPantry();
     await screen.findByText(carrot.name);
     swipeSoleRow();
 
@@ -385,6 +430,7 @@ describe('門 App が在庫一覧を取り直す条件', () => {
       },
     );
 
+    openPantry();
     await screen.findByText(carrot.name);
     swipeSoleRow();
 
@@ -398,5 +444,101 @@ describe('門 App が在庫一覧を取り直す条件', () => {
     // その取得も失敗すれば断りが一覧全体の断りに置き換わってしまう。
     expect(screen.queryByText(carrot.name)).not.toBeNull();
     expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+  });
+});
+
+describe('門 App が保存済みの提案を取りに行く条件', () => {
+  /** 献立1件だけの提案を組む。**当てるのは渡した名称だけである**（設計 規則6）。 */
+  function suggesting(mealId: string, title: string): LatestSuggestionOutcome {
+    return {
+      outcome: 'suggested',
+      pantryChanged: false,
+      suggestion: {
+        id: `suggestion-${mealId}`,
+        generatedAt: '2026-09-20T09:00:00.000Z',
+        entries: [
+          {
+            mealId,
+            origin: 'generated',
+            title,
+            ingredients: [],
+            steps: [],
+            coverage: { covered: [], missing: [] },
+          },
+        ],
+      },
+    };
+  }
+
+  const GINGER_PORK = '豚こま肉と白菜の生姜焼き';
+  /** 取り直していないことを観るための、2件目の台本に置く標本。 */
+  const STIR_FRY = 'にんじんと卵の炒めもの';
+
+  const suggestedMeal = suggesting('meal-1', GINGER_PORK);
+  const anotherSuggestedMeal = suggesting('meal-2', STIR_FRY);
+
+  it('サインインしていない間は、提案を取りに行かない', () => {
+    // 叩いても 401 が返るだけである（先行 `listStockItems` 規則7 / 設計 規則6）。
+    const { suggestions } = renderApp({ initialState: 'signedOut' }, {}, { show: [suggestedMeal] });
+
+    expect(suggestions.showCount).toBe(0);
+  });
+
+  it('サインイン済みになると、献立タブを開かなくても提案が出ている', async () => {
+    // **起動時に開くタブは献立である**（ADR-064）。取りに行く先は生成を呼ばない経路なので
+    // （ADR-065 決定1）、開かれるのを待たずに取りに行ってよい。
+    renderApp({ initialState: 'signedIn' }, { list: [loaded(carrot)] }, { show: [suggestedMeal] });
+
+    // 待つ条件は**テストが渡した名称**である（設計 規則7）。
+    expect(await screen.findByText(GINGER_PORK)).not.toBeNull();
+  });
+
+  it('タブを移って戻っても提案を取り直さない', async () => {
+    // 取り直すと往復が増える。**2件目の台本が出ないこと**で検める（設計 規則6）。
+    const { suggestions } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedMeal, anotherSuggestedMeal] },
+    );
+
+    await screen.findByText(GINGER_PORK);
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    fireEvent.click(mealsTab());
+    await screen.findByText(GINGER_PORK);
+
+    expect(screen.queryByText(STIR_FRY)).toBeNull();
+    expect(suggestions.showCount).toBe(1);
+  });
+
+  it('サインアウトして入り直すと取り直し、前の提案を残さない', async () => {
+    const { session } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedMeal, anotherSuggestedMeal] },
+    );
+
+    await screen.findByText(GINGER_PORK);
+
+    emit(session, 'signedOut');
+    emit(session, 'signedIn');
+
+    // **前の世帯の提案を残さない**（NFR-09）。出るのは取り直した提案である。
+    expect(await screen.findByText(STIR_FRY)).not.toBeNull();
+    expect(screen.queryByText(GINGER_PORK)).toBeNull();
+  });
+
+  it('サインアウトしている間は、前の提案を画面に残さない', async () => {
+    const { session } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedMeal] },
+    );
+
+    await screen.findByText(GINGER_PORK);
+    emit(session, 'signedOut');
+
+    expect(screen.queryByText(GINGER_PORK)).toBeNull();
   });
 });
