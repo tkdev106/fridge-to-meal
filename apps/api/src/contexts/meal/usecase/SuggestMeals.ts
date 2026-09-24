@@ -2,6 +2,7 @@ import type {
   MealIngredientDto,
   StockItemDto,
   SuggestionEntryOutput,
+  SuggestionOutput,
   SuggestMealsOutput,
 } from '@fridge-to-meal/contract';
 import type { HouseholdId } from '../../../shared/domain/HouseholdId.js';
@@ -610,7 +611,7 @@ function excludeRecentlySuggested(
  * 2つ目の正規化の規則を持つと、片方だけ変わったときに突き合わせが静かにずれる
  * （先行 `registerStockItem` / ADR-037 理由(3)）。
  */
-function toMealStockItem(stockItem: StockItemDto): StockItem {
+export function toMealStockItem(stockItem: StockItemDto): StockItem {
   return createStockItem({
     name: stockItem.name,
     amount: amountOf(stockItem.amount),
@@ -630,7 +631,7 @@ function toReusedEntry(cookableMeal: CookableMeal): SuggestionEntry {
  * 献立を識別子で引けるようにする（B-48a 規則5・11）。受け取った列は読むだけである（ADR-009）。
  * 渡すのは世帯で引いた献立だけであり、他世帯の献立を指す識別子は引けない（C-9）。
  */
-function mealByIdOf(meals: readonly Meal[]): ReadonlyMap<MealId, Meal> {
+export function mealByIdOf(meals: readonly Meal[]): ReadonlyMap<MealId, Meal> {
   const mealById = new Map<MealId, Meal>();
   for (const meal of meals) {
     if (!mealById.has(meal.id)) mealById.set(meal.id, meal);
@@ -656,20 +657,38 @@ function toOutput(
   mealById: ReadonlyMap<MealId, Meal>,
   mealStockItems: readonly StockItem[],
 ): SuggestMealsOutput {
+  return {
+    outcome: 'suggested',
+    suggestion: suggestionOutputOf(suggestion, mealById, mealStockItems),
+  };
+}
+
+/**
+ * 提案そのものを DTO に写す（B-48a 規則2〜6）。**結末の名乗りを付けない部分だけ**を切り出して
+ * あり、`toOutput` と **B-58 の `ShowLatestSuggestion`** が同じものを使う。
+ *
+ * **写しを2つ持たない。** 保存済みの提案を読み取り専用で返す経路は、C-7 で短絡した回と
+ * まったく同じものを返さなければならない（FR-21「再訪時に同じものが表示される」）— 別の写し方を
+ * 置くと、同じ提案が経路によって違う形で出る。
+ *
+ * @throws {Error} 提案の1件が指す献立が引けないとき（B-48a 決定1）
+ */
+export function suggestionOutputOf(
+  suggestion: Suggestion,
+  mealById: ReadonlyMap<MealId, Meal>,
+  mealStockItems: readonly StockItem[],
+): SuggestionOutput {
   const stockItemNames = mealStockItems.map((stockItem) => stockItem.name);
   // 賄える材料の期限は、名称の突き合わせと同じ在庫の列から引く（B-48a 規則6・8）。
   // 期限切れの在庫品も落とさない — 期限は賄えるかに関わらず、日付として見せるだけである。
   const earliestExpiryDates = earliestExpiryDateByName(mealStockItems);
 
   return {
-    outcome: 'suggested',
-    suggestion: {
-      id: suggestion.id,
-      entries: suggestion.entries.map((entry) =>
-        toEntryOutput(entry, mealById, stockItemNames, earliestExpiryDates),
-      ),
-      generatedAt: suggestion.generatedAt,
-    },
+    id: suggestion.id,
+    entries: suggestion.entries.map((entry) =>
+      toEntryOutput(entry, mealById, stockItemNames, earliestExpiryDates),
+    ),
+    generatedAt: suggestion.generatedAt,
   };
 }
 

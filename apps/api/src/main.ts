@@ -28,6 +28,7 @@ import { MealRepositoryImpl } from './contexts/meal/infrastructure/MealRepositor
 import { PlaceholderMealGenerator } from './contexts/meal/infrastructure/PlaceholderMealGenerator.js';
 import { SuggestionRepositoryImpl } from './contexts/meal/infrastructure/SuggestionRepositoryImpl.js';
 import { suggestMeals, suggestNewMeals } from './contexts/meal/usecase/SuggestMeals.js';
+import { showLatestSuggestion } from './contexts/meal/usecase/ShowLatestSuggestion.js';
 import { createStockItemRoutes } from './contexts/pantry/api/StockItemRoutes.js';
 import type { StockItemIdGenerator } from './contexts/pantry/domain/port/StockItemIdGenerator.js';
 import { stockItemIdOf } from './contexts/pantry/domain/value/StockItemId.js';
@@ -191,6 +192,15 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
     ),
     suggestMeals: transactionPerRequest(env, (tx) => suggestMeals(mealSuggestionDepsOf(tx))),
     suggestNewMeals: transactionPerRequest(env, (tx) => suggestNewMeals(mealSuggestionDepsOf(tx))),
+    // 読み取り専用の口も同じ1要求1トランザクションで包む（B-58 / ADR-029 決定3(a)）。
+    // **生成器も採番も渡さない** — 生成も保存もしないので、渡すと「呼ばない」が型から読めなくなる。
+    showLatestSuggestion: transactionPerRequest(env, (tx) =>
+      showLatestSuggestion({
+        listStockItems: listStockItems({ stockItemRepository: new StockItemRepositoryImpl(tx) }),
+        mealRepository: new MealRepositoryImpl(tx),
+        suggestionRepository: new SuggestionRepositoryImpl(tx),
+      }),
+    ),
     now,
   };
 }

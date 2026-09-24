@@ -11,7 +11,11 @@ import type { AccessTokenClaims } from './support/identity/AccessSigning.js';
 import { accessTokenOf, publicAccessTokenKey } from './support/identity/AccessSigning.js';
 import { FixedFetchJwks } from './support/identity/FixedFetchJwks.js';
 import { FixedIdentifyHousehold } from './support/identity/FixedIdentifyHousehold.js';
-import { FixedSuggestMeals, FixedSuggestNewMeals } from './support/meal/FixedSuggestMeals.js';
+import {
+  FixedShowLatestSuggestion,
+  FixedSuggestMeals,
+  FixedSuggestNewMeals,
+} from './support/meal/FixedSuggestMeals.js';
 import {
   FixedDeleteStockItem,
   FixedListStockItems,
@@ -91,12 +95,16 @@ function appWithFixedDependencies(
     listOutput?: ListStockItemsOutput;
     suggestMeals?: FixedSuggestMeals;
     suggestNewMeals?: FixedSuggestNewMeals;
+    showLatestSuggestion?: FixedShowLatestSuggestion;
   } = {},
 ) {
   const suggestMeals =
     overrides.suggestMeals ?? new FixedSuggestMeals({ returns: suggestMealsOutcome });
   const suggestNewMeals =
     overrides.suggestNewMeals ?? new FixedSuggestNewMeals({ returns: suggestNewMealsOutcome });
+  const showLatestSuggestion =
+    overrides.showLatestSuggestion ??
+    new FixedShowLatestSuggestion({ returns: { outcome: 'none' } });
 
   return createApp({
     identifyHousehold: new FixedIdentifyHousehold({ returns: ourHousehold }).identify,
@@ -108,6 +116,7 @@ function appWithFixedDependencies(
     deleteStockItem: new FixedDeleteStockItem({ succeeds: true }).delete,
     suggestMeals: suggestMeals.suggest,
     suggestNewMeals: suggestNewMeals.suggest,
+    showLatestSuggestion: showLatestSuggestion.show,
     now: () => fixedNow,
   });
 }
@@ -270,6 +279,30 @@ describe('composition root main', () => {
       await app.request('/suggestions/new-meals', { method: 'POST', headers: bearerHeaders('x') });
 
       expect(suggestNewMeals.receivedHouseholdId).toBe('11111111-1111-4111-8111-111111111111');
+    });
+
+    it('保存済みの提案の経路を接頭辞なしの GET /suggestions/latest に置き、その入口の結末を返す', async () => {
+      // B-58 / ADR-065 決定1: 読み取り専用の経路は提案の2つの入口を兼ねない。
+      const suggestMeals = new FixedSuggestMeals({ returns: suggestMealsOutcome });
+      const suggestNewMeals = new FixedSuggestNewMeals({ returns: suggestNewMealsOutcome });
+      const app = appWithFixedDependencies({ suggestMeals, suggestNewMeals });
+
+      const response = await app.request('/suggestions/latest', { headers: bearerHeaders('x') });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ outcome: 'none' });
+      expect(suggestMeals.callCount).toBe(0);
+      expect(suggestNewMeals.callCount).toBe(0);
+    });
+
+    it('保存済みの提案の経路には識別の口で定まった世帯が届く', async () => {
+      // C-9: 世帯はアクセストークンから定まる。
+      const showLatestSuggestion = new FixedShowLatestSuggestion({ returns: { outcome: 'none' } });
+      const app = appWithFixedDependencies({ showLatestSuggestion });
+
+      await app.request('/suggestions/latest', { headers: bearerHeaders('x') });
+
+      expect(showLatestSuggestion.receivedHouseholdId).toBe('11111111-1111-4111-8111-111111111111');
     });
 
     it('アクセストークンを付けない OPTIONS /suggestions は 401 にならず 204 で通る', async () => {

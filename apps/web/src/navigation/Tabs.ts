@@ -25,7 +25,11 @@ export const TAB_ORDER: readonly TabId[] = ['meals', 'pantry', 'history'];
 /**
  * 起動して最初に開くタブ（同 規則1）。
  *
- * **要件 第7章の「在庫一覧（ホーム）」に従う。** `docs/screen-design.md` 論点1 は献立を
- * 推しているが `判断待ち` のままであり、ここで決めない（同 1章）。
+ * **決定は「献立」である**（2026-09-24 にユーザーが決定。ADR-064。要件 第7章と
+ * `docs/screen-design.md` 2.2 はもう献立と書いてある）。**それでもこの値が `'pantry'` のままなのは、
+ * 反映を B-49（web の献立タブ）と同じ周に置いたためである** — 既定タブだけを先に反転させると、
+ * 仮置きの段落（`features/meal/MealsTab.tsx`）が起動画面になる（ADR-064 決定 / 結果3）。
+ *
+ * **B-49 でここを `'meals'` に変える。** 文書とこの値が食い違っているのは、その1周のあいだだけである。
  */
 export const DEFAULT_TAB: TabId = 'pantry';
