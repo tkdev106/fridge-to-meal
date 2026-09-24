@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/main.js';
 import { householdIdOf } from '../src/shared/domain/HouseholdId.js';
 import { FixedIdentifyHousehold } from './support/identity/FixedIdentifyHousehold.js';
-import { FixedSuggestMeals, FixedSuggestNewMeals } from './support/meal/FixedSuggestMeals.js';
+import {
+  FixedShowLatestSuggestion,
+  FixedSuggestMeals,
+  FixedSuggestNewMeals,
+} from './support/meal/FixedSuggestMeals.js';
 import {
   FixedDeleteStockItem,
   FixedListStockItems,
@@ -33,6 +37,7 @@ function app() {
     updateStockItem: new FixedUpdateStockItem({ returns: stockItem }).update,
     deleteStockItem: new FixedDeleteStockItem({ succeeds: true }).delete,
     suggestMeals: new FixedSuggestMeals({ returns: { outcome: 'insufficientStockItems' } }).suggest,
+    showLatestSuggestion: new FixedShowLatestSuggestion({ returns: { outcome: 'none' } }).show,
     suggestNewMeals: new FixedSuggestNewMeals({ returns: { outcome: 'insufficientStockItems' } })
       .suggest,
     now: () => '2026-09-23T12:00:00.000Z',

@@ -1,4 +1,4 @@
-import type { SuggestMealsOutput } from '@fridge-to-meal/contract';
+import type { ShowLatestSuggestionOutput, SuggestMealsOutput } from '@fridge-to-meal/contract';
 import { describe, expect, it } from 'vitest';
 import { createSuggestionRoutes } from '../../../../src/contexts/meal/api/SuggestionRoutes.js';
 import { IdentityRuleViolation } from '../../../../src/contexts/identity/domain/error/IdentityRuleViolation.js';
@@ -7,6 +7,7 @@ import { PantryRuleViolation } from '../../../../src/contexts/pantry/domain/erro
 import { householdIdOf } from '../../../../src/shared/domain/HouseholdId.js';
 import { FixedIdentifyHousehold } from '../../../support/identity/FixedIdentifyHousehold.js';
 import {
+  FixedShowLatestSuggestion,
   FixedSuggestMeals,
   FixedSuggestNewMeals,
 } from '../../../support/meal/FixedSuggestMeals.js';
@@ -89,6 +90,32 @@ const newMealsOutput: SuggestMealsOutput = {
 };
 
 /**
+ * 保存済みの提案を読み取り専用で返す経路の結末（B-58）。**上の2つとまた別の中身**にして、
+ * 経路の取り違えを見分けられるようにする。`pantryChanged` を載せるのはこの経路だけ。
+ */
+const latestOutput: ShowLatestSuggestionOutput = {
+  outcome: 'suggested',
+  pantryChanged: true,
+  suggestion: {
+    id: '88888888-8888-4888-8888-888888888888',
+    generatedAt: '2026-09-22T09:00:00.000Z',
+    entries: [
+      {
+        mealId: '99999999-9999-4999-8999-999999999999',
+        origin: 'reused',
+        title: 'キャベツの塩炒め',
+        ingredients: [{ name: 'キャベツ', kind: 'main', amount: '1/4玉' }],
+        steps: ['キャベツを炒める'],
+        coverage: {
+          covered: [{ name: 'キャベツ', kind: 'main', amount: '1/4玉', expiryDate: '2026-09-26' }],
+          missing: [],
+        },
+      },
+    ],
+  },
+};
+
+/**
  * 時計の代役。**呼ばれるたびに与えた列から次の値を返す**（`docs/testing.md` 5章 — 現在時刻に
  * 触れない）。用意した数より多く読まれたら投げる — 足りないまま緑にしないため。
  */
@@ -119,6 +146,8 @@ function setUp(
     newMealsThrows?: Error;
     identifyHouseholdThrows?: Error;
     clockValues?: readonly string[];
+    latestOutput?: ShowLatestSuggestionOutput;
+    latestThrows?: Error;
   } = {},
 ) {
   const identifyHousehold = new FixedIdentifyHousehold(
@@ -137,14 +166,21 @@ function setUp(
       : { throws: overrides.newMealsThrows },
   );
 
+  const showLatestSuggestion = new FixedShowLatestSuggestion(
+    overrides.latestThrows === undefined
+      ? { returns: overrides.latestOutput ?? latestOutput }
+      : { throws: overrides.latestThrows },
+  );
+
   const routes = createSuggestionRoutes({
     identifyHousehold: identifyHousehold.identify,
     suggestMeals: suggestMeals.suggest,
     suggestNewMeals: suggestNewMeals.suggest,
+    showLatestSuggestion: showLatestSuggestion.show,
     now: sequentialClock(...(overrides.clockValues ?? [nineOClock])),
   });
 
-  return { routes, identifyHousehold, suggestMeals, suggestNewMeals };
+  return { routes, identifyHousehold, suggestMeals, suggestNewMeals, showLatestSuggestion };
 }
 
 /** 認証ヘッダ1つ。方式名と値の組み立てが本題のときだけ引数で上書きする。 */
@@ -853,6 +889,126 @@ describe('提案の経路 SuggestionRoutes', () => {
       const text = await response.text();
       expect(parseBody(text)).toEqual({ rule: 'save.householdMismatch' });
       expect(text).not.toContain('h-other');
+    });
+  });
+  describe('保存済みの提案を読み取り専用で返す経路（B-58）', () => {
+    it('GET /suggestions/latest は保存済みの提案を求めて 200 を返す', async () => {
+      const { routes, showLatestSuggestion } = setUp();
+
+      const response = await routes.request('/suggestions/latest', {
+        headers: authorizationHeaders(),
+      });
+
+      expect(response.status).toBe(200);
+      expect(showLatestSuggestion.callCount).toBe(1);
+    });
+
+    it('読み取り専用の経路は提案の2つの入口をどちらも呼ばない', async () => {
+      // 読み取りが生成を起こしてしまえば、NFR-C2 の枠を利用者の求めなしに消費する。
+      const { routes, suggestMeals, suggestNewMeals } = setUp();
+
+      await routes.request('/suggestions/latest', { headers: authorizationHeaders() });
+
+      expect(suggestMeals.callCount).toBe(0);
+      expect(suggestNewMeals.callCount).toBe(0);
+    });
+
+    it('応答本体はユースケースの出力そのままである', async () => {
+      const { routes } = setUp();
+
+      const response = await routes.request('/suggestions/latest', {
+        headers: authorizationHeaders(),
+      });
+
+      await expect(response.json()).resolves.toEqual(latestOutput);
+    });
+
+    it('保存済みの提案が無い結末も 200 で outcome だけを返す', async () => {
+      const { routes } = setUp({ latestOutput: { outcome: 'none' } });
+
+      const response = await routes.request('/suggestions/latest', {
+        headers: authorizationHeaders(),
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ outcome: 'none' });
+    });
+
+    it('認証で定まった世帯をユースケースの第1引数に渡す', async () => {
+      const { routes, showLatestSuggestion } = setUp();
+
+      await routes.request('/suggestions/latest', { headers: authorizationHeaders() });
+
+      expect(showLatestSuggestion.receivedHouseholdId).toBe(ourHousehold);
+    });
+
+    it('クエリの householdId を見ず、認証から定まった世帯だけを渡す', async () => {
+      const { routes, showLatestSuggestion } = setUp();
+
+      await routes.request(`/suggestions/latest?householdId=${neighborHousehold}`, {
+        headers: authorizationHeaders(),
+      });
+
+      expect(showLatestSuggestion.receivedHouseholdId).toBe(ourHousehold);
+    });
+
+    it('認証を通らない要求は保存済みの提案を求めない', async () => {
+      const { routes, showLatestSuggestion } = setUp({
+        identifyHouseholdThrows: new IdentityRuleViolation(
+          'accessToken.invalid',
+          'アクセストークンが検証を通らない',
+        ),
+      });
+
+      await routes.request('/suggestions/latest', { headers: authorizationHeaders() });
+
+      expect(showLatestSuggestion.callCount).toBe(0);
+    });
+
+    it('Authorization ヘッダが無い要求は 401 を返す', async () => {
+      const { routes } = setUp({
+        identifyHouseholdThrows: new IdentityRuleViolation(
+          'accessToken.missing',
+          'アクセストークンが無い',
+        ),
+      });
+
+      const response = await routes.request('/suggestions/latest');
+
+      expect(response.status).toBe(401);
+    });
+
+    it('規則違反でない失敗が起きたら 500 の unexpected を返す', async () => {
+      const { routes } = setUp({ latestThrows: new Error('接続が切れた') });
+
+      const response = await routes.request('/suggestions/latest', {
+        headers: authorizationHeaders(),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toEqual({ rule: 'unexpected' });
+    });
+
+    it('指す献立が引けない失敗も 401 に化けない', async () => {
+      // ADR-045: サーバ側の不備を利用者のアクセストークンのせいにしない。
+      const { routes } = setUp({ latestThrows: new Error('提案の指す献立が引けない') });
+
+      const response = await routes.request('/suggestions/latest', {
+        headers: authorizationHeaders(),
+      });
+
+      expect(response.status).not.toBe(401);
+    });
+
+    it('時計を読まない', async () => {
+      // 時刻に依存する判断を1つも持たない経路である（B-58）。用意した時刻を使い切らない。
+      const { routes } = setUp({ clockValues: [] });
+
+      const response = await routes.request('/suggestions/latest', {
+        headers: authorizationHeaders(),
+      });
+
+      expect(response.status).toBe(200);
     });
   });
 });

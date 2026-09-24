@@ -62,3 +62,28 @@ export type SuggestMealsOutput =
   | { outcome: 'suggested'; suggestion: SuggestionOutput }
   | { outcome: 'insufficientStockItems' }
   | { outcome: 'generationLimitReached' };
+
+/**
+ * 保存済みの提案を読み取り専用で返す結末（B-58）。
+ *
+ * **`SuggestMealsOutput` と別の型である。** あちらは生成を呼びうる経路の結末で、在庫が足りない
+ * （S-4）・上限に達した（S-7）という結末を持つ。こちらは**生成を一切呼ばない**ので、その2つは
+ * 起こりえず、代わりに「**まだ1件も保存されていない**」が起こる。
+ *
+ * **献立タブはこちらで描く**（2026-09-24 にユーザーが決定。ADR-064 結果1）— 画面を出すだけで
+ * 1日10回の枠（NFR-C2）を使わないためであり、生成は明示操作（FR-36）だけで起こる。
+ */
+export type ShowLatestSuggestionOutput =
+  | {
+      outcome: 'suggested';
+      suggestion: SuggestionOutput;
+      /**
+       * 保存時の在庫スナップショットが、現在の在庫と食い違うか（C-7 と同じ比較）。
+       *
+       * **真なら、押せば違う献立が出る見込みがある** — 画面が「新しい献立を見る」（FR-36）へ
+       * 誘う手がかりになる。偽なら、いま押しても同じ在庫から組み直すだけである。
+       * **どう見せるかは画面が決める**（`docs/screen-design.md` 第3章 S-8）。
+       */
+      pantryChanged: boolean;
+    }
+  | { outcome: 'none' };

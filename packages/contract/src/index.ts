@@ -24,5 +24,6 @@ export type {
   SuggestionEntryOrigin,
   SuggestionEntryOutput,
   SuggestionOutput,
+  ShowLatestSuggestionOutput,
   SuggestMealsOutput,
 } from './meal.js';
