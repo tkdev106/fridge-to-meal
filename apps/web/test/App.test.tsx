@@ -226,6 +226,14 @@ function pantryTab(): HTMLElement {
   return tab;
 }
 
+/** 履歴タブ。`TAB_ORDER` の3つめである。 */
+function historyTab(): HTMLElement {
+  const tab = tabs().at(2);
+  if (tab === undefined) throw new Error('履歴タブが無い');
+
+  return tab;
+}
+
 /**
  * 在庫タブを開く。**起動時に開くのは献立タブである**（ADR-064）ため、在庫が本題の観点は
  * まずここを通る。器は選んだタブの中身しか描かない（B-38 設計 6章 規則6）。
@@ -918,5 +926,134 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
 
     expect(screen.queryByText(OLD_MEAL)).not.toBeNull();
     expect(screen.queryByText(NEW_MEAL)).toBeNull();
+  });
+});
+
+/**
+ * 選んでいるタブの結線（B-49c 2周目 / ADR-066 / `docs/screen-design.md` D-7）。
+ *
+ * **選んでいるタブは門が持つ**（ADR-066 決定2）。器は `selectedTab` / `onSelectTab` を
+ * 受け取るだけで状態を持たず（同 決定1）、「在庫タブへ送る」という意味は `MealsTab` が持つ
+ * （同 決定3）。ここで見るのは**門の側の3つ**だけである — 入ったときにどのタブが開いているか、
+ * 画面からの求めでタブが移るか、移しても何も取り直さないか（同 結果3 / D-8）。
+ *
+ * タブの見せ方そのもの（`aria-selected` の移り方・見た目の手がかり）は
+ * `TabbedScreen.test.tsx` の持ち分、S-4 / S-7 の枝の中身は `MealsTab.test.tsx` の持ち分であり、
+ * **ここで二重に書かない。**
+ */
+describe('門 App のタブの結線', () => {
+  /**
+   * S-4（在庫が足りない）の画面まで進める。**経路は「新しい献立を求める」の結末**である
+   * （保存済みの読み取りにこの結末は無い。ADR-065 決定3）。
+   *
+   * 待つ条件は**手がかり（`note`）が1つも無くなること**である — S-8 の枝は
+   * 「新しい献立を求める」の面を持つので `note` を伴い、S-4 の枝はその操作ごと出さない
+   * （D-7）。**仮の文言では待たない**（設計 規則7・11）。
+   */
+  async function renderAtInsufficientStockItems() {
+    const app = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [{ outcome: 'none' }], requestNewMeals: [{ outcome: 'insufficientStockItems' }] },
+    );
+
+    fireEvent.click(await screen.findByRole('button'));
+    await waitFor(() => {
+      expect(screen.queryAllByRole('note')).toHaveLength(0);
+    });
+
+    return app;
+  }
+
+  /** 在庫タブへ送る操作。S-4 の枝が出す唯一の操作である（D-7 / B-49c 規則1・2）。 */
+  function goToPantryOperation(): HTMLElement {
+    return operationAt(0, 1);
+  }
+
+  it('サインイン済みになった直後に開いているのは献立タブである', async () => {
+    renderApp({ initialState: 'signedIn' }, { list: [loaded(carrot)] });
+
+    await screen.findByRole('button');
+
+    // ADR-064 / ADR-066 結果1: 既定のタブを決めるのは門である（器ではない）。
+    expect(mealsTab().getAttribute('aria-selected')).toBe('true');
+    expect(pantryTab().getAttribute('aria-selected')).not.toBe('true');
+    expect(historyTab().getAttribute('aria-selected')).not.toBe('true');
+  });
+
+  it('在庫が足りない回の操作を押すと、在庫タブの中身が出る', async () => {
+    await renderAtInsufficientStockItems();
+
+    fireEvent.click(goToPantryOperation());
+
+    // D-7 / ADR-066 決定2: 送る先は**在庫タブ**であり、一覧と登録の出し分けは
+    // `PantryTab` が持つ（B-39 設計 規則1）。観るのは**テストが渡した名称**である。
+    expect(await screen.findByText(carrot.name)).not.toBeNull();
+  });
+
+  it('在庫が足りない回の操作を押すと、選ばれている印が在庫タブへ移る', async () => {
+    await renderAtInsufficientStockItems();
+
+    fireEvent.click(goToPantryOperation());
+    await screen.findByText(carrot.name);
+
+    // ADR-066 決定2 / B-38 設計 6章 規則5: 帯の見えも一緒に移る — 中身だけが入れ替わると、
+    // 利用者はいまどのタブに居るか読めない。
+    expect(pantryTab().getAttribute('aria-selected')).toBe('true');
+    expect(mealsTab().getAttribute('aria-selected')).not.toBe('true');
+  });
+
+  it('在庫タブへ送っても、保存済みの提案を取りに行き直さない', async () => {
+    const { suggestions } = await renderAtInsufficientStockItems();
+    const showsBefore = suggestions.showCount;
+
+    fireEvent.click(goToPantryOperation());
+    await screen.findByText(carrot.name);
+
+    // ADR-066 結果3 / D-8 / B-49b 規則10: **タブを移すのは画面を切り替えるだけ**である。
+    // 取り直すのは在庫の登録・削除が通った回だけで、その経路は既にある。
+    expect(suggestions.showCount).toBe(showsBefore);
+  });
+
+  it('在庫タブへ送っても、在庫一覧を取りに行き直さない', async () => {
+    const { requests } = await renderAtInsufficientStockItems();
+    const listsBefore = requests.listCount;
+
+    fireEvent.click(goToPantryOperation());
+    await screen.findByText(carrot.name);
+
+    // B-22 設計 規則11 / ADR-066 結果3: タブを移っても取得の効果は走り直さない。
+    expect(requests.listCount).toBe(listsBefore);
+  });
+
+  it('在庫タブへ送った後に献立タブへ戻ると、在庫が足りない回の案内のままである', async () => {
+    await renderAtInsufficientStockItems();
+
+    fireEvent.click(goToPantryOperation());
+    await screen.findByText(carrot.name);
+    fireEvent.click(mealsTab());
+
+    // ADR-066 結果3: 提案の状態は門が持っており、タブを往復しても変わらない —
+    // 戻った先が「まだ提案が無い（S-8）」や失敗（S-6）に化けない。**見分けは件数で行う**
+    // （設計 規則2・11）: S-4 の枝は操作1つと案内1つを持ち、手がかり（`note`）を持たない。
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.queryAllByRole('note')).toHaveLength(0);
+  });
+
+  it('サインアウトして入り直すと、開いているのは既定の献立タブに戻る', async () => {
+    const { session } = renderApp({ initialState: 'signedIn' }, { list: [loaded(carrot)] });
+
+    await screen.findByRole('button');
+    openPantry();
+    await screen.findByText(carrot.name);
+
+    emit(session, 'signedOut');
+    emit(session, 'signedIn');
+    await screen.findByRole('note');
+
+    // ADR-066 結果1 / B-38 設計 6章 規則9: 状態を門へ持ち上げても、**入り直すと
+    // `DEFAULT_TAB` へ戻る**ことは変えない（`docs/screen-design.md` 2.3 の `login --> meals`）。
+    expect(mealsTab().getAttribute('aria-selected')).toBe('true');
   });
 });

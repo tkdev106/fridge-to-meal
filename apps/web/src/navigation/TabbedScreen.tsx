@@ -12,12 +12,21 @@
  * タブの選択状態は入っていない。**その構えをタブに及ぼしたもの**であり、条文を広げたのではない。
  *
  * **日本語（タブのラベル・仮置きの文言）はここにだけ置く**（同 6章 規則13）。
+ *
+ * **選んでいるタブを器が持つことはやめた**（ADR-066 決定1・結果1）。B-38 設計 6章 規則8 は
+ * 「選んでいるタブは器の `useState` に持つ」と定めていたが、それでは**画面の側からタブを
+ * 移す手段が1つも無い**（`docs/screen-design.md` D-7 が在庫タブへ送る操作を求めている）。
+ * いまは `selectedTab` / `onSelectTab` を props で受け取るだけの controlled な器であり、
+ * 状態は門（`App.tsx`）が持つ（同 決定2）。**器の役割はむしろ減った** — 3つを並べて、
+ * 押されたことを `TabId` で伝えるだけである。
+ *
+ * **URL にも `localStorage` にも書かないことは変えない**（同 結果1）。再読み込みも、
+ * サインアウトを挟んで入り直した回も、開くのは既定のタブに戻る。**後者を保つのは門である。**
  */
 
 import type { JSX, ReactNode } from 'react';
-import { useState } from 'react';
 import type { TabId } from './Tabs.js';
-import { DEFAULT_TAB, TAB_ORDER } from './Tabs.js';
+import { TAB_ORDER } from './Tabs.js';
 import { tabStyleOf } from './TabAppearance.js';
 
 /**
@@ -44,14 +53,25 @@ export type TabbedScreenProps = {
   pantry: ReactNode;
   /** 履歴タブの中身。献立タブと同じく、中身が無くても帯から消さない（同 規則7）。 */
   history: ReactNode;
+  /**
+   * いま選んでいるタブ（ADR-066 決定1）。**器は自分では持たない** — 状態は門が持つ
+   * （同 決定2）。器が `DEFAULT_TAB` を読むこともない。
+   */
+  selectedTab: TabId;
+  /**
+   * タブが押されたことを伝える口（同 決定1）。**運ぶのは `TabId` だけ**であり、
+   * 「在庫タブへ送る」のような意味は器に無い（同 決定3）。
+   */
+  onSelectTab: (tab: TabId) => void;
 };
 
-export function TabbedScreen({ meals, pantry, history }: TabbedScreenProps): JSX.Element {
-  // **選んでいるタブは web の記憶の中だけに持つ**（同 規則8）。URL にも `localStorage` にも
-  // 書かないので、再読み込みは既定のタブに戻る。**サインアウトを挟んでも戻る** — 門が
-  // サインイン済みの枝でだけこの器を mount するためである（同 規則9 / `App.tsx`）。
-  const [selectedTab, setSelectedTab] = useState<TabId>(DEFAULT_TAB);
-
+export function TabbedScreen({
+  meals,
+  pantry,
+  history,
+  selectedTab,
+  onSelectTab,
+}: TabbedScreenProps): JSX.Element {
   // 受け取った3つを識別子で引けるようにするだけ。**器は中身が何かを知らない。**
   const contents: Record<TabId, ReactNode> = { meals, pantry, history };
 
@@ -86,7 +106,7 @@ export function TabbedScreen({ meals, pantry, history }: TabbedScreenProps): JSX
             // **`tabIndex` を振り分けない。** 選んでいないタブを `-1` にするのは矢印キーで
             // 移れる実装と対になる作法であり、その鍵の扱いをまだ持たない今は、素の button の
             // ままにして Tab キーで3つとも辿れるようにしておく。
-            onClick={() => setSelectedTab(tab)}
+            onClick={() => onSelectTab(tab)}
           >
             {TAB_LABELS[tab]}
           </button>
