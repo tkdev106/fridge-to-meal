@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import type { SuggestionOutput } from '@fridge-to-meal/contract';
 import { FixedHttpFetch } from '../support/server/FixedHttpFetch.js';
 import type { HttpDelivery } from '../support/server/FixedHttpFetch.js';
-import { showLatestSuggestion } from '../../src/server/SuggestionRequests.js';
+import { requestNewMeals, showLatestSuggestion } from '../../src/server/SuggestionRequests.js';
 
 const BASE_URL = 'https://api.example.test';
 const TOKEN = 'access-token';
@@ -161,6 +161,129 @@ describe('保存済みの提案を取りに行く継ぎ目 showLatestSuggestion'
     const { request } = requestWith({
       ok: true,
       body: { outcome: 'suggested', suggestion: {}, pantryChanged: false },
+    });
+
+    expect(await request()).toEqual({ outcome: 'failed' });
+  });
+});
+
+/** `POST /suggestions/new-meals`（FR-36 の明示操作。B-49b）。 */
+function requestNewMealsWith(delivery: HttpDelivery, accessToken = heldToken) {
+  const httpFetch = new FixedHttpFetch(delivery);
+  const request = requestNewMeals({
+    baseUrl: BASE_URL,
+    accessToken,
+    httpFetch: httpFetch.httpFetch,
+  });
+
+  return { httpFetch, request };
+}
+
+describe('「新しい献立を求める」操作 requestNewMeals', () => {
+  it('基点に /suggestions/new-meals を足した先を POST で叩く', async () => {
+    // FR-36 の明示操作は必ず生成を呼ぶ（ADR-051）。接頭辞を web の側で足さない（ADR-048 決定4）。
+    const { httpFetch, request } = requestNewMealsWith({
+      ok: true,
+      body: { outcome: 'suggested', suggestion },
+    });
+
+    await request();
+
+    expect(httpFetch.receivedRequests).toHaveLength(1);
+    expect(httpFetch.receivedRequests[0]?.url).toBe(`${BASE_URL}/suggestions/new-meals`);
+    expect(httpFetch.receivedRequests[0]?.method).toBe('POST');
+  });
+
+  it('アクセストークンを Bearer で載せ、本体を1つも送らない', async () => {
+    // 世帯も入力もアクセストークンから定まる（B-48b 規則3・4）。
+    const { httpFetch, request } = requestNewMealsWith({
+      ok: true,
+      body: { outcome: 'suggested', suggestion },
+    });
+
+    await request();
+
+    expect(httpFetch.receivedRequests[0]?.headers).toEqual({ Authorization: `Bearer ${TOKEN}` });
+    expect(httpFetch.receivedRequests[0]?.body).toBeUndefined();
+  });
+
+  it('トークンが取れなければ要求を出さず、失敗を返す', async () => {
+    // 先行 `showLatestSuggestion` 規則と同じ構え。**件数を断定してよい唯一の観点。**
+    const { httpFetch, request } = requestNewMealsWith(
+      { ok: true, body: { outcome: 'suggested', suggestion } },
+      () => Promise.resolve(null),
+    );
+
+    expect(await request()).toEqual({ outcome: 'failed' });
+    expect(httpFetch.receivedRequests).toHaveLength(0);
+  });
+
+  it('提案が返れば、その結末をそのまま返す', async () => {
+    // DTO を詰め替えない（先行 `showLatestSuggestion` / `listStockItems` 規則2）。
+    const { request } = requestNewMealsWith({
+      ok: true,
+      body: { outcome: 'suggested', suggestion },
+    });
+
+    expect(await request()).toEqual({ outcome: 'suggested', suggestion });
+  });
+
+  it('在庫が足りない結末を、失敗に畳まずそのまま返す', async () => {
+    // S-4。ADR-049 結果7 — この2つの表示は B-49c の持ち分だが、取り違えないことはここで満たす。
+    const { request } = requestNewMealsWith({
+      ok: true,
+      body: { outcome: 'insufficientStockItems' },
+    });
+
+    expect(await request()).toEqual({ outcome: 'insufficientStockItems' });
+  });
+
+  it('生成の上限に達した結末を、失敗に畳まずそのまま返す', async () => {
+    // S-7 / NFR-C2 / ADR-049。
+    const { request } = requestNewMealsWith({
+      ok: true,
+      body: { outcome: 'generationLimitReached' },
+    });
+
+    expect(await request()).toEqual({ outcome: 'generationLimitReached' });
+  });
+
+  it('応答が ok でなければ失敗を返す', async () => {
+    const { request } = requestNewMealsWith({ ok: false, body: { rule: 'someRuleViolation' } });
+
+    expect(await request()).toEqual({ outcome: 'failed' });
+  });
+
+  it('502（mealGenerator.empty。S-6）も同じ失敗として畳む', async () => {
+    // NFR-07。個別の文言で区別せず、操作そのものが再試行の手段を兼ねる（設計 7章）。
+    const { request } = requestNewMealsWith({ ok: false, body: { rule: 'mealGenerator.empty' } });
+
+    expect(await request()).toEqual({ outcome: 'failed' });
+  });
+
+  it('本体が JSON として読めなければ失敗を返す', async () => {
+    const { request } = requestNewMealsWith({ ok: true, unreadableBody: true });
+
+    expect(await request()).toEqual({ outcome: 'failed' });
+  });
+
+  it('出口が投げても、例外を外に出さず失敗を返す', async () => {
+    const { request } = requestNewMealsWith({ throws: new Error('到達できない') });
+
+    expect(await request()).toEqual({ outcome: 'failed' });
+  });
+
+  it('知らない結末は失敗に畳む', async () => {
+    const { request } = requestNewMealsWith({ ok: true, body: { outcome: 'somethingElse' } });
+
+    expect(await request()).toEqual({ outcome: 'failed' });
+  });
+
+  it('suggestion の形が壊れているときは提案として受け取らず失敗を返す', async () => {
+    // 0件の提案に倒さない — 献立があるのに無いように見せることになる（先行と同じ構え）。
+    const { request } = requestNewMealsWith({
+      ok: true,
+      body: { outcome: 'suggested', suggestion: {} },
     });
 
     expect(await request()).toEqual({ outcome: 'failed' });
