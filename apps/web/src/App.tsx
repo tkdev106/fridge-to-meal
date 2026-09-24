@@ -80,7 +80,7 @@ export function App({
   // 提案も取りに行くまでは「読み込み中」である（在庫と同じ構え。B-22 設計 7章）。
   const [suggestion, setSuggestion] = useState<MealsTabState>({ outcome: 'loading' });
 
-  // 「新しい献立を求める」（B-49b / FR-36）を送っている間か（S-5 / NFR-C2）。
+  // 「新しい献立を求める」（B-49b / FR-36）を送っている間か（S-5）。
   const [requestingNewMeals, setRequestingNewMeals] = useState(false);
   // 直前の要求が失敗したか（S-6）。押し直した時点で消す（規則: 同時に出さない）。
   const [newMealsFailed, setNewMealsFailed] = useState(false);
@@ -197,7 +197,8 @@ export function App({
   /**
    * 「新しい献立を求める」操作の配線（B-49b / FR-36）。
    *
-   * **押している間は2度目の要求を出さない**（NFR-C2）— `requestingNewMeals` が真なら何もしない。
+   * **押している間は2度目の要求を出さない** — `requestingNewMeals` が真なら何もしない。
+   * 1度の求めで生成が2回走ると、**1日10回の枠（NFR-C2）が利用者の意図の倍で減る。**
    * **押した時点で前回の失敗の案内を消す**（役割の割り当て。送信中と失敗は同時に出ない）。
    *
    * **必ず生成を呼ぶ**（ADR-051）ので、届く結末は3つ（提案・在庫が足りない・上限に達した）に

@@ -210,7 +210,9 @@ function RequestNewMealsControl({
       {requesting && <p role="status">{REQUESTING_NOTICE}</p>}
       {!requesting && failed && <p role="status">{REQUEST_FAILED_NOTICE}</p>}
 
-      {/* NFR-C2: 送信中は押せない。押し直しても2度目の要求を出さないのは門の役目である。 */}
+      {/* 送信中は押せない（S-5）。押し直しても2度目の要求を出さないのは門の役目であり、
+          ここは見た目の側から二重に守るだけである。**1度の求めで生成が2回走ると、
+          1日10回の枠（NFR-C2）が利用者の意図の倍で減る。** */}
       <button type="button" onClick={onRequestNewMeals} disabled={requesting}>
         {REQUEST_BUTTON_LABEL}
       </button>
