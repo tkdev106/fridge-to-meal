@@ -21,9 +21,9 @@ export type {
   MealCoverageDto,
   MealIngredientDto,
   MealIngredientKind,
+  ShowLatestSuggestionOutput,
   SuggestionEntryOrigin,
   SuggestionEntryOutput,
   SuggestionOutput,
-  ShowLatestSuggestionOutput,
   SuggestMealsOutput,
 } from './meal.js';

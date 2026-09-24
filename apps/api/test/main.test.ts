@@ -282,7 +282,7 @@ describe('composition root main', () => {
     });
 
     it('保存済みの提案の経路を接頭辞なしの GET /suggestions/latest に置き、その入口の結末を返す', async () => {
-      // B-58 / ADR-064 結果1: 読み取り専用の経路は提案の2つの入口を兼ねない。
+      // B-58 / ADR-065 決定1: 読み取り専用の経路は提案の2つの入口を兼ねない。
       const suggestMeals = new FixedSuggestMeals({ returns: suggestMealsOutcome });
       const suggestNewMeals = new FixedSuggestNewMeals({ returns: suggestNewMealsOutcome });
       const app = appWithFixedDependencies({ suggestMeals, suggestNewMeals });
