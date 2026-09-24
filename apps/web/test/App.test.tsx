@@ -501,4 +501,29 @@ describe('門 App が提案を取りに行く条件', () => {
     expect(screen.queryByText(STIR_FRY)).toBeNull();
     expect(suggestions.suggestCount).toBe(1);
   });
+
+  it('サインアウトして入り直すと、献立タブを開くまで取りに行かず、前の提案も残さない', async () => {
+    const { session, suggestions } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { suggest: [suggestedMeal, anotherSuggestedMeal] },
+    );
+
+    await screen.findByText(carrot.name);
+    fireEvent.click(mealsTab());
+    await screen.findByText(GINGER_PORK);
+
+    emit(session, 'signedOut');
+    emit(session, 'signedIn');
+    await screen.findByText(carrot.name);
+
+    // 器は既定のタブから始まる（B-38 設計 規則9）ので、献立タブは開かれていない。
+    // **開かれていない画面のために枠（NFR-C2）を使わない。**
+    expect(suggestions.suggestCount).toBe(1);
+
+    // **前の世帯の提案を残さない**（NFR-09）。開き直した先に出るのは取り直した提案である。
+    fireEvent.click(mealsTab());
+    expect(screen.queryByText(GINGER_PORK)).toBeNull();
+    expect(await screen.findByText(STIR_FRY)).not.toBeNull();
+  });
 });

@@ -48,7 +48,7 @@ const environmentHttpFetch: HttpFetch = (url, init) => fetch(url, init);
  * 献立を伴わない2つの結末（S-4 / S-7）。**値そのものを持たせる** — api 層が返す
  * `outcome` の綴りは contract の union が正であり、ここで別の名に写さない。
  */
-const MEALLESS_OUTCOMES: readonly string[] = ['insufficientStockItems', 'generationLimitReached'];
+const MEAL_LESS_OUTCOMES: readonly string[] = ['insufficientStockItems', 'generationLimitReached'];
 
 /**
  * 応答の本体のうち、この層が読むところだけ。
@@ -76,11 +76,11 @@ function isSuggested(
 }
 
 /** 献立を伴わない結末かどうか（S-4 / S-7）。 */
-function mealessOutcomeOf(body: unknown): SuggestMealsOutput | null {
+function mealLessOutcomeOf(body: unknown): SuggestMealsOutput | null {
   if (typeof body !== 'object' || body === null || !('outcome' in body)) return null;
 
   const { outcome } = body;
-  if (typeof outcome !== 'string' || !MEALLESS_OUTCOMES.includes(outcome)) return null;
+  if (typeof outcome !== 'string' || !MEAL_LESS_OUTCOMES.includes(outcome)) return null;
 
   return { outcome } as SuggestMealsOutput;
 }
@@ -132,7 +132,7 @@ export function suggestMeals(deps: SuggestionRequestsDeps): SuggestMeals {
         return { outcome: 'suggested', suggestion: body.suggestion };
       }
 
-      return mealessOutcomeOf(body) ?? FAILED;
+      return mealLessOutcomeOf(body) ?? FAILED;
     } catch {
       return FAILED;
     }

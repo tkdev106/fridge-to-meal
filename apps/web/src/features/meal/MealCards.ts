@@ -15,7 +15,13 @@
 import type { CoveredMealIngredientDto, SuggestionEntryOutput } from '@fridge-to-meal/contract';
 
 /**
- * カードの「使う:」に出す在庫1件（D-4）。
+ * カードの「使う:」に出す1件（D-4）。
+ *
+ * **畳んでいるのは在庫品（`StockItem`）ではなく、賄えると判定された材料（`MealIngredient`）で
+ * ある。** 用語表はこの2語を別物として分けており（C-5 — 材料は `StockItemId` を持たず、名称を
+ * 文字列として複製する）、名称が一致しただけの別物である。**それでも `StockItem` を名に採って
+ * いるのは `docs/screen-design.md` D-4 の「使う: …在庫を2〜3件」に寄せたため**であり、
+ * 利用者に見せているのは「この在庫を使う」という読みである。**型としては材料を持っている。**
  *
  * `expiringToday` は**基準日と同じ期限**であることだけを表す。**色だけに頼らない**ための
  * 手がかりであり（NFR-17）、印そのものの形と文言は `.tsx` が決める。
