@@ -25,6 +25,7 @@ import type { RegisterStockItemInput } from '@fridge-to-meal/contract';
 import { fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
 import { FixedStockItemRequests } from '../../support/server/FixedStockItemRequests.js';
 import type { FixedStockItemRequestsOptions } from '../../support/server/FixedStockItemRequests.js';
+import type { IngredientNamesState } from '../../../src/features/pantry/IngredientNameOptions.js';
 import { StockItemForm } from '../../../src/features/pantry/StockItemForm.js';
 import type {
   RegisterStockItem,
@@ -81,13 +82,23 @@ function pendingRegister(registrations: RegisterStockItemInput[]): {
   };
 }
 
-function renderForm(onRegister: RegisterStockItem) {
-  return render(<StockItemForm onRegister={onRegister} onClose={ignoreClose} />);
+function renderForm(
+  onRegister: RegisterStockItem,
+  ingredientNames: IngredientNamesState = { outcome: 'loading' },
+) {
+  return render(
+    <StockItemForm
+      onRegister={onRegister}
+      onClose={ignoreClose}
+      ingredientNames={ingredientNames}
+    />,
+  );
 }
 
 /**
- * 欄を役割と文書順で引く。3欄のうち `textbox` になるのは食材名と分量の2つで、期限は
- * `type="date"` なのでこの役割に入らない（先行 `PantryTab.test.tsx`）。
+ * 欄を役割と文書順で引く。3欄のうち `textbox` になるのは分量だけである — 食材名は補完の
+ * `list` を持つため役割が `combobox` になり（B-50c）、期限は `type="date"` なのでどちらの
+ * 役割にも入らない。
  *
  * **`instanceof HTMLInputElement` で絞らない** — 役割で引いている以上、入力の欄であることは
  * 問い合わせの側が保証している。**DOM の形を辿らない**（ADR-052 結果3。先行
@@ -100,12 +111,16 @@ function textboxAt(index: number): HTMLElement {
   return found;
 }
 
+/**
+ * 食材名の欄。**補完が付いた欄は `combobox` である**（B-50c）— `list` を持つ入力の役割は
+ * ARIA in HTML がそう定めており、**補完が0件の回も欄はこの役割のままである**（設計 規則4）。
+ */
 function ingredientNameField(): HTMLElement {
-  return textboxAt(0);
+  return screen.getByRole('combobox');
 }
 
 function amountField(): HTMLElement {
-  return textboxAt(1);
+  return textboxAt(0);
 }
 
 /**
@@ -482,5 +497,68 @@ describe('登録の画面 StockItemForm の3欄と案内', () => {
     await waitFor(() => {
       expect(requests.registeredInputs).toHaveLength(2);
     });
+  });
+});
+
+/**
+ * 補完に出ている名称を引く（B-50c 設計 5章）。**`<datalist>` の中身は画面に描かれないため、
+ * `hidden: true` で引く** — 役割（`option`）で引く点は他の観点と変わらず、DOM の形は辿らない。
+ */
+function completionOptions(): readonly string[] {
+  return screen
+    .queryAllByRole('option', { hidden: true })
+    .map((option) => option.getAttribute('value') ?? '');
+}
+
+describe('登録の画面 StockItemForm の食材名の補完', () => {
+  it('取れた名称が食材名の欄の補完に出る', () => {
+    // FR-02: その世帯の在庫品と献立の材料から集めた名称を補完に出す（ADR-063）。
+    renderForm(recordingRegister([], { outcome: 'registered' }), {
+      outcome: 'loaded',
+      ingredientNames: ['にんじん', '豚こま肉'],
+    });
+
+    expect(completionOptions()).toEqual(['にんじん', '豚こま肉']);
+  });
+
+  it('名称の並びを変えない', () => {
+    // 並び（コード単位の昇順）を決めるのはサーバである（ADR-063 決定4 / 設計 規則5）。
+    renderForm(recordingRegister([], { outcome: 'registered' }), {
+      outcome: 'loaded',
+      ingredientNames: ['豚こま肉', 'にんじん'],
+    });
+
+    expect(completionOptions()).toEqual(['豚こま肉', 'にんじん']);
+  });
+
+  it('名称が取れなかった回は補完が1つも出ない', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }), { outcome: 'failed' });
+
+    expect(completionOptions()).toEqual([]);
+  });
+
+  it('名称が取れなかった回も、打った名前をそのまま登録できる', () => {
+    // FR-03 / 設計 規則4: 補完は入力を助けるだけで、登録を止めない。
+    const registrations: RegisterStockItemInput[] = [];
+    renderForm(recordingRegister(registrations, { outcome: 'registered' }), { outcome: 'failed' });
+
+    fireEvent.change(ingredientNameField(), { target: { value: 'ゴーヤ' } });
+    fireEvent.click(saveAndStay());
+
+    expect(registrations).toEqual([{ name: 'ゴーヤ', amount: null, expiryDate: null }]);
+  });
+
+  it('補完に無い名前もそのまま登録できる', () => {
+    // FR-03: 補完から選ばずに打った名前も、絞り込まれず届く。
+    const registrations: RegisterStockItemInput[] = [];
+    renderForm(recordingRegister(registrations, { outcome: 'registered' }), {
+      outcome: 'loaded',
+      ingredientNames: ['にんじん'],
+    });
+
+    fireEvent.change(ingredientNameField(), { target: { value: 'ゴーヤ' } });
+    fireEvent.click(saveAndStay());
+
+    expect(registrations).toEqual([{ name: 'ゴーヤ', amount: null, expiryDate: null }]);
   });
 });

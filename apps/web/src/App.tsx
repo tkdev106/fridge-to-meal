@@ -17,6 +17,7 @@ import { HistoryTab } from './features/meal/HistoryTab.js';
 import type { MealsTabState } from './features/meal/MealsTab.js';
 import { MealsTab } from './features/meal/MealsTab.js';
 import { deleteFailureNoticeOf } from './features/pantry/DeleteFailureNotice.js';
+import type { IngredientNamesState } from './features/pantry/IngredientNameOptions.js';
 import type { PantryListState } from './features/pantry/PantryList.js';
 import { PantryTab } from './features/pantry/PantryTab.js';
 import { todayOf } from './features/pantry/RemainingDays.js';
@@ -27,6 +28,7 @@ import type {
   ListStockItems,
   RegisterStockItem,
 } from './server/StockItemRequests.js';
+import type { ListIngredientNames } from './server/IngredientNameRequests.js';
 import type { RequestNewMeals, ShowLatestSuggestion } from './server/SuggestionRequests.js';
 
 export type AppProps = {
@@ -49,6 +51,15 @@ export type AppProps = {
    */
   showLatestSuggestion: ShowLatestSuggestion;
   /**
+   * 補完の元になる食材名を取りに行く口（FR-02 / B-50c）。組み立てるのはやはり `main.tsx`
+   * だけである。
+   *
+   * **在庫の口と同じ構えで呼ぶ** — サインイン済みのときだけ取りに行き、**登録が通った回と
+   * 消えたと読めた回に取り直す**（名称の出所が在庫品の名称だからである。ADR-063 決定2）。
+   * 読み取りだけの `GET` なので、取り直しても費用も 1日10回の枠（NFR-C2）も使わない。
+   */
+  listIngredientNames: ListIngredientNames;
+  /**
    * 「新しい献立を求める」操作（B-49b / FR-36）。組み立てるのはやはり `main.tsx` だけである。
    *
    * 送信中フラグ・失敗フラグの state、結果の反映、在庫の登録・削除が通った回の取り直しは
@@ -63,6 +74,7 @@ export function App({
   registerStockItem,
   deleteStockItem,
   showLatestSuggestion,
+  listIngredientNames,
   requestNewMeals,
 }: AppProps) {
   // 購読を始めた時点の状態は subscribe が1度目に渡す（`Session.ts` 規則5）ので、
@@ -79,6 +91,12 @@ export function App({
 
   // 提案も取りに行くまでは「読み込み中」である（在庫と同じ構え。B-22 設計 7章）。
   const [suggestion, setSuggestion] = useState<MealsTabState>({ outcome: 'loading' });
+
+  // 食材名も取りに行くまでは「読み込み中」である。**0件を初期値にしない** — 補完が出ない
+  // ことは同じでも、取れていないのに「取れて0件」と名乗る状態を作らない。
+  const [ingredientNames, setIngredientNames] = useState<IngredientNamesState>({
+    outcome: 'loading',
+  });
 
   // 「新しい献立を求める」（B-49b / FR-36）を送っている間か（S-5）。
   const [requestingNewMeals, setRequestingNewMeals] = useState(false);
@@ -143,6 +161,45 @@ export function App({
     // `reloadCount` を依存に足す: 在庫の登録・削除が通った回に、保存済みの提案も取り直す
     // （B-49b 規則10）。在庫の一覧を取り直す効果と同じ回数を読んで揃える。
   }, [state, showLatestSuggestion, reloadCount]);
+
+  /**
+   * 補完の元になる食材名を取りに行く（FR-02 / B-50c 設計 規則6）。
+   *
+   * **在庫の一覧と同じ構えである** — サインイン済みのときだけ取りに行き、`reloadCount` が
+   * 増えた回（登録が通った回と、消えたと読めた回）に取り直す。登録が通れば名称の列も
+   * 変わっており、**「保存してもう1件」で打つ次の1件に効く。** 読み取りだけの `GET` なので、
+   * 取り直しても費用も 1日10回の枠（NFR-C2）も使わない。
+   *
+   * **取れなくても何も出さない**（設計 規則4 / FR-02 / FR-03）。補完が出ないだけで、登録は
+   * 止まらない — 断りの案内もここには無い。
+   *
+   * **効果が解除されたら結果を捨てる**（在庫と同じ。B-22 設計 規則10）。
+   */
+  useEffect(() => {
+    if (state !== 'signedIn') return;
+
+    let active = true;
+
+    void listIngredientNames().then((outcome) => {
+      if (active) setIngredientNames(outcome);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [state, listIngredientNames, reloadCount]);
+
+  /**
+   * **サインイン済みでなくなったら、食材名も初期に戻す**（B-50c 設計 規則7）。
+   *
+   * 戻さないと**前の世帯の食材名が補完に残る**（NFR-09）— 別の世帯で入り直したとき、
+   * 取り直しが届くまで前の世帯の名称が候補に出る。
+   */
+  useEffect(() => {
+    if (state === 'signedIn') return;
+
+    setIngredientNames({ outcome: 'loading' });
+  }, [state]);
 
   /**
    * **サインイン済みでなくなったら、献立タブの状態を初期に戻す**（B-49a）。
@@ -290,6 +347,7 @@ export function App({
               today={todayOf(new Date())}
               onDelete={deleteAndReload}
               onRegister={registerAndReload}
+              ingredientNames={ingredientNames}
             />
             <SignOutButton onSignOut={() => session.signOut()} />
           </>

@@ -33,6 +33,8 @@ import { FixedStockItemRequests } from './support/server/FixedStockItemRequests.
 import type { FixedStockItemRequestsOptions } from './support/server/FixedStockItemRequests.js';
 import { FixedSuggestionRequests } from './support/server/FixedSuggestionRequests.js';
 import type { FixedSuggestionRequestsOptions } from './support/server/FixedSuggestionRequests.js';
+import { FixedIngredientNameRequests } from './support/server/FixedIngredientNameRequests.js';
+import type { FixedIngredientNameRequestsOptions } from './support/server/FixedIngredientNameRequests.js';
 import { App } from '../src/App.js';
 import type { SessionState } from '../src/session/Session.js';
 import type { StockItemsOutcome } from '../src/server/StockItemRequests.js';
@@ -62,6 +64,7 @@ function renderApp(
   sessionOptions: FixedSessionOptions = {},
   requestOptions: FixedStockItemRequestsOptions = {},
   suggestionOptions: FixedSuggestionRequestsOptions = {},
+  ingredientNameOptions: FixedIngredientNameRequestsOptions = {},
 ) {
   const session = new FixedSession(sessionOptions);
   const requests = new FixedStockItemRequests(requestOptions);
@@ -72,6 +75,13 @@ function renderApp(
     ...suggestionOptions,
   });
 
+  // **既定は「取れなかった」を配る**（B-50c 設計 規則4）。門はサインイン済みになると必ず
+  // 取りに行くので、補完が本題でない観点でも台本が1つ要る。**取れなくても登録は止まらない。**
+  const ingredientNames = new FixedIngredientNameRequests({
+    list: [{ outcome: 'failed' }],
+    ...ingredientNameOptions,
+  });
+
   render(
     <App
       session={session}
@@ -80,10 +90,11 @@ function renderApp(
       deleteStockItem={requests.deleteStockItem}
       showLatestSuggestion={suggestions.showLatestSuggestion}
       requestNewMeals={suggestions.requestNewMeals}
+      listIngredientNames={ingredientNames.listIngredientNames}
     />,
   );
 
-  return { session, requests, suggestions };
+  return { session, requests, suggestions, ingredientNames };
 }
 
 /**
@@ -172,12 +183,12 @@ function saveAndCloseOperation(): HTMLElement {
   return operationAt(2, REGISTER_OPERATION_COUNT);
 }
 
-/** 食材名の欄。登録の画面の `textbox` の先頭である（期限は `type="date"` で入らない）。 */
+/**
+ * 食材名の欄。**補完の `list` を持つため役割は `combobox` である**（B-50c）— 補完が0件の
+ * 回も欄はこの役割のままである。
+ */
 function ingredientNameField(): HTMLElement {
-  const [field] = textboxes();
-  if (field === undefined) throw new Error('食材名の欄が無い');
-
-  return field;
+  return screen.getByRole('combobox');
 }
 
 /** 一覧の1行。**削除はスワイプで届く**（FR-06 / B-23）ので、行そのものを引く。 */
@@ -551,6 +562,69 @@ describe('門 App が保存済みの提案を取りに行く条件', () => {
     emit(session, 'signedOut');
 
     expect(screen.queryByText(GINGER_PORK)).toBeNull();
+  });
+});
+
+/**
+ * 門が食材名を取りに行く条件（B-50c 設計 規則6・7）。
+ *
+ * **補完に何が出るかは `StockItemForm.test.tsx` の持ち分**であり、ここで二重に書かない。
+ * 門の判断は「いつ取りに行くか」の1つだけである。
+ */
+describe('門 App が食材名を取りに行く条件', () => {
+  const loadedNames = { outcome: 'loaded', ingredientNames: ['にんじん'] } as const;
+
+  it('サインインしていない間は、食材名を取りに行かない', () => {
+    // 叩いても 401 が返るだけである（先行 `listStockItems` 規則7 / 設計 規則6）。
+    const { ingredientNames } = renderApp(
+      { initialState: 'signedOut' },
+      {},
+      {},
+      {
+        list: [loadedNames],
+      },
+    );
+
+    expect(ingredientNames.listCount).toBe(0);
+  });
+
+  it('食材名が取れなくても、在庫の一覧は出る', async () => {
+    // FR-02 / FR-03 / 設計 規則4: 補完が取れないことは登録にも一覧にも及ばない。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {
+        list: [{ outcome: 'failed' }],
+      },
+    );
+
+    openPantry();
+
+    expect(await screen.findByText(carrot.name)).not.toBeNull();
+  });
+
+  it('登録が通ると、食材名も取り直す', async () => {
+    // 設計 規則6: 名称の出所は在庫品の名称である（ADR-063 決定2）ので、登録が通れば
+    // 列も変わっている。**「保存してもう1件」で打つ次の1件に効く。**
+    const { ingredientNames } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)], register: [{ outcome: 'registered' }] },
+      {},
+      { list: [loadedNames] },
+    );
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    const before = ingredientNames.listCount;
+
+    fireEvent.click(openRegisterOperation());
+    fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
+    fireEvent.click(saveAndCloseOperation());
+
+    await waitFor(() => {
+      expect(ingredientNames.listCount).toBe(before + 1);
+    });
   });
 });
 
