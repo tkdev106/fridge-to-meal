@@ -3,8 +3,9 @@ import { DEFAULT_TAB, TAB_ORDER } from '../../src/navigation/Tabs.js';
 
 describe('下タブ Tabs', () => {
   it('起動して最初に開くのは在庫タブである', () => {
-    // 要件 第7章: ホームは「在庫一覧」。**献立を既定にしない** —
-    // `docs/screen-design.md` 論点1 は `判断待ち` のまま（B-38 設計 6章 規則1）。
+    // **決定は「献立」である**（ADR-064 / 要件 第7章 / `docs/screen-design.md` 2.2）。
+    // **この行が在庫を押さえているのは、反映を B-49 と同じ周に置いたためである** — 既定タブだけを
+    // 先に反転させると仮置きの段落が起動画面になる（ADR-064 結果3）。**B-49 が献立に書き換える。**
     expect(DEFAULT_TAB).toBe('pantry');
   });
 
