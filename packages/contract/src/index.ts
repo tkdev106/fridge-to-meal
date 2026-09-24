@@ -21,6 +21,7 @@ export type {
   MealCoverageDto,
   MealIngredientDto,
   MealIngredientKind,
+  ShowLatestSuggestionOutput,
   SuggestionEntryOrigin,
   SuggestionEntryOutput,
   SuggestionOutput,
