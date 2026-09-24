@@ -9,6 +9,7 @@
  * 無く（要件 11章 論点4）、運ぶのは在庫品の名称と主材料の名称をまたいで集めた**名称の列**だけ
  * である（ADR-063）。
  */
+import type { ListIngredientNamesOutput } from '@fridge-to-meal/contract';
 import type { HttpFetch } from './HttpFetch.js';
 
 /**
@@ -46,10 +47,13 @@ const environmentHttpFetch: HttpFetch = (url, init) => fetch(url, init);
 /**
  * 応答の本体のうち、この層が読む1項目だけ（先行 `isListed`）。
  *
+ * **形は contract の `ListIngredientNamesOutput` をそのまま名乗る**（`server/README.md`）—
+ * web が第2の DTO を持つと、サーバが項目を改名した日に web 側だけ型が通る。
+ *
  * **要素の中身は検めない** — 相手は自分のサーバであり、contract の型で返す側が正である。
  * **`ingredientNames` が無い本体を0件に倒さない** — 名称があるのに無いように見せることになる。
  */
-function isListed(body: unknown): body is { readonly ingredientNames: readonly string[] } {
+function isListed(body: unknown): body is ListIngredientNamesOutput {
   return (
     typeof body === 'object' &&
     body !== null &&
