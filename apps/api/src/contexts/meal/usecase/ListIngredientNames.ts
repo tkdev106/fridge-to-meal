@@ -1,12 +1,7 @@
+import type { ListIngredientNamesOutput } from '@fridge-to-meal/contract';
 import type { HouseholdId } from '../../../shared/domain/HouseholdId.js';
 import type { ListStockItems } from '../../pantry/usecase/ListStockItems.js';
 import type { MealRepository } from '../domain/repository/MealRepository.js';
-
-/**
- * 食材名の列。補完（FR-02）の元になる。**型を `packages/contract` へ移すのは経路を置く周
- * （B-50b）である** — この周ではまだ外へ出ない。
- */
-export type ListIngredientNamesOutput = { readonly ingredientNames: readonly string[] };
 
 /**
  * その世帯の在庫品の名称と、保存済みの献立の主材料の名称を、重複なく決まった順に集める
@@ -18,6 +13,9 @@ export type ListIngredientNamesOutput = { readonly ingredientNames: readonly str
  *
  * **消した在庫品の名称は、献立の材料に残っていない限り出ない**（ADR-063 決定2）。在庫品は
  * 物理削除されるためであり、入力の履歴を持つのは別の行（B-50d）である。
+ *
+ * 出力の型は `packages/contract` が持つ（B-50b 設計書4章 / ADR-003）。**ここから再 export
+ * しない** — 経路も web も contract を直に見る（先行 `ListStockItems`）。
  */
 export type ListIngredientNames = (householdId: HouseholdId) => Promise<ListIngredientNamesOutput>;
 

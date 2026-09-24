@@ -225,6 +225,10 @@ function toUpdateStockItemInput(
  *
  * **区切りは最初の1空白**とし、残りは値の一部として渡す（規則4b）。連続する空白を
  * 区切りと読むと api が正規化を1つ持つことになり、正規化は腐敗防止層の仕事である（規則4）。
+ *
+ * **同じ規則の写しが献立の側にある**（`meal/api/AccessToken.ts`。B-50b 設計書4章）。
+ * コンテキストをまたぐ api どうしの import は依存ルールが禁じるため1本にまとめられない —
+ * 規則を動かすときは両方を変える。
  */
 function extractAccessToken(authorizationHeader: string | undefined): string {
   if (authorizationHeader === undefined) return '';

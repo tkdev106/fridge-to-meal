@@ -6,6 +6,7 @@
 import type { ErrorResponseDto, SuggestMealsOutput } from '@fridge-to-meal/contract';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
+import { extractAccessToken } from './AccessToken.js';
 import { statusOfThrown } from './RuleViolationStatus.js';
 import type { SuggestMeals, SuggestNewMeals } from '../usecase/SuggestMeals.js';
 import type { ShowLatestSuggestion } from '../usecase/ShowLatestSuggestion.js';
@@ -105,27 +106,4 @@ function reject(c: Context, thrown: unknown) {
   if (mappedError !== null) return c.json(mappedError.body, mappedError.status);
 
   return c.json({ rule: 'unexpected' } satisfies ErrorResponseDto, 500);
-}
-
-/**
- * `Authorization: Bearer <token>` からアクセストークンを取り出す（規則10 / NFR-09）。
- *
- * **`pantry/api/StockItemRoutes.ts` の写しである**（設計書10章）。api 層どうしのコンテキストを
- * またぐ import は依存ルールが禁じる。片方だけ規則を動かすと経路ごとに扱いが食い違うので、
- * 変えるときは両方を変える。
- *
- * ヘッダが無い / 方式が `Bearer` でない / 値が空のとき、**api は独自に断らず空文字を渡す** —
- * 「提示されていない」の判定は `IdentifyHousehold` の1か所に残す。方式名の照合は大小を区別しない。
- * **区切りは最初の1空白**とし、残りは値の一部として渡す — 正規化は腐敗防止層の仕事である。
- */
-function extractAccessToken(authorizationHeader: string | undefined): string {
-  if (authorizationHeader === undefined) return '';
-
-  const separatorIndex = authorizationHeader.indexOf(' ');
-  if (separatorIndex < 0) return '';
-
-  const scheme = authorizationHeader.slice(0, separatorIndex);
-  if (scheme.toLowerCase() !== 'bearer') return '';
-
-  return authorizationHeader.slice(separatorIndex + 1);
 }
