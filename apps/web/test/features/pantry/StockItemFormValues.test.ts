@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { RegisterStockItemInput } from '@fridge-to-meal/contract';
-import type { StockItemFormValues } from '../../../src/features/pantry/StockItemFormValues.js';
+import type { RegisterStockItemInput, StockItemDto } from '@fridge-to-meal/contract';
+import type {
+  StockItemEditValues,
+  StockItemFormValues,
+} from '../../../src/features/pantry/StockItemFormValues.js';
 import {
   EMPTY_STOCK_ITEM_FORM,
   registerStockItemInputOf,
+  stockItemEditValuesOf,
+  updateStockItemInputOf,
 } from '../../../src/features/pantry/StockItemFormValues.js';
 
 /**
@@ -124,5 +129,117 @@ describe('空のフォーム EMPTY_STOCK_ITEM_FORM', () => {
   it('開いた直後のフォームからは登録の入力を作らない', () => {
     // B-12 設計 規則2・6: 開いた直後に保存できる状態にしない。
     expect(registerStockItemInputOf(EMPTY_STOCK_ITEM_FORM)).toBe(null);
+  });
+});
+
+// ---- 編集（B-55）----
+
+/**
+ * 編集する在庫品の標本。本題でない欄（識別子・名称・食材の指定）を隠す
+ * （`docs/testing.md` 6章）— **編集できるのは分量と期限だけである**（B-55 規則1）。
+ */
+function stockItemOf(props: Partial<StockItemDto> = {}): StockItemDto {
+  return {
+    id: 'stock-item-carrot',
+    name: 'にんじん',
+    ingredientId: 'ingredient-carrot',
+    amount: '2本',
+    expiryDate: '2026-09-21',
+    ...props,
+  };
+}
+
+/** 編集の欄の標本。本題だけが引数に現れる形にする。 */
+function editValuesOf(props: Partial<StockItemEditValues> = {}): StockItemEditValues {
+  return { amount: '3本', expiryDate: '2026-10-01', ...props };
+}
+
+describe('編集の欄の値 stockItemEditValuesOf', () => {
+  it('在庫品の分量と期限をそのまま欄の値にし食材名を欄に持たない', () => {
+    // FR-05 / B-55 規則1・2: 名称は出すが変えられないため欄に持たない。**厳密に比べる** —
+    // 名称の欄が混ざれば落ちる。
+    expect(stockItemEditValuesOf(stockItemOf())).toStrictEqual({
+      amount: '2本',
+      expiryDate: '2026-09-21',
+    });
+  });
+
+  it('分量が未設定の在庫品なら分量の欄を空文字にする', () => {
+    // B-55 規則2 / NFR-15: `null` は空文字に倒す（欄に `null` を描かせない）。
+    expect(stockItemEditValuesOf(stockItemOf({ amount: null })).amount).toBe('');
+  });
+
+  it('期限が未設定の在庫品なら期限の欄を空文字にする', () => {
+    // B-55 規則2 / NFR-15: 期限も同じに倒す。
+    expect(stockItemEditValuesOf(stockItemOf({ expiryDate: null })).expiryDate).toBe('');
+  });
+
+  it('在庫品の分量の前後の空白を落とさずそのまま欄に置く', () => {
+    // B-55 規則4 / 先行 `StockItemFormValues.ts` 規則4: 正規化はサーバの1か所に残す。
+    expect(stockItemEditValuesOf(stockItemOf({ amount: ' 2本 ' })).amount).toBe(' 2本 ');
+  });
+});
+
+describe('更新の入力 updateStockItemInputOf', () => {
+  it('2欄に値があるときその値をそのまま持つ更新の入力を返し食材名を送らない', () => {
+    // FR-05 / B-55 規則1: `UpdateStockItemInput` に名称は無い。**厳密に比べる** —
+    // 名称が混ざれば落ちる。
+    expect(updateStockItemInputOf(editValuesOf())).toStrictEqual({
+      amount: '3本',
+      expiryDate: '2026-10-01',
+    });
+  });
+
+  it('分量が空欄なら分量を消す更新の入力を返す', () => {
+    // FR-13 / B-55 規則3: 空欄は「消す」を表し `null` を送る。**キーを省略しない** —
+    // `UpdateStockItemInput` は常に置き換えとして扱う。
+    expect(updateStockItemInputOf(editValuesOf({ amount: '' }))).toStrictEqual({
+      amount: null,
+      expiryDate: '2026-10-01',
+    });
+  });
+
+  it('期限が空欄なら期限を消す更新の入力を返す', () => {
+    // FR-13 / B-55 規則3: 期限も同じに倒し、キーを省略しない。
+    expect(updateStockItemInputOf(editValuesOf({ expiryDate: '' }))).toStrictEqual({
+      amount: '3本',
+      expiryDate: null,
+    });
+  });
+
+  it('2欄とも空欄でも更新の入力を作る', () => {
+    // FR-13 / B-55 規則3・6: 「どちらも消す」は正しい編集である。登録（食材名が空なら
+    // `null` を返す）と違い、**作れない入力が無い。**
+    expect(updateStockItemInputOf({ amount: '', expiryDate: '' })).toStrictEqual({
+      amount: null,
+      expiryDate: null,
+    });
+  });
+
+  it('欄の値が在庫品の今の値と同じでも更新の入力を作る', () => {
+    // B-55 規則6: **差分を見て止めない** — 判断を2か所に増やさない。
+    expect(updateStockItemInputOf(stockItemEditValuesOf(stockItemOf()))).toStrictEqual({
+      amount: '2本',
+      expiryDate: '2026-09-21',
+    });
+  });
+
+  it('分量が空白だけならその空白をそのまま更新の入力に置く', () => {
+    // B-55 規則3・4: 空にするのは空文字だけで、空白は落とさない。
+    expect(updateStockItemInputOf(editValuesOf({ amount: ' ' })).amount).toBe(' ');
+  });
+
+  it('書式が YYYY-MM-DD でない期限もそのまま更新の入力に置く', () => {
+    // B-55 規則4 / 7章: 書式は画面で確かめず、サーバが `expiryDate.format` で断る。
+    expect(updateStockItemInputOf(editValuesOf({ expiryDate: '2026/10/01' })).expiryDate).toBe(
+      '2026/10/01',
+    );
+  });
+
+  it('暦に無い日付の期限もそのまま更新の入力に置く', () => {
+    // B-55 規則4 / 7章: 実在はサーバが `expiryDate.notACalendarDate` で断る。
+    expect(updateStockItemInputOf(editValuesOf({ expiryDate: '2026-02-30' })).expiryDate).toBe(
+      '2026-02-30',
+    );
   });
 });

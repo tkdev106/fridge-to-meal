@@ -8,7 +8,11 @@
  * 2か所が別々にずれていく。
  */
 
-import type { RegisterStockItemInput } from '@fridge-to-meal/contract';
+import type {
+  RegisterStockItemInput,
+  StockItemDto,
+  UpdateStockItemInput,
+} from '@fridge-to-meal/contract';
 
 /** 登録の画面が持つ3欄の値。世帯は持たない（C-9）。 */
 export type StockItemFormValues = {
@@ -52,4 +56,19 @@ export function registerStockItemInputOf(
     amount: toNullWhenEmpty(values.amount),
     expiryDate: toNullWhenEmpty(values.expiryDate),
   };
+}
+
+/** 編集の画面が持つ2欄の値（B-55 設計 5章 / 規則1）。名称は編集できないので持たない。 */
+export type StockItemEditValues = { readonly amount: string; readonly expiryDate: string };
+
+/** 開いた直後の欄の値（B-55 規則2）。 */
+export function stockItemEditValuesOf(stockItem: StockItemDto): StockItemEditValues {
+  void stockItem;
+  throw new Error('未実装');
+}
+
+/** 更新の入力を作る（B-55 規則3・6）。 */
+export function updateStockItemInputOf(values: StockItemEditValues): UpdateStockItemInput {
+  void values;
+  throw new Error('未実装');
 }

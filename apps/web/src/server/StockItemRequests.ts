@@ -10,6 +10,7 @@ import type {
   ErrorResponseDto,
   RegisterStockItemInput,
   StockItemDto,
+  UpdateStockItemInput,
 } from '@fridge-to-meal/contract';
 import type { HttpFetch } from './HttpFetch.js';
 
@@ -293,4 +294,22 @@ export function deleteStockItem(deps: StockItemRequestsDeps): DeleteStockItem {
       return FAILED;
     }
   };
+}
+
+/** 更新の結末（FR-05 / B-55 設計 5章）。 */
+export type UpdateStockItemOutcome =
+  | { readonly outcome: 'updated' }
+  | { readonly outcome: 'rejected'; readonly rule: string }
+  | { readonly outcome: 'failed' };
+
+/** 画面が受け取る口（B-55 設計 5章）。 */
+export type UpdateStockItem = (
+  id: string,
+  input: UpdateStockItemInput,
+) => Promise<UpdateStockItemOutcome>;
+
+/** 在庫品1件を更新しに行く口を組む（FR-05 / B-55）。 */
+export function updateStockItem(deps: StockItemRequestsDeps): UpdateStockItem {
+  void deps;
+  throw new Error('未実装');
 }

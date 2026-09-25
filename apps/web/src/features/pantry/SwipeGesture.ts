@@ -40,3 +40,10 @@ export function isDeleteSwipe(start: SwipePoint, end: SwipePoint): boolean {
 
   return horizontal > vertical;
 }
+
+/** 行のタップとして読むか（B-55 規則15）。 */
+export function isTap(start: SwipePoint, end: SwipePoint): boolean {
+  void start;
+  void end;
+  throw new Error('未実装');
+}
