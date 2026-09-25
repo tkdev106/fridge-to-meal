@@ -7,6 +7,8 @@ import { SessionImpl } from './session/SessionImpl.js';
 import { apiBaseUrlOf } from './server/ApiBaseUrl.js';
 import type { StockItemRequestsDeps } from './server/StockItemRequests.js';
 import { deleteStockItem, listStockItems, registerStockItem } from './server/StockItemRequests.js';
+import { listIngredientNames } from './server/IngredientNameRequests.js';
+import { requestNewMeals, showLatestSuggestion } from './server/SuggestionRequests.js';
 
 // 継ぎ目の実装を `new` するのはここだけ（`SessionImpl.ts` 規則2 / B-35 設計 6章 規則3）。
 // 設定が欠けていれば `sessionConfigOf` の `Error` を**包まずそのまま外へ**出す（規則12 / ADR-045）
@@ -31,6 +33,17 @@ const requestStockItems = listStockItems(stockItemRequests);
 const sendStockItem = registerStockItem(stockItemRequests);
 const requestStockItemDeletion = deleteStockItem(stockItemRequests);
 
+// 提案の口も**同じ基点・同じトークンの組**で作る（B-49a）。別々に組むと、片方だけ別の基点を
+// 見ている状態を作れてしまう（B-24 と同じ理由）。`SuggestionRequestsDeps` は
+// `StockItemRequestsDeps` と同じ3項目なので、そのまま渡せる。
+const requestLatestSuggestion = showLatestSuggestion(stockItemRequests);
+// 「新しい献立を求める」操作（B-49b）も同じ基点・同じトークンの組で作る。
+const requestNewMealsFn = requestNewMeals(stockItemRequests);
+
+// 食材名の口も**同じ基点・同じトークンの組**で作る（B-50c）。`IngredientNameRequestsDeps` も
+// 同じ3項目なので、そのまま渡せる。
+const requestIngredientNames = listIngredientNames(stockItemRequests);
+
 const container = document.getElementById('root');
 if (!container) throw new Error('#root が見つからない');
 
@@ -41,6 +54,9 @@ createRoot(container).render(
       listStockItems={requestStockItems}
       registerStockItem={sendStockItem}
       deleteStockItem={requestStockItemDeletion}
+      showLatestSuggestion={requestLatestSuggestion}
+      requestNewMeals={requestNewMealsFn}
+      listIngredientNames={requestIngredientNames}
     />
   </StrictMode>,
 );

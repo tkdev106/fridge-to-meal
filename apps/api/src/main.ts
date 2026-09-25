@@ -3,8 +3,8 @@
 // **実装クラスを new してよいのはこのファイルだけである**（ADR-002 / CLAUDE.md）。
 // ここでリポジトリとポートの実装を組み立て、ユースケースに注入し、api 層に渡す。
 //
-// 結線するのは在庫（pantry）の4経路と献立（meal）の提案の2経路、その前に立つ世帯の認証
-// （identity）である。コンテキストをまたいで全層を import してよいのは、依存表の `main.ts` の
+// 結線するのは在庫（pantry）の4経路と献立（meal）の提案の3経路・食材名の1経路・調理記録の1経路、その前に立つ
+// 世帯の認証（identity）である。コンテキストをまたいで全層を import してよいのは、依存表の `main.ts` の
 // 行だけ（CLAUDE.md「依存は外から内へ」）。
 
 import { drizzle } from 'drizzle-orm/postgres-js';
@@ -18,6 +18,10 @@ import type {
 } from './contexts/identity/infrastructure/HouseholdAuthenticatorImpl.js';
 import { HouseholdAuthenticatorImpl } from './contexts/identity/infrastructure/HouseholdAuthenticatorImpl.js';
 import { identifyHousehold } from './contexts/identity/usecase/IdentifyHousehold.js';
+import type { CookingRecordRoutesDeps } from './contexts/meal/api/CookingRecordRoutes.js';
+import { createCookingRecordRoutes } from './contexts/meal/api/CookingRecordRoutes.js';
+import type { IngredientNameRoutesDeps } from './contexts/meal/api/IngredientNameRoutes.js';
+import { createIngredientNameRoutes } from './contexts/meal/api/IngredientNameRoutes.js';
 import type { SuggestionRoutesDeps } from './contexts/meal/api/SuggestionRoutes.js';
 import { createSuggestionRoutes } from './contexts/meal/api/SuggestionRoutes.js';
 import type { MealIdGenerator } from './contexts/meal/domain/port/MealIdGenerator.js';
@@ -27,7 +31,10 @@ import { suggestionIdOf } from './contexts/meal/domain/value/SuggestionId.js';
 import { MealRepositoryImpl } from './contexts/meal/infrastructure/MealRepositoryImpl.js';
 import { PlaceholderMealGenerator } from './contexts/meal/infrastructure/PlaceholderMealGenerator.js';
 import { SuggestionRepositoryImpl } from './contexts/meal/infrastructure/SuggestionRepositoryImpl.js';
+import { addCookingRecord } from './contexts/meal/usecase/AddCookingRecord.js';
 import { suggestMeals, suggestNewMeals } from './contexts/meal/usecase/SuggestMeals.js';
+import { showLatestSuggestion } from './contexts/meal/usecase/ShowLatestSuggestion.js';
+import { listIngredientNames } from './contexts/meal/usecase/ListIngredientNames.js';
 import { createStockItemRoutes } from './contexts/pantry/api/StockItemRoutes.js';
 import type { StockItemIdGenerator } from './contexts/pantry/domain/port/StockItemIdGenerator.js';
 import { stockItemIdOf } from './contexts/pantry/domain/value/StockItemId.js';
@@ -79,7 +86,10 @@ export function accessTokenVerificationOf(supabaseUrl: string): AccessTokenVerif
 }
 
 /** api 層が受け取る形そのもの。ユースケースから導出し、ここで型を新設しない（ADR-032 決定1 と同じ手）。 */
-export type AppDependencies = Parameters<typeof createStockItemRoutes>[0] & SuggestionRoutesDeps;
+export type AppDependencies = Parameters<typeof createStockItemRoutes>[0] &
+  SuggestionRoutesDeps &
+  IngredientNameRoutesDeps &
+  CookingRecordRoutesDeps;
 
 /** 差し替えられる出口。既定は実行環境の `fetch`。テストは `FixedFetchJwks` を渡す。 */
 export type CompositionPorts = { readonly fetchJwks?: FetchJwks };
@@ -191,6 +201,33 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
     ),
     suggestMeals: transactionPerRequest(env, (tx) => suggestMeals(mealSuggestionDepsOf(tx))),
     suggestNewMeals: transactionPerRequest(env, (tx) => suggestNewMeals(mealSuggestionDepsOf(tx))),
+    // 読み取り専用の口も同じ1要求1トランザクションで包む（B-58 / ADR-029 決定3(a)）。
+    // **生成器も採番も渡さない** — 生成も保存もしないので、渡すと「呼ばない」が型から読めなくなる。
+    showLatestSuggestion: transactionPerRequest(env, (tx) =>
+      showLatestSuggestion({
+        listStockItems: listStockItems({ stockItemRepository: new StockItemRepositoryImpl(tx) }),
+        mealRepository: new MealRepositoryImpl(tx),
+        suggestionRepository: new SuggestionRepositoryImpl(tx),
+      }),
+    ),
+    // 食材名の口も同じ1要求1トランザクションで包む（B-50b 10章 / ADR-029 決定3(a)）。
+    // **`mealSuggestionDepsOf` を使い回さない** — 提案のリポジトリも生成器も採番も要らず、
+    // 渡すと「生成も保存もしない」が型から読めなくなるうえ、この経路が提案の都合に縛られる。
+    // `listStockItems` は**同じ `tx` の素のもの**を渡す（包み済みを渡すと1要求に2本目の
+    // 接続とトランザクションが開き、在庫と献立を別の時点で読むことになる）。
+    listIngredientNames: transactionPerRequest(env, (tx) =>
+      listIngredientNames({
+        listStockItems: listStockItems({ stockItemRepository: new StockItemRepositoryImpl(tx) }),
+        mealRepository: new MealRepositoryImpl(tx),
+      }),
+    ),
+    // 調理記録の口も同じ1要求1トランザクションで包む（B-51 規則12 / ADR-029 決定3(a)）。
+    // **`mealSuggestionDepsOf` を使い回さない** — 生成器も採番も提案のリポジトリも要らず、
+    // 渡すと「生成も保存もしない／提案に触らない」が型から読めなくなる。
+    // **在庫の口を1つも渡さない** — 記録しても在庫は減らさない（C-8）。
+    addCookingRecord: transactionPerRequest(env, (tx) =>
+      addCookingRecord({ mealRepository: new MealRepositoryImpl(tx) }),
+    ),
     now,
   };
 }
@@ -225,11 +262,13 @@ const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'DELETE'];
 const ALLOWED_HEADERS = ['Authorization', 'Content-Type'];
 
 /**
- * `/health` と在庫の4経路、提案の2経路を1つの Hono にする。`new` するのは Hono だけ（B-09 設計書 規則1・2）。
+ * `/health` と在庫の4経路、提案の3経路、食材名の1経路、調理記録の1経路を1つの Hono にする。`new` するのは Hono だけ（B-09 設計書 規則1・2）。
  *
  * 在庫の経路は**接頭辞なし**で根にマウントする（`POST /stock-items` 等。FR-01 / FR-04 /
  * FR-05 / FR-06 / ADR-003）。提案の経路も同じく根に置く（`POST /suggestions` と
- * `POST /suggestions/new-meals`。ADR-062 決定1 / B-48c）。**接頭辞は増やさない**（B-22 設計書 規則15）— この Worker の origin は
+ * `POST /suggestions/new-meals`。ADR-062 決定1 / B-48c）。食材名の1経路も同じく根に置く
+ * （`GET /ingredient-names`。FR-02 / ADR-048 決定4 / B-50b）。調理記録の1経路も同じである
+ * （`POST /meals/:id/cooking-records`。FR-22 / FR-31 / B-51）。**接頭辞は増やさない**（B-22 設計書 規則15）— この Worker の origin は
  * 在庫と献立の API と `/health` しか出さないので、`/api` で切り分ける相手が居ない。接頭辞が効くのは
  * web と api が1つのドメインを分け合うときで、**その配信先はまだ決まっていない。**
  *
@@ -258,6 +297,8 @@ export function createApp(deps: AppDependencies): Hono {
 
   app.route('/', createStockItemRoutes(deps));
   app.route('/', createSuggestionRoutes(deps));
+  app.route('/', createIngredientNameRoutes(deps));
+  app.route('/', createCookingRecordRoutes(deps));
 
   return app;
 }

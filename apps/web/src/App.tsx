@@ -1,9 +1,8 @@
 /**
  * 画面の骨組み。構造は `docs/screen-design.md` に定めてある。
  * 下タブ3つ（献立 / 在庫 / 履歴）の器は `navigation/TabbedScreen.tsx` にあり、門は
- * **3つの中身を組み立てて渡すだけ**である（B-38 設計 10章）。**起動時に開くのは献立タブと
- * 決まった**（2026-09-24 にユーザーが決定。ADR-064 / 要件 第7章 / 同書 2.2）。**反映は B-49 が持つ** —
- * それまで `DEFAULT_TAB` は在庫のままである（ADR-064 結果3）。
+ * **3つの中身を組み立てて渡すだけ**である（B-38 設計 10章）。**起動時に開くのは献立タブである**
+ * （2026-09-24 にユーザーが決定。ADR-064 / 要件 第7章 / 同書 2.2。反映は B-49a）。
  *
  * **文言と配色は決まっていない**（同書 冒頭）。ここに書く日本語も仮である。
  *
@@ -15,11 +14,15 @@ import { useEffect, useState } from 'react';
 import { SignInForm } from './features/identity/SignInForm.js';
 import { SignOutButton } from './features/identity/SignOutButton.js';
 import { HistoryTab } from './features/meal/HistoryTab.js';
+import type { MealsTabState } from './features/meal/MealsTab.js';
 import { MealsTab } from './features/meal/MealsTab.js';
 import { deleteFailureNoticeOf } from './features/pantry/DeleteFailureNotice.js';
+import type { IngredientNamesState } from './features/pantry/IngredientNameOptions.js';
 import type { PantryListState } from './features/pantry/PantryList.js';
 import { PantryTab } from './features/pantry/PantryTab.js';
 import { todayOf } from './features/pantry/RemainingDays.js';
+import type { TabId } from './navigation/Tabs.js';
+import { DEFAULT_TAB } from './navigation/Tabs.js';
 import { TabbedScreen } from './navigation/TabbedScreen.js';
 import type { Session, SessionState } from './session/Session.js';
 import type {
@@ -27,6 +30,8 @@ import type {
   ListStockItems,
   RegisterStockItem,
 } from './server/StockItemRequests.js';
+import type { ListIngredientNames } from './server/IngredientNameRequests.js';
+import type { RequestNewMeals, ShowLatestSuggestion } from './server/SuggestionRequests.js';
 
 export type AppProps = {
   /** セッションの継ぎ目。画面はこの型だけを見る（ADR-046 決定3）。 */
@@ -40,9 +45,40 @@ export type AppProps = {
   registerStockItem: RegisterStockItem;
   /** 在庫を削除しに行く口（B-23）。同じく組み立てるのは `main.tsx` だけである。 */
   deleteStockItem: DeleteStockItem;
+  /**
+   * 保存済みの提案を取りに行く口（B-49a / B-58）。組み立てるのはやはり `main.tsx` だけである。
+   *
+   * **在庫の口と同じく、門はサインイン済みになったら1度だけ呼ぶ。** この経路は生成を
+   * 呼ばないので（ADR-065 決定1）、開かれるまで待つ理由が無い。
+   */
+  showLatestSuggestion: ShowLatestSuggestion;
+  /**
+   * 補完の元になる食材名を取りに行く口（FR-02 / B-50c）。組み立てるのはやはり `main.tsx`
+   * だけである。
+   *
+   * **在庫の口と同じ構えで呼ぶ** — サインイン済みのときだけ取りに行き、**登録が通った回と
+   * 消えたと読めた回に取り直す**（名称の出所が在庫品の名称だからである。ADR-063 決定2）。
+   * 読み取りだけの `GET` なので、取り直しても費用も 1日10回の枠（NFR-C2）も使わない。
+   */
+  listIngredientNames: ListIngredientNames;
+  /**
+   * 「新しい献立を求める」操作（B-49b / FR-36）。組み立てるのはやはり `main.tsx` だけである。
+   *
+   * 送信中フラグ・失敗フラグの state、結果の反映、在庫の登録・削除が通った回の取り直しは
+   * 下の `handleRequestNewMeals` と `showLatestSuggestion` の効果が持つ。
+   */
+  requestNewMeals: RequestNewMeals;
 };
 
-export function App({ session, listStockItems, registerStockItem, deleteStockItem }: AppProps) {
+export function App({
+  session,
+  listStockItems,
+  registerStockItem,
+  deleteStockItem,
+  showLatestSuggestion,
+  listIngredientNames,
+  requestNewMeals,
+}: AppProps) {
   // 購読を始めた時点の状態は subscribe が1度目に渡す（`Session.ts` 規則5）ので、
   // ここで先に決めない。最初の描画は購読が始まるまでの一瞬だけ 'unknown' でよい。
   const [state, setState] = useState<SessionState>('unknown');
@@ -54,6 +90,27 @@ export function App({ session, listStockItems, registerStockItem, deleteStockIte
   // 一覧を取り直した回数。登録が通るたび（B-24）と、消えたと読めるたび（B-23）に1つ増やし、
   // 下の効果をもう1度走らせる。
   const [reloadCount, setReloadCount] = useState(0);
+
+  // 提案も取りに行くまでは「読み込み中」である（在庫と同じ構え。B-22 設計 7章）。
+  const [suggestion, setSuggestion] = useState<MealsTabState>({ outcome: 'loading' });
+
+  // 食材名も取りに行くまでは「読み込み中」である。**0件を初期値にしない** — 補完が出ない
+  // ことは同じでも、取れていないのに「取れて0件」と名乗る状態を作らない。
+  const [ingredientNames, setIngredientNames] = useState<IngredientNamesState>({
+    outcome: 'loading',
+  });
+
+  // **いま選んでいるタブ**（ADR-066 決定2 / B-49c 規則10）。器は自分では持たず、
+  // props で受け取るだけである（同 決定1）— そうでないと、画面の側からタブを移す手段が
+  // 1つも無い（`docs/screen-design.md` D-7）。**開くのは既定の献立タブ**（ADR-064）。
+  //
+  // **URL にも `localStorage` にも書かない**（同 結果1）ので、再読み込みは既定に戻る。
+  const [selectedTab, setSelectedTab] = useState<TabId>(DEFAULT_TAB);
+
+  // 「新しい献立を求める」（B-49b / FR-36）を送っている間か（S-5）。
+  const [requestingNewMeals, setRequestingNewMeals] = useState(false);
+  // 直前の要求が失敗したか（S-6）。押し直した時点で消す（規則: 同時に出さない）。
+  const [newMealsFailed, setNewMealsFailed] = useState(false);
 
   // 購読は1本。`session` が同じなら張り替えず、外れるとき戻り値で解除する（規則2）。
   useEffect(() => session.subscribe(setState), [session]);
@@ -80,6 +137,105 @@ export function App({ session, listStockItems, registerStockItem, deleteStockIte
       active = false;
     };
   }, [state, listStockItems, reloadCount]);
+
+  /**
+   * サインイン済みになったら保存済みの提案を**1度だけ**取りに行く（FR-16 / FR-21 / B-49a）。
+   *
+   * **在庫の一覧と同じ構えである。** 献立タブが開かれるのを待たない — 取りに行く先は
+   * 生成を一度も呼ばない読み取り専用の経路であり（ADR-065 決定1・決定2）、費用も
+   * 1日10回の枠（NFR-C2）も使わない。生成は「新しい献立を求める」（FR-36 / B-49b）だけで
+   * 起こる。**起動時に開くタブが献立になった**（ADR-064）いま、開かれるのを待つ形は
+   * 「起動＝開かれた」と同じであり、待つ意味がそもそも無い。
+   *
+   * **自動で取り直さない**（在庫と同じ。B-22 設計 規則11）。
+   *
+   * **効果が解除されたら結果を捨てる**（在庫と同じ。B-22 設計 規則10）。StrictMode の
+   * 二重呼び出しと、サインアウトが割り込んだ場合に、古い結果を画面に置かないため。
+   *
+   * **`catch` は要らない。** 継ぎ目は例外を投げず結末で返す（`SuggestionRequests.ts`）。
+   */
+  useEffect(() => {
+    if (state !== 'signedIn') return;
+
+    let active = true;
+    setSuggestion({ outcome: 'loading' });
+
+    void showLatestSuggestion().then((outcome) => {
+      if (active) setSuggestion(outcome);
+    });
+
+    return () => {
+      active = false;
+    };
+    // `reloadCount` を依存に足す: 在庫の登録・削除が通った回に、保存済みの提案も取り直す
+    // （B-49b 規則10）。在庫の一覧を取り直す効果と同じ回数を読んで揃える。
+  }, [state, showLatestSuggestion, reloadCount]);
+
+  /**
+   * 補完の元になる食材名を取りに行く（FR-02 / B-50c 設計 規則6）。
+   *
+   * **在庫の一覧と同じ構えである** — サインイン済みのときだけ取りに行き、`reloadCount` が
+   * 増えた回（登録が通った回と、消えたと読めた回）に取り直す。登録が通れば名称の列も
+   * 変わっており、**「保存してもう1件」で打つ次の1件に効く。** 読み取りだけの `GET` なので、
+   * 取り直しても費用も 1日10回の枠（NFR-C2）も使わない。
+   *
+   * **取れなくても何も出さない**（設計 規則4 / FR-02 / FR-03）。補完が出ないだけで、登録は
+   * 止まらない — 断りの案内もここには無い。
+   *
+   * **効果が解除されたら結果を捨てる**（在庫と同じ。B-22 設計 規則10）。
+   */
+  useEffect(() => {
+    if (state !== 'signedIn') return;
+
+    let active = true;
+
+    void listIngredientNames().then((outcome) => {
+      if (active) setIngredientNames(outcome);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [state, listIngredientNames, reloadCount]);
+
+  /**
+   * **サインイン済みでなくなったら、食材名も初期に戻す**（B-50c 設計 規則7）。
+   *
+   * 戻さないと**前の世帯の食材名が補完に残る**（NFR-09）— 別の世帯で入り直したとき、
+   * 取り直しが届くまで前の世帯の名称が候補に出る。
+   */
+  useEffect(() => {
+    if (state === 'signedIn') return;
+
+    setIngredientNames({ outcome: 'loading' });
+  }, [state]);
+
+  /**
+   * **サインイン済みでなくなったら、献立タブの状態を初期に戻す**（B-49a）。
+   *
+   * 戻さないと**前の世帯の提案が残る** — 別の世帯で入り直したとき、取り直しが届くまで
+   * 前の献立が画面に出る（NFR-09）。上の効果は `signedIn` になった時点で「読み込み中」へ
+   * 戻すが、**サインアウトしている間も出たままになる。**
+   */
+  useEffect(() => {
+    if (state === 'signedIn') return;
+
+    setSuggestion({ outcome: 'loading' });
+  }, [state]);
+
+  /**
+   * **サインイン済みでなくなったら、開いているタブも既定に戻す**（ADR-066 結果1 /
+   * B-38 設計 6章 規則9 / `docs/screen-design.md` 2.3 の `login --> meals`）。
+   *
+   * 状態が器の中にあったころは、門がサインイン済みの枝でだけ器を mount することで
+   * 自然に戻っていた。**門へ持ち上げた以上、門は signedOut の間も生き続ける**ので、
+   * ここで明示的に戻さないと**前に開いていたタブのまま入り直す**ことになる。
+   */
+  useEffect(() => {
+    if (state === 'signedIn') return;
+
+    setSelectedTab(DEFAULT_TAB);
+  }, [state]);
 
   /**
    * 登録が通ったら一覧を取り直す（FR-01 / FR-04 / B-24）。
@@ -118,6 +274,49 @@ export function App({ session, listStockItems, registerStockItem, deleteStockIte
     return outcome;
   };
 
+  /**
+   * 「新しい献立を求める」操作の配線（B-49b / FR-36）。
+   *
+   * **押している間は2度目の要求を出さない** — `requestingNewMeals` が真なら何もしない。
+   * 1度の求めで生成が2回走ると、**1日10回の枠（NFR-C2）が利用者の意図の倍で減る。**
+   * **押した時点で前回の失敗の案内を消す**（役割の割り当て。送信中と失敗は同時に出ない）。
+   *
+   * **必ず生成を呼ぶ**（ADR-051）ので、届く結末は3つ（提案・在庫が足りない・上限に達した）に
+   * 加えて継ぎ目の `failed` がある。**提案が届いた回だけ `suggestion` を差し替え、`pantryChanged`
+   * を `false` に決め打つ**（規則: 生成直後は在庫と食い違いようがない）。在庫が足りない・上限に
+   * 達した回も `suggestion` を置き換える（見せ方は B-49c）。失敗は `newMealsFailed` に載せるだけで、
+   * **渡された提案のカードは消さない**（S-6 / D-6）。
+   */
+  const handleRequestNewMeals = () => {
+    if (requestingNewMeals) return;
+
+    setRequestingNewMeals(true);
+    setNewMealsFailed(false);
+
+    void requestNewMeals().then((outcome) => {
+      setRequestingNewMeals(false);
+
+      if (outcome.outcome === 'suggested') {
+        setSuggestion({
+          outcome: 'suggested',
+          suggestion: outcome.suggestion,
+          pantryChanged: false,
+        });
+        return;
+      }
+
+      if (
+        outcome.outcome === 'insufficientStockItems' ||
+        outcome.outcome === 'generationLimitReached'
+      ) {
+        setSuggestion(outcome);
+        return;
+      }
+
+      setNewMealsFailed(true);
+    });
+  };
+
   // **`'unknown'` をログイン画面に倒さない**（規則1 / `Session.ts` 規則6）。保存されたセッションの
   // 復元は非同期で、倒すとサインイン済みの利用者にログイン画面が一瞬見える。
   if (state === 'unknown') return null;
@@ -133,9 +332,10 @@ export function App({ session, listStockItems, registerStockItem, deleteStockIte
     );
   }
 
-  // **器を mount するのはこの枝だけである**（B-38 設計 6章 規則9）。サインアウトを挟んで
-  // 入り直すと器ごと作り直され、開くのは既定のタブに戻る（2.3 の `login --> meals`。**遷移図は
-  // 献立に改訂済みで、`DEFAULT_TAB` の反映は B-49 が持つ。ADR-064 結果3**）。
+  // **器を mount するのはこの枝だけである。** ただし**開くのが既定のタブに戻る根拠は
+  // mount ではない**（ADR-066 結果1 で置き換わった。B-38 設計 6章 規則9）— 選んでいるタブは
+  // 門が持つようになり、門はサインアウトの間も生き続けるので、**上の効果が明示的に
+  // `DEFAULT_TAB` へ戻す**（2.3 の `login --> meals`）。
   //
   // **在庫を取りに行く効果は門に残したままである**（同 規則11 / B-22 設計 規則10）。タブを
   // 移っても上の効果は走り直さず、取れていた在庫も失敗の結末もそのまま保たれる —
@@ -156,7 +356,26 @@ export function App({ session, listStockItems, registerStockItem, deleteStockIte
   return (
     <main>
       <TabbedScreen
-        meals={<MealsTab />}
+        // 選んでいるタブは門が持つ（ADR-066 決定2）。器へは値と、押されたことを受ける口を
+        // 渡すだけで、**運ばれてくるのは `TabId` だけ**である（同 決定3）。
+        selectedTab={selectedTab}
+        onSelectTab={setSelectedTab}
+        meals={
+          <MealsTab
+            suggestion={suggestion}
+            today={todayOf(new Date())}
+            onRequestNewMeals={handleRequestNewMeals}
+            requestingNewMeals={requestingNewMeals}
+            newMealsFailed={newMealsFailed}
+            // **在庫タブへ送る**（`docs/screen-design.md` D-7 / B-49c 規則9 / ADR-066 決定2）。
+            // 門がするのは `'pantry'` にすることだけで、**「在庫が足りないから在庫タブへ」
+            // という意味は `MealsTab` が持つ**（同 決定3）。
+            //
+            // **移しても何も取り直さない**（同 結果3 / D-8）— 提案も在庫一覧も食材名も
+            // 触らない。取り直す経路は在庫の登録・削除が通った回に既にある。
+            onGoToPantry={() => setSelectedTab('pantry')}
+          />
+        }
         pantry={
           <>
             <PantryTab
@@ -164,6 +383,7 @@ export function App({ session, listStockItems, registerStockItem, deleteStockIte
               today={todayOf(new Date())}
               onDelete={deleteAndReload}
               onRegister={registerAndReload}
+              ingredientNames={ingredientNames}
             />
             <SignOutButton onSignOut={() => session.signOut()} />
           </>

@@ -2,11 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_TAB, TAB_ORDER } from '../../src/navigation/Tabs.js';
 
 describe('下タブ Tabs', () => {
-  it('起動して最初に開くのは在庫タブである', () => {
-    // **決定は「献立」である**（ADR-064 / 要件 第7章 / `docs/screen-design.md` 2.2）。
-    // **この行が在庫を押さえているのは、反映を B-49 と同じ周に置いたためである** — 既定タブだけを
-    // 先に反転させると仮置きの段落が起動画面になる（ADR-064 結果3）。**B-49 が献立に書き換える。**
-    expect(DEFAULT_TAB).toBe('pantry');
+  it('起動して最初に開くのは献立タブである', () => {
+    // ADR-064 / 要件 第7章 / `docs/screen-design.md` 2.2。目的は「今日何作ろう」を
+    // 考える手間をなくすことであり、在庫管理はその手段である（要件 2.1）。
+    expect(DEFAULT_TAB).toBe('meals');
   });
 
   it('下タブは献立・在庫・履歴の3つだけを、画面に並ぶ順で持つ', () => {

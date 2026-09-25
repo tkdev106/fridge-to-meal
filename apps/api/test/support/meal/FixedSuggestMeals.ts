@@ -1,8 +1,9 @@
-import type { SuggestMealsOutput } from '@fridge-to-meal/contract';
+import type { ShowLatestSuggestionOutput, SuggestMealsOutput } from '@fridge-to-meal/contract';
 import type {
   SuggestMeals,
   SuggestNewMeals,
 } from '../../../src/contexts/meal/usecase/SuggestMeals.js';
+import type { ShowLatestSuggestion } from '../../../src/contexts/meal/usecase/ShowLatestSuggestion.js';
 import type { HouseholdId } from '../../../src/shared/domain/HouseholdId.js';
 
 /**
@@ -96,6 +97,44 @@ export class FixedSuggestNewMeals {
 
   readonly suggest: SuggestNewMeals = async (householdId, asOf) => {
     this.#received.record(householdId, asOf);
+    if ('throws' in this.#response) throw this.#response.throws;
+    return this.#response.returns;
+  };
+}
+
+/**
+ * 保存済みの提案を読み取り専用で返す口の代役（B-58）。
+ *
+ * **上の2つと別のクラスに分ける** — 経路が取り違えていないことを、どちらの代役が呼ばれたかと
+ * して観察するためである（同じ理由で `FixedSuggestMeals` と `FixedSuggestNewMeals` も分かれている）。
+ *
+ * **基準日時を覚える口が無い。** このユースケースは第2引数を取らない — 時刻に依存する判断を
+ * 1つも持たないためであり、**代役の形がそれをそのまま写している。**
+ */
+export type ShowLatestSuggestionResponse =
+  { readonly returns: ShowLatestSuggestionOutput } | { readonly throws: Error };
+
+export class FixedShowLatestSuggestion {
+  readonly #response: ShowLatestSuggestionResponse;
+  readonly #householdIds: HouseholdId[] = [];
+
+  constructor(response: ShowLatestSuggestionResponse) {
+    this.#response = response;
+  }
+
+  /** 何度呼ばれたか。**呼ばれないこと**が要件のときに見る（`docs/testing.md` 2章）。 */
+  get callCount(): number {
+    return this.#householdIds.length;
+  }
+
+  /** 最後に渡された第1引数の世帯。まだ一度も呼ばれていなければ `null`（C-9）。 */
+  get receivedHouseholdId(): HouseholdId | null {
+    return this.#householdIds.at(-1) ?? null;
+  }
+
+  readonly show: ShowLatestSuggestion = async (householdId) => {
+    // **記録は投げるより先である**（`docs/testing.md` 2章）。
+    this.#householdIds.push(householdId);
     if ('throws' in this.#response) throw this.#response.throws;
     return this.#response.returns;
   };

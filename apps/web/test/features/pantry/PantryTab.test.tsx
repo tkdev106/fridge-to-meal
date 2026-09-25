@@ -22,12 +22,14 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import type { ReactNode } from 'react';
+import { useState } from 'react';
 import type { RegisterStockItemInput, StockItemDto } from '@fridge-to-meal/contract';
 import { fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
 import type { PantryTabProps } from '../../../src/features/pantry/PantryTab.js';
 import { PantryTab } from '../../../src/features/pantry/PantryTab.js';
 import type { TabId } from '../../../src/navigation/Tabs.js';
-import { TAB_ORDER } from '../../../src/navigation/Tabs.js';
+import { DEFAULT_TAB, TAB_ORDER } from '../../../src/navigation/Tabs.js';
 import { TabbedScreen } from '../../../src/navigation/TabbedScreen.js';
 import type {
   DeleteStockItem,
@@ -80,6 +82,7 @@ function pantryTab(overrides: Partial<PantryTabProps> = {}) {
       today={today}
       onDelete={neverDelete}
       onRegister={neverRegister}
+      ingredientNames={{ outcome: 'loading' }}
       {...overrides}
     />
   );
@@ -99,16 +102,14 @@ function operationAt(index: number): HTMLElement {
 }
 
 /**
- * 食材名の欄。登録の画面の `textbox` の先頭である（期限は `type="date"` で入らない）。
+ * 食材名の欄。**補完の `list` を持つため役割は `combobox` である**（B-50c）— 補完が0件の
+ * 回も欄はこの役割のままである。
  *
  * **`instanceof HTMLInputElement` で絞らない** — 役割で引いている以上、入力の欄であることは
  * 問い合わせの側が保証している。**DOM の形を辿らない**（ADR-052 結果3）。
  */
 function ingredientNameField(): HTMLInputElement {
-  const [field] = screen.getAllByRole('textbox');
-  if (field === undefined) throw new Error('食材名の欄が無い');
-
-  return field as HTMLInputElement;
+  return screen.getByRole('combobox') as HTMLInputElement;
 }
 
 describe('在庫タブの中身 PantryTab', () => {
@@ -243,14 +244,27 @@ const otherContents = {
   history: '渡された履歴の中身',
 } as const;
 
-function tabbedPantryTab(overrides: Partial<PantryTabProps> = {}) {
-  render(
+/**
+ * 器は選んでいるタブを持たない（ADR-066 決定1）ので、**このテストの側で持つ。**
+ * 門（`App.tsx`）が持つのと同じ形であり、ここで確かめたいのは器の持ち方ではなく
+ * 「在庫タブの中身が、タブを挟んだときにどうなるか」である。
+ */
+function TabbedPantryTab({ pantry }: { pantry: ReactNode }) {
+  const [selectedTab, setSelectedTab] = useState<TabId>(DEFAULT_TAB);
+
+  return (
     <TabbedScreen
       meals={otherContents.meals}
-      pantry={pantryTab(overrides)}
+      pantry={pantry}
       history={otherContents.history}
-    />,
+      selectedTab={selectedTab}
+      onSelectTab={setSelectedTab}
+    />
   );
+}
+
+function tabbedPantryTab(overrides: Partial<PantryTabProps> = {}) {
+  render(<TabbedPantryTab pantry={pantryTab(overrides)} />);
 }
 
 /** タブは並びの位置で引く（`TAB_ORDER` の何番目か。先行 `TabbedScreen.test.tsx`）。 */
@@ -265,6 +279,8 @@ describe('在庫タブの中身と下タブの器', () => {
   it('登録の画面を出していても、下タブの帯は出たままである', () => {
     tabbedPantryTab();
 
+    // **起動時に開くのは献立タブである**（ADR-064 / `navigation/Tabs.ts`）。
+    fireEvent.click(tabFor('pantry'));
     fireEvent.click(operationAt(0));
 
     // 規則5 / NFR-14: 帯は下位の画面でも隠さない。隠すには器か門が「在庫タブが下位の画面に
@@ -275,6 +291,7 @@ describe('在庫タブの中身と下タブの器', () => {
   it('別のタブへ移って在庫タブへ戻ると、一覧が出ている', () => {
     tabbedPantryTab();
 
+    fireEvent.click(tabFor('pantry'));
     fireEvent.click(operationAt(0));
     fireEvent.click(tabFor('meals'));
     fireEvent.click(tabFor('pantry'));
@@ -286,6 +303,7 @@ describe('在庫タブの中身と下タブの器', () => {
   it('別のタブを挟むと、打ちかけの食材名は残らない', () => {
     tabbedPantryTab();
 
+    fireEvent.click(tabFor('pantry'));
     fireEvent.click(operationAt(0));
     fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
     fireEvent.click(tabFor('meals'));
@@ -308,9 +326,12 @@ describe('在庫タブの中身と下タブの器', () => {
  * 「一覧が出ている」のか「打った値が残っている」のかを取り違える。
  */
 
-/** 分量の欄。`textbox` の2つ目である（期限は `type="date"` なのでこの役割に入らない）。 */
+/**
+ * 分量の欄。**`textbox` はこれ1つだけである** — 食材名は `combobox`（B-50c）、期限は
+ * `type="date"` なので、どちらもこの役割に入らない。
+ */
 function amountField(): HTMLInputElement {
-  const field = screen.getAllByRole('textbox')[1];
+  const field = screen.getAllByRole('textbox')[0];
   if (field === undefined) throw new Error('分量の欄が無い');
 
   return field as HTMLInputElement;

@@ -9,6 +9,8 @@
 
 export type { ErrorResponseDto } from './error.js';
 
+export type { ListIngredientNamesOutput } from './ingredient.js';
+
 export type {
   ListStockItemsOutput,
   RegisterStockItemInput,
@@ -21,6 +23,7 @@ export type {
   MealCoverageDto,
   MealIngredientDto,
   MealIngredientKind,
+  ShowLatestSuggestionOutput,
   SuggestionEntryOrigin,
   SuggestionEntryOutput,
   SuggestionOutput,
