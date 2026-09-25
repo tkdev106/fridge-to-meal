@@ -18,6 +18,8 @@ const MEAL_RULE_VIOLATION_STATUSES: Readonly<Record<string, ContentfulStatusCode
   // 指した献立がその世帯に無い（B-51 設計書7章 / C-9）。**他世帯を指した回も同じ断りである** —
   // 世帯で分けたことが状態コードの違いとして漏れない。先行は在庫の `delete.notFound`。
   'addCookingRecord.mealNotFound': 404,
+  // 指した献立がその世帯に無い（B-52 設計書7章 / C-9）。**他世帯を指した回も同じ断りである**。
+  'showMeal.mealNotFound': 404,
   // 呼び出し側の誤りであり、利用者の入力ではない（C-9 / C-3）。
   'save.householdMismatch': 500,
   'save.contentMismatch': 500,

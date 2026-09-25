@@ -1377,7 +1377,7 @@ flowchart TD
 
 - **状況** — 献立詳細（B-53）と履歴（B-54）は、**献立を1件だけ引いて中身と現在の在庫での充足を出す**口を要する（FR-30 / FR-32）。いま献立を読む経路は無く、提案の経路（ADR-062 / ADR-065）が提案の1件として献立の中身と充足を返しているだけである（ADR-061）。そこで3つを決める必要が出た — **(1) 出力の型を提案の1件（`SuggestionEntryOutput`）と共有できるか**、**(2) 献立を識別子で引く口を `MealRepository` に足すか**（B-51 は足さずに `findByHousehold` ＋ `mealByIdOf` で済ませている）、**(3) 経路の method と、その世帯に無い献立を指した回の断り方**。
 - **決定** — 3つ。
-  1. **`SuggestionEntryOutput` から `MealOutput` を切り出し、`SuggestionEntryOutput = MealOutput & { origin }` とする。** 献立詳細は `MealOutput` を返す。**由来（`origin`）は提案の1件の性質であって献立の性質ではない** — 履歴から開いた献立には由来が無い。**JSON の形は1バイトも変わらない。** 組み立ても `mealOutputOf` として共有し、写しを作らない。共有の export が4つになるので、**ADR-065 結果4 が指示するとおり `usecase/MealOutputs.ts` へ寄せる。**
+  1. **`SuggestionEntryOutput` から `MealOutput` を切り出し、`SuggestionEntryOutput = MealOutput & { origin }` とする。** 献立詳細は `MealOutput` を返す。**由来（`origin`）は提案の1件の性質であって献立の性質ではない** — 履歴から開いた献立には由来が無い。**JSON のキーと値は変わらない（`origin` の位置だけが末尾へ移る）。** 組み立ても `mealOutputOf` として共有し、写しを作らない。共有の export が4つになるので、**ADR-065 結果4 が指示するとおり `usecase/MealOutputs.ts` へ寄せる。**
   2. **`MealRepository.findById(householdId, mealId)` を足す**（世帯は第1引数で必須。C-9）。無ければ `null` を返す。
   3. **経路は `GET /meals/:id`。** その世帯に無い献立を指した回は **404 `{ rule: 'showMeal.mealNotFound' }`** で、**他世帯の献立を指した回も同じ規則・同じ文言**であり、文面にも応答にも識別子と世帯を出さない（B-51 の `addCookingRecord.mealNotFound` に揃える）。既定の 500 は動かさない（ADR-062 決定3）。
 - **比較した案**

@@ -3,7 +3,7 @@
 // **実装クラスを new してよいのはこのファイルだけである**（ADR-002 / CLAUDE.md）。
 // ここでリポジトリとポートの実装を組み立て、ユースケースに注入し、api 層に渡す。
 //
-// 結線するのは在庫（pantry）の4経路と献立（meal）の提案の3経路・食材名の1経路・調理記録の1経路、その前に立つ
+// 結線するのは在庫（pantry）の4経路と献立（meal）の提案の3経路・食材名の1経路・調理記録の1経路・献立詳細の1経路、その前に立つ
 // 世帯の認証（identity）である。コンテキストをまたいで全層を import してよいのは、依存表の `main.ts` の
 // 行だけ（CLAUDE.md「依存は外から内へ」）。
 
@@ -22,6 +22,8 @@ import type { CookingRecordRoutesDeps } from './contexts/meal/api/CookingRecordR
 import { createCookingRecordRoutes } from './contexts/meal/api/CookingRecordRoutes.js';
 import type { IngredientNameRoutesDeps } from './contexts/meal/api/IngredientNameRoutes.js';
 import { createIngredientNameRoutes } from './contexts/meal/api/IngredientNameRoutes.js';
+import type { MealRoutesDeps } from './contexts/meal/api/MealRoutes.js';
+import { createMealRoutes } from './contexts/meal/api/MealRoutes.js';
 import type { SuggestionRoutesDeps } from './contexts/meal/api/SuggestionRoutes.js';
 import { createSuggestionRoutes } from './contexts/meal/api/SuggestionRoutes.js';
 import type { MealIdGenerator } from './contexts/meal/domain/port/MealIdGenerator.js';
@@ -34,6 +36,7 @@ import { SuggestionRepositoryImpl } from './contexts/meal/infrastructure/Suggest
 import { addCookingRecord } from './contexts/meal/usecase/AddCookingRecord.js';
 import { suggestMeals, suggestNewMeals } from './contexts/meal/usecase/SuggestMeals.js';
 import { showLatestSuggestion } from './contexts/meal/usecase/ShowLatestSuggestion.js';
+import { showMeal } from './contexts/meal/usecase/ShowMeal.js';
 import { listIngredientNames } from './contexts/meal/usecase/ListIngredientNames.js';
 import { createStockItemRoutes } from './contexts/pantry/api/StockItemRoutes.js';
 import type { StockItemIdGenerator } from './contexts/pantry/domain/port/StockItemIdGenerator.js';
@@ -89,7 +92,8 @@ export function accessTokenVerificationOf(supabaseUrl: string): AccessTokenVerif
 export type AppDependencies = Parameters<typeof createStockItemRoutes>[0] &
   SuggestionRoutesDeps &
   IngredientNameRoutesDeps &
-  CookingRecordRoutesDeps;
+  CookingRecordRoutesDeps &
+  MealRoutesDeps;
 
 /** 差し替えられる出口。既定は実行環境の `fetch`。テストは `FixedFetchJwks` を渡す。 */
 export type CompositionPorts = { readonly fetchJwks?: FetchJwks };
@@ -228,6 +232,17 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
     addCookingRecord: transactionPerRequest(env, (tx) =>
       addCookingRecord({ mealRepository: new MealRepositoryImpl(tx) }),
     ),
+    // 献立詳細の口も同じ1要求1トランザクションで包む（B-52 / ADR-029 決定3(a)）。
+    // **`mealSuggestionDepsOf` を使い回さない** — 生成器も採番も提案のリポジトリも要らず、
+    // 渡すと「生成も保存もしない」が型から読めなくなる。
+    // `listStockItems` は**同じ `tx` の素のもの**を渡す（包み済みを渡すと1要求に2本目の
+    // 接続とトランザクションが開き、在庫と献立を別の時点で読むことになる）。
+    showMeal: transactionPerRequest(env, (tx) =>
+      showMeal({
+        listStockItems: listStockItems({ stockItemRepository: new StockItemRepositoryImpl(tx) }),
+        mealRepository: new MealRepositoryImpl(tx),
+      }),
+    ),
     now,
   };
 }
@@ -262,13 +277,15 @@ const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'DELETE'];
 const ALLOWED_HEADERS = ['Authorization', 'Content-Type'];
 
 /**
- * `/health` と在庫の4経路、提案の3経路、食材名の1経路、調理記録の1経路を1つの Hono にする。`new` するのは Hono だけ（B-09 設計書 規則1・2）。
+ * `/health` と在庫の4経路、提案の3経路、食材名の1経路、調理記録の1経路、献立詳細の1経路を1つの Hono にする。`new` するのは Hono だけ（B-09 設計書 規則1・2）。
  *
  * 在庫の経路は**接頭辞なし**で根にマウントする（`POST /stock-items` 等。FR-01 / FR-04 /
  * FR-05 / FR-06 / ADR-003）。提案の経路も同じく根に置く（`POST /suggestions` と
  * `POST /suggestions/new-meals`。ADR-062 決定1 / B-48c）。食材名の1経路も同じく根に置く
  * （`GET /ingredient-names`。FR-02 / ADR-048 決定4 / B-50b）。調理記録の1経路も同じである
- * （`POST /meals/:id/cooking-records`。FR-22 / FR-31 / B-51）。**接頭辞は増やさない**（B-22 設計書 規則15）— この Worker の origin は
+ * （`POST /meals/:id/cooking-records`。FR-22 / FR-31 / B-51）。献立詳細の1経路も同じである
+ * （`GET /meals/:id`。FR-30 / FR-32 / B-52）— **調理記録の経路より後ろに置いても前に置いても
+ * 食い合わない**（道が違う）。**接頭辞は増やさない**（B-22 設計書 規則15）— この Worker の origin は
  * 在庫と献立の API と `/health` しか出さないので、`/api` で切り分ける相手が居ない。接頭辞が効くのは
  * web と api が1つのドメインを分け合うときで、**その配信先はまだ決まっていない。**
  *
@@ -299,6 +316,7 @@ export function createApp(deps: AppDependencies): Hono {
   app.route('/', createSuggestionRoutes(deps));
   app.route('/', createIngredientNameRoutes(deps));
   app.route('/', createCookingRecordRoutes(deps));
+  app.route('/', createMealRoutes(deps));
 
   return app;
 }
