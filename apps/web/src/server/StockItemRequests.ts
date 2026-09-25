@@ -296,20 +296,85 @@ export function deleteStockItem(deps: StockItemRequestsDeps): DeleteStockItem {
   };
 }
 
-/** 更新の結末（FR-05 / B-55 設計 5章）。 */
+/**
+ * 更新の結末（FR-05 / B-55 設計 5章 / 規則12・14）。
+ *
+ * **登録・削除と同じ3つの形を採る。** 断りの `rule` を畳まないのは、**`update.notFound` を
+ * 「すでに消えている」と読まずに案内を出す判断が画面にある**ためである（ADR-050 結果5 /
+ * `features/pantry/UpdateFailureNotice.ts`）。畳むと、その読み分けの材料がここで失われる。
+ * どの `rule` が来るかは api 層の写像が正であり（`RuleViolationStatus.ts`）、**ここでは読まない**
+ * （ADR-032 決定3 / `README.md`）。
+ *
+ * **成功に在庫品を載せない**（規則14）。応答の本体を受け取っても使い道が無く、一覧はサーバから
+ * 取り直す（`App.tsx`）— web で行を書き換えると、並び（期限の近い順）を web が握り直すことになる。
+ */
 export type UpdateStockItemOutcome =
   | { readonly outcome: 'updated' }
   | { readonly outcome: 'rejected'; readonly rule: string }
   | { readonly outcome: 'failed' };
 
-/** 画面が受け取る口（B-55 設計 5章）。 */
+/**
+ * 画面が受け取る口（B-55 設計 5章）。**この口も例外を投げない**（B-22 設計 規則9）。
+ *
+ * 受け取るのは在庫品の識別子と更新の入力だけで、**世帯は運ばない**（C-9 / NFR-09）。識別子の
+ * 形は検めない — 形を決めるのは発行する側である（ADR-026）。
+ */
 export type UpdateStockItem = (
   id: string,
   input: UpdateStockItemInput,
 ) => Promise<UpdateStockItemOutcome>;
 
-/** 在庫品1件を更新しに行く口を組む（FR-05 / B-55）。 */
+/** 更新が通ったこと（B-55 規則14）。応答は 200 だが本体は読まない。 */
+const UPDATED = { outcome: 'updated' } as const;
+
+/**
+ * 在庫品1件を更新しに行く口を組む（FR-05 / B-55）。
+ *
+ * **書き換える相手は経路の識別子だけで表す。** クエリも付けず、世帯も運ばない（規則13 / C-9）。
+ * **識別子は経路へ埋めるときだけ逃がす** — 形を検めるのではなく、一覧から渡った値が経路の
+ * 区切りとして読まれないようにするためである（ADR-026）。
+ *
+ * **入力を詰め替えない**（規則12）。画面が作った `UpdateStockItemInput` をそのまま直列化して
+ * 送る — 空欄を `null` に倒すのは画面の側（`StockItemFormValues.ts`）、前後の空白と期限の
+ * 検めはサーバの側（`updateStockItem` / `expiryDateOf`）であり、ここは運ぶだけである。
+ * **`null` を省略に読み替えない** — 更新は常に置き換えである。
+ *
+ * **例外を外に出さない**（B-22 設計 規則9）。トークンの取り出しが投げた・出口が投げた
+ * （オフライン・到達不能・CORS で塞がれた）・断りの本体が読めない・`rule` が無い、のすべてを
+ * `failed` に畳む。外へ出すと画面の側で誰も受け止めず、送っている表示のまま止まる
+ * （規則7 が保存も「←」も止めているため、閉じられなくなる）。
+ *
+ * **自分では送り直さない**（規則12 / ADR-007）— 断られた回に送り直しても、利用者が入力を
+ * 直さない限り同じ断りが返る（`update.notFound` なら相手は消えている）。再送は利用者の操作に委ねる。
+ */
 export function updateStockItem(deps: StockItemRequestsDeps): UpdateStockItem {
-  void deps;
-  throw new Error('未実装');
+  const { baseUrl, accessToken, httpFetch = environmentHttpFetch } = deps;
+
+  return async (id, input) => {
+    try {
+      const token = await accessToken();
+
+      // 規則7: `null` なら**要求を出さない**。空文字は `null` と同じに扱わない（`listStockItems` と同じ）。
+      if (token === null) {
+        return FAILED;
+      }
+
+      const response = await httpFetch(`${baseUrl}${STOCK_ITEMS_PATH}/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': JSON_CONTENT_TYPE },
+        body: JSON.stringify(input),
+      });
+
+      // **通ったときは本体を読まない**（規則14）。読めない本体で成功を失敗に化けさせない。
+      if (response.ok) {
+        return UPDATED;
+      }
+
+      const body = await response.json();
+
+      return isRejection(body) ? { outcome: 'rejected', rule: body.rule } : FAILED;
+    } catch {
+      return FAILED;
+    }
+  };
 }

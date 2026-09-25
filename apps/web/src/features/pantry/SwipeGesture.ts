@@ -41,9 +41,33 @@ export function isDeleteSwipe(start: SwipePoint, end: SwipePoint): boolean {
   return horizontal > vertical;
 }
 
-/** 行のタップとして読むか（B-55 規則15）。 */
+/**
+ * タップと読むのに許す動きの長さ（CSS ピクセル。B-55 規則15）。
+ *
+ * **指は静止しない。** 押して離すまでのわずかな揺れで編集を開けなくなると、開く手立てが
+ * 他に無い（`docs/screen-design.md` 2章 `pantry --> edit` の導線はこれ1つである）。
+ * **`DELETE_SWIPE_DISTANCE`（64px）よりずっと小さく取る** — 2つの閾値の間に隙間を空け、
+ * どちらにも当たらない中途半端な動きでは何も起こさない（B-55 規則15）。
+ */
+const TAP_DISTANCE = 8;
+
+/**
+ * 行のタップとして読むか（B-55 規則15 / FR-05）。
+ *
+ * **縦横どちらの移動も閾値未満であることを要る。** 向きは問わない（`isDeleteSwipe` と同じ）—
+ * タップは「動かさなかったこと」であって、どちらへ動かさなかったかではない。
+ *
+ * **縦を横と同じ閾値で見る。** 一覧は縦に長く（FR-04）、送りの操作は縦に流れる。縦を見ないと、
+ * 送り始めて指を離した回に編集が開く。
+ *
+ * **削除として読んだ動きはここを通らない** — 64px 動いた点は 8px の閾値を越えており、
+ * 取り消しの無い削除と編集の画面が同時に起きることが**距離の取り方だけで**防がれている
+ * （旗でも順序でも保っていないので、片方を消しても崩れない）。
+ */
 export function isTap(start: SwipePoint, end: SwipePoint): boolean {
-  void start;
-  void end;
-  throw new Error('未実装');
+  const horizontal = Math.abs(end.x - start.x);
+  const vertical = Math.abs(end.y - start.y);
+
+  // 境界は含まない（ちょうど閾値だけ動いたらタップと読まない）。
+  return horizontal < TAP_DISTANCE && vertical < TAP_DISTANCE;
 }
