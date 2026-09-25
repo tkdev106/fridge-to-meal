@@ -9,10 +9,10 @@
  * 反対に、**日本語はここにしか置かない**（先行 `PantryList.tsx`）。**文言はすべて仮である**
  * （同書 冒頭・論点3）。
  *
+ * **出せない回（S-4 / S-7）も、それぞれ別の枝として描く**（B-49c）。どちらも 200 で届く
+ * 結末であり（ADR-062 決定2）、失敗（S-6）にも「まだ提案が無い」（S-8）にも畳まない。
+ *
  * **この周で置いていないもの:**
- * - 「新しい献立を見る」（FR-36 / D-2）と、送っている間（S-5 / D-6）と失敗（S-6）… **B-49b**
- * - 在庫が足りない回（S-4 / D-7）と上限に達した回（S-7）の見せ方 … **B-49c**。どちらも
- *   結末としては届いており、**提案として描かないこと**だけをここで守る
  * - 手順と材料の内訳（FR-19 / FR-31）… **B-53**（献立詳細）。カードから開く導線もそちらである
  */
 
@@ -84,6 +84,25 @@ const REQUEST_FAILED_NOTICE = '新しい献立を求められませんでした�
 /** 操作そのものの文言（FR-36）。 */
 const REQUEST_BUTTON_LABEL = '新しい献立を求める';
 
+/**
+ * 在庫が足りない回の案内（S-4 / D-7。**文言は仮**である）。
+ *
+ * **失敗ではない**（200 で届く結末。ADR-041 / ADR-062 決定2）。**件数を言わない** —
+ * 結末に在庫の数も閾値も載っておらず、web で数えない（設計 規則7）。
+ */
+const INSUFFICIENT_STOCK_ITEMS_NOTICE = '在庫が足りないため、献立を提案できません。';
+
+/** 在庫タブへ送る操作の文言（D-7。**仮**である）。 */
+const GO_TO_PANTRY_LABEL = '在庫を登録する';
+
+/**
+ * 1日の生成回数の上限に達した回の案内（S-7 / NFR-C2 / ADR-049。**文言は仮**である）。
+ *
+ * **いつ解けるかを告げない** — 24時間の窓は基準日時から遡って定まり（ADR-049 決定2）、
+ * web にその材料が無い（設計 規則8）。**残り回数も持たない**（規則7）。
+ */
+const GENERATION_LIMIT_REACHED_NOTICE = '今日はこれ以上、新しい献立を求められません。';
+
 /** 不足の件数の言い回し（D-4）。**件数はどちらも主材料で数える**（C-16）。 */
 function coverageText(ingredientCount: number, missingCount: number): string {
   const missing = missingCount === 0 ? '不足なし' : `不足${missingCount}件`;
@@ -117,8 +136,7 @@ function UsedIngredients({ ingredients }: { ingredients: readonly MealCardIngred
  * **在庫が足りない（S-4）・上限に達した（S-7）も受け取る**（B-49b / ADR-049 結果7）。
  * どちらも「新しい献立を求める」の結末であって、保存済みの提案の読み取り（`showLatestSuggestion`）
  * には無い — 門が `requestNewMeals` の結末をそのままここへ渡すために両方を型に足す。
- * **見せ方は既存の「まだ提案が無い」と同じ枝に畳む** — 個別の文言を出すのは B-49c の持ち分で、
- * この周は「提案として描かない」（結末を取り違えない）ところまでを守る。
+ * **それぞれ専用の枝で描く**（B-49c）。
  */
 export type MealsTabState =
   | { readonly outcome: 'loading' }
@@ -132,15 +150,17 @@ export type MealsTabProps = {
    * ここで `new Date()` を読むと、現在時刻が本体に埋まる（`docs/testing.md` 5章）。
    */
   today: string;
-  /**
-   * 「新しい献立を求める」操作（B-49b / FR-36）。**型だけをここに置く** — 出し分けと
-   * 案内3種（押す前・送信中・失敗）の実装は次の周（テストが赤である理由）。
-   */
+  /** 「新しい献立を求める」操作（B-49b / FR-36）。 */
   onRequestNewMeals: () => void;
   /** 要求を送っている間か（S-5）。 */
   requestingNewMeals: boolean;
   /** 直前の要求が失敗したか（S-6 を含む）。 */
   newMealsFailed: boolean;
+  /**
+   * 在庫タブへ送る（D-7 / B-49c）。**押した先で何が起きるかを画面は知らない。**
+   * 呼ぶのは在庫が足りない回（S-4）の枝だけである。
+   */
+  onGoToPantry: () => void;
 };
 
 /**
@@ -220,12 +240,42 @@ function RequestNewMealsControl({
   );
 }
 
+/**
+ * 在庫が足りない回（S-4 / D-7）。**案内と、在庫タブへ送る操作1つだけ**を出す。
+ *
+ * **「新しい献立を求める」を置かない** — 在庫が足りないまま求めても同じ結末が返るので、
+ * 押しても呼べない操作になる。**カードも注意表示も出さない**（提案として描くものが無い）。
+ * **直前の要求が失敗していても案内を増やさない** — この結末は失敗ではなく、S-6 の断りと
+ * 並べると「出せない理由」が2つあるように読める（ADR-041）。
+ */
+function InsufficientStockItemsNotice({ onGoToPantry }: { onGoToPantry: () => void }) {
+  return (
+    <div>
+      <p role="status">{INSUFFICIENT_STOCK_ITEMS_NOTICE}</p>
+      <button type="button" onClick={onGoToPantry}>
+        {GO_TO_PANTRY_LABEL}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * 1日の生成回数の上限に達した回（S-7 / NFR-C2 / ADR-049）。**案内だけ**を出す。
+ *
+ * **操作を1つも置かない** — 求め直しても同じ結末が返り、**在庫タブへも送らない**
+ * （在庫は原因ではない）。この回に利用者ができることは画面の中に無い。
+ */
+function GenerationLimitReachedNotice() {
+  return <p role="status">{GENERATION_LIMIT_REACHED_NOTICE}</p>;
+}
+
 export function MealsTab({
   suggestion,
   today,
   onRequestNewMeals,
   requestingNewMeals,
   newMealsFailed,
+  onGoToPantry,
 }: MealsTabProps) {
   // 出し分けだけを行い、計算を持たない（先行 `PantryList`）。
   //
@@ -233,6 +283,14 @@ export function MealsTab({
   // 「開かれた」ことを誰にも伝えない。**読み取り専用の経路には費用が無い**ので
   // （ADR-065 決定2）、開かれるまで待つ理由がそもそも無い。
   if (suggestion.outcome === 'loading') return <p>{LOADING_NOTICE}</p>;
+
+  // **出せない回は、提案の枝から先に分ける**（B-49c / 規則1〜6）。どちらも 200 で届く結末で
+  // あり、失敗（S-6）にも「まだ提案が無い」（S-8）にも畳まない — 畳むと、利用者が次に何を
+  // できるか（在庫を足す／待つ／求め直す）が画面から読み取れなくなる。
+  if (suggestion.outcome === 'insufficientStockItems') {
+    return <InsufficientStockItemsNotice onGoToPantry={onGoToPantry} />;
+  }
+  if (suggestion.outcome === 'generationLimitReached') return <GenerationLimitReachedNotice />;
 
   // **送っている間も、失敗した回も、渡された提案のカードを消さない**（S-5 / S-6 / D-6）。
   // 門が `suggestion` を差し替えるまでは、そのまま描き続ける。

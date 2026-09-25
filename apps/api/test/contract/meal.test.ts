@@ -184,7 +184,7 @@ describe('充足 MealCoverageDto', () => {
   });
 });
 
-// ここから下は B-52 周A（`MealOutput` の切り出し。ADR-066 論点1）。
+// ここから下は B-52 周A（`MealOutput` の切り出し。ADR-067 論点1）。
 // 上の既存のケースはそのまま緑である — **切り出しで JSON の形を1バイトも変えない**ことを、
 // 既存の全件が1行も変わらずに通ることで観察する（設計書 11章）。
 
@@ -212,7 +212,7 @@ describe('献立1件の出力 MealOutput', () => {
   });
 
   it('提案の1件は献立1件の出力として読める', () => {
-    // 規則16 / ADR-066 論点1: `SuggestionEntryOutput = MealOutput & { origin }`。
+    // 規則16 / ADR-067 論点1: `SuggestionEntryOutput = MealOutput & { origin }`。
     // 提案の1件は献立1件の中身をそのまま含み、由来だけを足したものである。
     const entry: SuggestionEntryOutput = suggestionEntryOutput();
 
