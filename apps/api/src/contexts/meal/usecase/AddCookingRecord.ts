@@ -5,7 +5,7 @@ import type { MealRepository } from '../domain/repository/MealRepository.js';
 import { createCookingRecord } from '../domain/value/CookingRecord.js';
 import { dateTimeOf } from '../domain/value/DateTime.js';
 import type { MealId } from '../domain/value/MealId.js';
-import { mealByIdOf } from './SuggestMeals.js';
+import { mealByIdOf } from './MealOutputs.js';
 
 /**
  * 献立1件に調理記録を1件足す（FR-22 / FR-31 / B-51 設計書 5章）。世帯は第1引数で

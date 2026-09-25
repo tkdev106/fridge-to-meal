@@ -4,6 +4,7 @@ import { householdIdOf } from '../src/shared/domain/HouseholdId.js';
 import { FixedIdentifyHousehold } from './support/identity/FixedIdentifyHousehold.js';
 import { FixedAddCookingRecord } from './support/meal/FixedAddCookingRecord.js';
 import { FixedListIngredientNames } from './support/meal/FixedListIngredientNames.js';
+import { FixedShowMeal } from './support/meal/FixedShowMeal.js';
 import {
   FixedShowLatestSuggestion,
   FixedSuggestMeals,
@@ -44,6 +45,16 @@ function app() {
       .suggest,
     listIngredientNames: new FixedListIngredientNames({ returns: { ingredientNames: [] } }).list,
     addCookingRecord: new FixedAddCookingRecord({ succeeds: true }).add,
+    // B-52 で口が増えたことへの機械的な追随。疎通確認の本題ではない。
+    showMeal: new FixedShowMeal({
+      returns: {
+        mealId: '44444444-4444-4444-8444-444444444444',
+        title: '肉じゃが',
+        ingredients: [],
+        steps: [],
+        coverage: { covered: [], missing: [] },
+      },
+    }).show,
     now: () => '2026-09-23T12:00:00.000Z',
   });
 }

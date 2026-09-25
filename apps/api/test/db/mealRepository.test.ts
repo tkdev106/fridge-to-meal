@@ -1285,3 +1285,201 @@ describe('献立リポジトリの実装（不変・追加・世帯の分離）'
     expect(thrown).not.toBeInstanceOf(MealRuleViolation);
   });
 });
+
+/**
+ * `MealRepositoryImpl` の3周目 — **識別子で1件引く口**（B-52 周A / 設計 規則1・2・7 /
+ * C-3 / C-5 / C-9 / NFR-09 / ADR-067 論点2）。
+ *
+ * 前提は1周目と同じ — 繋ぐのは `authenticator` だけ、世帯 ID と献立 ID は
+ * **ケースごとに固有の固定値**、後片付けはしない。
+ */
+const byIdRoundTripHouseholdId = householdIdOf('d4d4d4d4-0040-4000-8000-000000000040');
+const byIdRoundTripMealId = mealIdOf('d4d4d4d4-0040-4000-8000-0000000000a1');
+
+const byIdUnknownHouseholdId = householdIdOf('d4d4d4d4-0041-4000-8000-000000000041');
+const byIdUnknownStoredMealId = mealIdOf('d4d4d4d4-0041-4000-8000-0000000000a1');
+const byIdUnknownMissingMealId = mealIdOf('d4d4d4d4-0041-4000-8000-0000000000a2');
+
+const byIdOwnerHouseholdId = householdIdOf('d4d4d4d4-0042-4000-8000-000000000042');
+const byIdStrangerHouseholdId = householdIdOf('d4d4d4d4-0052-4000-8000-000000000052');
+const byIdStrangerMealId = mealIdOf('d4d4d4d4-0052-4000-8000-0000000000a1');
+
+const byIdMismatchHouseholdId = householdIdOf('d4d4d4d4-0043-4000-8000-000000000043');
+const byIdMismatchPassedHouseholdId = householdIdOf('d4d4d4d4-0053-4000-8000-000000000053');
+const byIdMismatchMealId = mealIdOf('d4d4d4d4-0043-4000-8000-0000000000a1');
+
+const byIdNoClaimsHouseholdId = householdIdOf('d4d4d4d4-0044-4000-8000-000000000044');
+const byIdNoClaimsMealId = mealIdOf('d4d4d4d4-0044-4000-8000-0000000000a1');
+
+const byIdChildOrderHouseholdId = householdIdOf('d4d4d4d4-0045-4000-8000-000000000045');
+const byIdChildOrderMealId = mealIdOf('d4d4d4d4-0045-4000-8000-0000000000a1');
+
+const byIdEmptyHouseholdId = householdIdOf('d4d4d4d4-0046-4000-8000-000000000046');
+const byIdEmptyMealId = mealIdOf('d4d4d4d4-0046-4000-8000-0000000000a1');
+
+describe('献立リポジトリの実装（識別子で1件引く）', () => {
+  it('保存した献立を同じ世帯の findById で識別子を指して読み戻せる', async () => {
+    const foundMeal = await withHouseholdTransaction(db, byIdRoundTripHouseholdId, async (tx) => {
+      const repository = new MealRepositoryImpl(tx);
+      await repository.save(
+        byIdRoundTripHouseholdId,
+        meal({
+          id: byIdRoundTripMealId,
+          householdId: byIdRoundTripHouseholdId,
+          title: 'にんじんの煮物',
+          ingredients: [ingredient({ name: 'にんじん', amount: '200g' })],
+          steps: ['にんじんを切る'],
+        }),
+      );
+      return repository.findById(byIdRoundTripHouseholdId, byIdRoundTripMealId);
+    });
+
+    // B-52 規則1 / FR-30: 名称・材料・手順の揃った献立が返る。
+    expect(foundMeal?.id).toBe(byIdRoundTripMealId);
+    expect(foundMeal?.title).toBe('にんじんの煮物');
+    expect(foundMeal?.ingredients.map((mealIngredient) => mealIngredient.name)).toEqual([
+      'にんじん',
+    ]);
+    expect(foundMeal?.steps).toEqual(['にんじんを切る']);
+  });
+
+  it('その世帯に無い識別子には null を返す', async () => {
+    const foundMeal = await withHouseholdTransaction(db, byIdUnknownHouseholdId, async (tx) => {
+      const repository = new MealRepositoryImpl(tx);
+      await repository.save(
+        byIdUnknownHouseholdId,
+        meal({ id: byIdUnknownStoredMealId, householdId: byIdUnknownHouseholdId }),
+      );
+      return repository.findById(byIdUnknownHouseholdId, byIdUnknownMissingMealId);
+    });
+
+    // B-52 規則2: 無ければ `null`。例外にもしないし、別の献立でも埋めない。
+    expect(foundMeal).toBeNull();
+  });
+
+  it('他世帯が保存した献立は findById が null を返す', async () => {
+    await withHouseholdTransaction(db, byIdStrangerHouseholdId, (tx) =>
+      new MealRepositoryImpl(tx).save(
+        byIdStrangerHouseholdId,
+        meal({ id: byIdStrangerMealId, householdId: byIdStrangerHouseholdId }),
+      ),
+    );
+
+    const foundMeal = await withHouseholdTransaction(db, byIdOwnerHouseholdId, (tx) =>
+      new MealRepositoryImpl(tx).findById(byIdOwnerHouseholdId, byIdStrangerMealId),
+    );
+
+    // C-9 / NFR-09: 他世帯の献立は「無い」と同じ返り方をする。区別して返すと、
+    // 識別子を総当たりする者に他世帯の献立の存在が漏れる。
+    expect(foundMeal).toBeNull();
+  });
+
+  it('クレームで見えている献立でも、引数の世帯が食い違えば null を返す', async () => {
+    const foundMeal = await withHouseholdTransaction(db, byIdMismatchHouseholdId, async (tx) => {
+      const repository = new MealRepositoryImpl(tx);
+      await repository.save(
+        byIdMismatchHouseholdId,
+        meal({ id: byIdMismatchMealId, householdId: byIdMismatchHouseholdId }),
+      );
+      // B-52 規則1 / C-9: RLS で見えていても、引数の世帯で必ず絞る（網は二重）。
+      // `where` の世帯を落とした実装なら、ここで献立が返ってしまう。
+      return repository.findById(byIdMismatchPassedHouseholdId, byIdMismatchMealId);
+    });
+
+    expect(foundMeal).toBeNull();
+  });
+
+  it('クレームを張らないトランザクションでは findById が null を返し、張り直せば読める', async () => {
+    await withHouseholdTransaction(db, byIdNoClaimsHouseholdId, (tx) =>
+      new MealRepositoryImpl(tx).save(
+        byIdNoClaimsHouseholdId,
+        meal({ id: byIdNoClaimsMealId, householdId: byIdNoClaimsHouseholdId }),
+      ),
+    );
+
+    const mealReadWithoutClaims = await transactionWithoutClaims((tx) =>
+      new MealRepositoryImpl(tx).findById(byIdNoClaimsHouseholdId, byIdNoClaimsMealId),
+    );
+
+    const mealReadAfterReapplyingClaims = await withHouseholdTransaction(
+      db,
+      byIdNoClaimsHouseholdId,
+      (tx) => new MealRepositoryImpl(tx).findById(byIdNoClaimsHouseholdId, byIdNoClaimsMealId),
+    );
+
+    // ADR-029 理由(1): クレームを張り忘れた問い合わせは**0行**になる（例外ではない）。
+    expect(mealReadWithoutClaims).toBeNull();
+    // ADR-029 理由(4): 3つ目が、0行の理由を「見えない」に絞り込む唯一の手である。
+    expect(mealReadAfterReapplyingClaims?.id).toBe(byIdNoClaimsMealId);
+  });
+
+  it('材料・手順・調理記録は位置の昇順で読み戻る', async () => {
+    const foundMeal = await withHouseholdTransaction(db, byIdChildOrderHouseholdId, async (tx) => {
+      await insertMealRow(tx, {
+        mealId: byIdChildOrderMealId,
+        householdId: byIdChildOrderHouseholdId,
+      });
+      // 差し込む順を位置の降順にする。`order by` の無い実装では、挿入した順が
+      // そのまま返って赤くなる。
+      for (const [position, name] of [
+        [2, 'じゃがいも'],
+        [1, 'たまねぎ'],
+        [0, 'にんじん'],
+      ] as const) {
+        await insertIngredientRow(tx, {
+          mealId: byIdChildOrderMealId,
+          householdId: byIdChildOrderHouseholdId,
+          position,
+          name,
+        });
+      }
+      for (const [position, body] of [
+        [2, 'しあげる'],
+        [1, '煮る'],
+        [0, 'にんじんを切る'],
+      ] as const) {
+        await insertStepRow(tx, {
+          mealId: byIdChildOrderMealId,
+          householdId: byIdChildOrderHouseholdId,
+          position,
+          body,
+        });
+      }
+      for (const [position, cookedAt] of [
+        [1, '2026-09-20T18:30:00.000Z'],
+        [0, '2026-09-19T18:30:00.000Z'],
+      ] as const) {
+        await insertCookingRecordRow(tx, {
+          mealId: byIdChildOrderMealId,
+          householdId: byIdChildOrderHouseholdId,
+          position,
+          cookedAt,
+        });
+      }
+
+      return new MealRepositoryImpl(tx).findById(byIdChildOrderHouseholdId, byIdChildOrderMealId);
+    });
+
+    // B-52 規則7 / C-3 / C-5: 集約の内部の並びは位置の昇順で約束する
+    // （`findByHousehold` と同じ組み立てを通る）。
+    expect(foundMeal?.ingredients.map((mealIngredient) => mealIngredient.name)).toEqual([
+      'にんじん',
+      'たまねぎ',
+      'じゃがいも',
+    ]);
+    expect(foundMeal?.steps).toEqual(['にんじんを切る', '煮る', 'しあげる']);
+    expect(foundMeal?.cookingRecords.map((record) => record.cookedAt)).toEqual([
+      '2026-09-19T18:30:00.000Z',
+      '2026-09-20T18:30:00.000Z',
+    ]);
+  });
+
+  it('献立が1件も無い世帯では findById が null を返す', async () => {
+    const foundMeal = await withHouseholdTransaction(db, byIdEmptyHouseholdId, (tx) =>
+      new MealRepositoryImpl(tx).findById(byIdEmptyHouseholdId, byIdEmptyMealId),
+    );
+
+    // B-52 規則2: 0行は `null`。空の配列でも例外でもない。
+    expect(foundMeal).toBeNull();
+  });
+});

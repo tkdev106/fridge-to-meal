@@ -1,10 +1,4 @@
-import type {
-  MealIngredientDto,
-  StockItemDto,
-  SuggestionEntryOutput,
-  SuggestionOutput,
-  SuggestMealsOutput,
-} from '@fridge-to-meal/contract';
+import type { SuggestMealsOutput } from '@fridge-to-meal/contract';
 import type { HouseholdId } from '../../../shared/domain/HouseholdId.js';
 import type { ListStockItems } from '../../pantry/usecase/ListStockItems.js';
 import { createMeal } from '../domain/entity/Meal.js';
@@ -17,26 +11,20 @@ import type { SuggestionIdGenerator } from '../domain/port/SuggestionIdGenerator
 import type { MealRepository } from '../domain/repository/MealRepository.js';
 import type { SuggestionRepository } from '../domain/repository/SuggestionRepository.js';
 import { cookableMealsOf } from '../domain/service/CookableMealFinder.js';
-import { earliestExpiryDateByName } from '../domain/service/EarliestExpiryDates.js';
-import { mealCoverageOf } from '../domain/service/MealCoverageService.js';
-import { amountOf } from '../domain/value/Amount.js';
 import type { CookableMeal } from '../domain/value/CookableMeal.js';
 import { dateTimeOf, hoursBeforeOf } from '../domain/value/DateTime.js';
 import type { DateTime } from '../domain/value/DateTime.js';
-import { expiryDateOf } from '../domain/value/ExpiryDate.js';
-import type { ExpiryDate } from '../domain/value/ExpiryDate.js';
 import type { MealId } from '../domain/value/MealId.js';
-import type { MealIngredient } from '../domain/value/MealIngredient.js';
 import {
   createPantrySnapshot,
   pantrySnapshotEquals,
   unexpiredStockItemsOf,
 } from '../domain/value/PantrySnapshot.js';
 import type { PantrySnapshot } from '../domain/value/PantrySnapshot.js';
-import { createStockItem } from '../domain/value/StockItem.js';
 import type { StockItem } from '../domain/value/StockItem.js';
 import { createSuggestionEntry } from '../domain/value/SuggestionEntry.js';
 import type { SuggestionEntry, SuggestionEntryOrigin } from '../domain/value/SuggestionEntry.js';
+import { mealByIdOf, suggestionOutputOf, toMealStockItem } from './MealOutputs.js';
 
 /**
  * 在庫で作れる献立から提案を組む（FR-16 / FR-34 / FR-35）。世帯は第1引数で受け取り、
@@ -603,40 +591,11 @@ function excludeRecentlySuggested(
 }
 
 /**
- * 在庫の一覧が返した在庫品を献立側の在庫品に写す（B-27 規則2・3）。持つのは**名称・分量・
- * 期限の3項目**だけで、識別子と食材の指定は落とす — 献立側のどの規則も見ないためである
- * （ADR-033 決定3 / ADR-037 決定1）。
- *
- * **ここで trim も既定値の補完もしない。** 正規化はドメインが持つものであり、写す側が
- * 2つ目の正規化の規則を持つと、片方だけ変わったときに突き合わせが静かにずれる
- * （先行 `registerStockItem` / ADR-037 理由(3)）。
- */
-export function toMealStockItem(stockItem: StockItemDto): StockItem {
-  return createStockItem({
-    name: stockItem.name,
-    amount: amountOf(stockItem.amount),
-    expiryDate: expiryDateOf(stockItem.expiryDate),
-  });
-}
-
-/**
  * 作れる献立を提案の1件に写す。**由来は全件が再利用であり、生成と混ぜない**
  * （FR-35 / C-15 / B-27 規則9）。
  */
 function toReusedEntry(cookableMeal: CookableMeal): SuggestionEntry {
   return createSuggestionEntry({ mealId: cookableMeal.meal.id, origin: REUSED_ORIGIN });
-}
-
-/**
- * 献立を識別子で引けるようにする（B-48a 規則5・11）。受け取った列は読むだけである（ADR-009）。
- * 渡すのは世帯で引いた献立だけであり、他世帯の献立を指す識別子は引けない（C-9）。
- */
-export function mealByIdOf(meals: readonly Meal[]): ReadonlyMap<MealId, Meal> {
-  const mealById = new Map<MealId, Meal>();
-  for (const meal of meals) {
-    if (!mealById.has(meal.id)) mealById.set(meal.id, meal);
-  }
-  return mealById;
 }
 
 /**
@@ -661,81 +620,4 @@ function toOutput(
     outcome: 'suggested',
     suggestion: suggestionOutputOf(suggestion, mealById, mealStockItems),
   };
-}
-
-/**
- * 提案そのものを DTO に写す（B-48a 規則2〜6）。**結末の名乗りを付けない部分だけ**を切り出して
- * あり、`toOutput` と **B-58 の `ShowLatestSuggestion`** が同じものを使う。
- *
- * **写しを2つ持たない。** 保存済みの提案を読み取り専用で返す経路は、C-7 で短絡した回と
- * まったく同じものを返さなければならない（FR-21「再訪時に同じものが表示される」）— 別の写し方を
- * 置くと、同じ提案が経路によって違う形で出る。
- *
- * @throws {Error} 提案の1件が指す献立が引けないとき（B-48a 決定1）
- */
-export function suggestionOutputOf(
-  suggestion: Suggestion,
-  mealById: ReadonlyMap<MealId, Meal>,
-  mealStockItems: readonly StockItem[],
-): SuggestionOutput {
-  const stockItemNames = mealStockItems.map((stockItem) => stockItem.name);
-  // 賄える材料の期限は、名称の突き合わせと同じ在庫の列から引く（B-48a 規則6・8）。
-  // 期限切れの在庫品も落とさない — 期限は賄えるかに関わらず、日付として見せるだけである。
-  const earliestExpiryDates = earliestExpiryDateByName(mealStockItems);
-
-  return {
-    id: suggestion.id,
-    entries: suggestion.entries.map((entry) =>
-      toEntryOutput(entry, mealById, stockItemNames, earliestExpiryDates),
-    ),
-    generatedAt: suggestion.generatedAt,
-  };
-}
-
-/**
- * 提案の1件を、指す献立の中身とともに写す（B-48a 規則2〜7・11）。
- *
- * **指す献立が引けなければ提案を返さずに断る**（決定1 / ADR-058 結果2）。献立は無期限に保持され
- * 消す口も無い（Q-2）ので、引けないのはデータの不整合である。1件だけ落とすと FR-21 の
- * 「同じものが表示される」が黙って崩れ、全件落ちれば C-15 を割る。利用者が入力を直しても
- * 解消しないため **`MealRuleViolation` に包まない** — 包むと api 層の写像が 4xx に化けさせる
- * （ADR-045 決定1）。**message に世帯の識別子を含めない**（ADR-045 決定3）。
- */
-function toEntryOutput(
-  entry: SuggestionEntry,
-  mealById: ReadonlyMap<MealId, Meal>,
-  stockItemNames: readonly string[],
-  earliestExpiryDates: ReadonlyMap<string, ExpiryDate>,
-): SuggestionEntryOutput {
-  const meal = mealById.get(entry.mealId);
-  if (meal === undefined) {
-    throw new Error(`提案の1件が指す献立が見つからない（mealId: ${entry.mealId}）`);
-  }
-
-  // 充足は現在の在庫の名称で算出する（FR-17 / ADR-009 / C-6 / C-16）。
-  const coverage = mealCoverageOf(meal.ingredients, stockItemNames);
-
-  return {
-    mealId: entry.mealId,
-    origin: entry.origin,
-    title: meal.title,
-    // 材料も手順も保存された並びのまま写す。並べ替えも補完もしない（規則3 / C-5）。
-    ingredients: meal.ingredients.map(toIngredientDto),
-    steps: [...meal.steps],
-    coverage: {
-      // 賄える材料には、同じ名称の在庫品のうち最も早い期限を日付のまま載せる（規則8 /
-      // ADR-036 決定1(ii)(iii)）。名称の前後空白は畳む側と同じく落として引く（C-6）。
-      // 残日数や「今日」かどうかは基準時刻に依存するため載せない — それは画面が持つ。
-      covered: coverage.covered.map((ingredient) => ({
-        ...toIngredientDto(ingredient),
-        expiryDate: earliestExpiryDates.get(ingredient.name.trim()) ?? null,
-      })),
-      missing: coverage.missing.map(toIngredientDto),
-    },
-  };
-}
-
-/** 材料を DTO に写す。分量の未設定は `null` のまま（ADR-010）。 */
-function toIngredientDto(ingredient: MealIngredient): MealIngredientDto {
-  return { name: ingredient.name, kind: ingredient.kind, amount: ingredient.amount };
 }

@@ -1,6 +1,7 @@
 import type { Meal } from '../../../src/contexts/meal/domain/entity/Meal.js';
 import type { MealRepository } from '../../../src/contexts/meal/domain/repository/MealRepository.js';
 import { MealRuleViolation } from '../../../src/contexts/meal/domain/error/MealRuleViolation.js';
+import type { MealId } from '../../../src/contexts/meal/domain/value/MealId.js';
 import type { HouseholdId } from '../../../src/shared/domain/HouseholdId.js';
 
 /** 何件目の保存で何を投げるか。先行の `throws` と同じ、決まった応答の持たせ方である。 */
@@ -80,6 +81,16 @@ export class InMemoryMealRepository implements MealRepository {
 
   async findByHousehold(householdId: HouseholdId): Promise<Meal[]> {
     return this.#arrayOf(householdId);
+  }
+
+  /**
+   * その世帯の献立を識別子で1件引く（B-52 / C-9）。無ければ `null`。
+   *
+   * **世帯の箱の中だけを探す。** 他世帯の献立を指した回も `null` であり、「他世帯のものだ」
+   * と区別して返さない（NFR-09。本物の `MealRepositoryImpl` と同じ約束）。
+   */
+  async findById(householdId: HouseholdId, mealId: MealId): Promise<Meal | null> {
+    return this.#arrayOf(householdId).find((candidate) => candidate.id === mealId) ?? null;
   }
 
   async save(householdId: HouseholdId, meal: Meal): Promise<void> {

@@ -9,6 +9,7 @@ import { createCookingRecord } from '../domain/value/CookingRecord.js';
 import type { CookingStep } from '../domain/value/CookingStep.js';
 import { cookingStepOf } from '../domain/value/CookingStep.js';
 import { dateTimeOf } from '../domain/value/DateTime.js';
+import type { MealId } from '../domain/value/MealId.js';
 import { mealIdOf } from '../domain/value/MealId.js';
 import type { MealIngredient, MealIngredientKind } from '../domain/value/MealIngredient.js';
 import { createMealIngredient } from '../domain/value/MealIngredient.js';
@@ -28,38 +29,75 @@ export class MealRepositoryImpl implements MealRepository {
   constructor(private readonly tx: HouseholdTransaction) {}
 
   /**
+   * その世帯の献立を識別子で1件引く（B-52 規則1・2 / C-9）。無ければ `null`。
+   *
+   * **世帯と識別子の両方で `where` に置く**（C-9）。クレームで RLS が絞っていても
+   * 世帯を外さない — 網は二重であり、片方を頼ると渡された世帯が実際には使われない
+   * ままになる。**他世帯の献立を指した回も、その世帯に無い回と同じく `null`** で、
+   * 区別して返さない（NFR-09）。
+   *
+   * 組み立ては `findByHousehold` と共有する（B-52 規則7・16）— 材料・手順・調理記録は
+   * どちらの口でも `position` の昇順で読み戻る。
+   */
+  async findById(householdId: HouseholdId, mealId: MealId): Promise<Meal | null> {
+    const mealRows = await this.tx
+      .select()
+      .from(meals)
+      .where(and(eq(meals.id, mealId), eq(meals.householdId, householdId)))
+      .limit(1);
+
+    const foundMeals = await this.mealsOf(householdId, mealRows, mealId);
+    return foundMeals[0] ?? null;
+  }
+
+  /**
    * その世帯の献立をすべて返す。0行なら空の配列で、`null` にも例外にもしない（設計 7章）。
    *
    * **引数の世帯で必ず絞る**（設計 規則2 / C-9）。クレームで RLS が絞っていても `where` を
    * 外さない — 網は二重であり、片方を頼ると渡された世帯が実際には使われないままになる。
-   * **子表も自分の `household_id` で絞り、親へ結合しない**（設計 規則2・10）。
    *
    * **献立の列の並び順は約束しない**（設計 規則3）ので `order by` を足さない — 再利用の
    * 並びは C-12 が決めるものであり、決めるのは `cookableMealsOf` である（ADR-036 決定4）。
-   * **集約の内部の並びだけは約束する**（設計 規則4）ため、材料・手順・調理記録は
-   * `position` の昇順で読み、その順で献立に組み直す。
    *
-   * 行の組が不変条件に反していれば、生成関数が投げる `MealRuleViolation` を
-   * **握りつぶさずそのまま伝える**（設計 規則5 / 7章）。
+   * 子表の読み出しと組み立ては `mealsOf` にある（`findById` と共有する）。
    */
   async findByHousehold(householdId: HouseholdId): Promise<Meal[]> {
     const mealRows = await this.tx.select().from(meals).where(eq(meals.householdId, householdId));
+    return this.mealsOf(householdId, mealRows, null);
+  }
+
+  /**
+   * 親の行から献立を組む。**`findByHousehold` と `findById` が共有する**（B-52 規則7・16）
+   * ので、片方だけ並びや組み立てが変わることが起こらない。
+   *
+   * `mealId` を渡した回は子表もその献立で絞る。**子表も自分の `household_id` で絞り、
+   * 親へ結合しない**（B-44 設計 規則2・10）のはどちらの口でも変わらない。
+   *
+   * **集約の内部の並びだけは約束する**（B-44 設計 規則4）ため、材料・手順・調理記録は
+   * `position` の昇順で読み、その順で献立に組み直す。行の組が不変条件に反していれば、
+   * 生成関数が投げる `MealRuleViolation` を**握りつぶさずそのまま伝える**（同 規則5）。
+   */
+  private async mealsOf(
+    householdId: HouseholdId,
+    mealRows: readonly MealRow[],
+    mealId: MealId | null,
+  ): Promise<Meal[]> {
     if (mealRows.length === 0) return [];
 
     const ingredientRows = await this.tx
       .select()
       .from(mealIngredients)
-      .where(eq(mealIngredients.householdId, householdId))
+      .where(childScope(mealIngredients, householdId, mealId))
       .orderBy(asc(mealIngredients.position));
     const stepRows = await this.tx
       .select()
       .from(cookingSteps)
-      .where(eq(cookingSteps.householdId, householdId))
+      .where(childScope(cookingSteps, householdId, mealId))
       .orderBy(asc(cookingSteps.position));
     const recordRows = await this.tx
       .select()
       .from(cookingRecords)
-      .where(eq(cookingRecords.householdId, householdId))
+      .where(childScope(cookingRecords, householdId, mealId))
       .orderBy(asc(cookingRecords.position));
 
     // 子は親ごとに配り直す。世帯で引いた行をそのまま渡すと、世帯に2件以上の献立が
@@ -233,6 +271,19 @@ export class MealRepositoryImpl implements MealRepository {
 
     return storedRecordRows;
   }
+}
+
+/**
+ * 子表を絞る条件。**世帯は必ず置き**（C-9）、献立を指して引く回だけ `meal_id` を足す。
+ * 親へ結合しないのは B-44 設計 規則10 のとおりで、子表が自分の `household_id` を持つ。
+ */
+function childScope(
+  table: typeof mealIngredients | typeof cookingSteps | typeof cookingRecords,
+  householdId: HouseholdId,
+  mealId: MealId | null,
+) {
+  const byHousehold = eq(table.householdId, householdId);
+  return mealId === null ? byHousehold : and(byHousehold, eq(table.mealId, mealId));
 }
 
 /** `position` の昇順を保ったまま、献立ごとに配り直す。 */

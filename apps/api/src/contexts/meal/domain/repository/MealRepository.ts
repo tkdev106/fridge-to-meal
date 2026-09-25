@@ -1,5 +1,6 @@
 import type { HouseholdId } from '../../../../shared/domain/HouseholdId.js';
 import type { Meal } from '../entity/Meal.js';
+import type { MealId } from '../value/MealId.js';
 
 /**
  * 献立の永続化の出口。**interface だけを置き、実装はインフラ層に持つ**（ADR-002）。
@@ -18,6 +19,16 @@ export interface MealRepository {
    * C-12 が決めるものであり、決めるのは `cookableMealsOf` である（ADR-036 決定4）。
    */
   findByHousehold(householdId: HouseholdId): Promise<Meal[]>;
+
+  /**
+   * その世帯の献立を識別子で1件引く。**無ければ `null` を返す**（例外にしない）。
+   *
+   * **世帯と識別子の両方で絞る**（C-9 / ADR-067 論点2）。**他世帯の献立を指した回も
+   * `null` である** — 「他世帯のものだ」と区別して返すと、識別子を総当たりする者に
+   * 他世帯の献立の存在が漏れる（NFR-09）。**interface では強制できない約束なので、
+   * 実装ごとにテストで確かめる。**
+   */
+  findById(householdId: HouseholdId, mealId: MealId): Promise<Meal | null>;
 
   /**
    * 献立を保存する（C-1。生成結果を献立に変換した時点で保存する）。
