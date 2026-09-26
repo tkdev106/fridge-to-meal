@@ -42,6 +42,9 @@ export interface SuggestionRepository {
    * **`MealRuleViolation`（`rule: 'save.householdMismatch'`）を投げて保存を拒む。**
    * 食い違いは呼び出し側の誤りであり、黙って引数の側に寄せない（先行
    * `StockItemRepository.save`）。これも interface では強制できない約束である。
+   *
+   * **同じ識別子の2度目は拒む。失敗の型は約束しない**（ADR-058 決定1）。他世帯の提案と
+   * 識別子が衝突した回も同じである。中身を読み比べてべき等に通す経路は持たない。
    */
   save(householdId: HouseholdId, suggestion: Suggestion): Promise<void>;
 
