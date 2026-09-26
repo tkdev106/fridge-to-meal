@@ -38,11 +38,28 @@ type FirstParameter<T> = {
 type AllMethodsTakeHouseholdIdFirst =
   FirstParameter<MealRepository>[keyof MealRepository] extends HouseholdId ? true : never;
 
+/**
+ * 識別子で引く口の先頭が `HouseholdId` なら `true`、違えば `never`（B-52 規則1 / C-9）。
+ * 上の総当たりに含まれる主張だが、**この口だけを名指しで押さえる** — 口が1つ消えても
+ * 総当たりは緑のままになるため。
+ */
+type FindByIdTakesHouseholdIdFirst = Parameters<MealRepository['findById']>[0] extends HouseholdId
+  ? true
+  : never;
+
 describe('献立リポジトリ MealRepository', () => {
   it('全メソッドが世帯識別子を先頭の引数に取る（C-9）', () => {
     // 型の主張。世帯識別子を取らないメソッドを足した時点で、この行が typecheck で落ちる。
     // 実行時には何も確かめていない — 確かめているのは型検査のほうである。
     const assertion: AllMethodsTakeHouseholdIdFirst = true;
+
+    expect(assertion).toBe(true);
+  });
+
+  it('識別子で引く口も世帯識別子を先頭の引数に取る（C-9）', () => {
+    // 型の主張。世帯を取らない `findById` を置いた時点で、この行が typecheck で落ちる。
+    // B-52 規則1: 献立は世帯と識別子の両方で引く。
+    const assertion: FindByIdTakesHouseholdIdFirst = true;
 
     expect(assertion).toBe(true);
   });

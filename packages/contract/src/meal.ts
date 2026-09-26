@@ -26,15 +26,25 @@ export type MealCoverageDto = {
   missing: MealIngredientDto[];
 };
 
-/** 提案の1件。指す献立の名称・材料・手順と、現在の在庫での充足を載せる（FR-19）。 */
-export type SuggestionEntryOutput = {
+/**
+ * 献立1件ぶんの中身。識別子・名称・材料・手順と、**現在の在庫での充足**を載せる（FR-30 / FR-32）。
+ *
+ * **由来（`origin`）は持たない**（ADR-067 論点1）— 由来は提案の1件の性質であって献立の性質
+ * ではなく、履歴から開いた献立には由来が無い（FR-35）。世帯・調理記録・生成日時も
+ * 持たない（B-48a 規則12 / NFR-09）。
+ *
+ * **B-48a の `SuggestionEntryOutput` から切り出したものであり、JSON の形は変えていない。**
+ */
+export type MealOutput = {
   mealId: string;
-  origin: SuggestionEntryOrigin;
   title: string;
   ingredients: MealIngredientDto[];
   steps: string[];
   coverage: MealCoverageDto;
 };
+
+/** 提案の1件。献立1件の中身に、その回の由来（FR-35 / C-4c）だけを足したものである。 */
+export type SuggestionEntryOutput = MealOutput & { origin: SuggestionEntryOrigin };
 
 /**
  * 提案1回ぶん。generatedAt は UTC の正準形。

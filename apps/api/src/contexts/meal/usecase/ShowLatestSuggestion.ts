@@ -4,7 +4,7 @@ import type { ListStockItems } from '../../pantry/usecase/ListStockItems.js';
 import type { MealRepository } from '../domain/repository/MealRepository.js';
 import type { SuggestionRepository } from '../domain/repository/SuggestionRepository.js';
 import { createPantrySnapshot, pantrySnapshotEquals } from '../domain/value/PantrySnapshot.js';
-import { mealByIdOf, suggestionOutputOf, toMealStockItem } from './SuggestMeals.js';
+import { mealByIdOf, suggestionOutputOf, toMealStockItem } from './MealOutputs.js';
 
 /**
  * 保存済みの提案をそのまま返す（B-58 / FR-21 / NFR-03）。世帯は第1引数で受け取る（C-9）。
