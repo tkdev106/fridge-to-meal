@@ -123,8 +123,10 @@ function MealBody({ meal }: { meal: MealOutput }) {
 
       <h3>{INGREDIENTS_HEADING}</h3>
       <ul>
-        {ingredients.map((ingredient) => (
-          <IngredientRow key={ingredient.name} ingredient={ingredient} />
+        {/* 同じ名称の材料が2件ある献立をサーバは禁じていないので、手順と同じく位置を
+            混ぜた key にする（名称だけだと衝突する）。 */}
+        {ingredients.map((ingredient, index) => (
+          <IngredientRow key={`${index}-${ingredient.name}`} ingredient={ingredient} />
         ))}
       </ul>
 
