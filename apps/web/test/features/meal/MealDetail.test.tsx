@@ -1,0 +1,290 @@
+// @vitest-environment jsdom
+/**
+ * 献立詳細の**表示の分岐**（B-53 / `docs/screen-design.md` 4章 / ADR-052）。
+ *
+ * 材料の並びと印の判断は `MealDetailIngredients.ts` の純粋関数のテストが既に押さえている。
+ * ここで確かめるのは**受け取った結末のどれを描くか**と、**取れた献立に何が載るか**だけである。
+ *
+ * **仮の文言を期待値に書かない**（ADR-052 結果2 / 同書 論点3）。観察は次の3つで行う。
+ *
+ * - **役割** … 材料の印は `note`、案内は `status`、注意表示は `complementary`
+ * - **こちらが渡したデータ** … 献立の名称・材料の名称と分量・手順の文
+ * - **件数** … 印がいくつ出るか、注意表示がいくつ出るか
+ */
+
+import { describe, expect, it } from 'vitest';
+import type { MealIngredientDto, MealOutput } from '@fridge-to-meal/contract';
+import { fireEvent, render, screen, within } from '../../support/dom/renderComponent.js';
+import { MealDetail } from '../../../src/features/meal/MealDetail.js';
+import type { MealDetailProps } from '../../../src/features/meal/MealDetail.js';
+
+function main(name: string, amount: string | null = null): MealIngredientDto {
+  return { name, kind: 'main', amount };
+}
+
+function seasoning(name: string, amount: string | null = null): MealIngredientDto {
+  return { name, kind: 'seasoning', amount };
+}
+
+function meal(overrides: Partial<MealOutput> = {}): MealOutput {
+  return {
+    mealId: 'meal-1',
+    title: '豚こま肉と白菜の生姜焼き',
+    ingredients: [main('豚こま肉', '300g')],
+    steps: ['白菜を一口大に切る'],
+    coverage: {
+      covered: [{ ...main('豚こま肉', '300g'), expiryDate: '2026-09-20' }],
+      missing: [],
+    },
+    ...overrides,
+  };
+}
+
+type RenderOverrides = Partial<Omit<MealDetailProps, 'meal'>>;
+
+/** 記録まわりの4つの props は既定値を持たせ、表示の分岐だけを見る観点を軽くする。 */
+function renderDetail(state: MealDetailProps['meal'], overrides: RenderOverrides = {}) {
+  return render(
+    <MealDetail
+      meal={state}
+      onClose={overrides.onClose ?? (() => {})}
+      onAddCookingRecord={overrides.onAddCookingRecord ?? (() => {})}
+      recording={overrides.recording ?? false}
+      recordFailureNotice={overrides.recordFailureNotice ?? null}
+      recorded={overrides.recorded ?? false}
+    />,
+  );
+}
+
+/** 記録の操作。**取れた献立の枝にだけ在る**（規則9）ので、無ければ `null` が返る。 */
+function cookedControl(): HTMLElement | null {
+  const buttons = screen.queryAllByRole('button');
+
+  // 「←」は最初に置かれる（画面設計 4章のワイヤー）。記録の操作はそれ以外の1つである。
+  return buttons[1] ?? null;
+}
+
+/** 閉じる操作（「←」）。 */
+function closeControl(): HTMLElement | null {
+  return screen.queryAllByRole('button')[0] ?? null;
+}
+
+describe('献立詳細 MealDetail', () => {
+  it('読み込み中は案内だけを出し、記録の操作も注意表示も出さない', () => {
+    // 押しても指す献立が画面に無い（規則9）。注意表示は献立と一緒に出るものである。
+    renderDetail({ outcome: 'loading' });
+
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(cookedControl()).toBeNull();
+    expect(screen.queryAllByRole('complementary')).toHaveLength(0);
+  });
+
+  it('取れなかった回は断りを出し、記録の操作を出さない', () => {
+    renderDetail({ outcome: 'failed' });
+
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(cookedControl()).toBeNull();
+  });
+
+  it('断られた回も取れなかった回と同じく、記録の操作を出さない', () => {
+    // 画面から指せるのは自世帯の献立だけで、利用者にできることが無い（7章 / C-9）。
+    renderDetail({ outcome: 'rejected', rule: 'showMeal.mealNotFound' });
+
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(cookedControl()).toBeNull();
+  });
+
+  it('取れなかった回でも閉じる操作は残す', () => {
+    // 閉じられないと、詳細から戻る手段が1つも無くなる。
+    let closed = false;
+    renderDetail({ outcome: 'failed' }, { onClose: () => (closed = true) });
+
+    fireEvent.click(closeControl() as HTMLElement);
+
+    expect(closed).toBe(true);
+  });
+
+  it('献立の名称を見出しとして出す', () => {
+    renderDetail({ outcome: 'shown', meal: meal({ title: 'にんじんと卵の炒めもの' }) });
+
+    expect(screen.getByRole('heading', { name: 'にんじんと卵の炒めもの' })).not.toBeNull();
+  });
+
+  it('材料の名称と分量を、主材料が先・調味料が後の並びで出す', () => {
+    // 並べ替えそのものは `MealDetailIngredients.ts` の持ち分（規則2 / 画面設計 4章）。
+    renderDetail({
+      outcome: 'shown',
+      meal: meal({
+        ingredients: [seasoning('醤油', '大さじ2'), main('豚こま肉', '300g')],
+        coverage: { covered: [{ ...main('豚こま肉', '300g'), expiryDate: null }], missing: [] },
+      }),
+    });
+
+    const rows = screen.getAllByRole('listitem');
+    expect(within(rows[0] as HTMLElement).queryByText('豚こま肉')).not.toBeNull();
+    expect(within(rows[0] as HTMLElement).queryByText('300g')).not.toBeNull();
+    expect(within(rows[1] as HTMLElement).queryByText('醤油')).not.toBeNull();
+    expect(within(rows[1] as HTMLElement).queryByText('大さじ2')).not.toBeNull();
+  });
+
+  it('分量を持たない材料には分量を出さない', () => {
+    // ADR-010: 未設定は `null` であり、web で「なし」と補わない。
+    renderDetail({
+      outcome: 'shown',
+      meal: meal({
+        ingredients: [main('豚こま肉', null)],
+        coverage: { covered: [{ ...main('豚こま肉'), expiryDate: null }], missing: [] },
+      }),
+    });
+
+    const row = screen.getAllByRole('listitem')[0] as HTMLElement;
+    expect(row.textContent).toContain('豚こま肉');
+    expect(within(row).queryByText('null')).toBeNull();
+    expect(row.textContent).not.toContain('null');
+  });
+
+  it('賄える材料と不足する材料に、違う印を出す', () => {
+    // NFR-17: 記号と文字の両方で区別する。**色だけに頼らない。**
+    renderDetail({
+      outcome: 'shown',
+      meal: meal({
+        ingredients: [main('豚こま肉'), main('しょうが', '1かけ')],
+        coverage: {
+          covered: [{ ...main('豚こま肉'), expiryDate: null }],
+          missing: [main('しょうが', '1かけ')],
+        },
+      }),
+    });
+
+    const rows = screen.getAllByRole('listitem');
+    const coveredMark = within(rows[0] as HTMLElement).getByRole('note').textContent;
+    const missingMark = within(rows[1] as HTMLElement).getByRole('note').textContent;
+
+    expect(coveredMark).not.toBe(missingMark);
+  });
+
+  it('不足の印を、記号と文字の両方で出す', () => {
+    // NFR-17: 記号だけでも文字だけでもない。**文言そのものは留めない**（論点3）。
+    renderDetail({
+      outcome: 'shown',
+      meal: meal({
+        ingredients: [main('しょうが', '1かけ')],
+        coverage: { covered: [], missing: [main('しょうが', '1かけ')] },
+      }),
+    });
+
+    const mark = within(screen.getAllByRole('listitem')[0] as HTMLElement).getByRole('note')
+      .textContent as string;
+
+    expect(mark).toMatch(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u);
+    expect(mark).toMatch(/[^\p{L}\p{N}\s]/u);
+  });
+
+  it('調味料には印を出さない', () => {
+    // C-16 / ADR-023: 充足判定の対象外であり、**印が無いこと自体が意味を持つ**。
+    renderDetail({
+      outcome: 'shown',
+      meal: meal({
+        ingredients: [main('豚こま肉'), seasoning('醤油', '大さじ2')],
+        coverage: { covered: [{ ...main('豚こま肉'), expiryDate: null }], missing: [] },
+      }),
+    });
+
+    const rows = screen.getAllByRole('listitem');
+    expect(within(rows[0] as HTMLElement).queryAllByRole('note')).toHaveLength(1);
+    expect(within(rows[1] as HTMLElement).queryAllByRole('note')).toHaveLength(0);
+  });
+
+  it('手順を渡された並びのまま、番号を添えて出す', () => {
+    // FR-19 / FR-30: 表示は生成時のまま不変である。
+    renderDetail({
+      outcome: 'shown',
+      meal: meal({ steps: ['白菜を一口大に切る', '醤油とみりんを合わせる'] }),
+    });
+
+    const steps = screen.getAllByRole('listitem').slice(1);
+    expect(steps[0]?.textContent).toContain('白菜を一口大に切る');
+    expect(steps[0]?.textContent).toContain('1');
+    expect(steps[1]?.textContent).toContain('醤油とみりんを合わせる');
+    expect(steps[1]?.textContent).toContain('2');
+  });
+
+  it('手順が0件でも詳細全体を断らず、名称と材料を出す', () => {
+    // 規則6: 献立は取れており、断ると材料も読めなくなる。
+    renderDetail({ outcome: 'shown', meal: meal({ steps: [] }) });
+
+    expect(screen.getByRole('heading', { name: '豚こま肉と白菜の生姜焼き' })).not.toBeNull();
+    expect(screen.queryByText('豚こま肉')).not.toBeNull();
+  });
+
+  it('注意表示を必ず1回出す', () => {
+    // FR-20 / 規則7: ここは手順と分量を実際に見る画面である。
+    renderDetail({ outcome: 'shown', meal: meal() });
+
+    expect(screen.getAllByRole('complementary')).toHaveLength(1);
+  });
+
+  it('作ったことを記録する操作は、1度押すだけで届く', () => {
+    // 規則8: **確認ダイアログを出さない。** 押し間違えても実害がない。
+    let recorded = 0;
+    renderDetail({ outcome: 'shown', meal: meal() }, { onAddCookingRecord: () => (recorded += 1) });
+
+    fireEvent.click(cookedControl() as HTMLElement);
+
+    expect(recorded).toBe(1);
+  });
+
+  it('送っている間は記録の操作が効かない', () => {
+    // 規則10: 2度目の記録を送らない。
+    let recorded = 0;
+    renderDetail(
+      { outcome: 'shown', meal: meal() },
+      { recording: true, onAddCookingRecord: () => (recorded += 1) },
+    );
+
+    fireEvent.click(cookedControl() as HTMLElement);
+
+    expect(recorded).toBe(0);
+  });
+
+  it('送っている間は閉じる操作も効かない', () => {
+    // 規則10: 結末が届く前に閉じると、断りの案内が出ないまま成否が分からなくなる。
+    let closed = false;
+    renderDetail(
+      { outcome: 'shown', meal: meal() },
+      { recording: true, onClose: () => (closed = true) },
+    );
+
+    fireEvent.click(closeControl() as HTMLElement);
+
+    expect(closed).toBe(false);
+  });
+
+  it('記録が通った回は案内を1つ出す', () => {
+    // 規則11・12: これは「いまの1回」の結末であり、開き直した回には出ない。
+    renderDetail({ outcome: 'shown', meal: meal() }, { recorded: true });
+
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('記録が断られた回も案内を1つ出す', () => {
+    // 文言を選ぶのは `cookingRecordFailureNoticeOf` の読みである（規則13）。
+    renderDetail({ outcome: 'shown', meal: meal() }, { recordFailureNotice: 'unavailable' });
+
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('記録が通っても、記録の操作は同じ位置に残る', () => {
+    // FR-31 の前半。**記録済みかどうかの表示はこの周では出さない**（規則12 / B-53b）。
+    renderDetail({ outcome: 'shown', meal: meal() }, { recorded: true });
+
+    expect(cookedControl()).not.toBeNull();
+  });
+
+  it('何も無い回は案内を1つも出さない', () => {
+    // 記録の案内は結末があるときだけである（規則11）。
+    renderDetail({ outcome: 'shown', meal: meal() });
+
+    expect(screen.queryAllByRole('status')).toHaveLength(0);
+  });
+});

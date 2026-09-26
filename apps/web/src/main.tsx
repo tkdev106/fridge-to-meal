@@ -9,6 +9,7 @@ import type { StockItemRequestsDeps } from './server/StockItemRequests.js';
 import { deleteStockItem, listStockItems, registerStockItem } from './server/StockItemRequests.js';
 import { listIngredientNames } from './server/IngredientNameRequests.js';
 import { requestNewMeals, showLatestSuggestion } from './server/SuggestionRequests.js';
+import { addCookingRecord, showMeal } from './server/MealRequests.js';
 
 // 継ぎ目の実装を `new` するのはここだけ（`SessionImpl.ts` 規則2 / B-35 設計 6章 規則3）。
 // 設定が欠けていれば `sessionConfigOf` の `Error` を**包まずそのまま外へ**出す（規則12 / ADR-045）
@@ -44,6 +45,11 @@ const requestNewMealsFn = requestNewMeals(stockItemRequests);
 // 同じ3項目なので、そのまま渡せる。
 const requestIngredientNames = listIngredientNames(stockItemRequests);
 
+// 献立1件の口と調理記録の口も**同じ基点・同じトークンの組**で作る（B-53）。
+// `MealRequestsDeps` も同じ3項目なので、そのまま渡せる。
+const requestMeal = showMeal(stockItemRequests);
+const sendCookingRecord = addCookingRecord(stockItemRequests);
+
 const container = document.getElementById('root');
 if (!container) throw new Error('#root が見つからない');
 
@@ -57,6 +63,8 @@ createRoot(container).render(
       showLatestSuggestion={requestLatestSuggestion}
       requestNewMeals={requestNewMealsFn}
       listIngredientNames={requestIngredientNames}
+      showMeal={requestMeal}
+      addCookingRecord={sendCookingRecord}
     />
   </StrictMode>,
 );
