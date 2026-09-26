@@ -33,6 +33,7 @@ import type {
   DeleteStockItem,
   ListStockItems,
   RegisterStockItem,
+  UpdateStockItem,
 } from './server/StockItemRequests.js';
 import type { ListIngredientNames } from './server/IngredientNameRequests.js';
 import type { RequestNewMeals, ShowLatestSuggestion } from './server/SuggestionRequests.js';
@@ -50,6 +51,13 @@ export type AppProps = {
   registerStockItem: RegisterStockItem;
   /** 在庫を削除しに行く口（B-23）。同じく組み立てるのは `main.tsx` だけである。 */
   deleteStockItem: DeleteStockItem;
+  /**
+   * 在庫品1件を更新しに行く口（FR-05 / B-55）。組み立てるのはやはり `main.tsx` だけである。
+   *
+   * **通った回だけ門が一覧を取り直す**（設計 規則9）。結末はそのまま画面へ返し、断りの
+   * 文言を選ぶのは `StockItemEditForm` の側である（ADR-032 決定3）。
+   */
+  updateStockItem: UpdateStockItem;
   /**
    * 保存済みの提案を取りに行く口（B-49a / B-58）。組み立てるのはやはり `main.tsx` だけである。
    *
@@ -94,6 +102,7 @@ export function App({
   listStockItems,
   registerStockItem,
   deleteStockItem,
+  updateStockItem,
   showLatestSuggestion,
   listIngredientNames,
   requestNewMeals,
@@ -397,6 +406,27 @@ export function App({
   };
 
   /**
+   * **更新が通ったら一覧を取り直す**（FR-05 / B-55 設計 規則9 / B-22 設計 規則3）。
+   *
+   * **web で行を書き換えない。** 登録・削除と同じ理由で、並び（期限の近い順）を決めるのは
+   * サーバであり、取り直した結果がそれである。継ぎ目が成功に在庫品を載せていないのも
+   * このためである。
+   *
+   * **通らなかった回は取り直さない。** 断られた回（`update.notFound` を含む。ADR-050 結果5）も
+   * 失敗した回も在庫は1件も変わっておらず、往復を1つ無駄にする。
+   *
+   * 数えは登録・削除と**同じ1つ**に載せる（`reloadCount`）ので、保存済みの提案と食材名も
+   * 同時に取り直される — 在庫が変われば C-7 の一致が崩れ、`pantryChanged` の手がかりが
+   * 古くなる（B-49b 規則10）。
+   */
+  const updateAndReload: UpdateStockItem = async (id, input) => {
+    const outcome = await updateStockItem(id, input);
+    if (outcome.outcome === 'updated') setReloadCount((count) => count + 1);
+
+    return outcome;
+  };
+
+  /**
    * 「新しい献立を求める」操作の配線（B-49b / FR-36）。
    *
    * **押している間は2度目の要求を出さない** — `requestingNewMeals` が真なら何もしない。
@@ -520,6 +550,7 @@ export function App({
               today={todayOf(new Date())}
               onDelete={deleteAndReload}
               onRegister={registerAndReload}
+              onUpdate={updateAndReload}
               ingredientNames={ingredientNames}
             />
             <SignOutButton onSignOut={() => session.signOut()} />

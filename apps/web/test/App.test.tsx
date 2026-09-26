@@ -96,6 +96,7 @@ function renderApp(
       listStockItems={requests.listStockItems}
       registerStockItem={requests.registerStockItem}
       deleteStockItem={requests.deleteStockItem}
+      updateStockItem={requests.updateStockItem}
       showLatestSuggestion={suggestions.showLatestSuggestion}
       requestNewMeals={suggestions.requestNewMeals}
       listIngredientNames={ingredientNames.listIngredientNames}
@@ -1072,6 +1073,179 @@ describe('門 App のタブの結線', () => {
     // ADR-066 結果1 / B-38 設計 6章 規則9: 状態を門へ持ち上げても、**入り直すと
     // `DEFAULT_TAB` へ戻る**ことは変えない（`docs/screen-design.md` 2.3 の `login --> meals`）。
     expect(mealsTab().getAttribute('aria-selected')).toBe('true');
+  });
+});
+
+/**
+ * 在庫の編集の結線（FR-05 / B-55 設計 4章・5章 / 6章 規則9 / B-22 規則3 / B-24 /
+ * B-49b 規則10 / C-7）。
+ *
+ * **門の判断は「通った回に取り直すこと」の1つだけ**である（設計 規則9）。編集の画面の中身
+ * （欄の値・送る中身・案内・閉じる条件）は `StockItemEditForm.test.tsx` と
+ * `PantryTab.test.tsx` が、行のタップの読みは `SwipeGesture.test.ts` と
+ * `PantryList.test.tsx` が既に押さえており、**ここで二重に書かない。**
+ *
+ * 観察はこの suite と同じ手がかりで行う（**仮の文言も記号も期待値に書かない**）。
+ */
+describe('在庫の編集（B-55）', () => {
+  /** 編集の画面に出ている操作は3つ（閉じる／保存／ログアウト）である。下タブは `role="tab"` なので混ざらない。 */
+  const EDIT_OPERATION_COUNT = 3;
+
+  /** 打った分量。**テストが渡した値**なので、一覧に出ていないことを当ててよい（設計 規則6）。 */
+  const EDITED_AMOUNT = '300g';
+
+  function closeEditOperation(): HTMLElement {
+    return operationAt(0, EDIT_OPERATION_COUNT);
+  }
+
+  function saveEditOperation(): HTMLElement {
+    return operationAt(1, EDIT_OPERATION_COUNT);
+  }
+
+  /**
+   * 行をタップする（設計 規則15）。**押下と離上を同じ座標に送る** — 動かしていないことが
+   * タップである（判断は `SwipeGesture.ts` の持ち分で、ここは入力を送るだけである）。
+   */
+  function tapSoleRow(): void {
+    const row = soleRow();
+
+    fireEvent.pointerDown(row, { pointerId: 1, clientX: 0, clientY: 0 });
+    fireEvent.pointerUp(row, { pointerId: 1, clientX: 0, clientY: 0 });
+  }
+
+  /** 編集の画面の分量の欄。**`textbox` はこれ1つだけである**（設計 規則1）。 */
+  function editAmountField(): HTMLElement {
+    return screen.getByRole('textbox');
+  }
+
+  /** 保存済みの提案（`show` の台本用）。**当てるのは渡した名称だけである**（設計 規則6）。 */
+  function savedSuggestion(mealId: string, title: string): LatestSuggestionOutcome {
+    return {
+      outcome: 'suggested',
+      pantryChanged: true,
+      suggestion: {
+        id: `suggestion-${mealId}`,
+        generatedAt: '2026-09-20T09:00:00.000Z',
+        entries: [
+          {
+            mealId,
+            origin: 'generated',
+            title,
+            ingredients: [],
+            steps: [],
+            coverage: { covered: [], missing: [] },
+          },
+        ],
+      },
+    };
+  }
+
+  it('行をタップすると、編集の入力の欄が出る', async () => {
+    renderApp({ initialState: 'signedIn' }, { list: [loaded(carrot)] });
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    tapSoleRow();
+
+    // FR-05 / 設計 5章: 更新の口が門から通っていることの検めである。編集の欄は分量
+    // （`textbox`）と期限（`type="date"`）の2つで、名称の欄は無い（設計 規則1）。
+    expect(textboxes()).toHaveLength(1);
+    expect(screen.getAllByRole('button')).toHaveLength(EDIT_OPERATION_COUNT);
+  });
+
+  it('更新が通ると、一覧を取り直して新しい在庫品が出る', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      {
+        list: [loaded(carrot), loaded(chineseCabbage)],
+        update: [{ outcome: 'updated' }],
+      },
+    );
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    tapSoleRow();
+    fireEvent.click(saveEditOperation());
+
+    // FR-05 / 設計 規則9 / B-22 規則3: 通った回だけ門が取り直す（先行 B-24 / B-23）。
+    expect(await screen.findByText(chineseCabbage.name)).not.toBeNull();
+  });
+
+  it('更新して閉じたあとの一覧に、打った分量は出ない', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      {
+        list: [loaded(carrot), loaded(chineseCabbage)],
+        update: [{ outcome: 'updated' }],
+      },
+    );
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    tapSoleRow();
+    fireEvent.change(editAmountField(), { target: { value: EDITED_AMOUNT } });
+    fireEvent.click(saveEditOperation());
+    await screen.findByText(chineseCabbage.name);
+
+    // 設計 規則9: **web で行を書き換えない** — 並び（期限の近い順）を決めるのはサーバであり、
+    // 取り直した結果がそれである。一覧に出るのは台本の2件目のぶんだけである。
+    expect(screen.queryByText(EDITED_AMOUNT)).toBeNull();
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('更新が断られた回は、一覧を取り直さない', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      {
+        list: [loaded(carrot), loaded(chineseCabbage)],
+        update: [{ outcome: 'rejected', rule: 'update.notFound' }],
+      },
+    );
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    tapSoleRow();
+    fireEvent.click(saveEditOperation());
+
+    // 断りが届いたことを待ってから閉じる（待つ条件に仮の文言を使わない）。
+    // **ADR-050 結果5** / 設計 規則10: 更新の `update.notFound` は「すでに消えている」と
+    // 読まず、案内を出す。
+    await waitFor(() => {
+      expect(notices()).toHaveLength(1);
+    });
+    fireEvent.click(closeEditOperation());
+
+    // 設計 規則9 / 10章: 在庫は1件も変わっていないので、往復を1つ無駄にしない。
+    expect(screen.queryByText(carrot.name)).not.toBeNull();
+    expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+  });
+
+  it('更新が通ると、保存済みの提案も取り直す', async () => {
+    const OLD_MEAL = '肉じゃが';
+    const NEW_MEAL = '新しいご飯';
+
+    renderApp(
+      { initialState: 'signedIn' },
+      {
+        list: [loaded(carrot), loaded(chineseCabbage)],
+        update: [{ outcome: 'updated' }],
+      },
+      { show: [savedSuggestion('meal-old', OLD_MEAL), savedSuggestion('meal-new', NEW_MEAL)] },
+    );
+
+    await screen.findByText(OLD_MEAL);
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    tapSoleRow();
+    fireEvent.click(saveEditOperation());
+    await screen.findByText(chineseCabbage.name);
+
+    fireEvent.click(mealsTab());
+
+    // B-49b 規則10 / C-7 / 設計 規則9: 在庫が変われば C-7 の一致が崩れ、`pantryChanged` の
+    // 手がかりが古くなる。取り直しの数えは登録・削除と同じ1つに載る。
+    expect(await screen.findByText(NEW_MEAL)).not.toBeNull();
   });
 });
 

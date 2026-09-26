@@ -1,15 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import type { RegisterStockItemInput, StockItemDto } from '@fridge-to-meal/contract';
+import type {
+  RegisterStockItemInput,
+  StockItemDto,
+  UpdateStockItemInput,
+} from '@fridge-to-meal/contract';
 import type {
   DeleteStockItem,
   ListStockItems,
   RegisterStockItem,
   StockItemsOutcome,
+  UpdateStockItem,
 } from '../../src/server/StockItemRequests.js';
 import {
   deleteStockItem,
   listStockItems,
   registerStockItem,
+  updateStockItem,
 } from '../../src/server/StockItemRequests.js';
 import type { ReceivedRequest } from '../support/server/FixedHttpFetch.js';
 import { FixedHttpFetch } from '../support/server/FixedHttpFetch.js';
@@ -643,5 +649,231 @@ describe('在庫の削除 deleteStockItem', () => {
     const outcome = await deleting(httpFetch)(carrotId);
 
     expect(outcome).toEqual({ outcome: 'failed' });
+  });
+});
+
+// ---- 在庫の更新（B-55）----
+
+/**
+ * 更新の入力の標本。**任意の2欄のうち一方を `null` にする** — 継ぎ目が欄を落としたり
+ * `null` を省略に読み替えたりしないことを見るため（B-22 設計 規則2 / B-55 規則12・14）。
+ */
+const carrotUpdate: UpdateStockItemInput = { amount: '3本', expiryDate: null };
+
+/** 通る応答。**更新の成功は 200 だが、継ぎ目が読むのは `ok` だけである**（B-55 規則14）。 */
+const updated = { ok: true, body: {} } as const;
+
+/**
+ * 更新の口を1つ組む。本題（届ける応答・トークンの取り出し方）だけが引数に現れる形にする
+ * （`docs/testing.md` 6章）。
+ */
+function updating(
+  httpFetch: FixedHttpFetch,
+  accessTokenOf: () => Promise<string | null> = async () => accessToken,
+): UpdateStockItem {
+  return updateStockItem({ baseUrl, accessToken: accessTokenOf, httpFetch: httpFetch.httpFetch });
+}
+
+describe('在庫の更新 updateStockItem', () => {
+  it('応答が通れば updated の結末を返す', async () => {
+    // FR-05 / B-55 規則14: 書き換えられたことだけを伝える。**応答の在庫品は結末に載せない** —
+    // 一覧はサーバから取り直す（規則9）ので、受け取っても使い道が無い。
+    const outcome = await updating(new FixedHttpFetch(updated))(carrotId, carrotUpdate);
+
+    expect(outcome).toEqual({ outcome: 'updated' });
+  });
+
+  it('叩く先は基点に /stock-items と識別子を足した1つだけで世帯を表すものを載せない', async () => {
+    // B-55 規則13 / C-9 / NFR-09: 接頭辞を web の側で足さない。世帯は経路にもクエリにも
+    // 本体にも載せず、サーバがアクセストークンから定める。
+    const httpFetch = new FixedHttpFetch(updated);
+
+    await updating(httpFetch)('stock-item-carrot', carrotUpdate);
+
+    expect(httpFetch.receivedRequests.map((request) => request.url)).toEqual([
+      'https://api.example.dev/stock-items/stock-item-carrot',
+    ]);
+  });
+
+  it('識別子に経路の区切りが混ざっても1つの区切りとして送る', async () => {
+    // ADR-026 / B-55 規則13: 識別子の形を決めるのは発行する側であり、web は検めない。
+    // **経路へ埋めるときだけは逃がす** — 逃がさないと、行から渡った値で別の経路を叩く形になる。
+    const httpFetch = new FixedHttpFetch(updated);
+
+    await updating(httpFetch)('a/b?c', carrotUpdate);
+
+    expect(httpFetch.receivedRequests.map((request) => request.url)).toEqual([
+      'https://api.example.dev/stock-items/a%2Fb%3Fc',
+    ]);
+  });
+
+  it('PUT で送る', async () => {
+    // FR-05 / B-09: 更新の経路は `PUT /stock-items/:id` である。
+    const httpFetch = new FixedHttpFetch(updated);
+
+    await updating(httpFetch)(carrotId, carrotUpdate);
+
+    expect(onlyRequest(httpFetch).method).toBe('PUT');
+  });
+
+  it('渡された更新の入力をそのまま JSON にして本体に載せる', async () => {
+    // B-55 規則12 / FR-13: 詰め替えない。空欄を `null` に倒すのは画面の側
+    // （`StockItemFormValues.ts`）であり、継ぎ目は運ぶだけである。**省略に読み替えない** —
+    // `UpdateStockItemInput` は常に置き換えとして扱う。期待値は literal で置く。
+    const httpFetch = new FixedHttpFetch(updated);
+
+    await updating(httpFetch)(carrotId, carrotUpdate);
+
+    expect(onlyRequest(httpFetch).body).toBe('{"amount":"3本","expiryDate":null}');
+  });
+
+  it('取り出したアクセストークンを Authorization の Bearer に載せる', async () => {
+    // B-22 設計 規則8 / ADR-043: トークンはヘッダで運ぶ（Cookie の経路を作らない）。
+    const httpFetch = new FixedHttpFetch(updated);
+
+    await updating(httpFetch)(carrotId, carrotUpdate);
+
+    expect(onlyRequest(httpFetch).headers.Authorization).toBe('Bearer access-token-example');
+  });
+
+  it('本体を持つので Content-Type に application/json を付ける', async () => {
+    // B-55 設計 9章 / ADR-048: 付けるのは `Authorization` と `Content-Type` の2つだけである
+    // （api 側の `ALLOWED_HEADERS` に既にある）— 増やすと preflight の許可対象が増える。
+    const httpFetch = new FixedHttpFetch(updated);
+
+    await updating(httpFetch)(carrotId, carrotUpdate);
+
+    expect(onlyRequest(httpFetch).headers).toEqual({
+      Authorization: 'Bearer access-token-example',
+      'Content-Type': 'application/json',
+    });
+  });
+
+  it('アクセストークンが null なら failed の結末を返す', async () => {
+    // B-22 設計 規則7 / B-55 7章: 出しても 401 が返るだけである。
+    const outcome = await updating(new FixedHttpFetch(updated), async () => null)(
+      carrotId,
+      carrotUpdate,
+    );
+
+    expect(outcome).toEqual({ outcome: 'failed' });
+  });
+
+  it('アクセストークンが null なら要求を1つも出さない', async () => {
+    // B-22 設計 規則7: **出さないこと自体が要件**（`docs/testing.md` 2章の例外）。
+    // **通る応答を用意しておく** — 誤って出た回も最後まで通り、落ちるのは件数の断定だけになる。
+    const httpFetch = new FixedHttpFetch(updated);
+
+    await updating(httpFetch, async () => null)(carrotId, carrotUpdate);
+
+    expect(httpFetch.receivedRequests.map((request) => request.url)).toEqual([]);
+  });
+
+  it('アクセストークンが空文字でも要求を出し空のまま Bearer に載せる', async () => {
+    // B-22 設計 規則7 後半: 「提示されていない」の判定は api と `IdentifyHousehold` の側に
+    // 1か所だけ残す。web で null と同じに畳まない。
+    const httpFetch = new FixedHttpFetch(updated);
+
+    await updating(httpFetch, async () => '')(carrotId, carrotUpdate);
+
+    expect(onlyRequest(httpFetch).headers.Authorization).toBe('Bearer ');
+  });
+
+  it('見つからない断りの rule をそのまま rejected の結末に載せる', async () => {
+    // ADR-050 結果5 / B-55 規則10・12: **継ぎ目は `update.notFound` を成功にも失敗にも
+    // 畳まない。** 「消えている」と読まずに案内を出すのは画面の判断であり
+    // （`UpdateFailureNotice.ts`）、ここは値を運ぶだけである。
+    const outcome = await updating(new FixedHttpFetch(rejected('update.notFound')))(
+      carrotId,
+      carrotUpdate,
+    );
+
+    expect(outcome).toEqual({ outcome: 'rejected', rule: 'update.notFound' });
+  });
+
+  it('表に無い rule も読まずにそのまま rejected の結末に載せる', async () => {
+    // ADR-032 決定3 / B-55 規則12: 継ぎ目は `rule` の意味を読まない。401 の断り
+    // （`accessToken.missing`）も同じ形で運び、読み分けは画面に任せる。
+    const outcome = await updating(new FixedHttpFetch(rejected('accessToken.missing')))(
+      carrotId,
+      carrotUpdate,
+    );
+
+    expect(outcome).toEqual({ outcome: 'rejected', rule: 'accessToken.missing' });
+  });
+
+  it('断りの応答に rule が無ければ failed の結末を返す', async () => {
+    // B-22 設計 規則9 と同じ構え: 読む手がかりの無い断りは、理由の無い失敗と変わらない。
+    const outcome = await updating(new FixedHttpFetch({ ok: false, body: { message: '断る' } }))(
+      carrotId,
+      carrotUpdate,
+    );
+
+    expect(outcome).toEqual({ outcome: 'failed' });
+  });
+
+  it('断りの応答の rule が文字列でなければ failed の結末を返す', async () => {
+    // B-22 設計 規則9: 文字列でないものを画面に渡すと、案内の選び分けの側で落ちる。
+    const outcome = await updating(new FixedHttpFetch({ ok: false, body: { rule: 1 } }))(
+      carrotId,
+      carrotUpdate,
+    );
+
+    expect(outcome).toEqual({ outcome: 'failed' });
+  });
+
+  it('断りの応答の本体が読めなければ failed の結末を返す', async () => {
+    // B-22 設計 規則9 / B-55 7章: 本体が読めないことも1つの結末に畳む。**通った応答と違い、
+    // 断りは本体を読む** — `rule` が無ければ画面は何も読み分けられない。
+    const outcome = await updating(new FixedHttpFetch({ ok: false, unreadableBody: true }))(
+      carrotId,
+      carrotUpdate,
+    );
+
+    expect(outcome).toEqual({ outcome: 'failed' });
+  });
+
+  it('通った応答の本体が読めなくても updated の結末を返す', async () => {
+    // B-55 規則14: **成功の本体は読まない。** 使い道が無く、読めない本体で成功を失敗に
+    // 化けさせる理由も無い。
+    const outcome = await updating(new FixedHttpFetch({ ok: true, unreadableBody: true }))(
+      carrotId,
+      carrotUpdate,
+    );
+
+    expect(outcome).toEqual({ outcome: 'updated' });
+  });
+
+  it('通信が失敗して出口が投げても例外を外に出さず failed の結末を返す', async () => {
+    // B-22 設計 規則9 / FR-41: 外へ出すと画面の側で誰も受け止めず、送っている表示のまま
+    // 止まる（B-55 規則7 が保存も「←」も止めているため、閉じられなくなる）。
+    const httpFetch = new FixedHttpFetch({ throws: new Error('送れない') });
+
+    await expect(updating(httpFetch)(carrotId, carrotUpdate)).resolves.toEqual({
+      outcome: 'failed',
+    });
+  });
+
+  it('アクセストークンの取り出しが投げても例外を外に出さず failed の結末を返す', async () => {
+    // B-22 設計 規則9 / `Session.ts` 規則7: `SessionImpl.accessToken` は投げうる。
+    const httpFetch = new FixedHttpFetch(updated);
+    const rejecting = async (): Promise<string | null> => {
+      throw new Error('セッションを取り出せない');
+    };
+
+    await expect(updating(httpFetch, rejecting)(carrotId, carrotUpdate)).resolves.toEqual({
+      outcome: 'failed',
+    });
+  });
+
+  it('1度断られても自分では送り直さない', async () => {
+    // B-55 規則12 / ADR-007: 断られた回に送り直しても、利用者が入力を直さない限り同じ断りが
+    // 返る（`update.notFound` なら相手は消えている）。再送は利用者の操作に委ねる。
+    // 2度目の応答が結果に現れないことで見る（**回数は数えない**。先行の登録・削除と同じ）。
+    const httpFetch = new FixedHttpFetch(rejected('update.notFound'), updated);
+
+    const outcome = await updating(httpFetch)(carrotId, carrotUpdate);
+
+    expect(outcome).toEqual({ outcome: 'rejected', rule: 'update.notFound' });
   });
 });

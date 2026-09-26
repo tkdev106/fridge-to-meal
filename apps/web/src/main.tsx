@@ -6,7 +6,12 @@ import { sessionConfigOf } from './session/SessionConfig.js';
 import { SessionImpl } from './session/SessionImpl.js';
 import { apiBaseUrlOf } from './server/ApiBaseUrl.js';
 import type { StockItemRequestsDeps } from './server/StockItemRequests.js';
-import { deleteStockItem, listStockItems, registerStockItem } from './server/StockItemRequests.js';
+import {
+  deleteStockItem,
+  listStockItems,
+  registerStockItem,
+  updateStockItem,
+} from './server/StockItemRequests.js';
 import { listIngredientNames } from './server/IngredientNameRequests.js';
 import { requestNewMeals, showLatestSuggestion } from './server/SuggestionRequests.js';
 import { addCookingRecord, showMeal } from './server/MealRequests.js';
@@ -33,6 +38,8 @@ const stockItemRequests: StockItemRequestsDeps = {
 const requestStockItems = listStockItems(stockItemRequests);
 const sendStockItem = registerStockItem(stockItemRequests);
 const requestStockItemDeletion = deleteStockItem(stockItemRequests);
+// 更新の口も**同じ基点・同じトークンの組**で作る（B-55 設計 9章）。2つ目の基点を作らない。
+const sendStockItemUpdate = updateStockItem(stockItemRequests);
 
 // 提案の口も**同じ基点・同じトークンの組**で作る（B-49a）。別々に組むと、片方だけ別の基点を
 // 見ている状態を作れてしまう（B-24 と同じ理由）。`SuggestionRequestsDeps` は
@@ -60,6 +67,7 @@ createRoot(container).render(
       listStockItems={requestStockItems}
       registerStockItem={sendStockItem}
       deleteStockItem={requestStockItemDeletion}
+      updateStockItem={sendStockItemUpdate}
       showLatestSuggestion={requestLatestSuggestion}
       requestNewMeals={requestNewMealsFn}
       listIngredientNames={requestIngredientNames}

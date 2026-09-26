@@ -8,7 +8,11 @@
  * 2か所が別々にずれていく。
  */
 
-import type { RegisterStockItemInput } from '@fridge-to-meal/contract';
+import type {
+  RegisterStockItemInput,
+  StockItemDto,
+  UpdateStockItemInput,
+} from '@fridge-to-meal/contract';
 
 /** 登録の画面が持つ3欄の値。世帯は持たない（C-9）。 */
 export type StockItemFormValues = {
@@ -49,6 +53,48 @@ export function registerStockItemInputOf(
   // 食材の指定は項目ごと持たせない（規則1）。カタログに無い名称でも登録が通る（FR-03）。
   return {
     name: values.name,
+    amount: toNullWhenEmpty(values.amount),
+    expiryDate: toNullWhenEmpty(values.expiryDate),
+  };
+}
+
+/** 編集の画面が持つ2欄の値（B-55 設計 5章 / 規則1）。名称は編集できないので持たない。 */
+export type StockItemEditValues = { readonly amount: string; readonly expiryDate: string };
+
+/**
+ * 開いた直後の欄の値（B-55 規則2 / NFR-15）。
+ *
+ * **その行の値をそのまま置き、空に戻さない** — 分量だけ直したい回に期限を打ち直させない。
+ * 未設定（`null`）は空文字に倒す（欄に `null` を描かせない）。
+ *
+ * **前後の空白を落とさない**（規則4）。正規化はサーバの1か所（`amountOf` / `expiryDateOf`）に
+ * 残す — ここで落とすと、開いてそのまま保存した回に値が黙って変わる。
+ *
+ * **食材名を持たない**（規則1）。編集できるのは分量と期限だけであり（`UpdateStockItemInput` に
+ * 名称が無い）、欄に持つと送れない値を編集させる形になる。名称を出すのは `.tsx` の役目である。
+ */
+export function stockItemEditValuesOf(stockItem: StockItemDto): StockItemEditValues {
+  return {
+    amount: stockItem.amount ?? '',
+    expiryDate: stockItem.expiryDate ?? '',
+  };
+}
+
+/**
+ * 更新の入力を作る（B-55 規則3・6 / FR-13）。
+ *
+ * **`null` を返す道が無い。** 登録（食材名が空なら作らない）と違い、作れない入力が存在しない —
+ * 「どちらも消す」は正しい編集であり、必須の欄が1つも無い。
+ *
+ * **空欄は「消す」を表し、キーを省略せず `null` を送る**（規則3）。`UpdateStockItemInput` は
+ * 常に置き換えとして扱う（B-06 規則3）— 省略に読み替えると、消したい回に今の値が残る。
+ *
+ * **値が今と同じでも入力を作る**（規則6）。差分を見て止めると、送るかどうかの判断が画面と
+ * サーバの2か所に増える。
+ */
+export function updateStockItemInputOf(values: StockItemEditValues): UpdateStockItemInput {
+  // 空文字だけを `null` にし、空白は落とさずそのまま運ぶ（規則4。登録と同じ関数を使う）。
+  return {
     amount: toNullWhenEmpty(values.amount),
     expiryDate: toNullWhenEmpty(values.expiryDate),
   };
