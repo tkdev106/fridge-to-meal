@@ -14,6 +14,10 @@ import { useEffect, useState } from 'react';
 import { SignInForm } from './features/identity/SignInForm.js';
 import { SignOutButton } from './features/identity/SignOutButton.js';
 import { HistoryTab } from './features/meal/HistoryTab.js';
+import { cookingRecordFailureNoticeOf } from './features/meal/CookingRecordFailureNotice.js';
+import type { CookingRecordFailureNotice } from './features/meal/CookingRecordFailureNotice.js';
+import { MealDetail } from './features/meal/MealDetail.js';
+import type { MealDetailState } from './features/meal/MealDetail.js';
 import type { MealsTabState } from './features/meal/MealsTab.js';
 import { MealsTab } from './features/meal/MealsTab.js';
 import { deleteFailureNoticeOf } from './features/pantry/DeleteFailureNotice.js';
@@ -33,6 +37,7 @@ import type {
 } from './server/StockItemRequests.js';
 import type { ListIngredientNames } from './server/IngredientNameRequests.js';
 import type { RequestNewMeals, ShowLatestSuggestion } from './server/SuggestionRequests.js';
+import type { AddCookingRecord, ShowMeal } from './server/MealRequests.js';
 
 export type AppProps = {
   /** セッションの継ぎ目。画面はこの型だけを見る（ADR-046 決定3）。 */
@@ -76,6 +81,20 @@ export type AppProps = {
    * 下の `handleRequestNewMeals` と `showLatestSuggestion` の効果が持つ。
    */
   requestNewMeals: RequestNewMeals;
+  /**
+   * 献立1件を取りに行く口（B-53 / B-52）。組み立てるのはやはり `main.tsx` だけである。
+   *
+   * **開かれるまで呼ばない** — 充足は開いた時点の在庫で算出されたものでなければならず
+   * （FR-32 / ADR-009）、先に取っておくと古い判定を見せることになる。
+   */
+  showMeal: ShowMeal;
+  /**
+   * 調理記録を1件足す口（FR-22 / B-51）。組み立てるのはやはり `main.tsx` だけである。
+   *
+   * **「作った」を記録しても在庫は減らさない**（C-8）— 記録が通った回に在庫も提案も
+   * 取り直さない。
+   */
+  addCookingRecord: AddCookingRecord;
 };
 
 export function App({
@@ -87,6 +106,8 @@ export function App({
   showLatestSuggestion,
   listIngredientNames,
   requestNewMeals,
+  showMeal,
+  addCookingRecord,
 }: AppProps) {
   // 購読を始めた時点の状態は subscribe が1度目に渡す（`Session.ts` 規則5）ので、
   // ここで先に決めない。最初の描画は購読が始まるまでの一瞬だけ 'unknown' でよい。
@@ -115,6 +136,27 @@ export function App({
   //
   // **URL にも `localStorage` にも書かない**（同 結果1）ので、再読み込みは既定に戻る。
   const [selectedTab, setSelectedTab] = useState<TabId>(DEFAULT_TAB);
+
+  /**
+   * **開いている献立**（B-53 設計 規則17）。`null` なら詳細を出していない。
+   *
+   * **器でもタブでもなく門が持つ** — 取りに行く効果の置き場が門であり（B-22 設計 規則10）、
+   * 履歴タブ（B-54）も同じ状態から詳細を開ける。ADR-066 が選んでいるタブを門へ移したのと
+   * 同じ理由である。
+   */
+  const [openMealId, setOpenMealId] = useState<string | null>(null);
+
+  // 開いた献立の取得の結末。**開くまでは「読み込み中」ですらない**（詳細を出していない）。
+  const [mealDetail, setMealDetail] = useState<MealDetailState>({ outcome: 'loading' });
+
+  // 調理記録を送っている間か。
+  const [recordingCooking, setRecordingCooking] = useState(false);
+  // 直前の記録の読み（`null` なら断りの案内を出さない）。
+  const [recordFailureNotice, setRecordFailureNotice] = useState<CookingRecordFailureNotice | null>(
+    null,
+  );
+  // 直前の記録が通ったか（規則11・12。**開き直したら消える**）。
+  const [cookingRecorded, setCookingRecorded] = useState(false);
 
   // 「新しい献立を求める」（B-49b / FR-36）を送っている間か（S-5）。
   const [requestingNewMeals, setRequestingNewMeals] = useState(false);
@@ -208,6 +250,43 @@ export function App({
   }, [state, listIngredientNames, reloadCount]);
 
   /**
+   * **開いている献立を取りに行く**（FR-30 / FR-32 / B-53 設計 規則1・19）。
+   *
+   * **開かれた回に1度だけ**取りに行き、`reloadCount` が増えた回（在庫の登録・削除が通った回）に
+   * 取り直す — 充足は現在の在庫で都度算出されるものであり（ADR-009）、在庫が動けば印が変わる。
+   * 読み取りだけの `GET` なので、取り直しても費用も 1日10回の枠（NFR-C2）も使わない。
+   *
+   * **効果が解除されたら結果を捨てる**（在庫と同じ。B-22 設計 規則10）。StrictMode の
+   * 二重呼び出しと、閉じられた・サインアウトが割り込んだ場合に、古い結果を画面に置かないため。
+   */
+  useEffect(() => {
+    if (state !== 'signedIn' || openMealId === null) return;
+
+    let active = true;
+    setMealDetail({ outcome: 'loading' });
+
+    void showMeal(openMealId).then((outcome) => {
+      if (active) setMealDetail(outcome);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [state, showMeal, openMealId, reloadCount]);
+
+  /**
+   * **サインイン済みでなくなったら、開いている詳細も閉じる**（NFR-09）。
+   *
+   * 閉じないと**前の世帯の献立が残る** — 別の世帯で入り直したとき、識別子は前の世帯のもので
+   * あり、取り直しは 404 になる（そして画面には前の献立が出たままになる）。
+   */
+  useEffect(() => {
+    if (state === 'signedIn') return;
+
+    setOpenMealId(null);
+  }, [state]);
+
+  /**
    * **サインイン済みでなくなったら、食材名も初期に戻す**（B-50c 設計 規則7）。
    *
    * 戻さないと**前の世帯の食材名が補完に残る**（NFR-09）— 別の世帯で入り直したとき、
@@ -281,6 +360,49 @@ export function App({
     if (deleteFailureNoticeOf(outcome) === null) setReloadCount((count) => count + 1);
 
     return outcome;
+  };
+
+  /**
+   * 献立詳細を開く（B-53 / 画面設計 2.3）。**前の記録の結末は持ち越さない**（規則12）—
+   * 持ち越すと、記録していない献立に記録の案内が出る。
+   */
+  const handleOpenMeal = (mealId: string) => {
+    setRecordFailureNotice(null);
+    setCookingRecorded(false);
+    setOpenMealId(mealId);
+  };
+
+  /** 献立詳細を閉じる（カードの一覧に戻る）。 */
+  const handleCloseMeal = () => {
+    setRecordFailureNotice(null);
+    setCookingRecorded(false);
+    setOpenMealId(null);
+  };
+
+  /**
+   * 「これを作った」の配線（FR-22 / C-8 / B-51 の経路）。
+   *
+   * **送っている間は2度目を送らない** — 同じ記録が2件入る（先行 `handleRequestNewMeals`）。
+   * **通っても献立を取り直さない**（規則11）— `MealOutput` は記録で変わらず、**在庫も
+   * 減らない**（C-8。在庫の口を1つも呼ばないことで型から読める）。
+   * **断られても詳細を閉じない** — 案内を読む前に画面が変わる。
+   */
+  const handleAddCookingRecord = () => {
+    if (openMealId === null || recordingCooking) return;
+
+    setRecordingCooking(true);
+    setRecordFailureNotice(null);
+    setCookingRecorded(false);
+
+    void addCookingRecord(openMealId).then((outcome) => {
+      setRecordingCooking(false);
+
+      // 読みは `cookingRecordFailureNoticeOf` の1つだけを使う（先行 `deleteAndReload`）—
+      // 判断を2か所に置くと、「案内は出さないのに記録できていない」食い違いが生まれる。
+      const notice = cookingRecordFailureNoticeOf(outcome);
+      setRecordFailureNotice(notice);
+      setCookingRecorded(notice === null);
+    });
   };
 
   /**
@@ -404,6 +526,21 @@ export function App({
             // **移しても何も取り直さない**（同 結果3 / D-8）— 提案も在庫一覧も食材名も
             // 触らない。取り直す経路は在庫の登録・削除が通った回に既にある。
             onGoToPantry={() => setSelectedTab('pantry')}
+            onOpenMeal={handleOpenMeal}
+            // **詳細を組むのは門である**（設計 規則17）。器は渡されたものを描くかどうかだけを
+            // 決める（先行 `PantryTab` の一覧 ⇄ 登録）。
+            mealDetail={
+              openMealId === null ? null : (
+                <MealDetail
+                  meal={mealDetail}
+                  onClose={handleCloseMeal}
+                  onAddCookingRecord={handleAddCookingRecord}
+                  recording={recordingCooking}
+                  recordFailureNotice={recordFailureNotice}
+                  recorded={cookingRecorded}
+                />
+              )
+            }
           />
         }
         pantry={

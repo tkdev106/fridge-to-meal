@@ -65,6 +65,8 @@ function renderTab(
       requestingNewMeals={overrides.requestingNewMeals ?? false}
       newMealsFailed={overrides.newMealsFailed ?? false}
       onGoToPantry={overrides.onGoToPantry ?? (() => {})}
+      onOpenMeal={overrides.onOpenMeal ?? (() => {})}
+      mealDetail={overrides.mealDetail ?? null}
     />,
   );
 }
@@ -75,6 +77,19 @@ function cardAt(cards: readonly HTMLElement[], index: number): HTMLElement {
   if (card === undefined) throw new Error(`${index} 番目のカードが無い`);
 
   return card;
+}
+
+/**
+ * 「新しい献立を求める」操作。**末尾の1つである**（B-49b / D-4）— カードの中にも
+ * 詳細を開く操作が1つずつ在るので（B-53）、`getByRole('button')` では引けない。
+ * **名札は見ない**（仮の文言である）。
+ */
+function requestControl(): HTMLButtonElement {
+  const buttons = screen.getAllByRole('button');
+  const control = buttons[buttons.length - 1];
+  if (control === undefined) throw new Error('操作が1つも無い');
+
+  return control as HTMLButtonElement;
 }
 
 describe('献立タブ MealsTab', () => {
@@ -209,9 +224,10 @@ describe('献立タブ MealsTab', () => {
  */
 describe('献立タブ MealsTab の「新しい献立を求める」操作', () => {
   it('提案が出ている回、末尾に「新しい献立を求める」操作を1つ出す', () => {
+    // **カード1枚ごとに詳細を開く操作が1つ在る**（B-53）ので、カード1枚の回は2つである。
     renderTab(suggested(entry()));
 
-    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(screen.getAllByRole('button')).toHaveLength(2);
   });
 
   it('まだ提案が無い回にも、操作を出す', () => {
@@ -248,8 +264,7 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
 
     // `@testing-library/jest-dom` は入れない（依存の追加は止まる条件。`CLAUDE.md`）ので、
     // 素の `disabled` プロパティで見る。
-    const operation = screen.getByRole('button') as HTMLButtonElement;
-    expect(operation.disabled).toBe(true);
+    expect(requestControl().disabled).toBe(true);
   });
 
   it('送信中でも、渡された提案のカードはそのまま描かれ続ける', () => {
@@ -292,7 +307,7 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
       },
     });
 
-    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(requestControl());
 
     expect(called).toBe(true);
   });
@@ -488,7 +503,8 @@ describe('献立タブ MealsTab の出せない回と他の枝の見分け', () 
       },
     });
 
-    fireEvent.click(screen.getByRole('button'));
+    // 末尾の1つが「新しい献立を求める」である（カードの中の開く操作が1つ在る。B-53）。
+    fireEvent.click(requestControl());
 
     expect(requested).toBe(true);
     expect(wentToPantry).toBe(false);
@@ -523,5 +539,67 @@ describe('献立タブ MealsTab の出せない回と他の枝の見分け', () 
     renderTab({ outcome: 'loading' });
 
     expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+});
+
+/**
+ * 献立詳細への導線と、一覧 ⇄ 詳細の入れ替わり（B-53 / 画面設計 2.3・4章）。
+ *
+ * **開いている献立を持つのは門である**（設計 規則17 / ADR-066 と同じ理由）。器は
+ * 渡された詳細を描くか、カードの一覧を描くかだけを決める（先行 `PantryTab`）。
+ */
+describe('献立タブ MealsTab の献立詳細への導線', () => {
+  it('カード1枚ごとに、詳細を開く操作を1つ置く', () => {
+    // **カード全体を押せるようにしない**（設計 10章）— 後で行の操作を足したときに
+    // 当たり判定が重なる。
+    renderTab(suggested(entry({ mealId: 'meal-1' }), entry({ mealId: 'meal-2' })));
+
+    const cards = screen.getAllByRole('listitem');
+    expect(within(cardAt(cards, 0)).getAllByRole('button')).toHaveLength(1);
+    expect(within(cardAt(cards, 1)).getAllByRole('button')).toHaveLength(1);
+  });
+
+  it('開く操作を押すと、そのカードの献立の識別子が届く', () => {
+    const opened: string[] = [];
+    renderTab(suggested(entry({ mealId: 'meal-1' }), entry({ mealId: 'meal-2' })), {
+      onOpenMeal: (mealId) => opened.push(mealId),
+    });
+
+    const cards = screen.getAllByRole('listitem');
+    fireEvent.click(within(cardAt(cards, 1)).getByRole('button'));
+
+    expect(opened).toEqual(['meal-2']);
+  });
+
+  it('詳細が渡されていれば、カードの一覧の代わりに詳細を描く', () => {
+    // 入れ替わりである（先行 `PantryTab` の一覧 ⇄ 登録）。並べると、どちらを見ているのかが
+    // 読めなくなる。
+    renderTab(suggested(entry({ title: '肉じゃが' })), {
+      mealDetail: <p>詳細の中身</p>,
+    });
+
+    expect(screen.queryByText('肉じゃが')).toBeNull();
+    expect(screen.queryByText('詳細の中身')).not.toBeNull();
+  });
+
+  it('詳細を出している間は「新しい献立を求める」操作を出さない', () => {
+    // 求めた提案に差し替わると、開いている詳細がどの提案のものか読めなくなる。
+    renderTab(suggested(entry()), { mealDetail: <p>詳細の中身</p> });
+
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('詳細を出している間は、一覧の注意表示も出さない', () => {
+    // 注意表示は詳細の側が必ず1つ出す（FR-20 / 規則7）。2つ並べない。
+    renderTab(suggested(entry()), { mealDetail: <p>詳細の中身</p> });
+
+    expect(screen.queryAllByRole('complementary')).toHaveLength(0);
+  });
+
+  it('在庫が足りない回は、詳細が渡されていればそれを描く', () => {
+    // S-4 の枝も詳細を出せる — 履歴から開いた献立は、在庫が足りない回にも読める（FR-30）。
+    renderTab({ outcome: 'insufficientStockItems' }, { mealDetail: <p>詳細の中身</p> });
+
+    expect(screen.queryByText('詳細の中身')).not.toBeNull();
   });
 });

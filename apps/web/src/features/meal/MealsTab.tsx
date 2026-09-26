@@ -12,10 +12,12 @@
  * **出せない回（S-4 / S-7）も、それぞれ別の枝として描く**（B-49c）。どちらも 200 で届く
  * 結末であり（ADR-062 決定2）、失敗（S-6）にも「まだ提案が無い」（S-8）にも畳まない。
  *
- * **この周で置いていないもの:**
- * - 手順と材料の内訳（FR-19 / FR-31）… **B-53**（献立詳細）。カードから開く導線もそちらである
+ * **カードから献立詳細へ開く導線もここにある**（B-53）。手順と材料の内訳そのものは
+ * `MealDetail.tsx` の持ち分で、**開いている献立を持つのは門である**（設計 規則17 /
+ * ADR-066 と同じ理由）— ここは渡された詳細を、カードの一覧の代わりに描くだけである。
  */
 
+import type { ReactNode } from 'react';
 import type { MealCardIngredient } from './MealCards.js';
 import { mealCardsOf } from './MealCards.js';
 import type { LatestSuggestionOutcome } from '../../server/SuggestionRequests.js';
@@ -63,6 +65,14 @@ const CAUTION = 'AIによる提案です。分量・加熱時間はご自身で�
 
 /** 期限が今日の在庫に添える印（D-4）。**色だけに頼らない**（NFR-17）。 */
 const TODAY_MARK = '今日';
+
+/**
+ * 献立詳細を開く操作の文言（B-53。**仮**である）。
+ *
+ * **カード全体を押せるようにしない** — 行そのものを掴む先行（在庫のスワイプ削除）があり、
+ * 後で行に操作を足したときに当たり判定が重なる（設計 10章）。
+ */
+const OPEN_MEAL_LABEL = '作り方を見る';
 
 /**
  * 「新しい献立を求める」操作の文言（**すべて仮**。B-49b / FR-36）。
@@ -161,13 +171,32 @@ export type MealsTabProps = {
    * 呼ぶのは在庫が足りない回（S-4）の枝だけである。
    */
   onGoToPantry: () => void;
+  /**
+   * カードの献立を開く（B-53 / 画面設計 2.3）。**開いている献立を持つのは門である**
+   * （設計 規則17 / ADR-066 と同じ理由）— タブを移っても閉じず、履歴タブ（B-54）も
+   * 同じ状態を使える。
+   */
+  onOpenMeal: (mealId: string) => void;
+  /**
+   * 開いている献立詳細。**`null` でなければ、カードの一覧の代わりにこれを描く**
+   * （先行 `PantryTab` の一覧 ⇄ 登録の入れ替わり）。
+   */
+  mealDetail: ReactNode | null;
 };
 
 /**
  * 提案の中身（一覧と注意表示）だけを描く。**結末のどれを描くかの分岐はここに置かない**
  * （下の `MealsTab` が既に済ませている）。
  */
-function SuggestionBody({ suggestion, today }: { suggestion: MealsTabState; today: string }) {
+function SuggestionBody({
+  suggestion,
+  today,
+  onOpenMeal,
+}: {
+  suggestion: MealsTabState;
+  today: string;
+  onOpenMeal: (mealId: string) => void;
+}) {
   if (suggestion.outcome === 'loading') return null;
   if (suggestion.outcome === 'failed') return <p>{LOAD_FAILURE_NOTICE}</p>;
   if (suggestion.outcome !== 'suggested') return <p>{NO_SUGGESTION_YET_NOTICE}</p>;
@@ -188,6 +217,11 @@ function SuggestionBody({ suggestion, today }: { suggestion: MealsTabState; toda
             {card.reused && <span role="note">{REUSED_MARK}</span>}
             <p>{coverageText(card.ingredientCount, card.missingCount)}</p>
             <UsedIngredients ingredients={card.usedIngredients} />
+            {/* 手順と材料の内訳は詳細の持ち分である（FR-19 / B-53）。**カードの中に置く** —
+                カード全体を押せるようにすると、行の操作を足した日に当たり判定が重なる。 */}
+            <button type="button" onClick={() => onOpenMeal(card.mealId)}>
+              {OPEN_MEAL_LABEL}
+            </button>
           </li>
         ))}
       </ul>
@@ -276,12 +310,19 @@ export function MealsTab({
   requestingNewMeals,
   newMealsFailed,
   onGoToPantry,
+  onOpenMeal,
+  mealDetail,
 }: MealsTabProps) {
   // 出し分けだけを行い、計算を持たない（先行 `PantryList`）。
   //
   // **取りに行く条件はここに無い** — 門が持つ（先行 `PantryList`）。この画面は
   // 「開かれた」ことを誰にも伝えない。**読み取り専用の経路には費用が無い**ので
   // （ADR-065 決定2）、開かれるまで待つ理由がそもそも無い。
+  // **詳細は結末より先に見る**（B-53）。開いている献立は、提案が読み込み中の回にも
+  // 出せない回にも描けなければならない — 履歴から開いた献立は、在庫が足りない日にも
+  // 読める（FR-30）。**一覧と並べず入れ替える**（先行 `PantryTab`）。
+  if (mealDetail !== null) return <div>{mealDetail}</div>;
+
   if (suggestion.outcome === 'loading') return <p>{LOADING_NOTICE}</p>;
 
   // **出せない回は、提案の枝から先に分ける**（B-49c / 規則1〜6）。どちらも 200 で届く結末で
@@ -296,7 +337,7 @@ export function MealsTab({
   // 門が `suggestion` を差し替えるまでは、そのまま描き続ける。
   return (
     <div>
-      <SuggestionBody suggestion={suggestion} today={today} />
+      <SuggestionBody suggestion={suggestion} today={today} onOpenMeal={onOpenMeal} />
       <RequestNewMealsControl
         pantryChanged={suggestion.outcome === 'suggested' && suggestion.pantryChanged}
         requesting={requestingNewMeals}
