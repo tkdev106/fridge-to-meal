@@ -642,7 +642,9 @@ describe('在庫タブの中身と編集', () => {
     tapRowAt(0, 1);
 
     // 規則16: **入れ替わりであって、足し算ではない**（登録の画面と同じ構え）。
-    expect(screen.queryByText(carrot.name)).toBeNull();
+    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
+    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
 
   it('編集を開いている間は、登録を開く操作が出ていない', () => {
@@ -662,7 +664,9 @@ describe('在庫タブの中身と編集', () => {
     fireEvent.click(closeEditOperation());
 
     // 規則7・8: 保存せずに閉じる手段を1つ置く（編集の画面では**先頭**である）。
-    expect(screen.queryByText(carrot.name)).not.toBeNull();
+    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
+    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
+    expect(screen.queryAllByRole('listitem')).toHaveLength(1);
   });
 
   it('保存せずに閉じる操作は、更新を送らない', () => {
@@ -683,9 +687,13 @@ describe('在庫タブの中身と編集', () => {
     fireEvent.change(editAmountField(), { target: { value: '300g' } });
     fireEvent.click(saveEditOperation());
 
-    // 規則8: **通った回だけ閉じる。** 待つ手がかりはテストが渡した在庫品の名称である
+    // 規則8: **通った回だけ閉じる。** 待つ手がかりは一覧の行が戻ることである
     // （仮の文言を使わない）。
-    expect(await screen.findByText(carrot.name)).not.toBeNull();
+    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
+    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
+    await waitFor(() => {
+      expect(screen.queryAllByRole('listitem')).toHaveLength(1);
+    });
   });
 
   it('更新が断られても編集の画面のままで、一覧へ戻らない', async () => {
@@ -702,8 +710,10 @@ describe('在庫タブの中身と編集', () => {
     });
 
     // 規則8 / 7章 行2 / NFR-15: 断られた回は閉じない。入力を残して案内を出す。
+    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
+    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
-    expect(screen.queryByText(carrot.name)).toBeNull();
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
 
   it('見つからないという断りでも、編集の画面を閉じない', async () => {
@@ -722,7 +732,9 @@ describe('在庫タブの中身と編集', () => {
     // **ADR-050 結果5** / 規則10: 削除は `delete.notFound` を「すでに消えている」と読んで
     // 何も出さないが、**更新は案内を出して画面も閉じない** — 利用者は書いた内容を持っている。
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
-    expect(screen.queryByText(carrot.name)).toBeNull();
+    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
+    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
 
   it('更新が失敗しても一覧へ戻らない', async () => {
@@ -737,7 +749,9 @@ describe('在庫タブの中身と編集', () => {
     });
 
     // 規則8 / 7章 行4: 失敗も断りと同じ扱いで、送り直せる画面を残す（自動で送り直さない）。
-    expect(screen.queryByText(carrot.name)).toBeNull();
+    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
+    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
 
   it('送っている間に閉じる操作を押しても、一覧へ戻らない', async () => {
@@ -755,7 +769,9 @@ describe('在庫タブの中身と編集', () => {
 
     // 規則7: 結末が届く前に閉じると、**断りの案内が出ないまま画面が消え、打った入力も
     // 捨てられる** — 利用者は保存できたと思い込む。
-    expect(screen.queryByText(carrot.name)).toBeNull();
+    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
+    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
 
     // 保留を解いてから終える — 届いた更新を `act` の中で起こすためである。
     await act(async () => {

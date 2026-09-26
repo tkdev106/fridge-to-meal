@@ -22,7 +22,7 @@ import { deleteFailureNoticeOf } from './DeleteFailureNotice.js';
 import type { ExpirySection, ListedStockItem } from './PantrySections.js';
 import { pantrySectionsOf } from './PantrySections.js';
 import type { SwipePoint } from './SwipeGesture.js';
-import { isDeleteSwipe } from './SwipeGesture.js';
+import { isDeleteSwipe, isTap } from './SwipeGesture.js';
 import type { DeleteStockItem, StockItemsOutcome } from '../../server/StockItemRequests.js';
 
 /**
@@ -87,13 +87,26 @@ function remainingDaysText(remainingDays: number | null): string {
 }
 
 /**
- * 一覧の1行。**なぞって消す**（FR-06 / `docs/screen-design.md` 5章。確認は出さない）。
+ * 一覧の1行。**なぞって消し、タップで編集を開く**（FR-06 / FR-05 / `docs/screen-design.md`
+ * 5章 と 2章 `pantry --> edit`。どちらも確認は出さない）。
  *
- * 押した点と離した点の2つだけを覚え、**削除と読むかの判断は `SwipeGesture.ts` が持つ**
- * （規則7）。ポインタのイベントは触れる相手を問わない（指・マウス・ペン）ので、
- * ジェスチャの依存を足さずに済む（`docs/workflow.md` 3章）。
+ * 押した点と離した点の2つだけを覚え、**削除と読むか・タップと読むかの判断は
+ * `SwipeGesture.ts` が持つ**（規則7 / B-55 設計 規則15）。**2つの閾値の間には隙間があり**
+ * （8px と 64px）、どちらにも当たらない中途半端な動きでは何も起こさない — 取り消しの無い
+ * 削除と編集の画面が同時に起きないことは、**距離の取り方だけで**保たれている。
+ *
+ * ポインタのイベントは触れる相手を問わない（指・マウス・ペン）ので、ジェスチャの依存を
+ * 足さずに済む（`docs/workflow.md` 3章）。
  */
-function StockItemRow({ row, onSwipe }: { row: ListedStockItem; onSwipe: (id: string) => void }) {
+function StockItemRow({
+  row,
+  onSwipe,
+  onTap,
+}: {
+  row: ListedStockItem;
+  onSwipe: (id: string) => void;
+  onTap: (stockItem: StockItemDto) => void;
+}) {
   // 覚えるだけで描き直す必要が無いので state にしない。
   const pressedPoint = useRef<SwipePoint | null>(null);
 
@@ -112,12 +125,18 @@ function StockItemRow({ row, onSwipe }: { row: ListedStockItem; onSwipe: (id: st
         const startPoint = pressedPoint.current;
         pressedPoint.current = null;
 
-        if (
-          startPoint !== null &&
-          isDeleteSwipe(startPoint, { x: event.clientX, y: event.clientY })
-        ) {
+        if (startPoint === null) return;
+
+        const endPoint = { x: event.clientX, y: event.clientY };
+
+        // 削除とタップは**どちらか一方しか成り立たない**（B-55 設計 規則15）。先に見るほうを
+        // 決めているのは読みやすさのためだけで、順序に意味を持たせていない。
+        if (isDeleteSwipe(startPoint, endPoint)) {
           onSwipe(row.stockItem.id);
+          return;
         }
+
+        if (isTap(startPoint, endPoint)) onTap(row.stockItem);
       }}
       // 送りに取られた・指が外れたなどで離上が来ない回は、押した点を捨てる。
       onPointerCancel={() => {
@@ -149,8 +168,8 @@ export type PantryListProps = {
    * 行をタップしたときに、その行の在庫品を渡す先（FR-05 / B-55 設計 5章 / 規則15）。
    * **開くかどうかを決めるのは呼び出し側**（`PantryTab`）であり、この画面は編集の画面を知らない。
    *
-   * **署名だけである**（`docs/testing.md` 8章）— 行のタップを読んでここへ渡すのは
-   * `implementer` の持ち分。
+   * **触っただけでは消えない**（規則15 / FR-06）— タップと削除のスワイプは閾値で分かれており、
+   * 片方が起きた回にもう片方は起きない。
    */
   onEdit: (stockItem: StockItemDto) => void;
   /**
@@ -161,7 +180,7 @@ export type PantryListProps = {
   today: string;
 };
 
-export function PantryList({ stockItems, today, onDelete }: PantryListProps) {
+export function PantryList({ stockItems, today, onDelete, onEdit }: PantryListProps) {
   const [notice, setNotice] = useState<DeleteFailureNotice | null>(null);
   // 送っている間は次のスワイプを受け取らない。描き直す必要が無いので state にしない。
   const deleting = useRef(false);
@@ -205,7 +224,7 @@ export function PantryList({ stockItems, today, onDelete }: PantryListProps) {
           <h2>{SECTION_HEADINGS[section.section]}</h2>
           <ul>
             {section.stockItems.map((row) => (
-              <StockItemRow key={row.stockItem.id} row={row} onSwipe={deleteRow} />
+              <StockItemRow key={row.stockItem.id} row={row} onSwipe={deleteRow} onTap={onEdit} />
             ))}
           </ul>
         </section>
