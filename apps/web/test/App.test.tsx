@@ -25,7 +25,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { StockItemDto } from '@fridge-to-meal/contract';
-import { act, fireEvent, render, screen, waitFor } from './support/dom/renderComponent.js';
+import { act, fireEvent, render, screen, waitFor, within } from './support/dom/renderComponent.js';
 import { installPointerCapture } from './support/dom/pointerCapture.js';
 import { FixedSession } from './support/session/FixedSession.js';
 import type { FixedSessionOptions } from './support/session/FixedSession.js';
@@ -33,11 +33,14 @@ import { FixedStockItemRequests } from './support/server/FixedStockItemRequests.
 import type { FixedStockItemRequestsOptions } from './support/server/FixedStockItemRequests.js';
 import { FixedSuggestionRequests } from './support/server/FixedSuggestionRequests.js';
 import type { FixedSuggestionRequestsOptions } from './support/server/FixedSuggestionRequests.js';
+import { FixedMealRequests } from './support/server/FixedMealRequests.js';
+import type { FixedMealRequestsOptions } from './support/server/FixedMealRequests.js';
 import { FixedIngredientNameRequests } from './support/server/FixedIngredientNameRequests.js';
 import type { FixedIngredientNameRequestsOptions } from './support/server/FixedIngredientNameRequests.js';
 import { App } from '../src/App.js';
 import type { SessionState } from '../src/session/Session.js';
 import type { StockItemsOutcome } from '../src/server/StockItemRequests.js';
+import type { MealOutcome } from '../src/server/MealRequests.js';
 import type {
   LatestSuggestionOutcome,
   RequestNewMealsOutcome,
@@ -65,6 +68,7 @@ function renderApp(
   requestOptions: FixedStockItemRequestsOptions = {},
   suggestionOptions: FixedSuggestionRequestsOptions = {},
   ingredientNameOptions: FixedIngredientNameRequestsOptions = {},
+  mealOptions: FixedMealRequestsOptions = {},
 ) {
   const session = new FixedSession(sessionOptions);
   const requests = new FixedStockItemRequests(requestOptions);
@@ -82,6 +86,10 @@ function renderApp(
     ...ingredientNameOptions,
   });
 
+  // **台本は渡された観点だけが持つ。** 献立詳細は開かれるまで取りに行かないので
+  // （B-53 規則1）、詳細が本題でない観点では呼ばれる口が1つも無い。
+  const meals = new FixedMealRequests(mealOptions);
+
   render(
     <App
       session={session}
@@ -92,10 +100,12 @@ function renderApp(
       showLatestSuggestion={suggestions.showLatestSuggestion}
       requestNewMeals={suggestions.requestNewMeals}
       listIngredientNames={ingredientNames.listIngredientNames}
+      showMeal={meals.showMeal}
+      addCookingRecord={meals.addCookingRecord}
     />,
   );
 
-  return { session, requests, suggestions, ingredientNames };
+  return { session, requests, suggestions, ingredientNames, meals };
 }
 
 /**
@@ -694,9 +704,16 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
     };
   }
 
-  /** 献立タブの唯一の操作（「新しい献立を求める」）。 */
+  /**
+   * 「新しい献立を求める」操作。**末尾の1つである**（D-4）— カード1枚ごとに詳細を開く操作が
+   * 1つ在るので（B-53）、`getByRole('button')` では引けない。**名札は見ない**（設計 規則2）。
+   */
   function requestNewMealsOperation(): HTMLElement {
-    return screen.getByRole('button');
+    const operations = screen.getAllByRole('button');
+    const operation = operations.at(-1);
+    if (operation === undefined) throw new Error('操作が1つも無い');
+
+    return operation;
   }
 
   it('押している間は操作が押せず、結末が届くと押せるようになる', async () => {
@@ -1229,5 +1246,317 @@ describe('在庫の編集（B-55）', () => {
     // B-49b 規則10 / C-7 / 設計 規則9: 在庫が変われば C-7 の一致が崩れ、`pantryChanged` の
     // 手がかりが古くなる。取り直しの数えは登録・削除と同じ1つに載る。
     expect(await screen.findByText(NEW_MEAL)).not.toBeNull();
+  });
+});
+
+/**
+ * 献立詳細を開く・閉じる・記録する（B-53 設計 規則1・17〜19）。
+ *
+ * 詳細の中の描画（材料の並び・印・注意表示・操作の位置）は `MealDetail.test.tsx` が、
+ * カードの中の開く操作は `MealsTab.test.tsx` が既に押さえている。**ここで確かめるのは
+ * 門が持つ3つだけ**である — 開かれたら取りに行くこと、いつ閉じるか、いつ取り直すか。
+ */
+describe('門 App の献立詳細', () => {
+  /** 提案が1件出ている状態。**カードの中の開く操作を押せる。** */
+  function suggestedOne(title = '肉じゃが'): LatestSuggestionOutcome {
+    return {
+      outcome: 'suggested',
+      pantryChanged: false,
+      suggestion: {
+        id: 'suggestion-1',
+        generatedAt: '2026-09-20T09:00:00.000Z',
+        entries: [
+          {
+            mealId: 'meal-1',
+            origin: 'reused',
+            title,
+            ingredients: [],
+            steps: [],
+            coverage: { covered: [], missing: [] },
+          },
+        ],
+      },
+    };
+  }
+
+  /** 取れた献立1件。**名称はテストが渡したものを観る**（設計 規則6）。 */
+  function shownMeal(title: string): MealOutcome {
+    return {
+      outcome: 'shown',
+      meal: {
+        mealId: 'meal-1',
+        title,
+        ingredients: [{ name: 'にんじん', kind: 'main', amount: null }],
+        steps: [],
+        coverage: {
+          covered: [{ name: 'にんじん', kind: 'main', amount: null, expiryDate: null }],
+          missing: [],
+        },
+      },
+    };
+  }
+
+  /** カードの中の開く操作。**カード1枚の回はカードの中の1つだけ**である（B-53）。 */
+  async function openMealOperation(): Promise<HTMLElement> {
+    const card = (await screen.findAllByRole('listitem'))[0];
+    if (card === undefined) throw new Error('カードが1枚も無い');
+
+    return within(card).getByRole('button');
+  }
+
+  /**
+   * 詳細に出ている操作は2つ（閉じる／これを作った）である。**名札は見ない**（設計 規則2）。
+   * 「新しい献立を求める」は詳細を出している間は出ない（`MealsTab` の持ち分）。
+   */
+  const DETAIL_OPERATION_COUNT = 2;
+
+  function closeMealDetailOperation(): HTMLElement {
+    return operationAt(0, DETAIL_OPERATION_COUNT);
+  }
+
+  function cookedOperation(): HTMLElement {
+    return operationAt(1, DETAIL_OPERATION_COUNT);
+  }
+
+  /** 献立の側（`FixedMealRequests`）の保留を解く。 */
+  async function settleMeals(meals: FixedMealRequests): Promise<void> {
+    await act(async () => {
+      meals.settle();
+    });
+  }
+
+  it('カードの開く操作を押すと、その献立を取りに行って詳細を出す', async () => {
+    // 規則1: **開くたびに取りに行く。** カードが持っている提案の1件を描き回さない —
+    // 充足は開いた時点の在庫で算出されたものでなければならない（FR-32 / ADR-009）。
+    const { meals } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne()] },
+      {},
+      { show: [shownMeal('詳細の献立')] },
+    );
+
+    fireEvent.click(await openMealOperation());
+
+    expect(await screen.findByText('詳細の献立')).not.toBeNull();
+    expect(meals.shownMealIds).toEqual(['meal-1']);
+  });
+
+  it('詳細を開くまでは、献立1件を取りに行かない', async () => {
+    // **画面を出すだけでは取りに行かない**（規則1）。台本を渡していない口が呼ばれたら落ちる。
+    const { meals } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne()] },
+    );
+
+    await openMealOperation();
+
+    expect(meals.shownMealIds).toEqual([]);
+  });
+
+  it('タブを移っても詳細は閉じない', async () => {
+    // 先行「取り直しても登録の画面は閉じない」（B-39）。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne()] },
+      {},
+      { show: [shownMeal('詳細の献立')] },
+    );
+
+    fireEvent.click(await openMealOperation());
+    await screen.findByText('詳細の献立');
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    fireEvent.click(mealsTab());
+
+    expect(await screen.findByText('詳細の献立')).not.toBeNull();
+  });
+
+  it('サインアウトすると詳細は閉じる', async () => {
+    // NFR-09: 前の世帯の献立を残さない（先行 `App.tsx` の提案のリセット）。
+    const { session } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne()] },
+      {},
+      { show: [shownMeal('詳細の献立')] },
+    );
+
+    fireEvent.click(await openMealOperation());
+    await screen.findByText('詳細の献立');
+
+    emit(session, 'signedOut');
+    emit(session, 'signedIn');
+
+    await waitFor(() => {
+      expect(screen.queryByText('詳細の献立')).toBeNull();
+    });
+  });
+
+  it('在庫の削除が通ると、開いている詳細も取り直す', async () => {
+    // FR-32: 充足が変わっている。読み取り専用の `GET` なので費用も枠も使わない（規則19）。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot), loaded()], remove: [{ outcome: 'deleted' }] },
+      { show: [suggestedOne()] },
+      {},
+      { show: [shownMeal('前の詳細'), shownMeal('取り直した詳細')] },
+    );
+
+    fireEvent.click(await openMealOperation());
+    await screen.findByText('前の詳細');
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    swipeSoleRow();
+
+    // 消えたと読めたら一覧を取り直す（B-23 / ADR-050）。2件目の台本は空なので、行が
+    // 消えたことが取り直しの合図である。
+    await waitFor(() => {
+      expect(screen.queryByText(carrot.name)).toBeNull();
+    });
+
+    fireEvent.click(mealsTab());
+
+    expect(await screen.findByText('取り直した詳細')).not.toBeNull();
+  });
+
+  it('記録の操作を押すと、開いている献立に記録を足す', async () => {
+    const { meals } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne()] },
+      {},
+      { show: [shownMeal('詳細の献立')], addCookingRecord: [{ outcome: 'recorded' }] },
+    );
+
+    fireEvent.click(await openMealOperation());
+    await screen.findByText('詳細の献立');
+
+    fireEvent.click(cookedOperation());
+
+    await waitFor(() => {
+      expect(meals.recordedMealIds).toEqual(['meal-1']);
+    });
+  });
+
+  it('記録が通っても献立の中身は取り直さず、詳細は開いたままである', async () => {
+    // C-3 / C-8 / 規則11: 献立は記録で変わらず、在庫も減らない。
+    const { meals } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne()] },
+      {},
+      { show: [shownMeal('詳細の献立')], addCookingRecord: [{ outcome: 'recorded' }] },
+    );
+
+    fireEvent.click(await openMealOperation());
+    await screen.findByText('詳細の献立');
+
+    fireEvent.click(cookedOperation());
+    await waitFor(() => {
+      expect(meals.recordedMealIds).toEqual(['meal-1']);
+    });
+
+    expect(screen.queryByText('詳細の献立')).not.toBeNull();
+    expect(meals.shownMealIds).toEqual(['meal-1']);
+  });
+
+  it('記録を送っている間は、2度目の記録を送らない', async () => {
+    // 先行 `handleRequestNewMeals`。**同じ記録が2件入ることを門の側でも止める。**
+    const { meals } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne()] },
+      {},
+      {
+        show: [shownMeal('詳細の献立')],
+        addCookingRecord: [{ heldUntilSettled: { outcome: 'recorded' } }],
+      },
+    );
+
+    fireEvent.click(await openMealOperation());
+    await screen.findByText('詳細の献立');
+
+    fireEvent.click(cookedOperation());
+    fireEvent.click(cookedOperation());
+    await settleMeals(meals);
+
+    expect(meals.recordedMealIds).toEqual(['meal-1']);
+  });
+
+  it('記録が断られても詳細は閉じない', async () => {
+    // 閉じると、断りの案内を読む前に画面が変わる（規則13 / S-6 の構え）。
+    const { meals } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne()] },
+      {},
+      {
+        show: [shownMeal('詳細の献立')],
+        addCookingRecord: [{ outcome: 'rejected', rule: 'addCookingRecord.mealNotFound' }],
+      },
+    );
+
+    fireEvent.click(await openMealOperation());
+    await screen.findByText('詳細の献立');
+
+    fireEvent.click(cookedOperation());
+    await waitFor(() => {
+      expect(meals.recordedMealIds).toEqual(['meal-1']);
+    });
+
+    expect(screen.queryByText('詳細の献立')).not.toBeNull();
+  });
+
+  it('別の献立を開き直すと、前の記録の結末は残らない', async () => {
+    // 記録の案内は「いまの1回」の結末である（規則12）。開き直した先に持ち越すと、
+    // 記録していない献立に記録の案内が出る。
+    const { meals } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne()] },
+      {},
+      {
+        show: [shownMeal('詳細の献立'), shownMeal('開き直した詳細')],
+        addCookingRecord: [{ outcome: 'recorded' }],
+      },
+    );
+
+    fireEvent.click(await openMealOperation());
+    await screen.findByText('詳細の献立');
+
+    fireEvent.click(cookedOperation());
+    await waitFor(() => {
+      expect(meals.recordedMealIds).toEqual(['meal-1']);
+    });
+    const noticesWhileRecorded = screen.queryAllByRole('status').length;
+
+    // 閉じてから開き直す。
+    fireEvent.click(closeMealDetailOperation());
+    fireEvent.click(await openMealOperation());
+    await screen.findByText('開き直した詳細');
+
+    expect(screen.queryAllByRole('status').length).toBeLessThan(noticesWhileRecorded);
+  });
+
+  it('詳細を閉じるとカードの一覧に戻る', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne('肉じゃが')] },
+      {},
+      { show: [shownMeal('詳細の献立')] },
+    );
+
+    fireEvent.click(await openMealOperation());
+    await screen.findByText('詳細の献立');
+
+    fireEvent.click(closeMealDetailOperation());
+
+    expect(await screen.findByText('肉じゃが')).not.toBeNull();
   });
 });
