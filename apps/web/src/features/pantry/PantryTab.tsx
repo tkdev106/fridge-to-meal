@@ -27,7 +27,11 @@ import type { IngredientNamesState } from './IngredientNameOptions.js';
 import { PantryList } from './PantryList.js';
 import type { PantryListState } from './PantryList.js';
 import { StockItemForm } from './StockItemForm.js';
-import type { DeleteStockItem, RegisterStockItem } from '../../server/StockItemRequests.js';
+import type {
+  DeleteStockItem,
+  RegisterStockItem,
+  UpdateStockItem,
+} from '../../server/StockItemRequests.js';
 
 /**
  * 登録を開く操作の名札。**仮の文言である**（`docs/screen-design.md` 論点3 / 規則15）—
@@ -48,6 +52,13 @@ export type PantryTabProps = {
   onDelete: DeleteStockItem;
   /** 登録の実行（B-24）。登録の画面へ素通しする。 */
   onRegister: RegisterStockItem;
+  /**
+   * 更新の実行（FR-05 / B-55 設計 5章）。編集の画面へ素通しする。
+   *
+   * **署名だけである**（`docs/testing.md` 8章）— 一覧／登録／編集の出し分けを3つにするのは
+   * `implementer` の持ち分（設計 規則16）。
+   */
+  onUpdate: UpdateStockItem;
   /**
    * 補完の元になる食材名の3値（FR-02 / B-50c）。**登録の画面へ素通しする** — 一覧では
    * 使わず、この画面は中身も読まない（読むのは `StockItemForm` の側である）。
@@ -85,7 +96,16 @@ export function PantryTab({
         {OPEN_REGISTER_LABEL}
       </button>
 
-      <PantryList stockItems={stockItems} today={today} onDelete={onDelete} />
+      {/* **`onEdit` はまだ繋がっていない**（`docs/testing.md` 8章のスタブ）。行のタップを
+          受けて編集の画面へ移すのは `implementer` の持ち分である（B-55 設計 規則15・16）。 */}
+      <PantryList
+        stockItems={stockItems}
+        today={today}
+        onDelete={onDelete}
+        onEdit={() => {
+          throw new Error('未実装');
+        }}
+      />
     </>
   );
 }

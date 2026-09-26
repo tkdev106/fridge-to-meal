@@ -29,6 +29,7 @@ import type {
   DeleteStockItem,
   ListStockItems,
   RegisterStockItem,
+  UpdateStockItem,
 } from './server/StockItemRequests.js';
 import type { ListIngredientNames } from './server/IngredientNameRequests.js';
 import type { RequestNewMeals, ShowLatestSuggestion } from './server/SuggestionRequests.js';
@@ -45,6 +46,13 @@ export type AppProps = {
   registerStockItem: RegisterStockItem;
   /** 在庫を削除しに行く口（B-23）。同じく組み立てるのは `main.tsx` だけである。 */
   deleteStockItem: DeleteStockItem;
+  /**
+   * 在庫品1件を更新しに行く口（FR-05 / B-55）。組み立てるのはやはり `main.tsx` だけである。
+   *
+   * **署名だけである**（`docs/testing.md` 8章）— 通った回に一覧を取り直す配線は
+   * `implementer` の持ち分（設計 規則9）。
+   */
+  updateStockItem: UpdateStockItem;
   /**
    * 保存済みの提案を取りに行く口（B-49a / B-58）。組み立てるのはやはり `main.tsx` だけである。
    *
@@ -383,6 +391,11 @@ export function App({
               today={todayOf(new Date())}
               onDelete={deleteAndReload}
               onRegister={registerAndReload}
+              // **まだ繋がっていない**（`docs/testing.md` 8章のスタブ）。通った回に
+              // 取り直す配線は `implementer` の持ち分である（B-55 設計 規則9）。
+              onUpdate={() => {
+                throw new Error('未実装');
+              }}
               ingredientNames={ingredientNames}
             />
             <SignOutButton onSignOut={() => session.signOut()} />

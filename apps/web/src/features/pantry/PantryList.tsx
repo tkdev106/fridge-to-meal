@@ -16,6 +16,7 @@
  */
 
 import { useRef, useState } from 'react';
+import type { StockItemDto } from '@fridge-to-meal/contract';
 import type { DeleteFailureNotice } from './DeleteFailureNotice.js';
 import { deleteFailureNoticeOf } from './DeleteFailureNotice.js';
 import type { ExpirySection, ListedStockItem } from './PantrySections.js';
@@ -144,6 +145,14 @@ export type PantryListProps = {
    * 送り先も認証もこの画面は知らない。**一覧を取り直すのは呼び出し側**（`App.tsx`）である。
    */
   onDelete: DeleteStockItem;
+  /**
+   * 行をタップしたときに、その行の在庫品を渡す先（FR-05 / B-55 設計 5章 / 規則15）。
+   * **開くかどうかを決めるのは呼び出し側**（`PantryTab`）であり、この画面は編集の画面を知らない。
+   *
+   * **署名だけである**（`docs/testing.md` 8章）— 行のタップを読んでここへ渡すのは
+   * `implementer` の持ち分。
+   */
+  onEdit: (stockItem: StockItemDto) => void;
   /**
    * 残日数を数える基準日（`YYYY-MM-DD`）。**呼び出し側が渡す。**
    * ここで `new Date()` を読むと、現在時刻が本体に埋まる（docs/testing.md 5章）。

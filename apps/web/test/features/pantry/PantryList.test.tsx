@@ -13,13 +13,23 @@
 
 import { describe, expect, it } from 'vitest';
 import type { StockItemDto } from '@fridge-to-meal/contract';
-import { render, screen, within } from '../../support/dom/renderComponent.js';
+import { fireEvent, render, screen, waitFor, within } from '../../support/dom/renderComponent.js';
+import { installPointerCapture } from '../../support/dom/pointerCapture.js';
 import { PantryList } from '../../../src/features/pantry/PantryList.js';
 
 const TODAY = '2026-09-20';
 
+// 行をなぞる／タップする経路は jsdom に無いメソッドを通る（`support/dom/pointerCapture.ts`）。
+// **本体の振る舞いではなく、道具の欠けを道具の側で埋めるものである。**
+installPointerCapture();
+
 /** 消せない相手。この観点のテストは削除を起こさないので、呼ばれたら分かる形にしておく。 */
 const neverDelete = () => Promise.reject(new Error('この観点では削除を呼ばない'));
+
+/** 編集を開かない相手（B-55）。同じく、呼ばれたら分かる形にしておく。 */
+const neverEdit = (): never => {
+  throw new Error('この観点では編集を開かない');
+};
 
 function stockItem(overrides: Partial<StockItemDto> & { id: string; name: string }): StockItemDto {
   return { ingredientId: null, amount: null, expiryDate: null, ...overrides };
@@ -39,6 +49,7 @@ describe('在庫一覧 PantryList', () => {
       <PantryList
         today={TODAY}
         onDelete={neverDelete}
+        onEdit={neverEdit}
         stockItems={{
           outcome: 'loaded',
           stockItems: [
@@ -71,6 +82,7 @@ describe('在庫一覧 PantryList', () => {
       <PantryList
         today={TODAY}
         onDelete={neverDelete}
+        onEdit={neverEdit}
         stockItems={{
           outcome: 'loaded',
           stockItems: [
@@ -93,6 +105,7 @@ describe('在庫一覧 PantryList', () => {
       <PantryList
         today={TODAY}
         onDelete={neverDelete}
+        onEdit={neverEdit}
         stockItems={{ outcome: 'loaded', stockItems: [] }}
       />,
     );
@@ -103,7 +116,14 @@ describe('在庫一覧 PantryList', () => {
   });
 
   it('読み込み中は在庫品を1件も出さない', () => {
-    render(<PantryList today={TODAY} onDelete={neverDelete} stockItems={{ outcome: 'loading' }} />);
+    render(
+      <PantryList
+        today={TODAY}
+        onDelete={neverDelete}
+        onEdit={neverEdit}
+        stockItems={{ outcome: 'loading' }}
+      />,
+    );
 
     // **0件の在庫と同じ見せ方にしない**のが B-22 設計 7章 の眼目だが、ここで確かめられるのは
     // 「在庫があるように見せない」ほうである。**行が出ないこと**を押さえる。
@@ -111,9 +131,125 @@ describe('在庫一覧 PantryList', () => {
   });
 
   it('取れなかったときも在庫品を1件も出さない', () => {
-    render(<PantryList today={TODAY} onDelete={neverDelete} stockItems={{ outcome: 'failed' }} />);
+    render(
+      <PantryList
+        today={TODAY}
+        onDelete={neverDelete}
+        onEdit={neverEdit}
+        stockItems={{ outcome: 'failed' }}
+      />,
+    );
 
     // 古い在庫を残して出すと、消えたはずのものが見え続ける（B-22 設計 規則9）。
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  });
+});
+
+/**
+ * 行のタップで編集を開く導線（FR-05 / B-55 設計 6章 規則15 / `docs/screen-design.md` 2章
+ * `pantry --> edit`）。
+ *
+ * **どの動きをタップと読むか・削除と読むかは `SwipeGesture.test.ts` の持ち分**（`isTap` /
+ * `isDeleteSwipe`）。ここで確かめるのは**切り出せないもの**だけ — 行から送られたポインタの
+ * 2点が、どちらの口へ何を届けるかである。
+ *
+ * **`vi.fn()` で呼び出し回数を数えない**（`docs/testing.md` 2章）。届いたものも、届かなかった
+ * ことも**テストが持つ配列の中身**で見る。
+ */
+
+/** 帯を1つに揃えた2件。**期限を持たせない**ことで並びが渡した順のまま読める。 */
+const twoRows = [stockItem({ id: '1', name: '豚こま肉' }), stockItem({ id: '2', name: '白菜' })];
+
+/** 編集の口へ届いた在庫品を**配列に残す**（`docs/testing.md` 2章）。 */
+function recordingEdit(edits: StockItemDto[]) {
+  return (edited: StockItemDto) => {
+    edits.push(edited);
+  };
+}
+
+/** 削除の口へ届いた識別子を**配列に残す**。結末は「消えた」を返す。 */
+function recordingDelete(deletedIds: string[]) {
+  return (id: string) => {
+    deletedIds.push(id);
+
+    return Promise.resolve({ outcome: 'deleted' } as const);
+  };
+}
+
+function renderTwoRows(edits: StockItemDto[], deletedIds: string[]) {
+  render(
+    <PantryList
+      today={TODAY}
+      onDelete={recordingDelete(deletedIds)}
+      onEdit={recordingEdit(edits)}
+      stockItems={{ outcome: 'loaded', stockItems: twoRows }}
+    />,
+  );
+}
+
+/**
+ * 2件目の行に、押下と離上の2点を送る。**判断は `SwipeGesture.ts` の持ち分**で、ここは入力を
+ * 送るだけである（先行 `App.test.tsx` の `swipeSoleRow`）。
+ */
+function pressAndRelease(end: { readonly x: number; readonly y: number }): void {
+  const rows = screen.getAllByRole('listitem');
+  expect(rows).toHaveLength(2);
+  const row = rowAt(rows, 1);
+
+  fireEvent.pointerDown(row, { pointerId: 1, clientX: 0, clientY: 0 });
+  fireEvent.pointerUp(row, { pointerId: 1, clientX: end.x, clientY: end.y });
+}
+
+describe('在庫一覧 PantryList の行のタップ', () => {
+  it('行をタップすると、その行の在庫品が編集の口へ届く', () => {
+    const edits: StockItemDto[] = [];
+    renderTwoRows(edits, []);
+
+    // 押した点と離した点が同じ＝動かしていない（規則15 / `isTap`）。
+    pressAndRelease({ x: 0, y: 0 });
+
+    // FR-05 / 規則15: **どの行を触ったか**が届く。編集できるのは触った1件だけである。
+    expect(edits).toEqual([twoRows[1]]);
+  });
+
+  it('行をタップしても、削除の口へは何も届かない', () => {
+    const deletedIds: string[] = [];
+    renderTwoRows([], deletedIds);
+
+    pressAndRelease({ x: 0, y: 0 });
+
+    // 規則15 / FR-06: 触っただけで消えない — 確認も取り消しも無い操作である
+    // （`docs/screen-design.md` 5章）。
+    expect(deletedIds).toEqual([]);
+  });
+
+  it('削除として読む長さまでなぞった動きでは、編集の口へ何も届かない', async () => {
+    const edits: StockItemDto[] = [];
+    const deletedIds: string[] = [];
+    renderTwoRows(edits, deletedIds);
+
+    pressAndRelease({ x: 100, y: 0 });
+
+    // 削除は届いている（対にして確かめる — 届いていなければ「編集が開かないこと」を
+    // 動きの長さで確かめたことにならない）。
+    await waitFor(() => {
+      expect(deletedIds).toEqual(['2']);
+    });
+
+    // 規則15: 取り消しの無い削除と編集の画面が同時に起きない。**2つの閾値の間に隙間がある**
+    // ことの帰結であり、旗でも順序でも保っていない。
+    expect(edits).toEqual([]);
+  });
+
+  it('タップとも削除とも読めない長さの動きでは、編集の口へ何も届かない', () => {
+    const edits: StockItemDto[] = [];
+    const deletedIds: string[] = [];
+    renderTwoRows(edits, deletedIds);
+
+    pressAndRelease({ x: 20, y: 0 });
+
+    // 規則15: どちらにも当たらない動きでは**何も起こさない**（8px 以上 64px 未満）。
+    expect(edits).toEqual([]);
+    expect(deletedIds).toEqual([]);
   });
 });
