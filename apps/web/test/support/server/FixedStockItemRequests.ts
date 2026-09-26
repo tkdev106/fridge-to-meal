@@ -9,7 +9,7 @@
  * **件数（`listCount`）を観てよいのは「取りに行かないこと」が要件の1件だけである**（同 規則6）。
  */
 
-import type { RegisterStockItemInput } from '@fridge-to-meal/contract';
+import type { RegisterStockItemInput, UpdateStockItemInput } from '@fridge-to-meal/contract';
 import type {
   DeleteStockItem,
   DeleteStockItemOutcome,
@@ -17,6 +17,8 @@ import type {
   RegisterStockItem,
   RegisterStockItemOutcome,
   StockItemsOutcome,
+  UpdateStockItem,
+  UpdateStockItemOutcome,
 } from '../../../src/server/StockItemRequests.js';
 import type { Delivery } from '../HeldDelivery.js';
 import { DeliveryLine, PendingReleases } from '../HeldDelivery.js';
@@ -28,6 +30,17 @@ export type FixedStockItemRequestsOptions = {
   readonly register?: readonly Delivery<RegisterStockItemOutcome>[];
   /** 削除の結末の台本。同上。 */
   readonly remove?: readonly Delivery<DeleteStockItemOutcome>[];
+  /** 更新の結末の台本（B-55）。同上。 */
+  readonly update?: readonly Delivery<UpdateStockItemOutcome>[];
+};
+
+/**
+ * 更新の口へ届いた組（B-55 設計 5章）。**識別子と入力を対で持つ** — 経路に埋める識別子と
+ * 送る本体は別物であり、どちらか片方だけを残すと「誰を書き換えたか」が観られなくなる。
+ */
+export type ReceivedUpdate = {
+  readonly id: string;
+  readonly input: UpdateStockItemInput;
 };
 
 export class FixedStockItemRequests {
@@ -37,6 +50,8 @@ export class FixedStockItemRequests {
   readonly #remove: DeliveryLine<DeleteStockItemOutcome>;
   readonly #registeredInputs: RegisterStockItemInput[] = [];
   readonly #deletedIds: string[] = [];
+  readonly #update: DeliveryLine<UpdateStockItemOutcome>;
+  readonly #receivedUpdates: ReceivedUpdate[] = [];
   #listCount = 0;
 
   constructor(options: FixedStockItemRequestsOptions = {}) {
@@ -54,6 +69,11 @@ export class FixedStockItemRequests {
       options.remove ?? [],
       this.#pending,
       'この観点では削除を呼ばない',
+    );
+    this.#update = new DeliveryLine(
+      options.update ?? [],
+      this.#pending,
+      'この観点では更新を呼ばない',
     );
   }
 
@@ -75,6 +95,12 @@ export class FixedStockItemRequests {
     return this.#remove.deliver();
   };
 
+  readonly updateStockItem: UpdateStockItem = (id, input) => {
+    this.#receivedUpdates.push({ id, input });
+
+    return this.#update.deliver();
+  };
+
   /** 取りに行った回数。**使いどころは設計 6章 規則6 の1件に限る。** */
   get listCount(): number {
     return this.#listCount;
@@ -88,6 +114,11 @@ export class FixedStockItemRequests {
   /** 削除の口へ届いた識別子を、届いた順に。 */
   get deletedIds(): readonly string[] {
     return this.#deletedIds;
+  }
+
+  /** 更新の口へ届いた組を、届いた順に。**詰め替えずそのまま持つ。** */
+  get receivedUpdates(): readonly ReceivedUpdate[] {
+    return this.#receivedUpdates;
   }
 
   /** 保留している結末を解く（設計 6章 規則7）。 */

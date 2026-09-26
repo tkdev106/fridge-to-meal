@@ -11,7 +11,9 @@
  * 保存の名札も見出しも未確定であり（`docs/screen-design.md` 論点3 / B-39 設計 規則15）、留めると
  * **文言を変えただけで赤くなる**。観察は次の3つだけで行う。
  *
- * - **一覧が出ている** … **テストが渡した在庫品の名称**を `queryByText` で引く
+ * - **一覧が出ている** … **テストが渡した在庫品の名称**を `queryByText` で引く。**編集が絡む観点では
+ *   名称で観られない**（B-55）— 編集の画面は対象の在庫品の名称を出すため（B-55 設計 規則1）、
+ *   名称は一覧が出ていなくても当たる。そちらは **`listitem` の有無**（一覧だけが `<li>` を描く）で観る
  * - **登録の画面が出ている** … `queryAllByRole('textbox')` が1つ以上（一覧は `textbox` を
  *   1つも描かない。期限の欄は `type="date"` なのでこの役割に入らず、欄は [食材名, 分量] の2つ）
  * - **操作** … `getAllByRole('button')` を**文書順の位置**で引く。一覧では1つ（＝登録を開く）、
@@ -25,7 +27,10 @@ import { describe, expect, it } from 'vitest';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import type { RegisterStockItemInput, StockItemDto } from '@fridge-to-meal/contract';
-import { fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
+import { act, fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
+import { installPointerCapture } from '../../support/dom/pointerCapture.js';
+import { FixedStockItemRequests } from '../../support/server/FixedStockItemRequests.js';
+import type { FixedStockItemRequestsOptions } from '../../support/server/FixedStockItemRequests.js';
 import type { PantryTabProps } from '../../../src/features/pantry/PantryTab.js';
 import { PantryTab } from '../../../src/features/pantry/PantryTab.js';
 import type { TabId } from '../../../src/navigation/Tabs.js';
@@ -35,7 +40,12 @@ import type {
   DeleteStockItem,
   RegisterStockItem,
   RegisterStockItemOutcome,
+  UpdateStockItem,
 } from '../../../src/server/StockItemRequests.js';
+
+// 行をタップする経路は jsdom に無いメソッドを通る（`support/dom/pointerCapture.ts`）。
+// **本体の振る舞いではなく、道具の欠けを道具の側で埋めるものである。**
+installPointerCapture();
 
 /** 残日数の基準日。帯の振り分けはこの観点の本題ではないので固定で渡す。 */
 const today = '2026-09-20';
@@ -60,6 +70,9 @@ const neverDelete: DeleteStockItem = () => Promise.reject(new Error('この観�
 const neverRegister: RegisterStockItem = () =>
   Promise.reject(new Error('この観点では登録を呼ばない'));
 
+/** 更新を起こさない観点のための口（B-55）。同じく、呼ばれたら分かる形にしておく。 */
+const neverUpdate: UpdateStockItem = () => Promise.reject(new Error('この観点では更新を呼ばない'));
+
 /**
  * 送られた登録を**配列に残す**口。`vi.fn()` で回数を数えず、配列の中身を状態として見る
  * （`docs/testing.md` 2章）。
@@ -82,6 +95,7 @@ function pantryTab(overrides: Partial<PantryTabProps> = {}) {
       today={today}
       onDelete={neverDelete}
       onRegister={neverRegister}
+      onUpdate={neverUpdate}
       ingredientNames={{ outcome: 'loading' }}
       {...overrides}
     />
@@ -519,5 +533,293 @@ describe('在庫タブの中身と2つの保存', () => {
     // 中身の側で列に足すと、並び（期限の近い順）を web が握り直すことになる。
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
     expect(screen.queryByText('にんじん')).toBeNull();
+  });
+});
+
+/**
+ * 一覧と**編集**の入れ替わり（FR-05 / B-55 設計 6章 規則15〜17 / 7章）。
+ *
+ * 編集の画面そのものの振る舞い（欄の値・送る中身・案内）は `StockItemEditForm.test.tsx`、
+ * どの動きをタップと読むかは `SwipeGesture.test.ts`、行から編集の口へ届くことは
+ * `PantryList.test.tsx` が既に押さえている。ここで確かめるのは**切り出せないもの**だけ —
+ * いまどちらの画面を出しているか、どの結末でどちらへ移るかである（規則16）。
+ *
+ * 観察は上の suite と同じ手がかりで行う（**仮の文言と記号は期待値に書かない**）。編集の画面が
+ * 出ていることは `queryAllByRole('textbox')` が**1つ**であることで観る — 編集の欄は分量
+ * （`textbox`）と期限（`type="date"`）の2つで、**名称の欄（`combobox`）は無い**（規則1）。
+ *
+ * 差し替えは `FixedStockItemRequests` を使う（先行 `StockItemForm.test.tsx` の2つめの suite）。
+ * **結末を順に配れて保留もできる**ため、「送っている間」を実時間を待たずに書ける。
+ */
+
+/** 分量の違う2件。**どの行を開いたか**を欄の値で読み分けるための標本である。 */
+const porkWithAmount: StockItemDto = {
+  id: '1',
+  name: '豚こま肉',
+  ingredientId: null,
+  amount: '300g',
+  expiryDate: null,
+};
+const cabbageWithAmount: StockItemDto = {
+  id: '2',
+  name: '白菜',
+  ingredientId: null,
+  amount: '1玉',
+  expiryDate: null,
+};
+
+function renderWithUpdate(
+  options: FixedStockItemRequestsOptions,
+  overrides: Partial<PantryTabProps> = {},
+) {
+  const requests = new FixedStockItemRequests(options);
+  const props: Partial<PantryTabProps> = { onUpdate: requests.updateStockItem, ...overrides };
+
+  return { requests, rendered: render(pantryTab(props)), props };
+}
+
+/**
+ * 行をタップする（規則15）。**押下と離上を同じ座標に送る** — 動かしていないことがタップで
+ * ある（判断は `SwipeGesture.ts` の持ち分）。**行の件数を先に確かめる。**
+ */
+function tapRowAt(index: number, expectedRows: number): void {
+  const rows = screen.getAllByRole('listitem');
+  expect(rows).toHaveLength(expectedRows);
+
+  const row = rows.at(index);
+  if (row === undefined) throw new Error(`${index} 番目の行が無い`);
+
+  fireEvent.pointerDown(row, { pointerId: 1, clientX: 0, clientY: 0 });
+  fireEvent.pointerUp(row, { pointerId: 1, clientX: 0, clientY: 0 });
+}
+
+/**
+ * 編集の画面の分量の欄。**`textbox` はこれ1つだけである**（規則1）。
+ *
+ * **`instanceof HTMLInputElement` で絞らない**（ADR-052 結果3。先行 `ingredientNameField`）。
+ */
+function editAmountField(): HTMLInputElement {
+  return screen.getByRole('textbox') as HTMLInputElement;
+}
+
+/**
+ * 編集の画面の操作を**文書順**で返す。**2つである**（規則5 — 先頭が閉じる操作、末尾が保存）。
+ * **この数を先に確かめる** — 崩れた回に閉じる操作を保存として押すと、何が壊れたか読めない。
+ */
+function editOperations(): readonly HTMLElement[] {
+  const found = screen.getAllByRole('button');
+  expect(found).toHaveLength(2);
+
+  return found;
+}
+
+function closeEditOperation(): HTMLElement {
+  const found = editOperations().at(0);
+  if (found === undefined) throw new Error('閉じる操作が無い');
+
+  return found;
+}
+
+function saveEditOperation(): HTMLElement {
+  const found = editOperations().at(-1);
+  if (found === undefined) throw new Error('保存の操作が無い');
+
+  return found;
+}
+
+describe('在庫タブの中身と編集', () => {
+  it('行をタップすると、編集の入力の欄が出る', () => {
+    renderWithUpdate({});
+
+    tapRowAt(0, 1);
+
+    // FR-05 / 規則15・16: 行のタップが編集への導線である
+    // （`docs/screen-design.md` 2章 `pantry --> edit`）。
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+  });
+
+  it('編集を開くと、一覧に出ていた在庫品は描かれなくなる', () => {
+    renderWithUpdate({});
+
+    tapRowAt(0, 1);
+
+    // 規則16: **入れ替わりであって、足し算ではない**（登録の画面と同じ構え）。
+    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
+    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  });
+
+  it('編集を開いている間は、登録を開く操作が出ていない', () => {
+    renderWithUpdate({});
+
+    tapRowAt(0, 1);
+
+    // 規則16 / 規則5: 出すのは常に一方だけである。編集の画面の操作は閉じると保存の2つで、
+    // 一覧の側の「＋」は木に無い。
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+  });
+
+  it('編集から閉じる操作を押すと、一覧へ戻る', () => {
+    renderWithUpdate({});
+
+    tapRowAt(0, 1);
+    fireEvent.click(closeEditOperation());
+
+    // 規則7・8: 保存せずに閉じる手段を1つ置く（編集の画面では**先頭**である）。
+    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
+    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
+    expect(screen.queryAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('保存せずに閉じる操作は、更新を送らない', () => {
+    const { requests } = renderWithUpdate({});
+
+    tapRowAt(0, 1);
+    fireEvent.change(editAmountField(), { target: { value: '300g' } });
+    fireEvent.click(closeEditOperation());
+
+    // 規則7: 閉じるのは捨てることである。**送った中身を配列で見る**（`vi.fn()` を使わない）。
+    expect(requests.receivedUpdates).toEqual([]);
+  });
+
+  it('更新が通ったら一覧へ戻る', async () => {
+    renderWithUpdate({ update: [{ outcome: 'updated' }] });
+
+    tapRowAt(0, 1);
+    fireEvent.change(editAmountField(), { target: { value: '300g' } });
+    fireEvent.click(saveEditOperation());
+
+    // 規則8: **通った回だけ閉じる。** 待つ手がかりは一覧の行が戻ることである
+    // （仮の文言を使わない）。
+    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
+    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
+    await waitFor(() => {
+      expect(screen.queryAllByRole('listitem')).toHaveLength(1);
+    });
+  });
+
+  it('更新が断られても編集の画面のままで、一覧へ戻らない', async () => {
+    const { requests } = renderWithUpdate({
+      update: [{ outcome: 'rejected', rule: 'expiryDate.format' }],
+    });
+
+    tapRowAt(0, 1);
+    fireEvent.change(editAmountField(), { target: { value: '300g' } });
+    fireEvent.click(saveEditOperation());
+
+    await waitFor(() => {
+      expect(requests.receivedUpdates).toHaveLength(1);
+    });
+
+    // 規則8 / 7章 行2 / NFR-15: 断られた回は閉じない。入力を残して案内を出す。
+    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
+    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  });
+
+  it('見つからないという断りでも、編集の画面を閉じない', async () => {
+    const { requests } = renderWithUpdate({
+      update: [{ outcome: 'rejected', rule: 'update.notFound' }],
+    });
+
+    tapRowAt(0, 1);
+    fireEvent.change(editAmountField(), { target: { value: '300g' } });
+    fireEvent.click(saveEditOperation());
+
+    await waitFor(() => {
+      expect(requests.receivedUpdates).toHaveLength(1);
+    });
+
+    // **ADR-050 結果5** / 規則10: 削除は `delete.notFound` を「すでに消えている」と読んで
+    // 何も出さないが、**更新は案内を出して画面も閉じない** — 利用者は書いた内容を持っている。
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
+    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  });
+
+  it('更新が失敗しても一覧へ戻らない', async () => {
+    const { requests } = renderWithUpdate({ update: [{ outcome: 'failed' }] });
+
+    tapRowAt(0, 1);
+    fireEvent.change(editAmountField(), { target: { value: '300g' } });
+    fireEvent.click(saveEditOperation());
+
+    await waitFor(() => {
+      expect(requests.receivedUpdates).toHaveLength(1);
+    });
+
+    // 規則8 / 7章 行4: 失敗も断りと同じ扱いで、送り直せる画面を残す（自動で送り直さない）。
+    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
+    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+  });
+
+  it('送っている間に閉じる操作を押しても、一覧へ戻らない', async () => {
+    const { requests } = renderWithUpdate({
+      update: [{ heldUntilSettled: { outcome: 'failed' } }],
+    });
+
+    tapRowAt(0, 1);
+    fireEvent.change(editAmountField(), { target: { value: '300g' } });
+    fireEvent.click(saveEditOperation());
+
+    // 送っている間に閉じようとする。`onClose` は onClick で**同期に**呼ばれるので、効いて
+    // しまえばこの時点で一覧が出る。
+    fireEvent.click(closeEditOperation());
+
+    // 規則7: 結末が届く前に閉じると、**断りの案内が出ないまま画面が消え、打った入力も
+    // 捨てられる** — 利用者は保存できたと思い込む。
+    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
+    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+
+    // 保留を解いてから終える — 届いた更新を `act` の中で起こすためである。
+    await act(async () => {
+      requests.settle();
+    });
+  });
+
+  it('一覧の結末が入れ替わっても、開いている編集の画面は閉じない', () => {
+    const { requests, rendered } = renderWithUpdate({});
+
+    tapRowAt(0, 1);
+    rendered.rerender(
+      pantryTab({ onUpdate: requests.updateStockItem, stockItems: loaded(chineseCabbage) }),
+    );
+
+    // 規則17 / B-22 設計 規則10: 門が一覧を取り直しても閉じない（登録の画面と同じ構え）。
+    expect(screen.getAllByRole('textbox')).toHaveLength(1);
+    expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+  });
+
+  it('一覧の結末が入れ替わっても、編集の欄の値は変わらない', () => {
+    const { requests, rendered } = renderWithUpdate({}, { stockItems: loaded(porkWithAmount) });
+
+    tapRowAt(0, 1);
+    fireEvent.change(editAmountField(), { target: { value: '300g' } });
+    rendered.rerender(
+      pantryTab({ onUpdate: requests.updateStockItem, stockItems: loaded(cabbageWithAmount) }),
+    );
+
+    // 規則17 / NFR-15: 編集の対象は**行から受け取った1件**である。取り直した一覧で欄が
+    // 書き換わると、打ちかけの値が黙って消える。
+    expect(editAmountField().value).toBe('300g');
+  });
+
+  it('一覧へ戻って別の行をタップすると、その行の分量が欄に出る', () => {
+    const { requests } = renderWithUpdate(
+      {},
+      { stockItems: loaded(porkWithAmount, cabbageWithAmount) },
+    );
+
+    tapRowAt(0, 2);
+    fireEvent.click(closeEditOperation());
+    tapRowAt(1, 2);
+
+    // 規則2・17: 開くたびに**その行の値**が出る（前に開いた行の値を持ち回さない）。
+    expect(editAmountField().value).toBe('1玉');
+    expect(requests.receivedUpdates).toEqual([]);
   });
 });
