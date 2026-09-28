@@ -102,6 +102,11 @@ class SameArrayInMemoryStockItemRepository implements StockItemRepository {
     if (stockItem.householdId === householdId) this.#arrayOf(householdId).push(stockItem);
   }
 
+  async findSavedNamesByHousehold(): Promise<string[]> {
+    // このテストでは使わない。
+    throw new Error('未実装');
+  }
+
   async delete() {
     // このテストでは使わない。
   }

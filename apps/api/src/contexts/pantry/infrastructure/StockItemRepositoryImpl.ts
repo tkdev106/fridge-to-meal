@@ -58,6 +58,10 @@ export class StockItemRepositoryImpl implements StockItemRepository {
     return rows.map(toStockItem);
   }
 
+  async findSavedNamesByHousehold(_householdId: HouseholdId): Promise<string[]> {
+    throw new Error('未実装');
+  }
+
   /**
    * 登録（FR-01）と更新（FR-05）を兼ねる**1文の upsert**（設計 規則7）。`findById` して
    * から分岐しない — 同じ id の同時保存を取りこぼす。
