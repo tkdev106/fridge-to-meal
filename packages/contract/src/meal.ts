@@ -98,3 +98,25 @@ export type ShowLatestSuggestionOutput =
       pantryChanged: boolean;
     }
   | { outcome: 'none' };
+
+/**
+ * 献立の一覧の1件（B-54a / FR-28 / FR-29）。識別子・名称・**主材料の件数**だけを持つ。
+ *
+ * 世帯・調理記録（日時・件数・有無の真偽）・献立の生成日時・充足・材料と手順の中身を載せない
+ * （B-48a 規則12 / NFR-09 / ADR-068 決定4）。
+ */
+export type MealSummaryOutput = {
+  mealId: string;
+  title: string;
+  /** 主材料の件数。調味料を数えない（C-16）。 */
+  ingredientCount: number;
+};
+
+/**
+ * 世帯の献立の一覧（B-54a / ADR-068）。調理記録の無い献立は `seen`、ある献立は `cooked` に入る。
+ * **調理記録の有無は、どちらの列に入るかでだけ表れる**（ADR-068 決定3）。
+ */
+export type ListMealsOutput = {
+  seen: MealSummaryOutput[];
+  cooked: MealSummaryOutput[];
+};
