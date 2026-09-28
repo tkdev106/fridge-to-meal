@@ -6,6 +6,7 @@ import type {
 } from '@fridge-to-meal/contract';
 import type { DeleteStockItem } from '../../../src/contexts/pantry/usecase/DeleteStockItem.js';
 import type { ListStockItems } from '../../../src/contexts/pantry/usecase/ListStockItems.js';
+import type { ListSavedStockItemNames } from '../../../src/contexts/pantry/usecase/ListSavedStockItemNames.js';
 import type { RegisterStockItem } from '../../../src/contexts/pantry/usecase/RegisterStockItem.js';
 import type { UpdateStockItem } from '../../../src/contexts/pantry/usecase/UpdateStockItem.js';
 import type { StockItemId } from '../../../src/contexts/pantry/domain/value/StockItemId.js';
@@ -29,6 +30,9 @@ export type StockItemResponse = { readonly returns: StockItemDto } | { readonly 
 
 export type ListStockItemsResponse =
   { readonly returns: ListStockItemsOutput } | { readonly throws: Error };
+
+export type ListSavedStockItemNamesResponse =
+  { readonly returns: readonly string[] } | { readonly throws: Error };
 
 /** 削除は値を返さないので、成功は印だけを置く。 */
 export type DeleteStockItemResponse = { readonly succeeds: true } | { readonly throws: Error };
@@ -81,6 +85,26 @@ export class FixedListStockItems {
   }
 
   readonly list: ListStockItems = async (householdId) => {
+    this.#receivedHouseholdIds.push(householdId);
+    if ('throws' in this.#response) throw this.#response.throws;
+    return this.#response.returns;
+  };
+}
+
+/** 保存したことのある在庫品の名称の代役（B-50d）。献立側の `ListIngredientNames` が引く。 */
+export class FixedListSavedStockItemNames {
+  readonly #response: ListSavedStockItemNamesResponse;
+  readonly #receivedHouseholdIds: HouseholdId[] = [];
+
+  constructor(response: ListSavedStockItemNamesResponse) {
+    this.#response = response;
+  }
+
+  get receivedHouseholdId(): HouseholdId | null {
+    return this.#receivedHouseholdIds.at(-1) ?? null;
+  }
+
+  readonly list: ListSavedStockItemNames = async (householdId) => {
     this.#receivedHouseholdIds.push(householdId);
     if ('throws' in this.#response) throw this.#response.throws;
     return this.#response.returns;

@@ -11,7 +11,10 @@ import { dateTimeOf } from '../../../../src/contexts/meal/domain/value/DateTime.
 import { mealIdOf } from '../../../../src/contexts/meal/domain/value/MealId.js';
 import type { HouseholdId } from '../../../../src/shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../../../src/shared/domain/HouseholdId.js';
-import { FixedListStockItems } from '../../../support/pantry/FixedStockItemUsecases.js';
+import {
+  FixedListSavedStockItemNames,
+  FixedListStockItems,
+} from '../../../support/pantry/FixedStockItemUsecases.js';
 import { InMemoryMealRepository } from '../../../support/meal/InMemoryMealRepository.js';
 
 const ourHousehold = householdIdOf('11111111-1111-4111-8111-111111111111');
@@ -57,15 +60,27 @@ function meal(props: { ingredients: readonly MealIngredient[]; householdId?: Hou
 
 /**
  * ユースケースを1つ組む。在庫は `pantry/usecase` の代役から、献立は記憶上のリポジトリから
- * 受け取る（ADR-033 決定2 / ADR-063 決定1）。
+ * 受け取る（ADR-033 決定2 / ADR-063 決定1）。保存したことのある名称（B-50d）も在庫の代役から。
  */
-function setUp(props: { stockItems?: readonly StockItemDto[]; meals?: readonly Meal[] } = {}) {
+function setUp(
+  props: {
+    stockItems?: readonly StockItemDto[];
+    savedNames?: readonly string[];
+    meals?: readonly Meal[];
+  } = {},
+) {
   const stockItems = [...(props.stockItems ?? [])];
+  const savedNames = [...(props.savedNames ?? [])];
   const listStockItems = new FixedListStockItems({ returns: { stockItems } });
+  const listSavedStockItemNames = new FixedListSavedStockItemNames({ returns: savedNames });
   const mealRepository = new InMemoryMealRepository(...(props.meals ?? []));
-  const list = listIngredientNames({ listStockItems: listStockItems.list, mealRepository });
+  const list = listIngredientNames({
+    listStockItems: listStockItems.list,
+    listSavedStockItemNames: listSavedStockItemNames.list,
+    mealRepository,
+  });
 
-  return { list, listStockItems, mealRepository, stockItems };
+  return { list, listStockItems, listSavedStockItemNames, mealRepository, stockItems, savedNames };
 }
 
 describe('listIngredientNames', () => {
@@ -79,6 +94,17 @@ describe('listIngredientNames', () => {
       const output = await list(ourHousehold);
 
       expect(output.ingredientNames).toEqual(['にんじん', '豚こま肉']);
+    });
+
+    it('保存したことのある在庫品の名称も返す（消した在庫品の名称が残る）', async () => {
+      const { list } = setUp({
+        stockItems: [stockItem('にんじん')],
+        savedNames: ['にんじん', 'ごぼう'],
+      });
+
+      const output = await list(ourHousehold);
+
+      expect(output.ingredientNames).toEqual(['ごぼう', 'にんじん']);
     });
 
     it('在庫品も献立も無い世帯には空の列を返す', async () => {
@@ -160,6 +186,18 @@ describe('listIngredientNames', () => {
       expect(output.ingredientNames).toEqual(['卵', '豆腐']);
     });
 
+    it('3つの出所に同じ名称があれば1つにまとめる', async () => {
+      const { list } = setUp({
+        stockItems: [stockItem('卵')],
+        savedNames: ['卵', '豆腐'],
+        meals: [meal({ ingredients: [mainIngredient('豆腐'), mainIngredient('卵')] })],
+      });
+
+      const output = await list(ourHousehold);
+
+      expect(output.ingredientNames).toEqual(['卵', '豆腐']);
+    });
+
     it('表記の違う名称は畳まず、別々に返す', async () => {
       const { list } = setUp({
         stockItems: [stockItem('豚こま肉'), stockItem('ＡＢＣ'), stockItem('Egg')],
@@ -209,6 +247,26 @@ describe('listIngredientNames', () => {
       expect(secondOutput.ingredientNames).toEqual(firstOutput.ingredientNames);
     });
 
+    it('保存したことのある名称も、ほかの出所の名称と混ぜてコード単位の昇順に並べる', async () => {
+      const { list } = setUp({
+        stockItems: [stockItem('玉ねぎ')],
+        savedNames: ['キャベツ', 'あさり'],
+        meals: [meal({ ingredients: [mainIngredient('にら')] })],
+      });
+
+      const output = await list(ourHousehold);
+
+      expect(output.ingredientNames).toEqual(['あさり', 'にら', 'キャベツ', '玉ねぎ']);
+    });
+
+    it('受け取った保存済みの名称の列をその場で並べ替えない', async () => {
+      const { list, savedNames } = setUp({ savedNames: ['豆腐', 'あさり'] });
+
+      await list(ourHousehold);
+
+      expect(savedNames).toEqual(['豆腐', 'あさり']);
+    });
+
     it('受け取った在庫品の列と献立の列をその場で並べ替えない', async () => {
       const carrot = stockItem('にんじん');
       const egg = stockItem('卵');
@@ -235,6 +293,14 @@ describe('listIngredientNames', () => {
       expect(listStockItems.receivedHouseholdId).toBe(ourHousehold);
     });
 
+    it('保存したことのある名称の取得には受け取った世帯を渡す', async () => {
+      const { list, listSavedStockItemNames } = setUp();
+
+      await list(ourHousehold);
+
+      expect(listSavedStockItemNames.receivedHouseholdId).toBe(ourHousehold);
+    });
+
     it('他の世帯の献立の材料名は返さない', async () => {
       const { list } = setUp({
         meals: [
@@ -255,6 +321,7 @@ describe('listIngredientNames', () => {
       const listStockItems = new FixedListStockItems({ throws: failure });
       const list = listIngredientNames({
         listStockItems: listStockItems.list,
+        listSavedStockItemNames: new FixedListSavedStockItemNames({ returns: [] }).list,
         mealRepository: new InMemoryMealRepository(),
       });
 
@@ -274,7 +341,19 @@ describe('listIngredientNames', () => {
       };
       const list = listIngredientNames({
         listStockItems: new FixedListStockItems({ returns: { stockItems: [] } }).list,
+        listSavedStockItemNames: new FixedListSavedStockItemNames({ returns: [] }).list,
         mealRepository: failingMealRepository,
+      });
+
+      await expect(list(ourHousehold)).rejects.toBe(failure);
+    });
+
+    it('保存したことのある名称の取得が投げた例外をそのまま投げる', async () => {
+      const failure = new Error('名称を読めなかった');
+      const list = listIngredientNames({
+        listStockItems: new FixedListStockItems({ returns: { stockItems: [] } }).list,
+        listSavedStockItemNames: new FixedListSavedStockItemNames({ throws: failure }).list,
+        mealRepository: new InMemoryMealRepository(),
       });
 
       await expect(list(ourHousehold)).rejects.toBe(failure);
