@@ -1,5 +1,6 @@
 import type {
   ListIngredientNamesOutput,
+  ListMealsOutput,
   ListStockItemsOutput,
   MealOutput,
   StockItemDto,
@@ -15,6 +16,7 @@ import { FixedFetchJwks } from './support/identity/FixedFetchJwks.js';
 import { FixedIdentifyHousehold } from './support/identity/FixedIdentifyHousehold.js';
 import { FixedAddCookingRecord } from './support/meal/FixedAddCookingRecord.js';
 import { FixedListIngredientNames } from './support/meal/FixedListIngredientNames.js';
+import { FixedListMeals } from './support/meal/FixedListMeals.js';
 import { FixedShowMeal } from './support/meal/FixedShowMeal.js';
 import {
   FixedShowLatestSuggestion,
@@ -106,6 +108,15 @@ const mealOutcome: MealOutput = {
   coverage: { covered: [], missing: [] },
 };
 
+/**
+ * 献立の一覧の口の代役が返す一覧（B-54a）。**他のどの口の結末とも違う中身**にしておく —
+ * 経路が別の口に繋がっていたら本体の違いとして現れるように。
+ */
+const listMealsOutcome: ListMealsOutput = {
+  seen: [{ mealId: '55555555-5555-4555-8555-555555555555', title: '筑前煮', ingredientCount: 4 }],
+  cooked: [],
+};
+
 /** 組み立てに渡す固定の基準日時（B-48c 規則7）。テストは時計を読まない（`docs/testing.md` 5章）。 */
 const fixedNow = '2026-09-23T12:00:00.000Z';
 
@@ -124,6 +135,7 @@ function appWithFixedDependencies(
     listIngredientNames?: FixedListIngredientNames;
     addCookingRecord?: FixedAddCookingRecord;
     showMeal?: FixedShowMeal;
+    listMeals?: FixedListMeals;
   } = {},
 ) {
   const suggestMeals =
@@ -139,6 +151,7 @@ function appWithFixedDependencies(
   const addCookingRecord =
     overrides.addCookingRecord ?? new FixedAddCookingRecord({ succeeds: true });
   const showMeal = overrides.showMeal ?? new FixedShowMeal({ returns: mealOutcome });
+  const listMeals = overrides.listMeals ?? new FixedListMeals({ returns: listMealsOutcome });
 
   return createApp({
     identifyHousehold: new FixedIdentifyHousehold({ returns: ourHousehold }).identify,
@@ -154,6 +167,7 @@ function appWithFixedDependencies(
     listIngredientNames: listIngredientNames.list,
     addCookingRecord: addCookingRecord.add,
     showMeal: showMeal.show,
+    listMeals: listMeals.list,
     now: () => fixedNow,
   });
 }
@@ -760,6 +774,94 @@ describe('composition root main', () => {
       const { app } = composedApp(envWithoutHyperdrive);
 
       const response = await app.request(mealPath, {
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+    });
+  });
+
+  describe('献立の一覧の経路の配置', () => {
+    // B-54a 2周目。代役の deps で組み、経路がどこに置かれ、どの口に何が届くかだけを見る。
+    const mealsPath = '/meals';
+
+    it('献立の一覧の経路を接頭辞なしの GET /meals に置く', async () => {
+      // 規則10 / ADR-048 決定4: `createMealListRoutes` の経路をそのまま根にマウントする。
+      const listMeals = new FixedListMeals({ returns: listMealsOutcome });
+      const app = appWithFixedDependencies({ listMeals });
+
+      const response = await app.request(mealsPath, { headers: bearerHeaders('x') });
+
+      expect(response.status).toBe(200);
+      expect(listMeals.callCount).toBe(1);
+    });
+
+    it('接頭辞を付けた /api/meals には経路を置かない', async () => {
+      // ADR-048 決定4: 接頭辞は増やさない。
+      const listMeals = new FixedListMeals({ returns: listMealsOutcome });
+      const app = appWithFixedDependencies({ listMeals });
+
+      const response = await app.request(`/api${mealsPath}`, { headers: bearerHeaders('x') });
+
+      expect(response.status).toBe(404);
+      expect(listMeals.callCount).toBe(0);
+    });
+
+    it('献立の一覧の経路を足しても GET /meals/:id は献立詳細に届いたままである', async () => {
+      // B-52 の回帰: 一覧の経路が献立詳細の経路を食わない。
+      const showMeal = new FixedShowMeal({ returns: mealOutcome });
+      const app = appWithFixedDependencies({ showMeal });
+
+      const response = await app.request(`${mealsPath}/m-1`, { headers: bearerHeaders('x') });
+
+      expect(response.status).toBe(200);
+      expect(showMeal.callCount).toBe(1);
+    });
+
+    it('献立の一覧の経路には識別の口で定まった世帯が届く', async () => {
+      // C-9: 世帯はアクセストークンから定まり、ユースケースの引数に渡る。
+      const listMeals = new FixedListMeals({ returns: listMealsOutcome });
+      const app = appWithFixedDependencies({ listMeals });
+
+      await app.request(mealsPath, { headers: bearerHeaders('x') });
+
+      expect(listMeals.receivedHouseholdId).toBe('11111111-1111-4111-8111-111111111111');
+    });
+  });
+
+  describe('献立の一覧の経路の結線', () => {
+    // B-54a 2周目。composeDependencies の本物の結線で、差し替えるのは JWKS を取りに行く口だけ。
+    const mealsPath = '/meals';
+
+    it('アクセストークンが無い献立の一覧の要求は結線後も 401 accessToken.missing になる', async () => {
+      // 7章1行目 / ADR-032: 世帯を定めるのが常に先。認証を通らない要求は DB に触れない。
+      const { app } = composedApp(envWithoutHyperdrive);
+
+      const response = await app.request(mealsPath, {});
+
+      expect(response.status).toBe(401);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'accessToken.missing' });
+    });
+
+    it('SUPABASE_URL が空の環境で献立の一覧を要求すると 500 unexpected になり 401 にならない', async () => {
+      // 7章2行目 / ADR-045 決定3 / 結果4: サーバ側の不備を利用者のアクセストークンのせいにしない。
+      const { app } = composedApp({ ...env, SUPABASE_URL: '' });
+
+      const response = await app.request(mealsPath, {
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+    });
+
+    it('認証を通ったあと HYPERDRIVE の binding が無ければ献立の一覧の要求は 500 unexpected になる', async () => {
+      // 規則11 / ADR-029 決定3(a) / ADR-045: 接続文字列が読めないのはサーバ側の不備である。
+      // 500 になること自体が、DB に触れるのが認証の**あと**であることの印でもある。
+      const { app } = composedApp(envWithoutHyperdrive);
+
+      const response = await app.request(mealsPath, {
         headers: bearerHeaders(await accessTokenOf(validClaims())),
       });
 

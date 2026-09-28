@@ -20,10 +20,12 @@ export type {
 
 export type {
   CoveredMealIngredientDto,
+  ListMealsOutput,
   MealCoverageDto,
   MealIngredientDto,
   MealIngredientKind,
   MealOutput,
+  MealSummaryOutput,
   ShowLatestSuggestionOutput,
   SuggestionEntryOrigin,
   SuggestionEntryOutput,

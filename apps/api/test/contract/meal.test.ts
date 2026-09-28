@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type {
+  ListMealsOutput,
   MealCoverageDto,
   MealIngredientDto,
   MealOutput,
+  MealSummaryOutput,
   SuggestionEntryOutput,
   SuggestMealsOutput,
 } from '@fridge-to-meal/contract';
@@ -286,5 +288,101 @@ describe('献立1件の出力 MealOutput', () => {
     };
 
     expect(output.ingredients[0]?.amount).toBeNull();
+  });
+});
+
+// ここから下は B-54a（献立の一覧。ADR-068）。
+
+/** 一覧の1件を作る。本題でない値をここに隠す。 */
+function mealSummaryOutput(): MealSummaryOutput {
+  return { mealId, title: '肉じゃが', ingredientCount: 2 };
+}
+
+describe('献立の一覧 ListMealsOutput', () => {
+  it('献立の一覧は seen と cooked の2列を一覧の1件の列として持つ', () => {
+    // 規則2 / FR-28 / FR-29 / ADR-068 決定3: 1回の応答で2列を返す。
+    const seen: MealSummaryOutput[] = [mealSummaryOutput()];
+    const cooked: MealSummaryOutput[] = [];
+    const output: ListMealsOutput = { seen, cooked };
+
+    expect(output.seen).toEqual([{ mealId, title: '肉じゃが', ingredientCount: 2 }]);
+    expect(output.cooked).toEqual([]);
+  });
+});
+
+describe('一覧の1件 MealSummaryOutput', () => {
+  it('一覧の1件は識別子・名称・主材料の件数を持つ', () => {
+    // 規則4 / 規則6 / FR-28: 一覧に要るのはこの3つである。
+    const summary: MealSummaryOutput = mealSummaryOutput();
+
+    expect(summary.mealId).toBe(mealId);
+    expect(summary.title).toBe('肉じゃが');
+    expect(summary.ingredientCount).toBe(2);
+  });
+
+  it('一覧の1件に世帯を持たせられない', () => {
+    // 規則6 / NFR-09: 世帯は認証された利用者から定まる。
+    const summary: MealSummaryOutput = {
+      ...mealSummaryOutput(),
+      // @ts-expect-error 世帯は契約に無い
+      householdId: '11111111-1111-4111-8111-111111111111',
+    };
+
+    expect(summary).toBeDefined();
+  });
+
+  it('一覧の1件に調理記録を持たせられない', () => {
+    // 規則6 / B-48a 規則12: 調理記録はどの型にも載せない。
+    const summary: MealSummaryOutput = {
+      ...mealSummaryOutput(),
+      // @ts-expect-error 調理記録は契約に無い
+      cookingRecords: [],
+    };
+
+    expect(summary).toBeDefined();
+  });
+
+  it('一覧の1件に調理記録の有無の真偽を持たせられない', () => {
+    // 規則7 / ADR-068 決定3: 有無はどちらの列に入るかでだけ表れる。
+    const summary: MealSummaryOutput = {
+      ...mealSummaryOutput(),
+      // @ts-expect-error 調理記録の有無は契約に無い
+      cooked: true,
+    };
+
+    expect(summary).toBeDefined();
+  });
+
+  it('一覧の1件に生成日時を持たせられない', () => {
+    // 規則6 / ADR-068 決定4: 日付を出さない。
+    const summary: MealSummaryOutput = {
+      ...mealSummaryOutput(),
+      // @ts-expect-error 生成日時は契約に無い
+      generatedAt: '2026-09-14T03:00:00.000Z',
+    };
+
+    expect(summary).toBeDefined();
+  });
+
+  it('一覧の1件に充足を持たせられない', () => {
+    // 規則6: 充足は献立詳細（`MealOutput`）の持ち物である。
+    const summary: MealSummaryOutput = {
+      ...mealSummaryOutput(),
+      // @ts-expect-error 充足は契約に無い
+      coverage: { covered: [], missing: [] },
+    };
+
+    expect(summary).toBeDefined();
+  });
+
+  it('一覧の1件に材料の中身を持たせられない', () => {
+    // 規則6: 一覧が載せるのは主材料の件数だけである。
+    const summary: MealSummaryOutput = {
+      ...mealSummaryOutput(),
+      // @ts-expect-error 材料の中身は契約に無い
+      ingredients: [],
+    };
+
+    expect(summary).toBeDefined();
   });
 });
