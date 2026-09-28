@@ -1,4 +1,4 @@
-import { check, date, index, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { check, date, index, pgTable, primaryKey, text, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -55,3 +55,25 @@ export const stockItems = pgTable(
 
 export type StockItemRow = typeof stockItems.$inferSelect;
 export type NewStockItemRow = typeof stockItems.$inferInsert;
+
+/**
+ * これまでに保存した在庫品の名称（B-50d / FR-02 / ADR-068）。`stock_items` の行を消しても
+ * ここは消えないので、消した在庫品の名称も食材名の補完に残る。
+ *
+ * **主キーは (世帯, 名称) の組。** 同じ世帯の同じ名称（完全一致。C-6）は1行に畳む。世帯が
+ * 主キーに入るので、`on conflict do nothing` が他世帯の行に黙って当たることは無い。
+ * 世帯は自分で持ち、RLS の述語は `stock_items` と同じ形にする（ADR-056）。
+ */
+export const stockItemNames = pgTable(
+  'stock_item_names',
+  {
+    /** 既定値を置かない（`stock_items.household_id` と同じ理由。ADR-028）。 */
+    householdId: uuid('household_id').notNull(),
+
+    name: text('name').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.householdId, t.name] }),
+    check('stock_item_names_name_not_blank', sql`btrim(${t.name}) <> ''`),
+  ],
+);
