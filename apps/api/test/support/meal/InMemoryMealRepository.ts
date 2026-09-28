@@ -1,7 +1,10 @@
 import type { Meal } from '../../../src/contexts/meal/domain/entity/Meal.js';
 import type { MealRepository } from '../../../src/contexts/meal/domain/repository/MealRepository.js';
 import { MealRuleViolation } from '../../../src/contexts/meal/domain/error/MealRuleViolation.js';
+import type { CookingRecord } from '../../../src/contexts/meal/domain/value/CookingRecord.js';
+import type { CookingStep } from '../../../src/contexts/meal/domain/value/CookingStep.js';
 import type { MealId } from '../../../src/contexts/meal/domain/value/MealId.js';
+import type { MealIngredient } from '../../../src/contexts/meal/domain/value/MealIngredient.js';
 import type { HouseholdId } from '../../../src/shared/domain/HouseholdId.js';
 
 /** 何件目の保存で何を投げるか。先行の `throws` と同じ、決まった応答の持たせ方である。 */
@@ -29,15 +32,20 @@ export type SaveFailure = {
  * 同じ筋で、決まった応答を持たせるだけである。**可変長の構築は壊さない** — 前提の献立を置く
  * 口はそのままで、失敗の設定だけを別の入口から受け取る。
  *
- * **同じ世帯に同じ識別子の献立が保存済みなら、その位置の要素を置き換える**（B-51 1周目）。
- * 押し込むと、記録を1件足した保存のあと `findByHousehold` が同じ識別子の献立を2件返し、
- * 本物（`MealRepositoryImpl`）では通る振る舞い（ADR-057 決定1・決定2 の「同じ内容＋記録の
- * 追加はべき等に通り、増えた記録だけが足される」）が**二重の側の事情で観察できなくなる。**
+ * **同じ世帯に同じ識別子の献立が保存済みなら、読み比べてから置き換える**（B-57 規則5〜10 /
+ * ADR-057 決定1・2）。名称・材料（件数・並び・名称・種別・分量）・手順（件数・並び・本文）が
+ * 一致し、保存済みの調理記録が渡された記録の先頭からの並びであれば、その位置の要素を
+ * 置き換える（同じ内容＋記録の追加はべき等に通る。`AddCookingRecord` の経路）。1つでも
+ * 食い違えば `save.contentMismatch` で拒み、置き換えも積みもしない。差し替えがこれを
+ * 持たないと、単体テストの上だけで「生成後に編集できる」が通る（C-3）。
  *
- * **読み比べ（`save.contentMismatch`）は二重に持ち込まない。** 本物の読み比べは DB の
- * テストが押さえており、必要な回は `withSaveFailure` で注入する。**二重の側の約束を
- * どこまで本物に揃えるかは B-57 が持つ** — この周は「同じ識別子の2度目が置き換わること」
- * だけを揃えている。
+ * 読み比べの相手は**同じ世帯の箱の中だけ**である（C-9。本物も世帯で絞って読む）。
+ * **他世帯と識別子が衝突した保存は拒まない** — 本物は親の主キーが DB の失敗として拒むので、
+ * ここだけはまだ本物より甘い（B-57 で範囲の外に置いた。発行器が識別子を重複させない限り起こらない）。
+ * **生成日時は比べない**（ADR-057 結果3）。生成日時だけが違う保存は通って置き換わり、
+ * 本物（最初の値が残る）とはそこだけ食い違う — アプリの経路からは起こらない割り切りである。
+ * 判定の順は「世帯の食い違い → `withSaveFailure` の注入 → 読み比べ」で、注入の回数は
+ * 読み比べで拒んだ回も含めて呼ばれた回数で数える（B-57 規則4）。
  *
  * **`findByHousehold` は世帯ごとの配列を毎回同じ参照で返す。** 複製して返すと、呼ぶ側が
  * 受け取った列をその場で並べ替えていても気づけない（B-27 規則17 / ADR-009）。世帯で分けて
@@ -110,14 +118,85 @@ export class InMemoryMealRepository implements MealRepository {
       throw saveFailure.throws;
     }
 
-    // 同じ識別子が保存済みなら、その位置で置き換える。`findByHousehold` が世帯ごとに
-    // 同じ配列参照を返す性質を保つため、配列を作り直さず in-place で入れ替える。
     const stored = this.#arrayOf(householdId);
     const storedIndex = stored.findIndex((candidate) => candidate.id === meal.id);
-    if (storedIndex === -1) {
+    const storedMeal = stored[storedIndex];
+    if (storedMeal === undefined) {
       stored.push(meal);
       return;
     }
+
+    // 拒む回は保存済みを動かさない（ADR-057 決定1「1行も書かない」）。
+    if (!sameContent(storedMeal, meal)) {
+      throw new MealRuleViolation(
+        'save.contentMismatch',
+        '保存済みの献立と名称・材料・手順が食い違っている',
+      );
+    }
+    if (!isPrefixOfCookingRecords(storedMeal.cookingRecords, meal.cookingRecords)) {
+      throw new MealRuleViolation(
+        'save.contentMismatch',
+        '保存済みの調理記録が、渡された調理記録の先頭からの並びになっていない',
+      );
+    }
+
+    // `findByHousehold` が世帯ごとに同じ配列参照を返す性質を保つため、配列を作り直さず
+    // in-place で入れ替える。
     stored[storedIndex] = meal;
   }
+}
+
+/**
+ * 名称・材料・手順が**件数と並び順を含めて**値として同じか（ADR-057 決定1）。生成日時は
+ * 比べない（ADR-057 結果3）。参照で比べると、`withCookingRecord` が作り直した献立を拒む。
+ */
+function sameContent(storedMeal: Meal, meal: Meal): boolean {
+  return (
+    storedMeal.title === meal.title &&
+    sameIngredients(storedMeal.ingredients, meal.ingredients) &&
+    sameSteps(storedMeal.steps, meal.steps)
+  );
+}
+
+/** 材料が件数と並び順を含めて、名称・種別・分量（`null` は `null` とだけ一致）で同じか。 */
+function sameIngredients(
+  storedIngredients: readonly MealIngredient[],
+  ingredients: readonly MealIngredient[],
+): boolean {
+  return (
+    storedIngredients.length === ingredients.length &&
+    storedIngredients.every((storedIngredient, position) => {
+      const ingredient = ingredients[position];
+      return (
+        ingredient !== undefined &&
+        storedIngredient.name === ingredient.name &&
+        storedIngredient.kind === ingredient.kind &&
+        storedIngredient.amount === ingredient.amount
+      );
+    })
+  );
+}
+
+/** 手順が件数と並び順を含めて本文で同じか。 */
+function sameSteps(storedSteps: readonly CookingStep[], steps: readonly CookingStep[]): boolean {
+  return (
+    storedSteps.length === steps.length &&
+    storedSteps.every((storedStep, position) => storedStep === steps[position])
+  );
+}
+
+/**
+ * 保存済みの調理記録が、渡された記録の**先頭からの並び**になっているか（ADR-057 決定2 / C-3）。
+ * 記録は追加のみなので、減ることも途中が違うことも起こらない。
+ */
+function isPrefixOfCookingRecords(
+  storedRecords: readonly CookingRecord[],
+  records: readonly CookingRecord[],
+): boolean {
+  return (
+    storedRecords.length <= records.length &&
+    storedRecords.every(
+      (storedRecord, position) => storedRecord.cookedAt === records[position]?.cookedAt,
+    )
+  );
 }

@@ -18,8 +18,13 @@ import type { HouseholdId } from '../../../src/shared/domain/HouseholdId.js';
  * - `countGeneratedByHouseholdSince` は**世帯・生成の由来・窓の下端（下端を含む）**の3つで
  *   絞って数える（NFR-C2 / ADR-049 決定1。どれが緩んでも上限が実装ごとに変わる）
  *
- * 同じ識別子の提案でも置き換えない。提案は生成後に不変で（C-3 と同じ筋）、同じ識別子が
- * 2度発行されるのは発行器の誤りである。
+ * **同じ識別子の2度目の `save` は、世帯を問わず拒んで何も積まない**（B-57 規則2・3 /
+ * ADR-058 決定1）。本物は主キーが表全体で一意なので、他世帯と識別子が衝突した回も DB が
+ * 拒む。差し替えが黙って積むと、単体テストの上だけで「同じ提案を2度積める」が通る。
+ * 中身が同じでも違っても拒み、べき等に通す経路は持たない（ADR-058 比較した案 1-B）。
+ * **失敗の形は本物に揃えない** — 本物は `rule` を持たない DB の失敗を投げるが、interface は
+ * 失敗の型を約束しておらず、差し替えは `MealRuleViolation('save.duplicateId')` で足りる。
+ * 世帯の食い違いを先に見る（C-9。世帯分離の断りを識別子の重複より優先する）。
  */
 export class InMemorySuggestionRepository implements SuggestionRepository {
   readonly #stored: Suggestion[] = [];
@@ -71,6 +76,10 @@ export class InMemorySuggestionRepository implements SuggestionRepository {
         'save.householdMismatch',
         '引数の世帯と提案の世帯が食い違っている',
       );
+    }
+    if (this.#stored.some((stored) => stored.id === suggestion.id)) {
+      // 世帯を問わず見る。本物の主キーは表全体で一意である（ADR-058 決定1）。
+      throw new MealRuleViolation('save.duplicateId', '同じ識別子の提案が保存済みである');
     }
     this.#stored.push(suggestion);
   }

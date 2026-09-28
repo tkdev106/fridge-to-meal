@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SuggestionRepository } from '../../../../src/contexts/meal/domain/repository/SuggestionRepository.js';
+import { MealRuleViolation } from '../../../../src/contexts/meal/domain/error/MealRuleViolation.js';
 import { createSuggestion } from '../../../../src/contexts/meal/domain/entity/Suggestion.js';
 import { createPantrySnapshot } from '../../../../src/contexts/meal/domain/value/PantrySnapshot.js';
 import type { SuggestionEntryOrigin } from '../../../../src/contexts/meal/domain/value/SuggestionEntry.js';
@@ -234,5 +235,97 @@ describe('提案リポジトリ SuggestionRepository', () => {
     );
 
     expect(await repository.countGeneratedByHouseholdSince(ourHousehold, windowStart)).toBe(0);
+  });
+
+  // ここから同じ識別子の2度目の保存（B-57 規則1〜3 / ADR-058 決定1）。本物は主キーが
+  // 表全体で一意なので、世帯を問わず2度目を DB が拒む。差し替えも同じ場所で拒まないと、
+  // 単体テストの上だけで「同じ提案を2度積める」が通る。
+
+  it('同じ提案を2度 save すると、2度目を拒む', async () => {
+    // B-57 規則2・3 / ADR-058 決定1: 同じ識別子の2度目は拒む。
+    const repository: SuggestionRepository = new InMemorySuggestionRepository();
+    await repository.save(ourHousehold, suggestion({ id: smallId }));
+
+    const execution = repository.save(ourHousehold, suggestion({ id: smallId }));
+
+    await expect(execution).rejects.toThrow(MealRuleViolation);
+    await expect(execution).rejects.toMatchObject({ rule: 'save.duplicateId' });
+  });
+
+  it('同じ識別子で中身の違う提案を save しても、2度目を拒む', async () => {
+    // B-57 規則3 / ADR-058 比較した案 1-B: 中身を読み比べてべき等に通す経路は持たない。
+    const repository: SuggestionRepository = new InMemorySuggestionRepository();
+    await repository.save(
+      ourHousehold,
+      suggestion({ id: smallId, generatedAt: '2026-09-13T12:00:00Z', origin: 'reused' }),
+    );
+
+    const execution = repository.save(
+      ourHousehold,
+      suggestion({ id: smallId, generatedAt: '2026-09-13T13:00:00Z', origin: 'generated' }),
+    );
+
+    await expect(execution).rejects.toThrow(MealRuleViolation);
+    await expect(execution).rejects.toMatchObject({ rule: 'save.duplicateId' });
+  });
+
+  it('拒んだ2度目の提案は、直近の提案に現れない', async () => {
+    // B-57 規則2: 拒んだ回は何も積まない。残るのは1回目の提案だけである。
+    const repository: SuggestionRepository = new InMemorySuggestionRepository();
+    await repository.save(
+      ourHousehold,
+      suggestion({ id: smallId, generatedAt: '2026-09-13T12:00:00Z' }),
+    );
+    // 拒むこと自体は上の行が確かめる。ここで見るのは拒んだ後に残るものだけである。
+    await repository
+      .save(ourHousehold, suggestion({ id: smallId, generatedAt: '2026-09-13T13:00:00Z' }))
+      .catch(() => undefined);
+
+    const recentSuggestions = await repository.findRecentByHousehold(ourHousehold, 10);
+
+    expect(recentSuggestions.map((found) => found.generatedAt)).toEqual([
+      '2026-09-13T12:00:00.000Z',
+    ]);
+  });
+
+  it('別の世帯が保存した提案と識別子が同じなら、こちらの世帯の save も拒む', async () => {
+    // B-57 規則2 / ADR-058 決定1 / C-9: 主キーは世帯をまたいで一意である。
+    const repository: SuggestionRepository = new InMemorySuggestionRepository();
+    await repository.save(
+      neighborHousehold,
+      suggestion({ id: smallId, householdId: neighborHousehold }),
+    );
+
+    const execution = repository.save(ourHousehold, suggestion({ id: smallId }));
+
+    await expect(execution).rejects.toThrow(MealRuleViolation);
+    await expect(execution).rejects.toMatchObject({ rule: 'save.duplicateId' });
+  });
+
+  it('別の世帯の提案と識別子が衝突して拒んだ回は、こちらの世帯に提案を積まない', async () => {
+    // B-57 規則2 / C-9: 衝突で拒んだ提案が、こちらの世帯の最新の提案として現れない。
+    const repository: SuggestionRepository = new InMemorySuggestionRepository();
+    await repository.save(
+      neighborHousehold,
+      suggestion({ id: smallId, householdId: neighborHousehold }),
+    );
+    // 拒むこと自体は上の行が確かめる。ここで見るのは拒んだ後に残るものだけである。
+    await repository.save(ourHousehold, suggestion({ id: smallId })).catch(() => undefined);
+
+    expect(await repository.findLatestByHousehold(ourHousehold)).toBeNull();
+  });
+
+  it('識別子が保存済みで世帯も食い違う save は、世帯の食い違いとして拒む', async () => {
+    // B-57 規則1 / C-9: 世帯の食い違いを先に見る。識別子の重複より世帯分離の断りが優先する。
+    const repository: SuggestionRepository = new InMemorySuggestionRepository();
+    await repository.save(ourHousehold, suggestion({ id: smallId }));
+
+    const execution = repository.save(
+      neighborHousehold,
+      suggestion({ id: smallId, householdId: ourHousehold }),
+    );
+
+    await expect(execution).rejects.toThrow(MealRuleViolation);
+    await expect(execution).rejects.toMatchObject({ rule: 'save.householdMismatch' });
   });
 });
