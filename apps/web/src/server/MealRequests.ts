@@ -1,12 +1,12 @@
 /**
- * `GET /meals/:id`（B-52 / ADR-067）と `POST /meals/:id/cooking-records`（B-51）を叩く
- * 2つの工場と、その結末（B-53 設計 5章）。
+ * `GET /meals/:id`（B-52 / ADR-067）と `POST /meals/:id/cooking-records`（B-51）、
+ * `GET /meals`（B-54a / ADR-068）を叩く3つの工場と、その結末（B-53 / B-54b 設計 5章）。
  *
  * **ここは画面ではない。** 経路の継ぎ目であり、`@supabase/*` も `session/` の型も触らない —
  * トークンは `accessToken()` の1引数で受け取る（ADR-046 決定3 / 先行 `SuggestionRequests`）。
  * **世帯は1つも運ばない**（C-9 / NFR-09）— 世帯はアクセストークンから定まる。
  */
-import type { MealOutput } from '@fridge-to-meal/contract';
+import type { ListMealsOutput, MealOutput } from '@fridge-to-meal/contract';
 import type { HttpFetch } from './HttpFetch.js';
 
 /**
@@ -32,6 +32,17 @@ export type AddCookingRecordOutcome =
 
 /** 画面が受け取る口。**この口も例外を投げない**（規則14）。 */
 export type AddCookingRecord = (mealId: string) => Promise<AddCookingRecordOutcome>;
+
+/**
+ * 献立の履歴を取りに行った結末（B-54b 設計 5章 / 規則2）。
+ *
+ * **`rule` も状態コードも読み分けない** — 利用者が直せる入力が無い。
+ */
+export type MealListOutcome =
+  { readonly outcome: 'loaded'; readonly meals: ListMealsOutput } | { readonly outcome: 'failed' };
+
+/** 画面が受け取る口。**この口は例外を投げない**（規則2）。 */
+export type ListMeals = () => Promise<MealListOutcome>;
 
 export type MealRequestsDeps = {
   readonly baseUrl: string;
@@ -177,6 +188,62 @@ export function addCookingRecord(deps: MealRequestsDeps): AddCookingRecord {
       const body = await response.json();
 
       return isRejection(body) ? { outcome: 'rejected', rule: body.rule } : FAILED;
+    } catch {
+      return FAILED;
+    }
+  };
+}
+
+/**
+ * 履歴の本体のうち、この層が読むところだけ（B-54b 規則2）。
+ *
+ * **2つの列が配列であることまでしか見ない。** 片方でも配列でなければ失敗である — 0件に倒すと
+ * 「以前見た献立が無い」と偽る。要素の中身は検めない（先行 `isShownMeal`）。
+ */
+function isListedMeals(body: unknown): body is ListMealsOutput {
+  return (
+    typeof body === 'object' &&
+    body !== null &&
+    'seen' in body &&
+    Array.isArray(body.seen) &&
+    'cooked' in body &&
+    Array.isArray(body.cooked)
+  );
+}
+
+/**
+ * 献立の履歴を取りに行く口を組む（FR-28 / FR-29 / B-54b 規則1・2）。
+ *
+ * **`GET` で本体もクエリも送らない**（B-54a）ので `Content-Type` も付けない（ADR-048）。
+ * **断りも `rule` を読まず失敗に畳む** — 利用者が直せる入力が無い（先行
+ * `listIngredientNames`）。**DTO を詰め替えず、並べ替えもしない** — 並びを決めるのは
+ * サーバである（ADR-068 決定2）。
+ *
+ * **例外を外に出さない。** 自分では取りに行き直さない — 呼ばれた1回で1往復だけする。
+ */
+export function listMeals(deps: MealRequestsDeps): ListMeals {
+  const { baseUrl, accessToken, httpFetch = environmentHttpFetch } = deps;
+
+  return async () => {
+    try {
+      const token = await accessToken();
+
+      if (token === null) {
+        return FAILED;
+      }
+
+      const response = await httpFetch(`${baseUrl}${MEALS_PATH}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        return FAILED;
+      }
+
+      const body = await response.json();
+
+      return isListedMeals(body) ? { outcome: 'loaded', meals: body } : FAILED;
     } catch {
       return FAILED;
     }
