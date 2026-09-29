@@ -838,3 +838,240 @@ describe('在庫品リポジトリの実装（上書き・削除・一覧・値�
     expect(thrown).not.toBeInstanceOf(PantryRuleViolation);
   });
 });
+
+// ここから下は B-50d（保存したことのある在庫品の名称）。世帯 ID はここだけで使う固定値。
+const savedNamesHouseholdId = householdIdOf('b50e0000-0000-4000-8000-000000000001');
+const savedNamesStockItemId = stockItemIdOf('b50e0000-0000-4000-8000-0000000000f1');
+
+const deletedNameHouseholdId = householdIdOf('b50e0000-0000-4000-8000-000000000002');
+const deletedNameStockItemId = stockItemIdOf('b50e0000-0000-4000-8000-0000000000f2');
+
+const duplicateNameHouseholdId = householdIdOf('b50e0000-0000-4000-8000-000000000003');
+const duplicateNameStockItemId1 = stockItemIdOf('b50e0000-0000-4000-8000-0000000000f3');
+const duplicateNameStockItemId2 = stockItemIdOf('b50e0000-0000-4000-8000-0000000000a3');
+
+const notationHouseholdId = householdIdOf('b50e0000-0000-4000-8000-000000000004');
+const notationStockItemId1 = stockItemIdOf('b50e0000-0000-4000-8000-0000000000f4');
+const notationStockItemId2 = stockItemIdOf('b50e0000-0000-4000-8000-0000000000a4');
+
+const namesOwnerHouseholdId = householdIdOf('b50e0000-0000-4000-8000-000000000005');
+const namesStrangerHouseholdId = householdIdOf('b50e0000-0000-4000-8000-000000000015');
+const namesOwnerStockItemId = stockItemIdOf('b50e0000-0000-4000-8000-0000000000f5');
+const namesStrangerStockItemId = stockItemIdOf('b50e0000-0000-4000-8000-0000000000a5');
+
+const namesMismatchHouseholdId = householdIdOf('b50e0000-0000-4000-8000-000000000006');
+const namesPassedHouseholdId = householdIdOf('b50e0000-0000-4000-8000-000000000016');
+const namesMismatchStockItemId = stockItemIdOf('b50e0000-0000-4000-8000-0000000000f6');
+
+const namesSaveMismatchHouseholdId = householdIdOf('b50e0000-0000-4000-8000-000000000007');
+const namesSaveMismatchStockItemSideHouseholdId = householdIdOf(
+  'b50e0000-0000-4000-8000-000000000017',
+);
+const namesSaveMismatchStockItemId = stockItemIdOf('b50e0000-0000-4000-8000-0000000000f7');
+
+const namesRollbackHouseholdId = householdIdOf('b50e0000-0000-4000-8000-000000000008');
+const namesRollbackStockItemId = stockItemIdOf('b50e0000-0000-4000-8000-0000000000f8');
+
+describe('在庫品リポジトリの実装（保存したことのある名称）', () => {
+  it('保存した在庫品の名称を findSavedNamesByHousehold で返す', async () => {
+    const savedNames = await withHouseholdTransaction(db, savedNamesHouseholdId, async (tx) => {
+      const repository = new StockItemRepositoryImpl(tx);
+      await repository.save(
+        savedNamesHouseholdId,
+        stockItem({
+          id: savedNamesStockItemId,
+          householdId: savedNamesHouseholdId,
+          name: 'にんじん',
+        }),
+      );
+      return repository.findSavedNamesByHousehold(savedNamesHouseholdId);
+    });
+
+    // FR-02 / B-50d 規則1: 在庫品を保存するたびに、その名称を世帯の名称として残す。
+    expect(savedNames).toEqual(['にんじん']);
+  });
+
+  it('在庫品を delete しても、その名称は findSavedNamesByHousehold に残る', async () => {
+    await withHouseholdTransaction(db, deletedNameHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).save(
+        deletedNameHouseholdId,
+        stockItem({
+          id: deletedNameStockItemId,
+          householdId: deletedNameHouseholdId,
+          name: 'にんじん',
+        }),
+      ),
+    );
+
+    await withHouseholdTransaction(db, deletedNameHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).delete(deletedNameHouseholdId, deletedNameStockItemId),
+    );
+
+    const savedNames = await withHouseholdTransaction(db, deletedNameHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).findSavedNamesByHousehold(deletedNameHouseholdId),
+    );
+
+    // FR-02 / B-50d 規則3: 消した在庫品の名称も補完の元に残る。
+    expect(savedNames).toEqual(['にんじん']);
+  });
+
+  it('同じ名称の在庫品を2件保存しても、同じ在庫品を2度保存しても断らず、名称は1つだけ返す', async () => {
+    const savedNames = await withHouseholdTransaction(db, duplicateNameHouseholdId, async (tx) => {
+      const repository = new StockItemRepositoryImpl(tx);
+      const firstStockItem = stockItem({
+        id: duplicateNameStockItemId1,
+        householdId: duplicateNameHouseholdId,
+        name: 'にんじん',
+      });
+      await repository.save(duplicateNameHouseholdId, firstStockItem);
+      await repository.save(
+        duplicateNameHouseholdId,
+        stockItem({
+          id: duplicateNameStockItemId2,
+          householdId: duplicateNameHouseholdId,
+          name: 'にんじん',
+        }),
+      );
+      // 同じ在庫品の2度目の保存（更新）も名称を残しに行く（B-50d 規則1: 登録と更新を区別しない）。
+      await repository.save(duplicateNameHouseholdId, firstStockItem);
+      return repository.findSavedNamesByHousehold(duplicateNameHouseholdId);
+    });
+
+    // ADR-063 決定4 / B-50d 規則2: 同じ世帯・同じ名称は1つとして残し、2度目をエラーにしない。
+    expect(savedNames).toEqual(['にんじん']);
+  });
+
+  it('表記の違う名称は別々に残す', async () => {
+    const savedNames = await withHouseholdTransaction(db, notationHouseholdId, async (tx) => {
+      const repository = new StockItemRepositoryImpl(tx);
+      await repository.save(
+        notationHouseholdId,
+        stockItem({ id: notationStockItemId1, householdId: notationHouseholdId, name: 'にんじん' }),
+      );
+      await repository.save(
+        notationHouseholdId,
+        stockItem({ id: notationStockItemId2, householdId: notationHouseholdId, name: 'ニンジン' }),
+      );
+      return repository.findSavedNamesByHousehold(notationHouseholdId);
+    });
+
+    // C-6 / B-50d 規則2: 名称は完全一致で畳む。表記ゆれは吸収しない。
+    // B-50d 規則5: 並びは約束しないので、並べ替えてから比べる。
+    expect([...savedNames].sort()).toEqual(['にんじん', 'ニンジン']);
+  });
+
+  it('他世帯が保存した名称は返さない', async () => {
+    await withHouseholdTransaction(db, namesOwnerHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).save(
+        namesOwnerHouseholdId,
+        stockItem({
+          id: namesOwnerStockItemId,
+          householdId: namesOwnerHouseholdId,
+          name: 'にんじん',
+        }),
+      ),
+    );
+
+    await withHouseholdTransaction(db, namesStrangerHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).save(
+        namesStrangerHouseholdId,
+        stockItem({
+          id: namesStrangerStockItemId,
+          householdId: namesStrangerHouseholdId,
+          name: 'じゃがいも',
+        }),
+      ),
+    );
+
+    const savedNames = await withHouseholdTransaction(db, namesOwnerHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).findSavedNamesByHousehold(namesOwnerHouseholdId),
+    );
+
+    // C-9 / NFR-09 / B-50d 規則5: 世帯をまたぐ取得を許さない。
+    expect(savedNames).toEqual(['にんじん']);
+  });
+
+  it('クレームで見えている名称でも、引数の世帯が食い違えば空になる', async () => {
+    const savedNames = await withHouseholdTransaction(db, namesMismatchHouseholdId, async (tx) => {
+      const repository = new StockItemRepositoryImpl(tx);
+      await repository.save(
+        namesMismatchHouseholdId,
+        stockItem({
+          id: namesMismatchStockItemId,
+          householdId: namesMismatchHouseholdId,
+          name: 'にんじん',
+        }),
+      );
+      // B-50d 規則5: RLS で見えていても、引数の世帯で必ず絞る（網は二重）。
+      // `where` を外した実装なら、ここで名称が返ってしまう。
+      return repository.findSavedNamesByHousehold(namesPassedHouseholdId);
+    });
+
+    // C-9
+    expect(savedNames).toEqual([]);
+  });
+
+  it('引数の世帯と在庫品の世帯が食い違う save は名称も残さない', async () => {
+    const savedNamesInSameTransaction = await withHouseholdTransaction(
+      db,
+      namesSaveMismatchHouseholdId,
+      async (tx) => {
+        const repository = new StockItemRepositoryImpl(tx);
+
+        // 拒否は**同じトランザクションの中で**捕まえる。外で捕まえると単位が終わって
+        // しまい、「名称を書いていない」ことが見えない（先行「食い違う save は DB に触らない」）。
+        await expect(
+          repository.save(
+            namesSaveMismatchHouseholdId,
+            stockItem({
+              id: namesSaveMismatchStockItemId,
+              householdId: namesSaveMismatchStockItemSideHouseholdId,
+              name: 'にんじん',
+            }),
+          ),
+        ).rejects.toThrow(PantryRuleViolation);
+
+        return repository.findSavedNamesByHousehold(namesSaveMismatchHouseholdId);
+      },
+    );
+
+    const savedNamesOfStockItemSideHousehold = await withHouseholdTransaction(
+      db,
+      namesSaveMismatchStockItemSideHouseholdId,
+      (tx) =>
+        new StockItemRepositoryImpl(tx).findSavedNamesByHousehold(
+          namesSaveMismatchStockItemSideHouseholdId,
+        ),
+    );
+
+    // B-50d 規則4: `save.householdMismatch` で断る回は、在庫品も名称も書かない。
+    expect(savedNamesInSameTransaction).toEqual([]);
+    // 在庫品側の世帯にも名称は残らない（**書かれていない**ことの裏取り）。
+    expect(savedNamesOfStockItemSideHousehold).toEqual([]);
+  });
+
+  it('トランザクションの本体が例外を投げると、その中で残した名称も残らない', async () => {
+    const bodyFailure = new Error('本体が投げた');
+
+    // B-50d 規則10: 在庫品の保存と名称の記録は同じ単位で起き、本体が投げたら両方巻き戻る。
+    await expect(
+      withHouseholdTransaction(db, namesRollbackHouseholdId, async (tx) => {
+        await new StockItemRepositoryImpl(tx).save(
+          namesRollbackHouseholdId,
+          stockItem({
+            id: namesRollbackStockItemId,
+            householdId: namesRollbackHouseholdId,
+            name: 'にんじん',
+          }),
+        );
+        throw bodyFailure;
+      }),
+    ).rejects.toBe(bodyFailure);
+
+    const savedNames = await withHouseholdTransaction(db, namesRollbackHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).findSavedNamesByHousehold(namesRollbackHouseholdId),
+    );
+
+    expect(savedNames).toEqual([]);
+  });
+});
