@@ -13,6 +13,11 @@ import { PantryRuleViolation } from '../../../src/contexts/pantry/domain/error/P
  */
 export class InMemoryStockItemRepository implements StockItemRepository {
   readonly #stored = new Map<string, StockItem>();
+  /**
+   * 世帯ごとの、これまでに保存した在庫品の名称（B-50d）。`delete` では消さない。
+   * 同じ名称は1つとして持つ（完全一致。C-6）。
+   */
+  readonly #savedNamesByHousehold = new Map<HouseholdId, Set<string>>();
 
   async findById(householdId: HouseholdId, id: StockItemId) {
     const stockItem = this.#stored.get(id);
@@ -24,6 +29,11 @@ export class InMemoryStockItemRepository implements StockItemRepository {
     return [...this.#stored.values()].filter((stockItem) => stockItem.householdId === householdId);
   }
 
+  async findSavedNamesByHousehold(householdId: HouseholdId): Promise<string[]> {
+    // 内部の集合を渡さず、呼ぶたびに新しい配列を返す。
+    return [...(this.#savedNamesByHousehold.get(householdId) ?? [])];
+  }
+
   async save(householdId: HouseholdId, stockItem: StockItem) {
     if (stockItem.householdId !== householdId) {
       throw new PantryRuleViolation(
@@ -32,6 +42,13 @@ export class InMemoryStockItemRepository implements StockItemRepository {
       );
     }
     this.#stored.set(stockItem.id, stockItem);
+    this.#rememberName(householdId, stockItem.name);
+  }
+
+  #rememberName(householdId: HouseholdId, name: string) {
+    const savedNames = this.#savedNamesByHousehold.get(householdId) ?? new Set<string>();
+    savedNames.add(name);
+    this.#savedNamesByHousehold.set(householdId, savedNames);
   }
 
   async delete(householdId: HouseholdId, id: StockItemId) {

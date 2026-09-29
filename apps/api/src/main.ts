@@ -48,6 +48,7 @@ import type { HouseholdTransaction } from './shared/infrastructure/db/HouseholdT
 import { withHouseholdTransaction } from './shared/infrastructure/db/HouseholdTransaction.js';
 import { StockItemRepositoryImpl } from './contexts/pantry/infrastructure/StockItemRepositoryImpl.js';
 import { deleteStockItem } from './contexts/pantry/usecase/DeleteStockItem.js';
+import { listSavedStockItemNames } from './contexts/pantry/usecase/ListSavedStockItemNames.js';
 import { listStockItems } from './contexts/pantry/usecase/ListStockItems.js';
 import { registerStockItem } from './contexts/pantry/usecase/RegisterStockItem.js';
 import { updateStockItem } from './contexts/pantry/usecase/UpdateStockItem.js';
@@ -223,9 +224,13 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
     // 渡すと「生成も保存もしない」が型から読めなくなるうえ、この経路が提案の都合に縛られる。
     // `listStockItems` は**同じ `tx` の素のもの**を渡す（包み済みを渡すと1要求に2本目の
     // 接続とトランザクションが開き、在庫と献立を別の時点で読むことになる）。
+    // 保存したことのある名称（B-50d）も同じ `tx` から引く。
     listIngredientNames: transactionPerRequest(env, (tx) =>
       listIngredientNames({
         listStockItems: listStockItems({ stockItemRepository: new StockItemRepositoryImpl(tx) }),
+        listSavedStockItemNames: listSavedStockItemNames({
+          stockItemRepository: new StockItemRepositoryImpl(tx),
+        }),
         mealRepository: new MealRepositoryImpl(tx),
       }),
     ),
