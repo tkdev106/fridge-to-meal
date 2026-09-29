@@ -119,7 +119,7 @@ export type MealSummaryOutput = {
 
 /**
  * 世帯の献立の一覧（B-54a / ADR-068）。調理記録の無い献立は `seen`、ある献立は `cooked` に入る。
- * **調理記録の有無は、どちらの列に入るかでだけ表れる**（ADR-068 決定3）。
+ * **一覧では、調理記録の有無はどちらの列に入るかでだけ表れる**（ADR-068 決定3。詳細の `ShowMealOutput.cooked` は ADR-070）。
  */
 export type ListMealsOutput = {
   seen: MealSummaryOutput[];
