@@ -95,6 +95,13 @@ export class InMemorySuggestionRepository implements SuggestionRepository {
         suggestion.generatedAt >= since,
     ).length;
   }
+
+  /** 世帯のデータを消す（B-56a）。 */
+  async deleteByHousehold(householdId: HouseholdId): Promise<void> {
+    for (let index = this.#stored.length - 1; index >= 0; index -= 1) {
+      if (this.#stored[index]?.householdId === householdId) this.#stored.splice(index, 1);
+    }
+  }
 }
 
 /**

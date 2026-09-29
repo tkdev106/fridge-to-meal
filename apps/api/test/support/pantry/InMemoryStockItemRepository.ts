@@ -55,4 +55,12 @@ export class InMemoryStockItemRepository implements StockItemRepository {
     const stockItem = await this.findById(householdId, id);
     if (stockItem !== null) this.#stored.delete(id);
   }
+
+  /** 世帯のデータを消す（B-56a）。 */
+  async deleteByHousehold(householdId: HouseholdId): Promise<void> {
+    for (const [id, stockItem] of this.#stored) {
+      if (stockItem.householdId === householdId) this.#stored.delete(id);
+    }
+    this.#savedNamesByHousehold.delete(householdId);
+  }
 }

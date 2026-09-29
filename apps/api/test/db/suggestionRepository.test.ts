@@ -1024,3 +1024,114 @@ describe('提案リポジトリの実装（生成の回数）', () => {
     expect(count).toBe(0);
   });
 });
+
+// B-56a: 世帯のデータを消す。準備の提案は提案の1件と、在庫品1件以上の在庫スナップショットを
+// 持つ（子から親の順に消せていないと DB の外部キーが拒む。B-56a 規則5）。
+describe('提案リポジトリの実装（世帯のデータを消す）', () => {
+  it('提案の1件と在庫品を持つ提案を、世帯のデータを消すと引けなくなる', async () => {
+    const householdId = householdOf('40');
+    await saveAll(householdId, [
+      suggestion({
+        id: suggestionIdOfCase('40', 'a1'),
+        householdId,
+        entries: [entry(mealId1), entry(mealId2)],
+        stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'たまねぎ' })],
+        generatedAt: olderGeneratedAt,
+      }),
+      suggestion({
+        id: suggestionIdOfCase('40', 'a2'),
+        householdId,
+        generatedAt: newerGeneratedAt,
+      }),
+    ]);
+
+    await withHouseholdTransaction(db, householdId, (tx) =>
+      new SuggestionRepositoryImpl(tx).deleteByHousehold(householdId),
+    );
+
+    // FR-27 / NFR-13 / ADR-072 決定3 / B-56a 規則2: 生成後に不変の提案も世帯ごと消す。
+    expect(await findLatest(householdId)).toBeNull();
+  });
+
+  it('他世帯が自分の世帯のデータを消しても、こちらの世帯の提案は提案の1件と在庫品ごと残る', async () => {
+    const ownerHouseholdId = householdOf('41');
+    const strangerHouseholdId = householdOf('41', true);
+    await saveAll(ownerHouseholdId, [
+      suggestion({
+        id: suggestionIdOfCase('41', 'a1'),
+        householdId: ownerHouseholdId,
+        entries: [entry(mealId1), entry(mealId2)],
+        stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'たまねぎ' })],
+      }),
+    ]);
+    await saveAll(strangerHouseholdId, [
+      suggestion({ id: suggestionIdOfCase('41', 'a2'), householdId: strangerHouseholdId }),
+    ]);
+
+    await withHouseholdTransaction(db, strangerHouseholdId, (tx) =>
+      new SuggestionRepositoryImpl(tx).deleteByHousehold(strangerHouseholdId),
+    );
+
+    const found = await findLatest(ownerHouseholdId);
+
+    // C-9 / NFR-09 / B-56a 規則4: 他世帯の行は、どの表でも1行も消えない。
+    expect({
+      mealIds: found?.entries.map((savedEntry) => savedEntry.mealId),
+      stockItemNames: found?.pantrySnapshot.stockItems.map((snapshotItem) => snapshotItem.name),
+    }).toEqual({ mealIds: [mealId1, mealId2], stockItemNames: ['にんじん', 'たまねぎ'] });
+  });
+
+  it('クレームで見えている提案でも、引数の世帯が食い違えば提案の1件と在庫品ごと消えない', async () => {
+    const claimedHouseholdId = householdOf('42');
+    const passedHouseholdId = householdOf('42', true);
+
+    const found = await withHouseholdTransaction(db, claimedHouseholdId, async (tx) => {
+      const repository = new SuggestionRepositoryImpl(tx);
+      await repository.save(
+        claimedHouseholdId,
+        suggestion({
+          id: suggestionIdOfCase('42', 'a1'),
+          householdId: claimedHouseholdId,
+          entries: [entry(mealId1), entry(mealId2)],
+          stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'たまねぎ' })],
+        }),
+      );
+      // B-56a 規則3: RLS で見えていても、引数の世帯で必ず絞る（網は二重）。
+      // 3表のどれかで `where` から世帯を外した実装なら、ここでその表の行が消える。
+      await repository.deleteByHousehold(passedHouseholdId);
+      return repository.findLatestByHousehold(claimedHouseholdId);
+    });
+
+    // C-9
+    expect({
+      mealIds: found?.entries.map((savedEntry) => savedEntry.mealId),
+      stockItemNames: found?.pantrySnapshot.stockItems.map((snapshotItem) => snapshotItem.name),
+    }).toEqual({ mealIds: [mealId1, mealId2], stockItemNames: ['にんじん', 'たまねぎ'] });
+  });
+
+  it('提案が1件も無い世帯のデータを消しても、失敗しない', async () => {
+    const householdId = householdOf('43');
+
+    const deletion = withHouseholdTransaction(db, householdId, (tx) =>
+      new SuggestionRepositoryImpl(tx).deleteByHousehold(householdId),
+    );
+
+    // B-56a 規則7: 消す物が無くても同じ結末。
+    await expect(deletion).resolves.toBeUndefined();
+  });
+
+  it('同じ世帯のデータを2度消しても、2度目も失敗しない', async () => {
+    const householdId = householdOf('44');
+    await saveAll(householdId, [suggestion({ id: suggestionIdOfCase('44', 'a1'), householdId })]);
+    await withHouseholdTransaction(db, householdId, (tx) =>
+      new SuggestionRepositoryImpl(tx).deleteByHousehold(householdId),
+    );
+
+    const secondDeletion = withHouseholdTransaction(db, householdId, (tx) =>
+      new SuggestionRepositoryImpl(tx).deleteByHousehold(householdId),
+    );
+
+    // B-56a 規則7: 2度目の呼び出しも同じ結末。
+    await expect(secondDeletion).resolves.toBeUndefined();
+  });
+});

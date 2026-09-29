@@ -110,6 +110,10 @@ class SameArrayInMemoryStockItemRepository implements StockItemRepository {
   async delete() {
     // このテストでは使わない。
   }
+
+  async deleteByHousehold() {
+    // このテストでは使わない。
+  }
 }
 
 /** 取り出しだけが必ず失敗する記憶上の実装。 */

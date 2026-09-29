@@ -90,6 +90,7 @@ function setUp(props: {
     findByHousehold: () => Promise.reject(findByIdThrows ?? new Error('用意されていない失敗')),
     findById: () => Promise.reject(findByIdThrows ?? new Error('用意されていない失敗')),
     save: () => Promise.reject(findByIdThrows ?? new Error('用意されていない失敗')),
+    deleteByHousehold: () => Promise.reject(findByIdThrows ?? new Error('用意されていない失敗')),
   };
   const repository = findByIdThrows === undefined ? mealRepository : failingRepository;
 

@@ -219,3 +219,73 @@ describe('在庫品リポジトリ StockItemRepository', () => {
     expect(await repository.findSavedNamesByHousehold(neighborHousehold)).toEqual([]);
   });
 });
+
+describe('在庫品リポジトリ StockItemRepository（世帯のデータを消す）', () => {
+  it('世帯のデータを消すと、その世帯の在庫品は一覧に出なくなる', async () => {
+    // FR-27 / NFR-13 / B-56a 規則2: 世帯の在庫品をすべて消す。
+    const repository: StockItemRepository = new InMemoryStockItemRepository();
+    await repository.save(
+      ourHousehold,
+      namedStockItem(ourHousehold, 'にんじん', '22222222-2222-4222-8222-222222222222'),
+    );
+    await repository.save(
+      ourHousehold,
+      namedStockItem(ourHousehold, 'たまねぎ', '33333333-3333-4333-8333-333333333333'),
+    );
+
+    await repository.deleteByHousehold(ourHousehold);
+
+    expect(await repository.findByHousehold(ourHousehold)).toEqual([]);
+  });
+
+  it('世帯のデータを消すと、削除済みの在庫品の名称も含め、保存したことのある名称が残らない', async () => {
+    // NFR-13 / ADR-072 結果1: `delete` は名称を残すが（ADR-069 決定1）、世帯のデータを消す回は名称も消す。
+    const repository: StockItemRepository = new InMemoryStockItemRepository();
+    await repository.save(
+      ourHousehold,
+      namedStockItem(ourHousehold, 'にんじん', '22222222-2222-4222-8222-222222222222'),
+    );
+    await repository.save(
+      ourHousehold,
+      namedStockItem(ourHousehold, 'たまねぎ', '33333333-3333-4333-8333-333333333333'),
+    );
+    await repository.delete(ourHousehold, stockItemIdOf('22222222-2222-4222-8222-222222222222'));
+
+    await repository.deleteByHousehold(ourHousehold);
+
+    expect(await repository.findSavedNamesByHousehold(ourHousehold)).toEqual([]);
+  });
+
+  it('他の世帯のデータを消しても、こちらの世帯の在庫品と名称は残る', async () => {
+    // C-9 / B-56a 規則3・4: 引数の世帯の行だけを消す。
+    const repository: StockItemRepository = new InMemoryStockItemRepository();
+    await repository.save(ourHousehold, carrot(ourHousehold));
+    await repository.save(
+      neighborHousehold,
+      namedStockItem(neighborHousehold, 'だいこん', '33333333-3333-4333-8333-333333333333'),
+    );
+
+    await repository.deleteByHousehold(neighborHousehold);
+
+    expect({
+      stockItemNames: (await repository.findByHousehold(ourHousehold)).map((item) => item.name),
+      savedNames: await repository.findSavedNamesByHousehold(ourHousehold),
+    }).toEqual({ stockItemNames: ['にんじん'], savedNames: ['にんじん'] });
+  });
+
+  it('何も保存していない世帯のデータを消しても、失敗しない', async () => {
+    // B-56a 規則7: 消す物が無くても同じ結末。存在を確かめない。
+    const repository: StockItemRepository = new InMemoryStockItemRepository();
+
+    await expect(repository.deleteByHousehold(ourHousehold)).resolves.toBeUndefined();
+  });
+
+  it('同じ世帯のデータを2度消しても、2度目も失敗しない', async () => {
+    // B-56a 規則7: 2度目の呼び出しも同じ結末。
+    const repository: StockItemRepository = new InMemoryStockItemRepository();
+    await repository.save(ourHousehold, carrot(ourHousehold));
+    await repository.deleteByHousehold(ourHousehold);
+
+    await expect(repository.deleteByHousehold(ourHousehold)).resolves.toBeUndefined();
+  });
+});

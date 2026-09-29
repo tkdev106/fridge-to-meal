@@ -72,4 +72,13 @@ export interface StockItemRepository {
    * そちらでも同じく果たされる。
    */
   delete(householdId: HouseholdId, id: StockItemId): Promise<void>;
+
+  /**
+   * その世帯の在庫品と、保存したことのある在庫品の名称をすべて消す（FR-27 / NFR-13 / B-56a）。
+   *
+   * **`delete` は名称を消さないが、これは名称も消す**（ADR-072 結果1。ADR-069 決定1 の例外）。
+   * 引数の世帯の行だけを消し、他の世帯の行は1行も消さない（C-9）。消す物が無くても、
+   * 2度目の呼び出しでも、何もせずに成功する（B-56a 規則7）。
+   */
+  deleteByHousehold(householdId: HouseholdId): Promise<void>;
 }

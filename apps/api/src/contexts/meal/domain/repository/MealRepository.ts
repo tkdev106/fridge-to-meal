@@ -52,4 +52,13 @@ export interface MealRepository {
    * 約束なので、実装ごとにテストで確かめる。**
    */
   save(householdId: HouseholdId, meal: Meal): Promise<void>;
+
+  /**
+   * その世帯の献立を、材料・手順・調理記録ごとすべて消す（FR-27 / NFR-13 / B-56a）。
+   *
+   * **献立1件を消す口は置かない**（Q-2 / ADR-072 決定2）。世帯ごと無くすことは C-3 と
+   * 「調理記録は追加のみ」に当たらないと読む（ADR-072 決定3）。引数の世帯の行だけを消し、
+   * 他の世帯の行は1行も消さない（C-9）。消す物が無くても、2度目の呼び出しでも成功する（B-56a 規則7）。
+   */
+  deleteByHousehold(householdId: HouseholdId): Promise<void>;
 }

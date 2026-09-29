@@ -98,6 +98,10 @@ class SameArrayInMemoryStockItemRepository implements StockItemRepository {
   async delete(_householdId: HouseholdId, _id: StockItemId) {
     // このテストでは使わない。
   }
+
+  async deleteByHousehold(_householdId: HouseholdId) {
+    // このテストでは使わない。
+  }
 }
 
 /** 名称の取り出しだけが必ず失敗する記憶上の実装。 */

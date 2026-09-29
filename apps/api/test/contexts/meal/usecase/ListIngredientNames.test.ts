@@ -338,6 +338,7 @@ describe('listIngredientNames', () => {
           throw failure;
         },
         async save() {},
+        async deleteByHousehold() {},
       };
       const list = listIngredientNames({
         listStockItems: new FixedListStockItems({ returns: { stockItems: [] } }).list,

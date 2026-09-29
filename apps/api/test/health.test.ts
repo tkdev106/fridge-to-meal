@@ -3,6 +3,7 @@ import { createApp } from '../src/main.js';
 import { householdIdOf } from '../src/shared/domain/HouseholdId.js';
 import { FixedIdentifyHousehold } from './support/identity/FixedIdentifyHousehold.js';
 import { FixedAddCookingRecord } from './support/meal/FixedAddCookingRecord.js';
+import { FixedDeleteHouseholdData } from './support/meal/FixedDeleteHouseholdData.js';
 import { FixedListIngredientNames } from './support/meal/FixedListIngredientNames.js';
 import { FixedListMeals } from './support/meal/FixedListMeals.js';
 import { FixedShowMeal } from './support/meal/FixedShowMeal.js';
@@ -59,6 +60,8 @@ function app() {
     }).show,
     // B-54a で口が増えたことへの機械的な追随。疎通確認の本題ではない。
     listMeals: new FixedListMeals({ returns: { seen: [], cooked: [] } }).list,
+    // B-56a で口が増えたことへの機械的な追随。疎通確認の本題ではない。
+    deleteHouseholdData: new FixedDeleteHouseholdData({ succeeds: true }).delete,
     now: () => '2026-09-23T12:00:00.000Z',
   });
 }

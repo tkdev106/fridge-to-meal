@@ -15,6 +15,7 @@ import { accessTokenOf, publicAccessTokenKey } from './support/identity/AccessSi
 import { FixedFetchJwks } from './support/identity/FixedFetchJwks.js';
 import { FixedIdentifyHousehold } from './support/identity/FixedIdentifyHousehold.js';
 import { FixedAddCookingRecord } from './support/meal/FixedAddCookingRecord.js';
+import { FixedDeleteHouseholdData } from './support/meal/FixedDeleteHouseholdData.js';
 import { FixedListIngredientNames } from './support/meal/FixedListIngredientNames.js';
 import { FixedListMeals } from './support/meal/FixedListMeals.js';
 import { FixedShowMeal } from './support/meal/FixedShowMeal.js';
@@ -137,6 +138,7 @@ function appWithFixedDependencies(
     addCookingRecord?: FixedAddCookingRecord;
     showMeal?: FixedShowMeal;
     listMeals?: FixedListMeals;
+    deleteHouseholdData?: FixedDeleteHouseholdData;
   } = {},
 ) {
   const suggestMeals =
@@ -153,6 +155,8 @@ function appWithFixedDependencies(
     overrides.addCookingRecord ?? new FixedAddCookingRecord({ succeeds: true });
   const showMeal = overrides.showMeal ?? new FixedShowMeal({ returns: mealOutcome });
   const listMeals = overrides.listMeals ?? new FixedListMeals({ returns: listMealsOutcome });
+  const deleteHouseholdData =
+    overrides.deleteHouseholdData ?? new FixedDeleteHouseholdData({ succeeds: true });
 
   return createApp({
     identifyHousehold: new FixedIdentifyHousehold({ returns: ourHousehold }).identify,
@@ -169,6 +173,7 @@ function appWithFixedDependencies(
     addCookingRecord: addCookingRecord.add,
     showMeal: showMeal.show,
     listMeals: listMeals.list,
+    deleteHouseholdData: deleteHouseholdData.delete,
     now: () => fixedNow,
   });
 }
@@ -863,6 +868,91 @@ describe('composition root main', () => {
       const { app } = composedApp(envWithoutHyperdrive);
 
       const response = await app.request(mealsPath, {
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+    });
+  });
+
+  describe('世帯のデータを消す経路の配置', () => {
+    // B-56a 3周目。代役の deps で組み、経路がどこに置かれ、どの口に何が届くかだけを見る。
+    const householdDataPath = '/household-data';
+
+    it('世帯のデータを消す経路を接頭辞なしの DELETE /household-data に置く', async () => {
+      // 規則10 / ADR-048 決定4: `createHouseholdDataRoutes` の経路をそのまま根にマウントする。
+      const deleteHouseholdData = new FixedDeleteHouseholdData({ succeeds: true });
+      const app = appWithFixedDependencies({ deleteHouseholdData });
+
+      const response = await app.request(householdDataPath, {
+        method: 'DELETE',
+        headers: bearerHeaders('x'),
+      });
+
+      expect(response.status).toBe(204);
+      expect(deleteHouseholdData.receivedHouseholdId).not.toBeNull();
+    });
+
+    it('接頭辞を付けた /api/household-data には経路を置かない', async () => {
+      // ADR-048 決定4: 接頭辞は増やさない。
+      const deleteHouseholdData = new FixedDeleteHouseholdData({ succeeds: true });
+      const app = appWithFixedDependencies({ deleteHouseholdData });
+
+      const response = await app.request(`/api${householdDataPath}`, {
+        method: 'DELETE',
+        headers: bearerHeaders('x'),
+      });
+
+      expect(response.status).toBe(404);
+      expect(deleteHouseholdData.receivedHouseholdId).toBeNull();
+    });
+
+    it('世帯のデータを消す経路には識別の口で定まった世帯が届く', async () => {
+      // C-9: 世帯はアクセストークンから定まり、ユースケースの引数に渡る。
+      const deleteHouseholdData = new FixedDeleteHouseholdData({ succeeds: true });
+      const app = appWithFixedDependencies({ deleteHouseholdData });
+
+      await app.request(householdDataPath, { method: 'DELETE', headers: bearerHeaders('x') });
+
+      expect(deleteHouseholdData.receivedHouseholdId).toBe('11111111-1111-4111-8111-111111111111');
+    });
+  });
+
+  describe('世帯のデータを消す経路の結線', () => {
+    // B-56a 3周目。composeDependencies の本物の結線で、差し替えるのは JWKS を取りに行く口だけ。
+    const householdDataPath = '/household-data';
+
+    it('アクセストークンが無い世帯のデータの削除は結線後も 401 accessToken.missing になる', async () => {
+      // 7章1行目 / 規則11 / ADR-032: 世帯を定めるのが常に先。認証を通らない要求は DB に触れない。
+      const { app } = composedApp(envWithoutHyperdrive);
+
+      const response = await app.request(householdDataPath, { method: 'DELETE' });
+
+      expect(response.status).toBe(401);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'accessToken.missing' });
+    });
+
+    it('SUPABASE_URL が空の環境で世帯のデータを消そうとすると 500 unexpected になり 401 にならない', async () => {
+      // 7章2行目 / ADR-045 決定3 / 結果4: サーバ側の不備を利用者のアクセストークンのせいにしない。
+      const { app } = composedApp({ ...env, SUPABASE_URL: '' });
+
+      const response = await app.request(householdDataPath, {
+        method: 'DELETE',
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+    });
+
+    it('認証を通ったあと HYPERDRIVE の binding が無ければ世帯のデータの削除は 500 unexpected になる', async () => {
+      // 規則13 / ADR-029 決定3(a) / ADR-045: 接続文字列が読めないのはサーバ側の不備である。
+      // 500 になること自体が、DB に触れるのが認証の**あと**であることの印でもある。
+      const { app } = composedApp(envWithoutHyperdrive);
+
+      const response = await app.request(householdDataPath, {
+        method: 'DELETE',
         headers: bearerHeaders(await accessTokenOf(validClaims())),
       });
 
