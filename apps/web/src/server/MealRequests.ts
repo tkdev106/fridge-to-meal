@@ -6,7 +6,7 @@
  * トークンは `accessToken()` の1引数で受け取る（ADR-046 決定3 / 先行 `SuggestionRequests`）。
  * **世帯は1つも運ばない**（C-9 / NFR-09）— 世帯はアクセストークンから定まる。
  */
-import type { ListMealsOutput, MealOutput } from '@fridge-to-meal/contract';
+import type { ListMealsOutput, ShowMealOutput } from '@fridge-to-meal/contract';
 import type { HttpFetch } from './HttpFetch.js';
 
 /**
@@ -17,7 +17,7 @@ import type { HttpFetch } from './HttpFetch.js';
  * （ADR-032 決定3 / 先行 `DeleteFailureNotice`）。
  */
 export type MealOutcome =
-  | { readonly outcome: 'shown'; readonly meal: MealOutput }
+  | { readonly outcome: 'shown'; readonly meal: ShowMealOutput }
   | { readonly outcome: 'rejected'; readonly rule: string }
   | { readonly outcome: 'failed' };
 
@@ -91,7 +91,7 @@ function isRejection(body: unknown): body is { readonly rule: string } {
  * （先行 `isSuggested`）。画面が読む4つ（`ingredients` / `steps` / `coverage.covered` /
  * `coverage.missing`）が配列であることまでを見て、それ以上は検めない。
  */
-function isShownMeal(body: unknown): body is MealOutput {
+function isShownMeal(body: unknown): body is ShowMealOutput {
   if (typeof body !== 'object' || body === null) return false;
   if (!('ingredients' in body) || !Array.isArray(body.ingredients)) return false;
   if (!('steps' in body) || !Array.isArray(body.steps)) return false;
