@@ -1075,3 +1075,266 @@ describe('在庫品リポジトリの実装（保存したことのある名称�
     expect(savedNames).toEqual([]);
   });
 });
+
+// B-56a: 世帯のデータを消す。先頭の並び（`b56a0000`）で他のケースと分けてある。
+const householdDeletionHouseholdId = householdIdOf('b56a0000-0001-4000-8000-000000000001');
+const householdDeletionStockItemId1 = stockItemIdOf('b56a0000-0001-4000-8000-0000000000f1');
+const householdDeletionStockItemId2 = stockItemIdOf('b56a0000-0001-4000-8000-0000000000f2');
+
+const namesDeletionHouseholdId = householdIdOf('b56a0000-0002-4000-8000-000000000002');
+const namesDeletionStockItemId1 = stockItemIdOf('b56a0000-0002-4000-8000-0000000000f1');
+const namesDeletionStockItemId2 = stockItemIdOf('b56a0000-0002-4000-8000-0000000000f2');
+
+const survivingStockItemOwnerHouseholdId = householdIdOf('b56a0000-0003-4000-8000-000000000003');
+const survivingStockItemStrangerHouseholdId = householdIdOf('b56a0000-0003-4000-8000-000000000013');
+const survivingOwnerStockItemId = stockItemIdOf('b56a0000-0003-4000-8000-0000000000f1');
+const survivingStrangerStockItemId = stockItemIdOf('b56a0000-0003-4000-8000-0000000000f2');
+
+const survivingNamesOwnerHouseholdId = householdIdOf('b56a0000-0004-4000-8000-000000000004');
+const survivingNamesStrangerHouseholdId = householdIdOf('b56a0000-0004-4000-8000-000000000014');
+const survivingNamesOwnerStockItemId = stockItemIdOf('b56a0000-0004-4000-8000-0000000000f1');
+const survivingNamesStrangerStockItemId = stockItemIdOf('b56a0000-0004-4000-8000-0000000000f2');
+
+const householdDeletionMismatchHouseholdId = householdIdOf('b56a0000-0005-4000-8000-000000000005');
+const householdDeletionPassedHouseholdId = householdIdOf('b56a0000-0005-4000-8000-000000000015');
+const householdDeletionMismatchStockItemId = stockItemIdOf('b56a0000-0005-4000-8000-0000000000f1');
+
+const namesDeletionMismatchHouseholdId = householdIdOf('b56a0000-0006-4000-8000-000000000006');
+const namesDeletionPassedHouseholdId = householdIdOf('b56a0000-0006-4000-8000-000000000016');
+const namesDeletionMismatchStockItemId = stockItemIdOf('b56a0000-0006-4000-8000-0000000000f1');
+
+const emptyHouseholdDeletionHouseholdId = householdIdOf('b56a0000-0007-4000-8000-000000000007');
+
+const repeatedHouseholdDeletionHouseholdId = householdIdOf('b56a0000-0008-4000-8000-000000000008');
+const repeatedHouseholdDeletionStockItemId = stockItemIdOf('b56a0000-0008-4000-8000-0000000000f1');
+
+describe('在庫品リポジトリの実装（世帯のデータを消す）', () => {
+  it('世帯のデータを消すと、その世帯の在庫品は findByHousehold に残らない', async () => {
+    await withHouseholdTransaction(db, householdDeletionHouseholdId, async (tx) => {
+      const repository = new StockItemRepositoryImpl(tx);
+      await repository.save(
+        householdDeletionHouseholdId,
+        stockItem({
+          id: householdDeletionStockItemId1,
+          householdId: householdDeletionHouseholdId,
+          name: 'にんじん',
+        }),
+      );
+      await repository.save(
+        householdDeletionHouseholdId,
+        stockItem({
+          id: householdDeletionStockItemId2,
+          householdId: householdDeletionHouseholdId,
+          name: 'たまねぎ',
+        }),
+      );
+    });
+
+    await withHouseholdTransaction(db, householdDeletionHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).deleteByHousehold(householdDeletionHouseholdId),
+    );
+
+    const foundStockItems = await withHouseholdTransaction(db, householdDeletionHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).findByHousehold(householdDeletionHouseholdId),
+    );
+
+    // FR-27 / NFR-13 / B-56a 規則2: 世帯の在庫品をすべて消す。
+    expect(foundStockItems).toEqual([]);
+  });
+
+  it('世帯のデータを消すと、削除済みの在庫品の名称も含め、保存したことのある名称が残らない', async () => {
+    await withHouseholdTransaction(db, namesDeletionHouseholdId, async (tx) => {
+      const repository = new StockItemRepositoryImpl(tx);
+      await repository.save(
+        namesDeletionHouseholdId,
+        stockItem({
+          id: namesDeletionStockItemId1,
+          householdId: namesDeletionHouseholdId,
+          name: 'にんじん',
+        }),
+      );
+      await repository.save(
+        namesDeletionHouseholdId,
+        stockItem({
+          id: namesDeletionStockItemId2,
+          householdId: namesDeletionHouseholdId,
+          name: 'たまねぎ',
+        }),
+      );
+      // `delete` は名称を残す（ADR-069 決定1）。残った名称も消えることを見るために1件消しておく。
+      await repository.delete(namesDeletionHouseholdId, namesDeletionStockItemId1);
+    });
+
+    await withHouseholdTransaction(db, namesDeletionHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).deleteByHousehold(namesDeletionHouseholdId),
+    );
+
+    const savedNames = await withHouseholdTransaction(db, namesDeletionHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).findSavedNamesByHousehold(namesDeletionHouseholdId),
+    );
+
+    // NFR-13 / ADR-072 結果1 / B-56a 規則2: `stock_item_names` も世帯の行をすべて消す。
+    expect(savedNames).toEqual([]);
+  });
+
+  it('他世帯が自分の世帯のデータを消しても、こちらの世帯の在庫品は残る', async () => {
+    await withHouseholdTransaction(db, survivingStockItemOwnerHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).save(
+        survivingStockItemOwnerHouseholdId,
+        stockItem({
+          id: survivingOwnerStockItemId,
+          householdId: survivingStockItemOwnerHouseholdId,
+          name: 'にんじん',
+        }),
+      ),
+    );
+    await withHouseholdTransaction(db, survivingStockItemStrangerHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).save(
+        survivingStockItemStrangerHouseholdId,
+        stockItem({
+          id: survivingStrangerStockItemId,
+          householdId: survivingStockItemStrangerHouseholdId,
+          name: 'じゃがいも',
+        }),
+      ),
+    );
+
+    await withHouseholdTransaction(db, survivingStockItemStrangerHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).deleteByHousehold(survivingStockItemStrangerHouseholdId),
+    );
+
+    const stockItemVisibleToOwner = await withHouseholdTransaction(
+      db,
+      survivingStockItemOwnerHouseholdId,
+      (tx) =>
+        new StockItemRepositoryImpl(tx).findById(
+          survivingStockItemOwnerHouseholdId,
+          survivingOwnerStockItemId,
+        ),
+    );
+
+    // C-9 / NFR-09 / B-56a 規則4: 他世帯の行は1行も消えない。
+    expect(stockItemVisibleToOwner?.name).toBe('にんじん');
+  });
+
+  it('他世帯が自分の世帯のデータを消しても、こちらの世帯の名称は残る', async () => {
+    await withHouseholdTransaction(db, survivingNamesOwnerHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).save(
+        survivingNamesOwnerHouseholdId,
+        stockItem({
+          id: survivingNamesOwnerStockItemId,
+          householdId: survivingNamesOwnerHouseholdId,
+          name: 'にんじん',
+        }),
+      ),
+    );
+    await withHouseholdTransaction(db, survivingNamesStrangerHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).save(
+        survivingNamesStrangerHouseholdId,
+        stockItem({
+          id: survivingNamesStrangerStockItemId,
+          householdId: survivingNamesStrangerHouseholdId,
+          name: 'じゃがいも',
+        }),
+      ),
+    );
+
+    await withHouseholdTransaction(db, survivingNamesStrangerHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).deleteByHousehold(survivingNamesStrangerHouseholdId),
+    );
+
+    const savedNames = await withHouseholdTransaction(db, survivingNamesOwnerHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).findSavedNamesByHousehold(survivingNamesOwnerHouseholdId),
+    );
+
+    // C-9 / NFR-09 / B-56a 規則4
+    expect(savedNames).toEqual(['にんじん']);
+  });
+
+  it('クレームで見えている在庫品でも、引数の世帯が食い違えば消えない', async () => {
+    const stockItemReadAfterDeletion = await withHouseholdTransaction(
+      db,
+      householdDeletionMismatchHouseholdId,
+      async (tx) => {
+        const repository = new StockItemRepositoryImpl(tx);
+        await repository.save(
+          householdDeletionMismatchHouseholdId,
+          stockItem({
+            id: householdDeletionMismatchStockItemId,
+            householdId: householdDeletionMismatchHouseholdId,
+            name: 'にんじん',
+          }),
+        );
+        // B-56a 規則3: RLS で見えていても、引数の世帯で必ず絞る（網は二重）。
+        // `where` から世帯を外した実装なら、ここで消えてしまう。
+        await repository.deleteByHousehold(householdDeletionPassedHouseholdId);
+        return repository.findById(
+          householdDeletionMismatchHouseholdId,
+          householdDeletionMismatchStockItemId,
+        );
+      },
+    );
+
+    // C-9
+    expect(stockItemReadAfterDeletion?.name).toBe('にんじん');
+  });
+
+  it('クレームで見えている名称でも、引数の世帯が食い違えば消えない', async () => {
+    const savedNames = await withHouseholdTransaction(
+      db,
+      namesDeletionMismatchHouseholdId,
+      async (tx) => {
+        const repository = new StockItemRepositoryImpl(tx);
+        await repository.save(
+          namesDeletionMismatchHouseholdId,
+          stockItem({
+            id: namesDeletionMismatchStockItemId,
+            householdId: namesDeletionMismatchHouseholdId,
+            name: 'にんじん',
+          }),
+        );
+        // B-56a 規則3: 名称の表も引数の世帯で必ず絞る。
+        await repository.deleteByHousehold(namesDeletionPassedHouseholdId);
+        return repository.findSavedNamesByHousehold(namesDeletionMismatchHouseholdId);
+      },
+    );
+
+    // C-9
+    expect(savedNames).toEqual(['にんじん']);
+  });
+
+  it('行が1行も無い世帯のデータを消しても、失敗しない', async () => {
+    const deletion = withHouseholdTransaction(db, emptyHouseholdDeletionHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).deleteByHousehold(emptyHouseholdDeletionHouseholdId),
+    );
+
+    // B-56a 規則7: 消す物が無くても同じ結末。影響行数を見ず、例外にしない。
+    await expect(deletion).resolves.toBeUndefined();
+  });
+
+  it('同じ世帯のデータを2度消しても、2度目も失敗しない', async () => {
+    await withHouseholdTransaction(db, repeatedHouseholdDeletionHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).save(
+        repeatedHouseholdDeletionHouseholdId,
+        stockItem({
+          id: repeatedHouseholdDeletionStockItemId,
+          householdId: repeatedHouseholdDeletionHouseholdId,
+          name: 'にんじん',
+        }),
+      ),
+    );
+    await withHouseholdTransaction(db, repeatedHouseholdDeletionHouseholdId, (tx) =>
+      new StockItemRepositoryImpl(tx).deleteByHousehold(repeatedHouseholdDeletionHouseholdId),
+    );
+
+    const secondDeletion = withHouseholdTransaction(
+      db,
+      repeatedHouseholdDeletionHouseholdId,
+      (tx) =>
+        new StockItemRepositoryImpl(tx).deleteByHousehold(repeatedHouseholdDeletionHouseholdId),
+    );
+
+    // B-56a 規則7: 2度目の呼び出しも同じ結末。
+    await expect(secondDeletion).resolves.toBeUndefined();
+  });
+});

@@ -48,6 +48,7 @@ const baseSteps: readonly string[] = ['切る', '煮る'];
  */
 function mealOf(
   props: {
+    id?: string;
     householdId?: HouseholdId;
     title?: string;
     ingredients?: readonly IngredientProps[];
@@ -57,7 +58,7 @@ function mealOf(
   } = {},
 ) {
   return createMeal({
-    id: mealIdOf('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+    id: mealIdOf(props.id ?? 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
     householdId: props.householdId ?? ourHousehold,
     title: props.title ?? '肉じゃが',
     ingredients: (props.ingredients ?? baseIngredients).map((ingredient) =>
@@ -456,5 +457,65 @@ describe('献立リポジトリ MealRepository', () => {
       .catch(() => undefined);
 
     expect(await repository.findByHousehold(ourHousehold)).toHaveLength(1);
+  });
+});
+
+describe('献立リポジトリ MealRepository（世帯のデータを消す）', () => {
+  it('世帯のデータを消すと、その世帯の献立は1件も返らない', async () => {
+    // FR-27 / NFR-13 / ADR-072 決定3: 調理記録を持つ献立も世帯ごと消す。
+    const repository: MealRepository = new InMemoryMealRepository();
+    await repository.save(ourHousehold, mealOf({ cookedAts: ['2026-09-14T19:00:00Z'] }));
+    await repository.save(
+      ourHousehold,
+      mealOf({ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', title: 'カレー' }),
+    );
+
+    await repository.deleteByHousehold(ourHousehold);
+
+    expect(await repository.findByHousehold(ourHousehold)).toEqual([]);
+  });
+
+  it('世帯のデータを消すと、消した献立は識別子を指しても引けない', async () => {
+    // FR-27 / B-56a 規則2: 一覧から外れるだけでなく、識別子で引く口からも消える。
+    const repository: MealRepository = new InMemoryMealRepository();
+    await repository.save(ourHousehold, mealOf({ cookedAts: ['2026-09-14T19:00:00Z'] }));
+
+    await repository.deleteByHousehold(ourHousehold);
+
+    expect(
+      await repository.findById(ourHousehold, mealIdOf('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')),
+    ).toBeNull();
+  });
+
+  it('他の世帯のデータを消しても、こちらの世帯の献立は残る', async () => {
+    // C-9 / B-56a 規則3・4: 引数の世帯の行だけを消す。
+    const repository: MealRepository = new InMemoryMealRepository();
+    await repository.save(ourHousehold, mealOf());
+    await repository.save(
+      neighborHousehold,
+      mealOf({ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', householdId: neighborHousehold }),
+    );
+
+    await repository.deleteByHousehold(neighborHousehold);
+
+    expect((await repository.findByHousehold(ourHousehold)).map((meal) => meal.id)).toEqual([
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    ]);
+  });
+
+  it('献立が1件も無い世帯のデータを消しても、失敗しない', async () => {
+    // B-56a 規則7: 消す物が無くても同じ結末。
+    const repository: MealRepository = new InMemoryMealRepository();
+
+    await expect(repository.deleteByHousehold(ourHousehold)).resolves.toBeUndefined();
+  });
+
+  it('同じ世帯のデータを2度消しても、2度目も失敗しない', async () => {
+    // B-56a 規則7: 2度目の呼び出しも同じ結末。
+    const repository: MealRepository = new InMemoryMealRepository();
+    await repository.save(ourHousehold, mealOf());
+    await repository.deleteByHousehold(ourHousehold);
+
+    await expect(repository.deleteByHousehold(ourHousehold)).resolves.toBeUndefined();
   });
 });

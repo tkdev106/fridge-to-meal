@@ -1483,3 +1483,163 @@ describe('献立リポジトリの実装（識別子で1件引く）', () => {
     expect(foundMeal).toBeNull();
   });
 });
+
+// B-56a: 世帯のデータを消す。準備の献立は材料・手順・調理記録を1件以上持つ（子から親の順に
+// 消せていないと DB の外部キーが拒む。B-56a 規則5）。
+const householdDeletionHouseholdId = householdIdOf('d4d4d4d4-0060-4000-8000-000000000060');
+const householdDeletionMealId1 = mealIdOf('d4d4d4d4-0060-4000-8000-0000000000a1');
+const householdDeletionMealId2 = mealIdOf('d4d4d4d4-0060-4000-8000-0000000000a2');
+
+const survivingMealOwnerHouseholdId = householdIdOf('d4d4d4d4-0061-4000-8000-000000000061');
+const survivingMealStrangerHouseholdId = householdIdOf('d4d4d4d4-0071-4000-8000-000000000071');
+const survivingOwnerMealId = mealIdOf('d4d4d4d4-0061-4000-8000-0000000000a1');
+const survivingStrangerMealId = mealIdOf('d4d4d4d4-0071-4000-8000-0000000000a1');
+
+const householdDeletionMismatchHouseholdId = householdIdOf('d4d4d4d4-0062-4000-8000-000000000062');
+const householdDeletionPassedHouseholdId = householdIdOf('d4d4d4d4-0072-4000-8000-000000000072');
+const householdDeletionMismatchMealId = mealIdOf('d4d4d4d4-0062-4000-8000-0000000000a1');
+
+const emptyHouseholdDeletionHouseholdId = householdIdOf('d4d4d4d4-0063-4000-8000-000000000063');
+
+const repeatedHouseholdDeletionHouseholdId = householdIdOf('d4d4d4d4-0064-4000-8000-000000000064');
+const repeatedHouseholdDeletionMealId = mealIdOf('d4d4d4d4-0064-4000-8000-0000000000a1');
+
+/** 材料2件・手順2件・調理記録1件を持つ献立。子の3表すべてに行が入る。 */
+function mealWithChildren(id: MealId, householdId: HouseholdId): Meal {
+  return meal({
+    id,
+    householdId,
+    ingredients: [
+      ingredient({ name: 'にんじん', amount: '200g' }),
+      ingredient({ name: 'しょうゆ', kind: 'seasoning', amount: '大さじ1' }),
+    ],
+    steps: ['にんじんを切る', '煮る'],
+    cookingRecords: [cookingRecord('2026-09-20T18:30:00.000Z')],
+  });
+}
+
+describe('献立リポジトリの実装（世帯のデータを消す）', () => {
+  it('材料・手順・調理記録を持つ献立を、世帯のデータを消すと引けなくなる', async () => {
+    await withHouseholdTransaction(db, householdDeletionHouseholdId, async (tx) => {
+      const repository = new MealRepositoryImpl(tx);
+      await repository.save(
+        householdDeletionHouseholdId,
+        mealWithChildren(householdDeletionMealId1, householdDeletionHouseholdId),
+      );
+      await repository.save(
+        householdDeletionHouseholdId,
+        mealWithChildren(householdDeletionMealId2, householdDeletionHouseholdId),
+      );
+    });
+
+    await withHouseholdTransaction(db, householdDeletionHouseholdId, (tx) =>
+      new MealRepositoryImpl(tx).deleteByHousehold(householdDeletionHouseholdId),
+    );
+
+    const foundMeals = await withHouseholdTransaction(db, householdDeletionHouseholdId, (tx) =>
+      new MealRepositoryImpl(tx).findByHousehold(householdDeletionHouseholdId),
+    );
+
+    // FR-27 / NFR-13 / ADR-072 決定3 / B-56a 規則2: 調理記録を持つ献立も世帯ごと消す。
+    expect(foundMeals).toEqual([]);
+  });
+
+  it('他世帯が自分の世帯のデータを消しても、こちらの世帯の献立は材料・手順・調理記録ごと残る', async () => {
+    await withHouseholdTransaction(db, survivingMealOwnerHouseholdId, (tx) =>
+      new MealRepositoryImpl(tx).save(
+        survivingMealOwnerHouseholdId,
+        mealWithChildren(survivingOwnerMealId, survivingMealOwnerHouseholdId),
+      ),
+    );
+    await withHouseholdTransaction(db, survivingMealStrangerHouseholdId, (tx) =>
+      new MealRepositoryImpl(tx).save(
+        survivingMealStrangerHouseholdId,
+        mealWithChildren(survivingStrangerMealId, survivingMealStrangerHouseholdId),
+      ),
+    );
+
+    await withHouseholdTransaction(db, survivingMealStrangerHouseholdId, (tx) =>
+      new MealRepositoryImpl(tx).deleteByHousehold(survivingMealStrangerHouseholdId),
+    );
+
+    const mealVisibleToOwner = await withHouseholdTransaction(
+      db,
+      survivingMealOwnerHouseholdId,
+      (tx) =>
+        new MealRepositoryImpl(tx).findById(survivingMealOwnerHouseholdId, survivingOwnerMealId),
+    );
+
+    // C-9 / NFR-09 / B-56a 規則4: 他世帯の行は、どの表でも1行も消えない。
+    expect({
+      ingredientNames: mealVisibleToOwner?.ingredients.map((found) => found.name),
+      steps: mealVisibleToOwner?.steps,
+      cookedAts: mealVisibleToOwner?.cookingRecords.map((record) => record.cookedAt),
+    }).toEqual({
+      ingredientNames: ['にんじん', 'しょうゆ'],
+      steps: ['にんじんを切る', '煮る'],
+      cookedAts: ['2026-09-20T18:30:00.000Z'],
+    });
+  });
+
+  it('クレームで見えている献立でも、引数の世帯が食い違えば材料・手順・調理記録ごと消えない', async () => {
+    const mealReadAfterDeletion = await withHouseholdTransaction(
+      db,
+      householdDeletionMismatchHouseholdId,
+      async (tx) => {
+        const repository = new MealRepositoryImpl(tx);
+        await repository.save(
+          householdDeletionMismatchHouseholdId,
+          mealWithChildren(householdDeletionMismatchMealId, householdDeletionMismatchHouseholdId),
+        );
+        // B-56a 規則3: RLS で見えていても、引数の世帯で必ず絞る（網は二重）。
+        // 4表のどれかで `where` から世帯を外した実装なら、ここでその表の行が消える。
+        await repository.deleteByHousehold(householdDeletionPassedHouseholdId);
+        return repository.findById(
+          householdDeletionMismatchHouseholdId,
+          householdDeletionMismatchMealId,
+        );
+      },
+    );
+
+    // C-9
+    expect({
+      ingredientNames: mealReadAfterDeletion?.ingredients.map((found) => found.name),
+      steps: mealReadAfterDeletion?.steps,
+      cookedAts: mealReadAfterDeletion?.cookingRecords.map((record) => record.cookedAt),
+    }).toEqual({
+      ingredientNames: ['にんじん', 'しょうゆ'],
+      steps: ['にんじんを切る', '煮る'],
+      cookedAts: ['2026-09-20T18:30:00.000Z'],
+    });
+  });
+
+  it('献立が1件も無い世帯のデータを消しても、失敗しない', async () => {
+    const deletion = withHouseholdTransaction(db, emptyHouseholdDeletionHouseholdId, (tx) =>
+      new MealRepositoryImpl(tx).deleteByHousehold(emptyHouseholdDeletionHouseholdId),
+    );
+
+    // B-56a 規則7: 消す物が無くても同じ結末。
+    await expect(deletion).resolves.toBeUndefined();
+  });
+
+  it('同じ世帯のデータを2度消しても、2度目も失敗しない', async () => {
+    await withHouseholdTransaction(db, repeatedHouseholdDeletionHouseholdId, (tx) =>
+      new MealRepositoryImpl(tx).save(
+        repeatedHouseholdDeletionHouseholdId,
+        mealWithChildren(repeatedHouseholdDeletionMealId, repeatedHouseholdDeletionHouseholdId),
+      ),
+    );
+    await withHouseholdTransaction(db, repeatedHouseholdDeletionHouseholdId, (tx) =>
+      new MealRepositoryImpl(tx).deleteByHousehold(repeatedHouseholdDeletionHouseholdId),
+    );
+
+    const secondDeletion = withHouseholdTransaction(
+      db,
+      repeatedHouseholdDeletionHouseholdId,
+      (tx) => new MealRepositoryImpl(tx).deleteByHousehold(repeatedHouseholdDeletionHouseholdId),
+    );
+
+    // B-56a 規則7: 2度目の呼び出しも同じ結末。
+    await expect(secondDeletion).resolves.toBeUndefined();
+  });
+});

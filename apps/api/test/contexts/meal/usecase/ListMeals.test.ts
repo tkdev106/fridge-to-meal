@@ -67,6 +67,7 @@ function setUp(props: { meals?: readonly Meal[]; findByHouseholdThrows?: Error }
           findByHousehold: () => Promise.reject(findByHouseholdThrows),
           findById: () => Promise.reject(findByHouseholdThrows),
           save: () => Promise.reject(findByHouseholdThrows),
+          deleteByHousehold: () => Promise.reject(findByHouseholdThrows),
         };
 
   return { list: listMeals({ mealRepository: repository }) };

@@ -329,3 +329,52 @@ describe('提案リポジトリ SuggestionRepository', () => {
     await expect(execution).rejects.toMatchObject({ rule: 'save.householdMismatch' });
   });
 });
+
+describe('提案リポジトリ SuggestionRepository（世帯のデータを消す）', () => {
+  it('世帯のデータを消すと、その世帯の最新の提案は無くなる', async () => {
+    // FR-27 / NFR-13 / ADR-072 決定3: 生成後に不変の提案も世帯ごと消す。
+    const repository: SuggestionRepository = new InMemorySuggestionRepository();
+    await repository.save(
+      ourHousehold,
+      suggestion({ id: smallId, generatedAt: '2026-09-12T12:00:00Z' }),
+    );
+    await repository.save(
+      ourHousehold,
+      suggestion({ id: largeId, generatedAt: '2026-09-13T12:00:00Z' }),
+    );
+
+    await repository.deleteByHousehold(ourHousehold);
+
+    expect(await repository.findLatestByHousehold(ourHousehold)).toBeNull();
+  });
+
+  it('他の世帯のデータを消しても、こちらの世帯の提案は残る', async () => {
+    // C-9 / B-56a 規則3・4: 引数の世帯の行だけを消す。
+    const repository: SuggestionRepository = new InMemorySuggestionRepository();
+    await repository.save(ourHousehold, suggestion({ id: smallId }));
+    await repository.save(
+      neighborHousehold,
+      suggestion({ id: largeId, householdId: neighborHousehold }),
+    );
+
+    await repository.deleteByHousehold(neighborHousehold);
+
+    expect((await repository.findLatestByHousehold(ourHousehold))?.id).toBe(smallId);
+  });
+
+  it('提案が1件も無い世帯のデータを消しても、失敗しない', async () => {
+    // B-56a 規則7: 消す物が無くても同じ結末。
+    const repository: SuggestionRepository = new InMemorySuggestionRepository();
+
+    await expect(repository.deleteByHousehold(ourHousehold)).resolves.toBeUndefined();
+  });
+
+  it('同じ世帯のデータを2度消しても、2度目も失敗しない', async () => {
+    // B-56a 規則7: 2度目の呼び出しも同じ結末。
+    const repository: SuggestionRepository = new InMemorySuggestionRepository();
+    await repository.save(ourHousehold, suggestion({ id: smallId }));
+    await repository.deleteByHousehold(ourHousehold);
+
+    await expect(repository.deleteByHousehold(ourHousehold)).resolves.toBeUndefined();
+  });
+});

@@ -143,6 +143,13 @@ export class StockItemRepositoryImpl implements StockItemRepository {
       .delete(stockItems)
       .where(and(eq(stockItems.id, id), eq(stockItems.householdId, householdId)));
   }
+
+  /** 世帯のデータを消す（B-56a）。 */
+  async deleteByHousehold(householdId: HouseholdId): Promise<void> {
+    // 2表の間に外部キーは無い。消す前に名称を残す `save` と違い、ここでは名称も消す（ADR-069 結果4）
+    await this.tx.delete(stockItems).where(eq(stockItems.householdId, householdId));
+    await this.tx.delete(stockItemNames).where(eq(stockItemNames.householdId, householdId));
+  }
 }
 
 /**

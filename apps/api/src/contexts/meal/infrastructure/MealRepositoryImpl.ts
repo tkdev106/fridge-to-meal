@@ -168,6 +168,15 @@ export class MealRepositoryImpl implements MealRepository {
     await this.insertCookingRecords(householdId, meal, storedRecordRows.length);
   }
 
+  /** 世帯のデータを消す（B-56a）。 */
+  async deleteByHousehold(householdId: HouseholdId): Promise<void> {
+    // 子表の外部キーは `on delete no action` なので、子から親の順に消す（ADR-056）
+    await this.tx.delete(cookingRecords).where(eq(cookingRecords.householdId, householdId));
+    await this.tx.delete(cookingSteps).where(eq(cookingSteps.householdId, householdId));
+    await this.tx.delete(mealIngredients).where(eq(mealIngredients.householdId, householdId));
+    await this.tx.delete(meals).where(eq(meals.householdId, householdId));
+  }
+
   /** 親→子の順に、受け取った handle の上で続けて書く（設計 規則7）。 */
   private async insertMeal(householdId: HouseholdId, meal: Meal): Promise<void> {
     await this.tx.insert(meals).values({

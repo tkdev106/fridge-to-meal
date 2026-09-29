@@ -72,4 +72,12 @@ export interface SuggestionRepository {
    * （ADR-038 決定1 が順序を約束したのは、限って取る口だからである）。
    */
   countGeneratedByHouseholdSince(householdId: HouseholdId, since: DateTime): Promise<number>;
+
+  /**
+   * その世帯の提案を、提案の1件と在庫スナップショットごとすべて消す（FR-27 / NFR-13 / B-56a）。
+   *
+   * **提案1件を消す口は置かない**（Q-2 / ADR-072 決定2）。引数の世帯の行だけを消し、
+   * 他の世帯の行は1行も消さない（C-9）。消す物が無くても、2度目の呼び出しでも成功する（B-56a 規則7）。
+   */
+  deleteByHousehold(householdId: HouseholdId): Promise<void>;
 }

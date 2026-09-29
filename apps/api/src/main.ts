@@ -3,7 +3,7 @@
 // **実装クラスを new してよいのはこのファイルだけである**（ADR-002 / CLAUDE.md）。
 // ここでリポジトリとポートの実装を組み立て、ユースケースに注入し、api 層に渡す。
 //
-// 結線するのは在庫（pantry）の4経路と献立（meal）の提案の3経路・食材名の1経路・調理記録の1経路・献立詳細の1経路、その前に立つ
+// 結線するのは在庫（pantry）の4経路と献立（meal）の提案の3経路・食材名の1経路・調理記録の1経路・献立詳細の1経路・献立の一覧の1経路・世帯のデータを消す1経路、その前に立つ
 // 世帯の認証（identity）である。コンテキストをまたいで全層を import してよいのは、依存表の `main.ts` の
 // 行だけ（CLAUDE.md「依存は外から内へ」）。
 
@@ -20,6 +20,8 @@ import { HouseholdAuthenticatorImpl } from './contexts/identity/infrastructure/H
 import { identifyHousehold } from './contexts/identity/usecase/IdentifyHousehold.js';
 import type { CookingRecordRoutesDeps } from './contexts/meal/api/CookingRecordRoutes.js';
 import { createCookingRecordRoutes } from './contexts/meal/api/CookingRecordRoutes.js';
+import type { HouseholdDataRoutesDeps } from './contexts/meal/api/HouseholdDataRoutes.js';
+import { createHouseholdDataRoutes } from './contexts/meal/api/HouseholdDataRoutes.js';
 import type { IngredientNameRoutesDeps } from './contexts/meal/api/IngredientNameRoutes.js';
 import { createIngredientNameRoutes } from './contexts/meal/api/IngredientNameRoutes.js';
 import type { MealListRoutesDeps } from './contexts/meal/api/MealListRoutes.js';
@@ -41,6 +43,7 @@ import { showLatestSuggestion } from './contexts/meal/usecase/ShowLatestSuggesti
 import { showMeal } from './contexts/meal/usecase/ShowMeal.js';
 import { listMeals } from './contexts/meal/usecase/ListMeals.js';
 import { listIngredientNames } from './contexts/meal/usecase/ListIngredientNames.js';
+import { deleteHouseholdData } from './contexts/meal/usecase/DeleteHouseholdData.js';
 import { createStockItemRoutes } from './contexts/pantry/api/StockItemRoutes.js';
 import type { StockItemIdGenerator } from './contexts/pantry/domain/port/StockItemIdGenerator.js';
 import { stockItemIdOf } from './contexts/pantry/domain/value/StockItemId.js';
@@ -48,6 +51,7 @@ import type { HouseholdTransaction } from './shared/infrastructure/db/HouseholdT
 import { withHouseholdTransaction } from './shared/infrastructure/db/HouseholdTransaction.js';
 import { StockItemRepositoryImpl } from './contexts/pantry/infrastructure/StockItemRepositoryImpl.js';
 import { deleteStockItem } from './contexts/pantry/usecase/DeleteStockItem.js';
+import { deleteHouseholdStockItems } from './contexts/pantry/usecase/DeleteHouseholdStockItems.js';
 import { listSavedStockItemNames } from './contexts/pantry/usecase/ListSavedStockItemNames.js';
 import { listStockItems } from './contexts/pantry/usecase/ListStockItems.js';
 import { registerStockItem } from './contexts/pantry/usecase/RegisterStockItem.js';
@@ -98,7 +102,8 @@ export type AppDependencies = Parameters<typeof createStockItemRoutes>[0] &
   IngredientNameRoutesDeps &
   CookingRecordRoutesDeps &
   MealRoutesDeps &
-  MealListRoutesDeps;
+  MealListRoutesDeps &
+  HouseholdDataRoutesDeps;
 
 /** 差し替えられる出口。既定は実行環境の `fetch`。テストは `FixedFetchJwks` を渡す。 */
 export type CompositionPorts = { readonly fetchJwks?: FetchJwks };
@@ -257,6 +262,18 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
     listMeals: transactionPerRequest(env, (tx) =>
       listMeals({ mealRepository: new MealRepositoryImpl(tx) }),
     ),
+    // 世帯のデータを消す口も同じ1要求1トランザクションで包む（B-56a 規則13 / ADR-029 決定3(a)）。
+    // 3つのリポジトリを**同じ `tx`** から作り、在庫の口も同じ `tx` の素のものを渡す — どれかが
+    // 投げたら巻き戻しで1行も消えない（規則8）。生成器・採番・`now` は渡さない。
+    deleteHouseholdData: transactionPerRequest(env, (tx) =>
+      deleteHouseholdData({
+        deleteHouseholdStockItems: deleteHouseholdStockItems({
+          stockItemRepository: new StockItemRepositoryImpl(tx),
+        }),
+        mealRepository: new MealRepositoryImpl(tx),
+        suggestionRepository: new SuggestionRepositoryImpl(tx),
+      }),
+    ),
     now,
   };
 }
@@ -333,6 +350,7 @@ export function createApp(deps: AppDependencies): Hono {
   app.route('/', createMealRoutes(deps));
   // `GET /meals` は `GET /meals/:id` と形が違い、食い合わない（B-54a）。
   app.route('/', createMealListRoutes(deps));
+  app.route('/', createHouseholdDataRoutes(deps));
 
   return app;
 }

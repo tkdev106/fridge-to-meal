@@ -144,6 +144,12 @@ export class InMemoryMealRepository implements MealRepository {
     // in-place で入れ替える。
     stored[storedIndex] = meal;
   }
+
+  /** 世帯のデータを消す（B-56a）。 */
+  async deleteByHousehold(householdId: HouseholdId): Promise<void> {
+    // 同じ配列参照を返す性質を保つため、配列を作り直さず空にする
+    this.#arrayOf(householdId).length = 0;
+  }
 }
 
 /**

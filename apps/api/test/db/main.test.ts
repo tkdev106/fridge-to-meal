@@ -1,10 +1,18 @@
-import type { ListStockItemsOutput, StockItemDto } from '@fridge-to-meal/contract';
-import { describe, expect, it } from 'vitest';
+import type {
+  ListStockItemsOutput,
+  StockItemDto,
+  SuggestMealsOutput,
+} from '@fridge-to-meal/contract';
+import postgres from 'postgres';
+import { afterAll, describe, expect, it } from 'vitest';
 import type { Bindings } from '../../src/main.js';
 import { composeDependencies, createApp } from '../../src/main.js';
 import type { HouseholdId } from '../../src/shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../src/shared/domain/HouseholdId.js';
 import { APP_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
+import type { HouseholdRowCounts } from '../support/db/HouseholdRows.js';
+import { countHouseholdRows } from '../support/db/HouseholdRows.js';
+import { withTransaction } from '../support/db/WithTransaction.js';
 import { accessTokenOf } from '../support/identity/AccessSigning.js';
 import { FixedFetchJwks } from '../support/identity/FixedFetchJwks.js';
 
@@ -39,6 +47,16 @@ const deletingNeighborHousehold = householdIdOf('b9010000-0000-4000-8000-0000000
 const rejectedThenRegisterHousehold = householdIdOf('b9010000-0000-4000-8000-000000000008');
 const unsavedIdHousehold = householdIdOf('b9010000-0000-4000-8000-000000000009');
 
+// B-56a: 世帯のデータを消す。先頭の並び（`b56a1000`）で他のケースと分けてある。
+const deletedDataHousehold = householdIdOf('b56a1000-0001-4000-8000-000000000001');
+const fullyDeletedHousehold = householdIdOf('b56a1000-0002-4000-8000-000000000002');
+const deletingOwnDataHousehold = householdIdOf('b56a1000-0003-4000-8000-000000000003');
+const untouchedNeighborHousehold = householdIdOf('b56a1000-0003-4000-8000-000000000013');
+const listAfterDeletionHousehold = householdIdOf('b56a1000-0004-4000-8000-000000000004');
+const registerAfterDeletionHousehold = householdIdOf('b56a1000-0005-4000-8000-000000000005');
+const neverUsedHousehold = householdIdOf('b56a1000-0006-4000-8000-000000000006');
+const deletedTwiceHousehold = householdIdOf('b56a1000-0007-4000-8000-000000000007');
+
 /** どの世帯も保存していない在庫品の識別子（#15）。 */
 const unsavedStockItemId = 'b9990000-0000-4000-8000-0000000000ff';
 
@@ -53,6 +71,16 @@ const env: Bindings = {
 
 /** 全ケースが同じ組み立てを叩く（設計書 8章）。認証器は環境1つにつき1つ（規則4）。 */
 const app = createApp(composeDependencies(env, { fetchJwks: new FixedFetchJwks().fetchJwks }));
+
+/**
+ * 行数を読むための接続（B-56a）。経路の結線とは別に持ち、`authenticator` で繋いで
+ * トランザクションの中でクレームを張る — 所有者で繋ぐと RLS が素通りする。
+ */
+const rowConnection = postgres(APP_CONNECTION_STRING, { max: 1 });
+
+afterAll(async () => {
+  await rowConnection.end();
+});
 
 /** 実時刻からの固定オフセットで秒を置く。`exp` の本題は前後関係だけである。 */
 function secondsFromNow(seconds: number): number {
@@ -145,6 +173,75 @@ async function deleteStockItemRequest(household: HouseholdId, stockItemId: strin
     headers: bearerHeaders(await accessTokenFor(household)),
   });
 }
+
+/** 与えた世帯で `DELETE /household-data` を叩く（B-56a）。 */
+async function deleteHouseholdDataRequest(household: HouseholdId) {
+  return app.request('/household-data', {
+    method: 'DELETE',
+    headers: bearerHeaders(await accessTokenFor(household)),
+  });
+}
+
+/**
+ * 世帯の9表すべてに行を置く下ごしらえ（B-56a）。**既存の経路だけを通す** — 在庫品2件
+ * （`にんじん` / `たまねぎ`）を登録し、新しい献立を求め（仮の生成器が在庫品1件につき献立1件、
+ * 材料1件・手順2件を返す。ADR-060）、1件目の献立に調理記録を1件足す。本題でないところで
+ * 黙って失敗すると続きの `expect` が別の理由で落ちるので、各段の状態コードを確かめる。
+ */
+async function seedHouseholdData(household: HouseholdId): Promise<void> {
+  await registeredStockItem(household, { name: 'にんじん' });
+  await registeredStockItem(household, { name: 'たまねぎ' });
+
+  const suggestResponse = await app.request('/suggestions/new-meals', {
+    method: 'POST',
+    headers: bearerHeaders(await accessTokenFor(household)),
+  });
+  expect(suggestResponse.status).toBe(200);
+  const outcome = (await suggestResponse.json()) as SuggestMealsOutput;
+  if (outcome.outcome !== 'suggested') throw new Error(`提案が得られなかった: ${outcome.outcome}`);
+  const firstMealId = outcome.suggestion.entries[0]?.mealId;
+  if (firstMealId === undefined) throw new Error('提案に献立が1件も無い');
+
+  const recordResponse = await app.request(`/meals/${firstMealId}/cooking-records`, {
+    method: 'POST',
+    headers: bearerHeaders(await accessTokenFor(household)),
+  });
+  expect(recordResponse.status).toBe(204);
+}
+
+/** その世帯の9表の行数を、クレームを張った別のトランザクションで読む。 */
+function rowCountsOf(household: HouseholdId): Promise<HouseholdRowCounts> {
+  return withTransaction(rowConnection, household, (tx) => countHouseholdRows(tx, household));
+}
+
+/** 9表とも0行。 */
+const noRows: HouseholdRowCounts = {
+  stock_items: 0,
+  stock_item_names: 0,
+  meals: 0,
+  meal_ingredients: 0,
+  cooking_steps: 0,
+  cooking_records: 0,
+  suggestions: 0,
+  suggestion_entries: 0,
+  pantry_snapshot_stock_items: 0,
+};
+
+/**
+ * `seedHouseholdData` が置く行数。在庫品2件と名称2件、献立2件（材料各1件・手順各2件）、
+ * 調理記録1件、提案1件（1件が2つ・在庫スナップショットの在庫品2件）。
+ */
+const seededRows: HouseholdRowCounts = {
+  stock_items: 2,
+  stock_item_names: 2,
+  meals: 2,
+  meal_ingredients: 2,
+  cooking_steps: 4,
+  cooking_records: 1,
+  suggestions: 1,
+  suggestion_entries: 2,
+  pantry_snapshot_stock_items: 2,
+};
 
 describe('composition root main（ローカル Postgres を通す全経路）', () => {
   describe('在庫の4経路が DB まで通る', () => {
@@ -357,6 +454,80 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
 
       expect(response.status).toBe(404);
       await expect(failureBody(response)).resolves.toEqual({ rule: 'update.notFound' });
+    });
+  });
+
+  describe('世帯のデータを消す経路が DB まで通る（B-56a）', () => {
+    it('結線した経路で世帯のデータを消すと 204 が返る', async () => {
+      // 規則10・13 / FR-27: 接頭辞なしの DELETE → 1要求1トランザクション → 本体なし。
+      await seedHouseholdData(deletedDataHousehold);
+
+      const response = await deleteHouseholdDataRequest(deletedDataHousehold);
+
+      expect(response.status).toBe(204);
+    });
+
+    it('世帯のデータを消すと、その世帯の行は9表のどれにも残らない', async () => {
+      // 規則2・5・13 / NFR-13: 在庫・保存したことのある名称・献立と子3表・提案と子2表。
+      await seedHouseholdData(fullyDeletedHousehold);
+      const response = await deleteHouseholdDataRequest(fullyDeletedHousehold);
+      expect(response.status).toBe(204);
+
+      await expect(rowCountsOf(fullyDeletedHousehold)).resolves.toEqual(noRows);
+    });
+
+    it('他世帯が自分の世帯のデータを消しても、こちらの世帯の行は9表とも1行も消えない', async () => {
+      // 規則3・4 / C-9 / NFR-09: 消すのはアクセストークンの世帯の行だけである。
+      await seedHouseholdData(untouchedNeighborHousehold);
+      await seedHouseholdData(deletingOwnDataHousehold);
+      const response = await deleteHouseholdDataRequest(deletingOwnDataHousehold);
+      expect(response.status).toBe(204);
+
+      await expect(rowCountsOf(untouchedNeighborHousehold)).resolves.toEqual(seededRows);
+    });
+
+    it('世帯のデータを消したあとも、同じアクセストークンで在庫の一覧が 200 の空で返る', async () => {
+      // 規則12 / ADR-072 結果4: Auth の利用者には触れない。空の世帯として振る舞う。
+      await seedHouseholdData(listAfterDeletionHousehold);
+      const deleteResponse = await deleteHouseholdDataRequest(listAfterDeletionHousehold);
+      expect(deleteResponse.status).toBe(204);
+
+      const response = await getStockItems(listAfterDeletionHousehold);
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ stockItems: [] });
+    });
+
+    it('世帯のデータを消したあと、同じアクセストークンで登録した在庫品は一覧に出る', async () => {
+      // 規則12 / ADR-072 結果4: 再び登録すれば行が生まれる。
+      await seedHouseholdData(registerAfterDeletionHousehold);
+      const deleteResponse = await deleteHouseholdDataRequest(registerAfterDeletionHousehold);
+      expect(deleteResponse.status).toBe(204);
+      const registered = await registeredStockItem(registerAfterDeletionHousehold, {
+        name: 'ごぼう',
+      });
+
+      const stockItems = await listedStockItems(registerAfterDeletionHousehold);
+
+      expect(stockItems.map((stockItem) => stockItem.id)).toEqual([registered.id]);
+    });
+
+    it('行が1行も無い世帯のデータを消しても 204 が返る', async () => {
+      // 規則7 / 7章4行目: 消す物が無いのは失敗ではない。
+      const response = await deleteHouseholdDataRequest(neverUsedHousehold);
+
+      expect(response.status).toBe(204);
+    });
+
+    it('同じ世帯のデータを続けて2度消しても、2度目も 204 が返る', async () => {
+      // 規則7: 2度目の呼び出しも同じ結末。
+      await seedHouseholdData(deletedTwiceHousehold);
+      const firstResponse = await deleteHouseholdDataRequest(deletedTwiceHousehold);
+      expect(firstResponse.status).toBe(204);
+
+      const response = await deleteHouseholdDataRequest(deletedTwiceHousehold);
+
+      expect(response.status).toBe(204);
     });
   });
 });

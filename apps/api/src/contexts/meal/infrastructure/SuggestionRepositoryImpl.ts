@@ -183,6 +183,16 @@ export class SuggestionRepositoryImpl implements SuggestionRepository {
       );
     return row?.count ?? 0;
   }
+
+  /** 世帯のデータを消す（B-56a）。 */
+  async deleteByHousehold(householdId: HouseholdId): Promise<void> {
+    // 子表の外部キーは `on delete no action` なので、子から親の順に消す（ADR-058）
+    await this.tx.delete(suggestionEntries).where(eq(suggestionEntries.householdId, householdId));
+    await this.tx
+      .delete(pantrySnapshotStockItems)
+      .where(eq(pantrySnapshotStockItems.householdId, householdId));
+    await this.tx.delete(suggestions).where(eq(suggestions.householdId, householdId));
+  }
 }
 
 /** `position` の昇順を保ったまま、提案ごとに配り直す。 */
