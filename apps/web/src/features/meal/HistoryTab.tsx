@@ -1,15 +1,149 @@
 /**
- * 履歴タブの**仮置き**（B-38 設計 2章）。`docs/screen-design.md` 第7章がここに来る。
+ * 履歴タブ（B-54b）。`docs/screen-design.md` 第7章に当たる。
  *
- * **中身はまだ無い。** 出すのは調理記録（`CookingRecord`）であり、その経路もサーバに無い。
- * 同書 2.1 が言う「設定は履歴タブの右上」もまだ作らない — ログアウトは在庫タブの下に
- * 置いたままである（ADR-046 結果4 の暫定）。
+ * `GET /meals`（B-54a / ADR-068）の2つの列 — 「以前見た献立」（`seen`）と「つくった献立」
+ * （`cooked`）— を**切り替えて1列ずつ**見せる。2つの列は同じ献立を調理記録の有無で
+ * 振り分けたものであり、**振り分けも並びもサーバが決める**（ADR-068 決定2・3）— ここでは
+ * 並べ替えず、畳まず、渡された順のまま描く（設計 規則3）。
  *
- * **feature flag で隠さず、そのまま出す**（`CLAUDE.md` / `docs/workflow.md` 1章 / 同 規則7）。
+ * **1行に出すのは名称と主材料の件数だけである**（設計 規則4 / ADR-068 決定4）。日付も充足も
+ * 記録の有無の印も出さない — 充足は開いたときに算出すれば足りる（FR-32）。
+ *
+ * **列の選択はここが持つ**（設計 規則6 / 先行 `PantryTab`）。門も器も知らない — 詳細を開いて
+ * 戻っても保たれ、器は選んだタブしか描かないので、タブを移ると初期（以前見た）に戻る。
+ *
+ * **開いている献立を持つのは門である**（設計 規則9 / ADR-066 と同じ理由）。ここは行から
+ * 識別子を渡し、渡された詳細を一覧の代わりに描くだけである（先行 `MealsTab.mealDetail`）。
+ *
+ * 設定への入口（同書 2.1）と名称での検索（FR-33）はまだ置かない。ログアウトは在庫タブの下の
+ * ままである（ADR-046 結果4 の暫定）。
  *
  * **文言は仮である**（`docs/screen-design.md` 冒頭・論点3）。
  */
 
-export function HistoryTab() {
-  return <p>作った献立の履歴はこれから作ります。</p>;
+import { useState } from 'react';
+import type { JSX, ReactNode } from 'react';
+import type { MealSummaryOutput } from '@fridge-to-meal/contract';
+import type { MealListOutcome } from '../../server/MealRequests.js';
+
+/** 門から渡される履歴の状態（設計 5章）。取りに行くまでは「読み込み中」である。 */
+export type HistoryTabState = { readonly outcome: 'loading' } | MealListOutcome;
+
+export type HistoryTabProps = {
+  meals: HistoryTabState;
+  onOpenMeal: (mealId: string) => void;
+  /** null でなければ一覧の代わりにこれを描く（先行 MealsTab.mealDetail） */
+  mealDetail: ReactNode | null;
+};
+
+/** 2つの列（ADR-068 決定3）。キーは `ListMealsOutput` のものをそのまま使う。 */
+type Column = 'seen' | 'cooked';
+
+/** 開いた直後の列（設計 規則5。ワイヤーの左を採った — 設計 10章 前提3）。 */
+const INITIAL_COLUMN: Column = 'seen';
+
+/** 列の切り替えの文言（**仮**。ワイヤーの字面）。並びも切り替えの左右の順である。 */
+const COLUMN_LABELS: readonly { readonly column: Column; readonly label: string }[] = [
+  { column: 'seen', label: '以前見た献立' },
+  { column: 'cooked', label: 'つくった献立' },
+];
+
+/** 読み込み中の案内（**暫定**）。 */
+const LOADING_NOTICE = '献立の履歴を読み込んでいます。';
+
+/**
+ * 取れなかったときの断り（**暫定**）。**原因を断定しない** — 継ぎ目は通信の失敗・401・500・
+ * 壊れた応答をすべて1つの結末に畳んでいる（`MealRequests.ts`）。**再試行の手段も置かない**
+ * （自動でも取りに行き直さない。設計 規則7）。
+ */
+const LOAD_FAILURE_NOTICE = '献立の履歴を読み込めませんでした。';
+
+/** 選んでいる列が0件のときの案内（**暫定**）。**失敗ではない**（設計 規則7）。 */
+const EMPTY_COLUMN_NOTICES: Readonly<Record<Column, string>> = {
+  seen: '以前見た献立はまだありません。',
+  cooked: 'つくった献立はまだありません。',
+};
+
+/** 主材料の件数（ADR-068 決定4。件数は主材料で数えたものがサーバから届く — C-16）。 */
+function ingredientCountText(ingredientCount: number): string {
+  return `材料${ingredientCount}件`;
+}
+
+/**
+ * 列の切り替え（設計 規則5 / NFR-17）。**`role="tab"` にしない** — 下タブの `tablist` と
+ * 入れ子になる（設計 10章 前提2）。選んでいる側は文字だけでなく `aria-pressed` で読め、
+ * **色は1つも足さない**。
+ */
+function ColumnToggles({
+  selected,
+  onSelect,
+}: {
+  selected: Column;
+  onSelect: (column: Column) => void;
+}) {
+  return (
+    <div>
+      {COLUMN_LABELS.map(({ column, label }) => (
+        <button
+          key={column}
+          type="button"
+          aria-pressed={column === selected}
+          onClick={() => onSelect(column)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 1列ぶんの行（設計 規則3・4・8）。**行そのものを開く操作にする**（ワイヤーに別の操作が無い）。
+ * 名称と件数は別の要素に分けておく — 読み上げが名称で止まれるように（先行 `MealsTab`）。
+ */
+function MealRows({
+  meals,
+  onOpenMeal,
+}: {
+  meals: readonly MealSummaryOutput[];
+  onOpenMeal: (mealId: string) => void;
+}) {
+  return (
+    <ul>
+      {meals.map((meal) => (
+        // 識別子で鍵を取る — 名称が同じ別の献立を畳まない（設計 規則3）。
+        <li key={meal.mealId}>
+          <button type="button" onClick={() => onOpenMeal(meal.mealId)}>
+            <span>{meal.title}</span>
+            <span>{ingredientCountText(meal.ingredientCount)}</span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function HistoryTab({ meals, onOpenMeal, mealDetail }: HistoryTabProps): JSX.Element {
+  // 詳細を開いている間もこの部品は mount されたままなので、選んだ列は戻っても保たれる（規則6）。
+  const [selectedColumn, setSelectedColumn] = useState<Column>(INITIAL_COLUMN);
+
+  // **詳細は結末より先に見る**（先行 `MealsTab`）。一覧と並べず入れ替え、列の切り替えも出さない。
+  if (mealDetail !== null) return <div>{mealDetail}</div>;
+
+  // 読み込み中と取れなかった回は、切り替えを出さない — 切り替えた先にも見せるものが無い。
+  if (meals.outcome === 'loading') return <p role="status">{LOADING_NOTICE}</p>;
+  if (meals.outcome === 'failed') return <p role="status">{LOAD_FAILURE_NOTICE}</p>;
+
+  const rows = meals.meals[selectedColumn];
+
+  return (
+    <div>
+      <ColumnToggles selected={selectedColumn} onSelect={setSelectedColumn} />
+      {rows.length === 0 ? (
+        <p role="status">{EMPTY_COLUMN_NOTICES[selectedColumn]}</p>
+      ) : (
+        <MealRows meals={rows} onOpenMeal={onOpenMeal} />
+      )}
+    </div>
+  );
 }

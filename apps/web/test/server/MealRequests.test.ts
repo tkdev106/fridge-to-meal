@@ -1,16 +1,17 @@
 /**
  * 献立1件を取りに行く継ぎ目と、調理記録を1件足す継ぎ目（B-53 1周目。先行
- * `SuggestionRequests.test.ts` / `StockItemRequests.test.ts`）。
+ * `SuggestionRequests.test.ts` / `StockItemRequests.test.ts`）。献立の履歴を取りに行く継ぎ目は
+ * B-54b 1周目で足した（先行 `IngredientNameRequests.test.ts`）。
  *
  * **観るのは戻り値と、出口が受け取った要求だけ**である（`docs/testing.md` 2章）。
  * `vi.fn()` で呼び出し回数を数えず、差し替えは `FixedHttpFetch` を渡す。
  */
 
 import { describe, expect, it } from 'vitest';
-import type { MealOutput } from '@fridge-to-meal/contract';
+import type { ListMealsOutput, MealOutput, MealSummaryOutput } from '@fridge-to-meal/contract';
 import { FixedHttpFetch } from '../support/server/FixedHttpFetch.js';
 import type { HttpDelivery } from '../support/server/FixedHttpFetch.js';
-import { addCookingRecord, showMeal } from '../../src/server/MealRequests.js';
+import { addCookingRecord, listMeals, showMeal } from '../../src/server/MealRequests.js';
 
 const BASE_URL = 'https://api.example.test';
 const TOKEN = 'access-token';
@@ -317,5 +318,160 @@ describe('調理記録を1件足す継ぎ目 addCookingRecord', () => {
     const { request } = recordWith({ ok: true, unreadableBody: true });
 
     await expect(request(MEAL_ID)).resolves.toEqual({ outcome: 'recorded' });
+  });
+});
+
+function summaryOf(mealId: string, title: string, ingredientCount = 2): MealSummaryOutput {
+  return { mealId, title, ingredientCount };
+}
+
+/** 標本の履歴。以前見た献立2件と、つくった献立1件（ADR-068 決定3）。 */
+const history: ListMealsOutput = {
+  seen: [summaryOf('meal-a', '肉じゃが'), summaryOf('meal-b', '豚こま肉と白菜の生姜焼き')],
+  cooked: [summaryOf('meal-c', 'にんじんと卵の炒めもの')],
+};
+
+function listWith(delivery: HttpDelivery, accessToken = heldToken) {
+  const httpFetch = new FixedHttpFetch(delivery);
+  const request = listMeals({ baseUrl: BASE_URL, accessToken, httpFetch: httpFetch.httpFetch });
+
+  return { httpFetch, request };
+}
+
+/** 通った応答1つぶん（履歴をそのまま本体に載せる）。 */
+const listed: HttpDelivery = { ok: true, body: history };
+
+describe('献立の履歴を取りに行く継ぎ目 listMeals', () => {
+  it('取れた2つの列を詰め替えずにそのまま返す', async () => {
+    // B-54b 規則2 / ADR-068 決定3: web に第2の DTO を作らない。
+    const { request } = listWith(listed);
+
+    await expect(request()).resolves.toEqual({ outcome: 'loaded', meals: history });
+  });
+
+  it('列の並びを変えずに返す', async () => {
+    // B-54b 規則2・3 / ADR-068 決定2: 並びを決めるのはサーバである。
+    const unsorted: ListMealsOutput = {
+      seen: [
+        summaryOf('meal-b', 'にんじんと卵の炒めもの'),
+        summaryOf('meal-a', '豚こま肉と白菜の生姜焼き'),
+        summaryOf('meal-d', '肉じゃが'),
+      ],
+      cooked: [],
+    };
+    const { request } = listWith({ ok: true, body: unsorted });
+
+    const outcome = await request();
+
+    expect(outcome).toEqual({ outcome: 'loaded', meals: unsorted });
+  });
+
+  it('列の要素の中身は確かめず、そのまま返す', async () => {
+    // B-54b 規則2: 要素の中身は検めない（相手は自分のサーバであり、contract の型が正）。
+    const body = { seen: [{ mealId: 'm1' }], cooked: [] };
+    const { request } = listWith({ ok: true, body });
+
+    await expect(request()).resolves.toEqual({ outcome: 'loaded', meals: body });
+  });
+
+  it('両方の列が0件でも、取れた結末として返す', async () => {
+    // B-54b 規則7: 0件は失敗ではない。
+    const { request } = listWith({ ok: true, body: { seen: [], cooked: [] } });
+
+    await expect(request()).resolves.toEqual({
+      outcome: 'loaded',
+      meals: { seen: [], cooked: [] },
+    });
+  });
+
+  it('基点に /meals を足した先を GET で叩き、世帯を1つも載せない', async () => {
+    // B-54b 規則1 / ADR-048 決定4: 接頭辞を web の側で足さない。世帯はアクセストークンから
+    // 定まる（C-9 / NFR-09）。
+    const { httpFetch, request } = listWith(listed);
+
+    await request();
+
+    expect(httpFetch.receivedRequests[0]?.url).toBe(`${BASE_URL}/meals`);
+    expect(httpFetch.receivedRequests[0]?.method).toBe('GET');
+  });
+
+  it('アクセストークンを Bearer で載せ、本体を1つも送らない', async () => {
+    // B-54b 規則1: 本体もクエリも送らないので `Content-Type` も付けない（ADR-048）。
+    const { httpFetch, request } = listWith(listed);
+
+    await request();
+
+    expect(httpFetch.receivedRequests[0]?.headers).toEqual({ Authorization: `Bearer ${TOKEN}` });
+    expect(httpFetch.receivedRequests[0]?.body).toBeUndefined();
+  });
+
+  it('アクセストークンが取れなければ、失敗の結末を返す', async () => {
+    // B-54b 規則1
+    const { request } = listWith(listed, () => Promise.resolve(null));
+
+    await expect(request()).resolves.toEqual({ outcome: 'failed' });
+  });
+
+  it('アクセストークンが取れなければ、要求を1つも出さない', async () => {
+    // B-54b 規則1: 出しても 401 が返るだけである。**件数を断定するのは起きないことが
+    // 要件のこの1件だけ**（`docs/testing.md` 2章）。
+    const { httpFetch, request } = listWith(listed, () => Promise.resolve(null));
+
+    await request();
+
+    expect(httpFetch.receivedRequests).toEqual([]);
+  });
+
+  it('アクセストークンが空文字でも要求を出し、空のまま Bearer に載せる', async () => {
+    // B-54b 規則1 / 先行 `showMeal`: 空文字は `null` と同じに扱わない。
+    const { httpFetch, request } = listWith(listed, () => Promise.resolve(''));
+
+    await request();
+
+    expect(httpFetch.receivedRequests[0]?.headers).toEqual({ Authorization: 'Bearer ' });
+  });
+
+  it('断りの応答は rule があっても読み分けず、失敗に畳む', async () => {
+    // B-54b 規則2 / 7章 行1: 利用者が直せる入力が無いので `rejected` を持たない。
+    const { request } = listWith({ ok: false, body: { rule: 'accessToken.missing' } });
+
+    await expect(request()).resolves.toEqual({ outcome: 'failed' });
+  });
+
+  it('通った応答の本体が JSON として読めなければ、失敗の結末を返す', async () => {
+    // B-54b 規則2 / 7章 行1
+    const { request } = listWith({ ok: true, unreadableBody: true });
+
+    await expect(request()).resolves.toEqual({ outcome: 'failed' });
+  });
+
+  it('seen が配列でなければ、0件に倒さず失敗の結末を返す', async () => {
+    // B-54b 規則2: 片方でも配列でなければ失敗である。0件に倒すと「以前見た献立が無い」と偽る。
+    const { request } = listWith({ ok: true, body: { seen: 'x', cooked: [] } });
+
+    await expect(request()).resolves.toEqual({ outcome: 'failed' });
+  });
+
+  it('cooked が配列でなければ、0件に倒さず失敗の結末を返す', async () => {
+    // B-54b 規則2
+    const { request } = listWith({ ok: true, body: { seen: [], cooked: null } });
+
+    await expect(request()).resolves.toEqual({ outcome: 'failed' });
+  });
+
+  it('出口が投げても、例外を外に出さず失敗の結末を返す', async () => {
+    // B-54b 規則2 / 7章 行1: 外へ出すと門の効果で誰も受け止めず、読み込み中のまま止まる。
+    const { request } = listWith({ throws: new Error('到達できない') });
+
+    await expect(request()).resolves.toEqual({ outcome: 'failed' });
+  });
+
+  it('失敗しても、呼ばれた1回で1往復しかせず取りに行き直さない', async () => {
+    // B-54b 規則1「1往復だけ」/ 規則7: 自動で取りに行き直さない。
+    const { httpFetch, request } = listWith({ throws: new Error('到達できない') });
+
+    await request();
+
+    expect(httpFetch.receivedRequests).toHaveLength(1);
   });
 });
