@@ -67,7 +67,7 @@ function otherButtons(): readonly HTMLElement[] {
 }
 
 /**
- * 設定への入口の候補。**`aria-pressed` を持たず（列の切り替えではない）、`listitem` の中にも
+ * 設定への入口として数えるもの。**`aria-pressed` を持たず（列の切り替えではない）、`listitem` の中にも
  * 無い（行の開く操作ではない）** `button` である（B-56c 規則4）。
  */
 function settingsEntries(): readonly HTMLElement[] {
