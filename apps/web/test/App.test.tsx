@@ -24,7 +24,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { StockItemDto } from '@fridge-to-meal/contract';
+import type { MealSummaryOutput, StockItemDto } from '@fridge-to-meal/contract';
 import { act, fireEvent, render, screen, waitFor, within } from './support/dom/renderComponent.js';
 import { installPointerCapture } from './support/dom/pointerCapture.js';
 import { FixedSession } from './support/session/FixedSession.js';
@@ -40,7 +40,7 @@ import type { FixedIngredientNameRequestsOptions } from './support/server/FixedI
 import { App } from '../src/App.js';
 import type { SessionState } from '../src/session/Session.js';
 import type { StockItemsOutcome } from '../src/server/StockItemRequests.js';
-import type { MealOutcome } from '../src/server/MealRequests.js';
+import type { MealListOutcome, MealOutcome } from '../src/server/MealRequests.js';
 import type {
   LatestSuggestionOutcome,
   RequestNewMealsOutcome,
@@ -88,7 +88,10 @@ function renderApp(
 
   // **台本は渡された観点だけが持つ。** 献立詳細は開かれるまで取りに行かないので
   // （B-53 規則1）、詳細が本題でない観点では呼ばれる口が1つも無い。
-  const meals = new FixedMealRequests(mealOptions);
+  //
+  // **ただし履歴は既定で「取れなかった」を配る**（B-54b 規則12）。門はサインイン済みになると
+  // 必ず取りに行くので、履歴が本題でない観点でも台本が1つ要る。
+  const meals = new FixedMealRequests({ list: [{ outcome: 'failed' }], ...mealOptions });
 
   render(
     <App
@@ -102,6 +105,7 @@ function renderApp(
       listIngredientNames={ingredientNames.listIngredientNames}
       showMeal={meals.showMeal}
       addCookingRecord={meals.addCookingRecord}
+      listMeals={meals.listMeals}
     />,
   );
 
@@ -1558,5 +1562,875 @@ describe('門 App の献立詳細', () => {
     fireEvent.click(closeMealDetailOperation());
 
     expect(await screen.findByText('肉じゃが')).not.toBeNull();
+  });
+});
+
+/**
+ * 門 App の履歴タブ（B-54b 3周目 / 設計 6章 規則6・9〜15 / 7章 行2）。
+ *
+ * **列の見せ方そのもの**（1列ずつ・並び・件数・案内の出し分け）は `HistoryTab.test.tsx` の
+ * 持ち分であり、ここで二重に書かない。門の判断は**いつ履歴を取りに行くか**と、
+ * **開いた献立をどのタブに描き、閉じたらどこへ戻すか**である。
+ *
+ * **取り直したかどうかは画面で検める** — 台本の2件目の名称が出れば取り直している。
+ * 件数（`listCount`）を観るのは「サインイン前は取りに行かない」の1件だけである。
+ */
+describe('門 App の履歴タブ', () => {
+  const NIKUJAGA = '肉じゃが';
+  const GINGER_PORK = '豚こま肉と白菜の生姜焼き';
+  const STIR_FRY = 'にんじんと卵の炒めもの';
+  const NEW_MEAL = '新しいご飯';
+  /** 詳細に出る名称。**行の名称と別にしておく** — 行と詳細のどちらが出ているかを見分ける。 */
+  const DETAIL = '詳細の献立';
+  /** 献立タブのカードに出る名称。 */
+  const SUGGESTED = '提案の献立';
+  /** 取り直していないことを観るための、提案の2件目の台本に置く名称。 */
+  const ANOTHER_SUGGESTED = '別の提案の献立';
+
+  function summaryOf(mealId: string, title: string): MealSummaryOutput {
+    return { mealId, title, ingredientCount: 2 };
+  }
+
+  const mealA = summaryOf('meal-a', NIKUJAGA);
+  const mealB = summaryOf('meal-b', GINGER_PORK);
+  const mealC = summaryOf('meal-c', STIR_FRY);
+
+  function listed(
+    seen: readonly MealSummaryOutput[],
+    cooked: readonly MealSummaryOutput[] = [],
+  ): MealListOutcome {
+    return { outcome: 'loaded', meals: { seen: [...seen], cooked: [...cooked] } };
+  }
+
+  /** 取れた献立1件。**材料を持たせない** — 名称以外の文字が画面に混ざらないようにする。 */
+  function shownMealOf(mealId: string, title: string): MealOutcome {
+    return {
+      outcome: 'shown',
+      meal: {
+        mealId,
+        title,
+        ingredients: [],
+        steps: [],
+        coverage: { covered: [], missing: [] },
+      },
+    };
+  }
+
+  /** 提案が1件出ている状態。**カードの中の開く操作を押せる。** */
+  function suggestedOne(mealId: string, title: string): LatestSuggestionOutcome {
+    return {
+      outcome: 'suggested',
+      pantryChanged: false,
+      suggestion: {
+        id: `suggestion-${mealId}`,
+        generatedAt: '2026-09-20T09:00:00.000Z',
+        entries: [
+          {
+            mealId,
+            origin: 'reused',
+            title,
+            ingredients: [],
+            steps: [],
+            coverage: { covered: [], missing: [] },
+          },
+        ],
+      },
+    };
+  }
+
+  /** 「新しい献立を求める」が返す提案（`requestNewMeals` の台本用）。 */
+  function newSuggestion(mealId: string, title: string): RequestNewMealsOutcome {
+    return {
+      outcome: 'suggested',
+      suggestion: {
+        id: `suggestion-${mealId}`,
+        generatedAt: '2026-09-21T09:00:00.000Z',
+        entries: [
+          {
+            mealId,
+            origin: 'generated',
+            title,
+            ingredients: [],
+            steps: [],
+            coverage: { covered: [], missing: [] },
+          },
+        ],
+      },
+    };
+  }
+
+  function openHistory(): void {
+    fireEvent.click(historyTab());
+  }
+
+  /** 名称で行を引き、その行の開く操作を押す。**行の中の操作は1つだけ**である（規則8）。 */
+  async function openHistoryRow(title: string): Promise<void> {
+    await screen.findByText(title);
+    const row = screen
+      .getAllByRole('listitem')
+      .find((item) => within(item).queryByText(title) !== null);
+    if (row === undefined) throw new Error(`${title} の行が無い`);
+
+    fireEvent.click(within(row).getByRole('button'));
+  }
+
+  /** 献立タブのカードの開く操作を押す。**カード1枚の回はカードの中の1つだけ**である（B-53）。 */
+  async function openCard(): Promise<void> {
+    const card = (await screen.findAllByRole('listitem'))[0];
+    if (card === undefined) throw new Error('カードが1枚も無い');
+
+    fireEvent.click(within(card).getByRole('button'));
+  }
+
+  /** 列の切り替え（`aria-pressed` を持つ操作）。読み込み中と取れなかった回には出ない。 */
+  function columnToggles(): readonly HTMLElement[] {
+    return screen.queryAllByRole('button').filter((button) => button.hasAttribute('aria-pressed'));
+  }
+
+  /** 押されていない側の列へ切り替える。**先に1つだけであることを確かめる。** */
+  function switchColumn(): void {
+    const toggles = screen.getAllByRole('button', { pressed: false });
+    expect(toggles).toHaveLength(1);
+
+    const [toggle] = toggles;
+    if (toggle === undefined) throw new Error('押されていない切り替えが無い');
+
+    fireEvent.click(toggle);
+  }
+
+  /** 詳細に出ている操作は2つ（閉じる／これを作った）である（B-53）。 */
+  const DETAIL_OPERATION_COUNT = 2;
+
+  function closeDetailOperation(): HTMLElement {
+    return operationAt(0, DETAIL_OPERATION_COUNT);
+  }
+
+  function cookedOperation(): HTMLElement {
+    return operationAt(1, DETAIL_OPERATION_COUNT);
+  }
+
+  /** 記録の結末が届いたこと（案内が1つ出る）を待つ。**文言は見ない。** */
+  async function waitForRecordNotice(): Promise<void> {
+    await waitFor(() => {
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+    });
+  }
+
+  /** 献立の側（`FixedMealRequests`）の保留を解く。 */
+  async function settleMeals(meals: FixedMealRequests): Promise<void> {
+    await act(async () => {
+      meals.settle();
+    });
+  }
+
+  // --- 取りに行く時機（規則12・14・15） ---
+
+  it('サインインしていない間は、履歴を取りに行かない', () => {
+    // 規則12: 叩いても 401 が返るだけである。**件数を断定するのはこの1件だけ。**
+    const { meals } = renderApp(
+      { initialState: 'signedOut' },
+      {},
+      {},
+      {},
+      {
+        list: [listed([mealA])],
+      },
+    );
+
+    expect(meals.listCount).toBe(0);
+  });
+
+  it('サインイン済みになると、履歴タブを開けばサーバから取れた行が出ている', async () => {
+    // 規則12 / FR-28
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA])],
+      },
+    );
+
+    openHistory();
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+  });
+
+  it('履歴タブを出て戻っても、履歴を取り直さない', async () => {
+    // 規則12: タブの移動では取り直さない。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA]), listed([mealB])],
+      },
+    );
+
+    openHistory();
+    await screen.findByText(NIKUJAGA);
+    openPantry();
+    await screen.findByText(carrot.name);
+    openHistory();
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+    expect(screen.queryByText(GINGER_PORK)).toBeNull();
+  });
+
+  it('履歴から開いた詳細を閉じても、履歴を取り直さない', async () => {
+    // 規則12: 詳細の開閉では取り直さない。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA]), listed([mealB])],
+        show: [shownMealOf('meal-a', DETAIL)],
+      },
+    );
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+    fireEvent.click(closeDetailOperation());
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+    expect(screen.queryByText(GINGER_PORK)).toBeNull();
+  });
+
+  it('在庫の登録が通っても、履歴を取り直さない', async () => {
+    // 規則12: 在庫の登録・更新・削除では献立は増えも減りもしない（登録で代表する）。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot), loaded(chineseCabbage)], register: [{ outcome: 'registered' }] },
+      {},
+      {},
+      { list: [listed([mealA]), listed([mealB])] },
+    );
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    fireEvent.click(openRegisterOperation());
+    fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
+    fireEvent.click(saveAndCloseOperation());
+    await screen.findByText(chineseCabbage.name);
+
+    openHistory();
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+    expect(screen.queryByText(GINGER_PORK)).toBeNull();
+  });
+
+  it('調理記録が通ると、その献立は以前見た列から消える', async () => {
+    // 規則12 / FR-28・29: 記録で献立は「以前見た」から「つくった」へ移る（ADR-068 決定3）。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA]), listed([], [mealA])],
+        show: [shownMealOf('meal-a', DETAIL)],
+        addCookingRecord: [{ outcome: 'recorded' }],
+      },
+    );
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+    fireEvent.click(cookedOperation());
+    await waitForRecordNotice();
+    fireEvent.click(closeDetailOperation());
+
+    // 切り替えが出ている＝取れた一覧を描いている（読み込み中には出ない）。
+    await waitFor(() => {
+      expect(columnToggles()).toHaveLength(2);
+      expect(screen.queryByText(NIKUJAGA)).toBeNull();
+    });
+  });
+
+  it('調理記録が通ると、その献立はつくった列に出る', async () => {
+    // 規則12 / FR-29
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA]), listed([], [mealA])],
+        show: [shownMealOf('meal-a', DETAIL)],
+        addCookingRecord: [{ outcome: 'recorded' }],
+      },
+    );
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+    fireEvent.click(cookedOperation());
+    await waitForRecordNotice();
+    fireEvent.click(closeDetailOperation());
+    await waitFor(() => {
+      expect(columnToggles()).toHaveLength(2);
+      expect(screen.queryByText(NIKUJAGA)).toBeNull();
+    });
+
+    switchColumn();
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+  });
+
+  it('調理記録が断られた回は、履歴を取り直さない', async () => {
+    // 規則12: 取り直すのは通った回だけである。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA]), listed([mealB])],
+        show: [shownMealOf('meal-a', DETAIL)],
+        addCookingRecord: [{ outcome: 'rejected', rule: 'addCookingRecord.mealNotFound' }],
+      },
+    );
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+    fireEvent.click(cookedOperation());
+    await waitForRecordNotice();
+    fireEvent.click(closeDetailOperation());
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+    expect(screen.queryByText(GINGER_PORK)).toBeNull();
+  });
+
+  it('調理記録が通っても、在庫一覧を取り直さない', async () => {
+    // 規則13 / C-8: 「作った」を記録しても在庫は減らない。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot), loaded(chineseCabbage)] },
+      {},
+      {},
+      {
+        list: [listed([mealA])],
+        show: [shownMealOf('meal-a', DETAIL)],
+        addCookingRecord: [{ outcome: 'recorded' }],
+      },
+    );
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+    fireEvent.click(cookedOperation());
+    await waitForRecordNotice();
+
+    openPantry();
+
+    expect(await screen.findByText(carrot.name)).not.toBeNull();
+    expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+  });
+
+  it('調理記録が通っても、保存済みの提案を取り直さない', async () => {
+    // 規則13: 取り直すのは履歴だけである。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne('meal-s', SUGGESTED), suggestedOne('meal-t', ANOTHER_SUGGESTED)] },
+      {},
+      {
+        list: [listed([mealA])],
+        show: [shownMealOf('meal-a', DETAIL)],
+        addCookingRecord: [{ outcome: 'recorded' }],
+      },
+    );
+
+    await screen.findByText(SUGGESTED);
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+    fireEvent.click(cookedOperation());
+    await waitForRecordNotice();
+
+    fireEvent.click(mealsTab());
+
+    expect(await screen.findByText(SUGGESTED)).not.toBeNull();
+    expect(screen.queryByText(ANOTHER_SUGGESTED)).toBeNull();
+  });
+
+  it('履歴から開いた詳細で記録が通っても、詳細は開いたままである', async () => {
+    // 規則13 / B-53 規則11: 履歴を取り直しても詳細は閉じない。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA])],
+        show: [shownMealOf('meal-a', DETAIL)],
+        addCookingRecord: [{ outcome: 'recorded' }],
+      },
+    );
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+    fireEvent.click(cookedOperation());
+    await waitForRecordNotice();
+
+    expect(screen.queryByText(DETAIL)).not.toBeNull();
+    expect(screen.queryByText(NIKUJAGA)).toBeNull();
+  });
+
+  it('新しい献立が届くと、履歴を取り直して新しい献立が以前見た列に出る', async () => {
+    // 規則12 / FR-28: 生成された献立は、表示された時点で「以前見た献立」になる。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { requestNewMeals: [newSuggestion('meal-n', NEW_MEAL)] },
+      {},
+      { list: [listed([mealA]), listed([summaryOf('meal-n', NEW_MEAL), mealA])] },
+    );
+
+    await screen.findByRole('button');
+    fireEvent.click(screen.getAllByRole('button').at(-1) as HTMLElement);
+    await screen.findByText(NEW_MEAL);
+
+    openHistory();
+
+    expect(await screen.findByText(NEW_MEAL)).not.toBeNull();
+  });
+
+  it('在庫が足りない結末では、履歴を取り直さない', async () => {
+    // 規則12 / 設計 10章 前提4: 生成が起きず献立は増えない。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {
+        show: [suggestedOne('meal-s', SUGGESTED)],
+        requestNewMeals: [{ outcome: 'insufficientStockItems' }],
+      },
+      {},
+      { list: [listed([mealA]), listed([mealB])] },
+    );
+
+    await screen.findByText(SUGGESTED);
+    fireEvent.click(screen.getAllByRole('button').at(-1) as HTMLElement);
+    await waitFor(() => {
+      expect(screen.queryByText(SUGGESTED)).toBeNull();
+    });
+
+    openHistory();
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+    expect(screen.queryByText(GINGER_PORK)).toBeNull();
+  });
+
+  it('生成の上限に達した結末では、履歴を取り直さない', async () => {
+    // 規則12 / 設計 10章 前提4
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {
+        show: [suggestedOne('meal-s', SUGGESTED)],
+        requestNewMeals: [{ outcome: 'generationLimitReached' }],
+      },
+      {},
+      { list: [listed([mealA]), listed([mealB])] },
+    );
+
+    await screen.findByText(SUGGESTED);
+    fireEvent.click(screen.getAllByRole('button').at(-1) as HTMLElement);
+    await waitFor(() => {
+      expect(screen.queryByText(SUGGESTED)).toBeNull();
+    });
+
+    openHistory();
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+    expect(screen.queryByText(GINGER_PORK)).toBeNull();
+  });
+
+  it('新しい献立を求めて失敗した回は、履歴を取り直さない', async () => {
+    // 規則12 / 設計 10章 前提4
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne('meal-s', SUGGESTED)], requestNewMeals: [{ outcome: 'failed' }] },
+      {},
+      { list: [listed([mealA]), listed([mealB])] },
+    );
+
+    await screen.findByText(SUGGESTED);
+    fireEvent.click(screen.getAllByRole('button').at(-1) as HTMLElement);
+    await waitFor(() => {
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+    });
+
+    openHistory();
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+    expect(screen.queryByText(GINGER_PORK)).toBeNull();
+  });
+
+  it('取り直している間は、前の行を出さない', async () => {
+    // 規則14: 効果の頭で「読み込み中」にする（先行 B-22 規則10）。
+    const { meals } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA]), { heldUntilSettled: listed([mealB]) }],
+        show: [shownMealOf('meal-a', DETAIL)],
+        addCookingRecord: [{ outcome: 'recorded' }],
+      },
+    );
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+    fireEvent.click(cookedOperation());
+    await waitForRecordNotice();
+    fireEvent.click(closeDetailOperation());
+
+    expect(screen.queryByText(NIKUJAGA)).toBeNull();
+    expect(screen.queryByText(GINGER_PORK)).toBeNull();
+
+    await settleMeals(meals);
+  });
+
+  it('遅れて届いた古い取得は、後から取り直した履歴を上書きしない', async () => {
+    // 規則14: 効果が解除されたら結果を捨てる。
+    const { session, meals } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      { list: [{ heldUntilSettled: listed([mealA]) }, listed([mealB])] },
+    );
+
+    emit(session, 'signedOut');
+    emit(session, 'signedIn');
+    openHistory();
+    await screen.findByText(GINGER_PORK);
+
+    await settleMeals(meals);
+
+    expect(screen.queryByText(GINGER_PORK)).not.toBeNull();
+    expect(screen.queryByText(NIKUJAGA)).toBeNull();
+  });
+
+  it('サインアウトしている間は、前の世帯の行を画面に残さない', async () => {
+    // 規則15 / NFR-09 / C-9
+    const { session } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA])],
+      },
+    );
+
+    openHistory();
+    await screen.findByText(NIKUJAGA);
+    emit(session, 'signedOut');
+
+    expect(screen.queryByText(NIKUJAGA)).toBeNull();
+  });
+
+  it('サインアウトして入り直すと取り直し、前の世帯の行を出さない', async () => {
+    // 規則15 / NFR-09 / C-9
+    const { session } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA]), listed([mealB])],
+      },
+    );
+
+    openHistory();
+    await screen.findByText(NIKUJAGA);
+    emit(session, 'signedOut');
+    emit(session, 'signedIn');
+    openHistory();
+
+    expect(await screen.findByText(GINGER_PORK)).not.toBeNull();
+    expect(screen.queryByText(NIKUJAGA)).toBeNull();
+  });
+
+  // --- 詳細の出どころと戻り先（規則6・9〜11、7章 行2） ---
+
+  it('履歴の行の開く操作を押すと、その献立を取りに行って履歴タブに詳細を出す', async () => {
+    // 規則8・11 / FR-30
+    const { meals } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([summaryOf('m1', NIKUJAGA)])],
+        show: [shownMealOf('m1', DETAIL)],
+      },
+    );
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+
+    expect(await screen.findByText(DETAIL)).not.toBeNull();
+    expect(meals.shownMealIds).toEqual(['m1']);
+  });
+
+  it('履歴から開いた詳細を閉じると、履歴の一覧に戻る', async () => {
+    // 規則9 / 画面設計 2.3: 戻り先は開いたタブの一覧である。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA])],
+        show: [shownMealOf('meal-a', DETAIL)],
+      },
+    );
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+    fireEvent.click(closeDetailOperation());
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+  });
+
+  it('履歴から開いた詳細は、献立タブには出ない', async () => {
+    // 規則9: 詳細は出どころのタブにだけ描く。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne('meal-s', SUGGESTED)] },
+      {},
+      { list: [listed([mealA])], show: [shownMealOf('meal-a', DETAIL)] },
+    );
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+    fireEvent.click(mealsTab());
+
+    expect(await screen.findByText(SUGGESTED)).not.toBeNull();
+    expect(screen.queryByText(DETAIL)).toBeNull();
+  });
+
+  it('履歴から開いた詳細は、タブを移って戻っても開いたままである', async () => {
+    // 規則9 / ADR-066: 開いた献立は門が持つ。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne('meal-s', SUGGESTED)] },
+      {},
+      { list: [listed([mealA])], show: [shownMealOf('meal-a', DETAIL)] },
+    );
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+    fireEvent.click(mealsTab());
+    await screen.findByText(SUGGESTED);
+    openHistory();
+
+    expect(await screen.findByText(DETAIL)).not.toBeNull();
+  });
+
+  it('献立タブから開いた詳細は、履歴タブには出ない', async () => {
+    // 規則9
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne('meal-s', SUGGESTED)] },
+      {},
+      { list: [listed([mealA])], show: [shownMealOf('meal-s', DETAIL)] },
+    );
+
+    await openCard();
+    await screen.findByText(DETAIL);
+    openHistory();
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+    expect(screen.queryByText(DETAIL)).toBeNull();
+  });
+
+  it('献立タブで詳細を開いたまま履歴から別の献立を開くと、献立タブにはカードが出る', async () => {
+    // 規則10: 開いている献立は1つで、出どころごと置き換わる。
+    const MEALS_TAB_DETAIL = '献立タブの詳細';
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne('m1', SUGGESTED)] },
+      {},
+      {
+        list: [listed([summaryOf('m2', NIKUJAGA)])],
+        show: [shownMealOf('m1', MEALS_TAB_DETAIL), shownMealOf('m2', DETAIL)],
+      },
+    );
+
+    await openCard();
+    await screen.findByText(MEALS_TAB_DETAIL);
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+    fireEvent.click(mealsTab());
+
+    expect(await screen.findByText(SUGGESTED)).not.toBeNull();
+    expect(screen.queryByText(MEALS_TAB_DETAIL)).toBeNull();
+  });
+
+  it('献立タブで記録したあと履歴から別の献立を開くと、前の記録の結末は残らない', async () => {
+    // 規則10 / 先行 B-53 規則12: 記録の案内は「いまの1回」の結末である。
+    const MEALS_TAB_DETAIL = '献立タブの詳細';
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne('m1', SUGGESTED)] },
+      {},
+      {
+        list: [listed([summaryOf('m2', NIKUJAGA)])],
+        show: [shownMealOf('m1', MEALS_TAB_DETAIL), shownMealOf('m2', DETAIL)],
+        addCookingRecord: [{ outcome: 'recorded' }],
+      },
+    );
+
+    await openCard();
+    await screen.findByText(MEALS_TAB_DETAIL);
+    fireEvent.click(cookedOperation());
+    await waitForRecordNotice();
+    const noticesWhileRecorded = screen.queryAllByRole('status').length;
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+
+    expect(screen.queryAllByRole('status').length).toBeLessThan(noticesWhileRecorded);
+  });
+
+  it('履歴から開いた詳細で記録の操作を押すと、その献立に記録を足す', async () => {
+    // 規則11 / FR-22: 献立タブから開いたものと同じ口で記録する。
+    const { meals } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([summaryOf('m1', NIKUJAGA)])],
+        show: [shownMealOf('m1', DETAIL)],
+        addCookingRecord: [{ outcome: 'recorded' }],
+      },
+    );
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+    fireEvent.click(cookedOperation());
+
+    await waitFor(() => {
+      expect(meals.recordedMealIds).toEqual(['m1']);
+    });
+  });
+
+  it('履歴から同じ献立を開き直すと、取り直した詳細が出る', async () => {
+    // 規則11 / FR-32: 充足は開いた時点の在庫で算出されたものでなければならない。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA])],
+        show: [shownMealOf('meal-a', '前の詳細'), shownMealOf('meal-a', '取り直した詳細')],
+      },
+    );
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText('前の詳細');
+    fireEvent.click(closeDetailOperation());
+    await openHistoryRow(NIKUJAGA);
+
+    expect(await screen.findByText('取り直した詳細')).not.toBeNull();
+  });
+
+  it('履歴から開いた献立が断られても、閉じると履歴の一覧に戻る', async () => {
+    // 7章 行2 / B-53: 断られた回も閉じる操作は残る。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA])],
+        show: [{ outcome: 'rejected', rule: 'showMeal.mealNotFound' }],
+      },
+    );
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await waitFor(() => {
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+    });
+    // 断られた回の詳細に出ている操作は「閉じる」の1つだけである（記録の操作は取れた枝にだけ）。
+    fireEvent.click(operationAt(0, 1));
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+  });
+
+  it('サインアウトすると、履歴から開いた詳細も閉じる', async () => {
+    // 規則15 / NFR-09
+    const { session } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA])],
+        show: [shownMealOf('meal-a', DETAIL)],
+      },
+    );
+
+    openHistory();
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+    emit(session, 'signedOut');
+    emit(session, 'signedIn');
+    openHistory();
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+    expect(screen.queryByText(DETAIL)).toBeNull();
+  });
+
+  it('つくった側を選んでから別のタブへ移って戻ると、以前見た献立の列に戻る', async () => {
+    // 規則6: 器は選んだタブしか描かないので、列の選択はタブを移ると初期に戻る。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA], [mealC])],
+      },
+    );
+
+    openHistory();
+    await screen.findByText(NIKUJAGA);
+    switchColumn();
+    await screen.findByText(STIR_FRY);
+    fireEvent.click(mealsTab());
+    openHistory();
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+    expect(screen.queryByText(STIR_FRY)).toBeNull();
   });
 });

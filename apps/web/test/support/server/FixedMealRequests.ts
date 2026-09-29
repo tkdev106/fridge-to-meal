@@ -12,6 +12,8 @@
 import type {
   AddCookingRecord,
   AddCookingRecordOutcome,
+  ListMeals,
+  MealListOutcome,
   MealOutcome,
   ShowMeal,
 } from '../../../src/server/MealRequests.js';
@@ -23,14 +25,18 @@ export type FixedMealRequestsOptions = {
   readonly show?: readonly Delivery<MealOutcome>[];
   /** 調理記録の結末の台本。同じく渡さなかったら呼ばれた時点で落ちる。 */
   readonly addCookingRecord?: readonly Delivery<AddCookingRecordOutcome>[];
+  /** 献立の履歴の結末の台本（B-54b）。同じく渡さなかったら呼ばれた時点で落ちる。 */
+  readonly list?: readonly Delivery<MealListOutcome>[];
 };
 
 export class FixedMealRequests {
   readonly #pending = new PendingReleases();
   readonly #show: DeliveryLine<MealOutcome>;
   readonly #addCookingRecord: DeliveryLine<AddCookingRecordOutcome>;
+  readonly #list: DeliveryLine<MealListOutcome>;
   readonly #shownMealIds: string[] = [];
   readonly #recordedMealIds: string[] = [];
+  #listCount = 0;
 
   constructor(options: FixedMealRequestsOptions = {}) {
     this.#show = new DeliveryLine(
@@ -42,6 +48,11 @@ export class FixedMealRequests {
       options.addCookingRecord ?? [],
       this.#pending,
       'この観点では調理記録を足さない',
+    );
+    this.#list = new DeliveryLine(
+      options.list ?? [],
+      this.#pending,
+      'この観点では献立の履歴を取りに行かない',
     );
   }
 
@@ -56,6 +67,21 @@ export class FixedMealRequests {
 
     return this.#addCookingRecord.deliver();
   };
+
+  /** 献立の履歴の口（B-54b）。 */
+  readonly listMeals: ListMeals = () => {
+    this.#listCount += 1;
+
+    return this.#list.deliver();
+  };
+
+  /**
+   * 履歴を取りに行った回数。**使いどころは「取りに行かないこと」の観点に限る**
+   * （先行 `FixedSuggestionRequests.showCount`）。
+   */
+  get listCount(): number {
+    return this.#listCount;
+  }
 
   /** 取りに行った献立の識別子を、取りに行った順に。 */
   get shownMealIds(): readonly string[] {
