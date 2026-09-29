@@ -100,6 +100,16 @@ function setUp(props: {
   };
 }
 
+/** 献立詳細の出力から、識別子と調理記録の有無を除いた中身（名称・材料・手順・充足）を取り出す。 */
+function mealContentOf(output: Awaited<ReturnType<ShowMeal>>) {
+  return {
+    title: output.title,
+    ingredients: output.ingredients,
+    steps: output.steps,
+    coverage: output.coverage,
+  };
+}
+
 /** deps の形。在庫を書き換える口を1つも取らないことを型として主張する（C-8 / 規則10）。 */
 type ShowMealDeps = Parameters<typeof showMeal>[0];
 
@@ -425,6 +435,110 @@ describe('献立1件を充足つきで返す ShowMeal', () => {
     });
   });
 
+  describe('調理記録の有無', () => {
+    it('調理記録が1件もない献立は cooked が偽になる', async () => {
+      // 規則1 / FR-31 / ADR-070 決定2: 0件なら偽。
+      const { show } = await setUp({ meals: [meal({ cookingRecords: [] })] });
+
+      const output = await show(ourHousehold, mealIdOf(idA));
+
+      expect(output.cooked).toBe(false);
+    });
+
+    it('調理記録が1件ある献立は cooked が真になる', async () => {
+      // 規則1 / FR-31 / ADR-070 決定2: 1件以上なら真（ADR-068 決定3 の振り分けと同じ判定）。
+      const { show } = await setUp({
+        meals: [
+          meal({
+            cookingRecords: [createCookingRecord({ cookedAt: dateTimeOf('2026-09-20T10:00:00Z') })],
+          }),
+        ],
+      });
+
+      const output = await show(ourHousehold, mealIdOf(idA));
+
+      expect(output.cooked).toBe(true);
+    });
+
+    it('調理記録が複数ある献立も cooked は真で、件数を載せない', async () => {
+      // 規則1 / 規則4 / ADR-070 決定2: 件数によって値の意味を変えない。
+      const { show } = await setUp({
+        meals: [
+          meal({
+            cookingRecords: [
+              createCookingRecord({ cookedAt: dateTimeOf('2026-09-18T10:00:00Z') }),
+              createCookingRecord({ cookedAt: dateTimeOf('2026-09-19T10:00:00Z') }),
+              createCookingRecord({ cookedAt: dateTimeOf('2026-09-20T10:00:00Z') }),
+            ],
+          }),
+        ],
+      });
+
+      const output = await show(ourHousehold, mealIdOf(idA));
+
+      expect(output.cooked).toBe(true);
+    });
+
+    it('他世帯の調理記録のある献立を指したら断り、cooked を返さない', async () => {
+      // 規則2 / C-9 / NFR-09 / ADR-070 決定3: 値は世帯で引けた献立からだけ導く。
+      const { show } = await setUp({
+        meals: [
+          meal({
+            id: mealIdOf(idB),
+            householdId: neighborHousehold,
+            cookingRecords: [createCookingRecord({ cookedAt: dateTimeOf('2026-09-20T10:00:00Z') })],
+          }),
+        ],
+      });
+
+      await expect(show(ourHousehold, mealIdOf(idB))).rejects.toThrow(MealRuleViolation);
+      await expect(show(ourHousehold, mealIdOf(idB))).rejects.toMatchObject({
+        rule: 'showMeal.mealNotFound',
+      });
+    });
+
+    it('献立詳細の出力は識別子・名称・材料・手順・充足・cooked のほかに何も載せない', async () => {
+      // 規則4 / NFR-09 / ADR-070 決定2: 記録の日時・件数・識別子・世帯を載せない。
+      const { show } = await setUp({
+        meals: [
+          meal({
+            cookingRecords: [createCookingRecord({ cookedAt: dateTimeOf('2026-09-20T10:00:00Z') })],
+          }),
+        ],
+      });
+
+      const output = await show(ourHousehold, mealIdOf(idA));
+
+      expect(Object.keys(output).sort()).toEqual([
+        'cooked',
+        'coverage',
+        'ingredients',
+        'mealId',
+        'steps',
+        'title',
+      ]);
+    });
+
+    it('調理記録のある献立でも、名称・材料・手順・充足は記録のない献立と同じ値を返す', async () => {
+      // 規則5 / FR-30 / C-3 / ADR-009: 記録の有無は献立の中身でも充足でもない。
+      const { show } = await setUp({
+        meals: [
+          meal({ id: mealIdOf(idA), cookingRecords: [] }),
+          meal({
+            id: mealIdOf(idB),
+            cookingRecords: [createCookingRecord({ cookedAt: dateTimeOf('2026-09-20T10:00:00Z') })],
+          }),
+        ],
+        stockItems: [stockItem({ name: 'にんじん', expiryDate: '2026-09-30' })],
+      });
+
+      const withoutRecord = await show(ourHousehold, mealIdOf(idA));
+      const withRecord = await show(ourHousehold, mealIdOf(idB));
+
+      expect(mealContentOf(withRecord)).toEqual(mealContentOf(withoutRecord));
+    });
+  });
+
   describe('提案の1件との一致', () => {
     it('同じ献立と同じ在庫なら、提案の1件と同じ中身を返す', async () => {
       // 規則16 / ADR-065 理由(2): 写しを2つ持たない。由来だけが提案の側にある。
@@ -462,9 +576,12 @@ describe('献立1件を充足つきで返す ShowMeal', () => {
       const entry = suggestionOutput.suggestion.entries[0];
       if (entry === undefined) throw new Error('提案の1件が無かった');
       const { origin, ...entryWithoutOrigin } = entry;
+      // ADR-070 決定1: 調理記録の有無は献立詳細の側にだけあり、提案の1件には無い。
+      const { cooked, ...mealWithoutCooked } = mealOutput;
 
       expect(origin).toBe('reused');
-      expect(mealOutput).toEqual(entryWithoutOrigin);
+      expect(cooked).toBe(false);
+      expect(mealWithoutCooked).toEqual(entryWithoutOrigin);
     });
   });
 });

@@ -54,6 +54,7 @@ function app() {
         ingredients: [],
         steps: [],
         coverage: { covered: [], missing: [] },
+        cooked: false,
       },
     }).show,
     // B-54a で口が増えたことへの機械的な追随。疎通確認の本題ではない。

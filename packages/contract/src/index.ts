@@ -27,6 +27,7 @@ export type {
   MealOutput,
   MealSummaryOutput,
   ShowLatestSuggestionOutput,
+  ShowMealOutput,
   SuggestionEntryOrigin,
   SuggestionEntryOutput,
   SuggestionOutput,

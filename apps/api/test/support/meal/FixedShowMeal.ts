@@ -1,4 +1,4 @@
-import type { MealOutput } from '@fridge-to-meal/contract';
+import type { ShowMealOutput } from '@fridge-to-meal/contract';
 import type { ShowMeal } from '../../../src/contexts/meal/usecase/ShowMeal.js';
 import type { MealId } from '../../../src/contexts/meal/domain/value/MealId.js';
 import type { HouseholdId } from '../../../src/shared/domain/HouseholdId.js';
@@ -17,7 +17,7 @@ import type { HouseholdId } from '../../../src/shared/domain/HouseholdId.js';
  * ようにする。本物のユースケースの型をそのまま名乗るので、**api 層が期待する形が本物と
  * 食い違っていれば型検査で落ちる。**
  */
-export type ShowMealResponse = { readonly returns: MealOutput } | { readonly throws: Error };
+export type ShowMealResponse = { readonly returns: ShowMealOutput } | { readonly throws: Error };
 
 export class FixedShowMeal {
   readonly #response: ShowMealResponse;
