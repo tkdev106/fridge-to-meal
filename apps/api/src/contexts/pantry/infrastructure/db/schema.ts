@@ -57,7 +57,7 @@ export type StockItemRow = typeof stockItems.$inferSelect;
 export type NewStockItemRow = typeof stockItems.$inferInsert;
 
 /**
- * これまでに保存した在庫品の名称（B-50d / FR-02 / ADR-068）。`stock_items` の行を消しても
+ * これまでに保存した在庫品の名称（B-50d / FR-02 / ADR-069）。`stock_items` の行を消しても
  * ここは消えないので、消した在庫品の名称も食材名の補完に残る。
  *
  * **主キーは (世帯, 名称) の組。** 同じ世帯の同じ名称（完全一致。C-6）は1行に畳む。世帯が

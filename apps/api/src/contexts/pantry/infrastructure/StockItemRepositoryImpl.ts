@@ -59,7 +59,7 @@ export class StockItemRepositoryImpl implements StockItemRepository {
   }
 
   /**
-   * その世帯でこれまでに保存した在庫品の名称をすべて返す（B-50d / ADR-068）。0行なら空の配列。
+   * その世帯でこれまでに保存した在庫品の名称をすべて返す（B-50d / ADR-069）。0行なら空の配列。
    *
    * **引数の世帯で必ず絞る**（C-9）。クレームで見えている名称でも、渡された世帯と食い違えば
    * 返さない。全件を返す口なので**並び順を約束せず**、`order by` を足さない（並べるのは
@@ -119,7 +119,7 @@ export class StockItemRepositoryImpl implements StockItemRepository {
         },
       });
 
-    // 名称を同じ handle の上で残す（B-50d / ADR-068）。在庫品と同じトランザクションなので、
+    // 名称を同じ handle の上で残す（B-50d / ADR-069）。在庫品と同じトランザクションなので、
     // 片方だけが残ることは無い。同じ世帯の同じ名称は主キーが1行に畳み、2度目は断らない。
     // **主キーに世帯が入るので、`do nothing` が他世帯の行に黙って当たることは無い**
     // （献立の保存が `do nothing` を避けた理由は、ここには当たらない）。
@@ -131,7 +131,7 @@ export class StockItemRepositoryImpl implements StockItemRepository {
 
   /**
    * 物理削除する（FR-06）。**名称の表（`stock_item_names`）には触れない** — 消した在庫品の名称も
-   * 食材名の補完に残す（B-50d / ADR-068）。献立は材料を複製済みで在庫品を参照しないため、消しても
+   * 食材名の補完に残す（B-50d / ADR-069）。献立は材料を複製済みで在庫品を参照しないため、消しても
    * 献立は壊れない（C-5）。
    *
    * `id` と `householdId` の**両方**で絞る（設計 規則3・12 / C-9）。**行が無くても

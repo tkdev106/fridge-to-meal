@@ -22,6 +22,8 @@ import type { CookingRecordRoutesDeps } from './contexts/meal/api/CookingRecordR
 import { createCookingRecordRoutes } from './contexts/meal/api/CookingRecordRoutes.js';
 import type { IngredientNameRoutesDeps } from './contexts/meal/api/IngredientNameRoutes.js';
 import { createIngredientNameRoutes } from './contexts/meal/api/IngredientNameRoutes.js';
+import type { MealListRoutesDeps } from './contexts/meal/api/MealListRoutes.js';
+import { createMealListRoutes } from './contexts/meal/api/MealListRoutes.js';
 import type { MealRoutesDeps } from './contexts/meal/api/MealRoutes.js';
 import { createMealRoutes } from './contexts/meal/api/MealRoutes.js';
 import type { SuggestionRoutesDeps } from './contexts/meal/api/SuggestionRoutes.js';
@@ -37,6 +39,7 @@ import { addCookingRecord } from './contexts/meal/usecase/AddCookingRecord.js';
 import { suggestMeals, suggestNewMeals } from './contexts/meal/usecase/SuggestMeals.js';
 import { showLatestSuggestion } from './contexts/meal/usecase/ShowLatestSuggestion.js';
 import { showMeal } from './contexts/meal/usecase/ShowMeal.js';
+import { listMeals } from './contexts/meal/usecase/ListMeals.js';
 import { listIngredientNames } from './contexts/meal/usecase/ListIngredientNames.js';
 import { createStockItemRoutes } from './contexts/pantry/api/StockItemRoutes.js';
 import type { StockItemIdGenerator } from './contexts/pantry/domain/port/StockItemIdGenerator.js';
@@ -94,7 +97,8 @@ export type AppDependencies = Parameters<typeof createStockItemRoutes>[0] &
   SuggestionRoutesDeps &
   IngredientNameRoutesDeps &
   CookingRecordRoutesDeps &
-  MealRoutesDeps;
+  MealRoutesDeps &
+  MealListRoutesDeps;
 
 /** 差し替えられる出口。既定は実行環境の `fetch`。テストは `FixedFetchJwks` を渡す。 */
 export type CompositionPorts = { readonly fetchJwks?: FetchJwks };
@@ -248,6 +252,11 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
         mealRepository: new MealRepositoryImpl(tx),
       }),
     ),
+    // 献立の一覧の口も同じ1要求1トランザクションで包む（B-54a / ADR-068 / ADR-029 決定3(a)）。
+    // **献立のリポジトリしか渡さない** — 在庫も提案も読まないことが依存の形から読める（C-8）。
+    listMeals: transactionPerRequest(env, (tx) =>
+      listMeals({ mealRepository: new MealRepositoryImpl(tx) }),
+    ),
     now,
   };
 }
@@ -322,6 +331,8 @@ export function createApp(deps: AppDependencies): Hono {
   app.route('/', createIngredientNameRoutes(deps));
   app.route('/', createCookingRecordRoutes(deps));
   app.route('/', createMealRoutes(deps));
+  // `GET /meals` は `GET /meals/:id` と形が違い、食い合わない（B-54a）。
+  app.route('/', createMealListRoutes(deps));
 
   return app;
 }

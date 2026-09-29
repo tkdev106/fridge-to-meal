@@ -1,12 +1,12 @@
 -- 保存したことのある在庫品の名称（stock_item_names）の表と RLS ポリシー。backlog B-50d /
--- FR-02 / ADR-068 / ADR-056 / C-9。
+-- FR-02 / ADR-069 / ADR-056 / C-9。
 --
 -- **表を作る部分は `drizzle-kit` の生成物である。** 正はスキーマの側
 -- （`apps/api/src/contexts/pantry/infrastructure/db/schema.ts`）にあり、ここを手で直さない。
 -- **下の RLS の4点だけは手で足す**（生成では出ない）。手順は README、落ちないことの守りは
 -- `apps/api/test/migrations/tableMigrations.test.ts`（表ごとに4点を見る。ADR-056）。
 --
--- **既存の stock_items から遡って入れない**（ADR-068 決定2）。今ある在庫品の名称は
+-- **既存の stock_items から遡って入れない**（ADR-069 決定2）。今ある在庫品の名称は
 -- 食材名の補完の出所に残っている。
 --
 -- **表・RLS の有効化・ポリシーを同じ1ファイルに置き、1トランザクションで通す。** 分けると
