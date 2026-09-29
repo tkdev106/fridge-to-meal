@@ -2,7 +2,7 @@ import type {
   ListIngredientNamesOutput,
   ListMealsOutput,
   ListStockItemsOutput,
-  MealOutput,
+  ShowMealOutput,
   StockItemDto,
   SuggestMealsOutput,
 } from '@fridge-to-meal/contract';
@@ -100,12 +100,13 @@ const ingredientNamesOutcome: ListIngredientNamesOutput = {
  * 献立詳細の口の代役が返す献立1件（B-52）。**他のどの口の結末とも違う中身**にしておく —
  * 経路が別の口に繋がっていたら本体の違いとして現れるように。
  */
-const mealOutcome: MealOutput = {
+const mealOutcome: ShowMealOutput = {
   mealId: '44444444-4444-4444-8444-444444444444',
   title: '肉じゃが',
   ingredients: [{ name: 'にんじん', kind: 'main', amount: '1本' }],
   steps: ['煮る'],
   coverage: { covered: [], missing: [] },
+  cooked: false,
 };
 
 /**

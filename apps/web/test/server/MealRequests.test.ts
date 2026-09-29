@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { ListMealsOutput, MealOutput, MealSummaryOutput } from '@fridge-to-meal/contract';
+import type { ListMealsOutput, MealSummaryOutput, ShowMealOutput } from '@fridge-to-meal/contract';
 import { FixedHttpFetch } from '../support/server/FixedHttpFetch.js';
 import type { HttpDelivery } from '../support/server/FixedHttpFetch.js';
 import { addCookingRecord, listMeals, showMeal } from '../../src/server/MealRequests.js';
@@ -17,8 +17,11 @@ const BASE_URL = 'https://api.example.test';
 const TOKEN = 'access-token';
 const MEAL_ID = 'meal-1';
 
-/** 標本は主材料1件＋調味料1件・手順1件・充足あり（設計 5章 `MealOutput`）。 */
-const meal: MealOutput = {
+/**
+ * 標本は主材料1件＋調味料1件・手順1件・充足あり・記録なし（設計 5章 `MealOutput` /
+ * B-53b 設計 5章 `ShowMealOutput`）。
+ */
+const meal: ShowMealOutput = {
   mealId: MEAL_ID,
   title: '豚こま肉と白菜の生姜焼き',
   ingredients: [
@@ -30,6 +33,7 @@ const meal: MealOutput = {
     covered: [{ name: '豚こま肉', kind: 'main', amount: '300g', expiryDate: '2026-09-20' }],
     missing: [{ name: 'しょうが', kind: 'main', amount: '1かけ' }],
   },
+  cooked: false,
 };
 
 /** トークンが取れる口。**空文字は `null` と同じに扱わない**（先行 `listStockItems`）。 */
@@ -66,7 +70,7 @@ describe('献立1件を取りに行く継ぎ目 showMeal', () => {
 
   it('材料を並べ替えず、件数も数えずそのまま返す', async () => {
     // 並びと印の判断は画面側の純粋関数の持ち分である（規則15 / 規則2）。
-    const unsorted: MealOutput = {
+    const unsorted: ShowMealOutput = {
       ...meal,
       ingredients: [
         { name: '醤油', kind: 'seasoning', amount: '大さじ2' },
@@ -82,7 +86,7 @@ describe('献立1件を取りに行く継ぎ目 showMeal', () => {
 
   it('材料も手順も0件の献立を、失敗に畳まずそのまま返す', async () => {
     // 献立は取れている（規則6）。断ると材料も手順も読めなくなる。
-    const empty: MealOutput = {
+    const empty: ShowMealOutput = {
       ...meal,
       ingredients: [],
       steps: [],
@@ -209,6 +213,30 @@ describe('献立1件を取りに行く継ぎ目 showMeal', () => {
     const { request } = showWith({ ok: true, body: {} });
 
     await expect(request(MEAL_ID)).resolves.toEqual({ outcome: 'failed' });
+  });
+
+  it('記録のある献立が返れば、記録の有無も詰め替えずに結末に載せる', async () => {
+    // B-53b 規則8 / ADR-070 決定1: `cooked` は画面が記録済みの表示に読む。**DTO を詰め替えない**（規則15）。
+    const cookedMeal: ShowMealOutput = { ...meal, cooked: true };
+    const { request } = showWith({ ok: true, body: cookedMeal });
+
+    await expect(request(MEAL_ID)).resolves.toEqual({
+      outcome: 'shown',
+      meal: { ...meal, cooked: true },
+    });
+  });
+
+  it('記録の有無を欠いた本体も、失敗に畳まず献立として受け取る', async () => {
+    // B-53b 設計 10章: `cooked` は検めない（先行 `isSuggested` の構え）。畳むと、欠けた応答が
+    // 「取れなかった」に化けて材料も手順も読めなくなる。
+    const body: unknown = Object.fromEntries(
+      Object.entries(meal).filter(([key]) => key !== 'cooked'),
+    );
+    const { request } = showWith({ ok: true, body });
+
+    const outcome = await request(MEAL_ID);
+
+    expect(outcome.outcome).toBe('shown');
   });
 
   it('充足を欠いた本体も、献立として受け取らない', async () => {

@@ -5,6 +5,7 @@ import type { Meal } from '../../../../src/contexts/meal/domain/entity/Meal.js';
 import { createMeal } from '../../../../src/contexts/meal/domain/entity/Meal.js';
 import type { Suggestion } from '../../../../src/contexts/meal/domain/entity/Suggestion.js';
 import { createSuggestion } from '../../../../src/contexts/meal/domain/entity/Suggestion.js';
+import { createCookingRecord } from '../../../../src/contexts/meal/domain/value/CookingRecord.js';
 import { createMealIngredient } from '../../../../src/contexts/meal/domain/value/MealIngredient.js';
 import { createPantrySnapshot } from '../../../../src/contexts/meal/domain/value/PantrySnapshot.js';
 import type { StockItem } from '../../../../src/contexts/meal/domain/value/StockItem.js';
@@ -259,6 +260,23 @@ describe('保存済みの提案を返す ShowLatestSuggestion', () => {
 
       const stored = await suggestionRepository.findRecentByHousehold(ourHousehold, 10);
       expect(stored).toHaveLength(1);
+    });
+
+    it('保存済みの提案を読むとき、調理記録のある献立でも提案の1件に cooked を載せない', async () => {
+      // B-53b 規則3 / ADR-070 決定1: 調理記録の有無は献立詳細の出力にだけ載る。
+      const { show } = await setUp({
+        suggestions: [storedSuggestion({ mealIds: [idA] })],
+        meals: [
+          meal({
+            cookingRecords: [createCookingRecord({ cookedAt: dateTimeOf('2026-09-20T10:00:00Z') })],
+          }),
+        ],
+      });
+
+      const output = await show(ourHousehold);
+
+      if (output.outcome !== 'suggested') throw new Error('提案が返らなかった');
+      expect('cooked' in (output.suggestion.entries[0] ?? {})).toBe(false);
     });
   });
 

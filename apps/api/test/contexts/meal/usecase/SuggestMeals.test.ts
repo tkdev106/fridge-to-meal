@@ -430,6 +430,24 @@ describe('献立を提案する SuggestMeals', () => {
     expect(suggestionOf(output).entries.map((entry) => entry.origin)).toEqual(['reused', 'reused']);
   });
 
+  it('調理記録のある献立を提案しても、提案の1件に cooked を載せない', async () => {
+    // B-53b 規則3 / ADR-070 決定1: 調理記録の有無は献立詳細の出力にだけ載り、提案の JSON は変わらない。
+    const { suggest } = setUp({
+      stockItems: [stockItem({ name: 'にんじん' })],
+      meals: [
+        meal({
+          id: mealIdOf(idA),
+          ingredients: [mainIngredient('にんじん')],
+          cookingRecords: [createCookingRecord({ cookedAt: dateTimeOf('2026-09-12T10:00:00Z') })],
+        }),
+      ],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect('cooked' in (suggestionOf(output).entries[0] ?? {})).toBe(false);
+  });
+
   it('提案の識別子は、提案の識別子発行器が出した値になる', async () => {
     // ADR-026 / 規則12: 採番はポートの仕事で、本体は乱数を読まない。
     const { suggest } = setUp({

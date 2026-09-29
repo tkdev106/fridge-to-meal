@@ -2,6 +2,8 @@
 //
 // ここにあるのは型だけであり、実行時の検証も関数も持たない。
 // 世帯・調理記録・献立の生成日時はどの型にも持たせない（C-9 / NFR-09 / B-48a 規則12）。
+// **例外は献立詳細の出力 `ShowMealOutput` の `cooked`（記録の有無の真偽1つ）だけ**で、
+// 記録の日時と件数はどこにも載せない（ADR-070 決定1・2 / 結果2）。
 // 由来と種別の union は domain の型を import せず、同じ値をここにも持つ（ADR-003）。
 
 /** 提案の1件の由来（FR-35 / C-4c）。 */
@@ -42,6 +44,9 @@ export type MealOutput = {
   steps: string[];
   coverage: MealCoverageDto;
 };
+
+/** 献立詳細の出力。献立1件の中身に、調理記録が1件以上あるかだけを足したもの（ADR-070） */
+export type ShowMealOutput = MealOutput & { cooked: boolean };
 
 /** 提案の1件。献立1件の中身に、その回の由来（FR-35 / C-4c）だけを足したものである。 */
 export type SuggestionEntryOutput = MealOutput & { origin: SuggestionEntryOrigin };
@@ -114,7 +119,7 @@ export type MealSummaryOutput = {
 
 /**
  * 世帯の献立の一覧（B-54a / ADR-068）。調理記録の無い献立は `seen`、ある献立は `cooked` に入る。
- * **調理記録の有無は、どちらの列に入るかでだけ表れる**（ADR-068 決定3）。
+ * **一覧では、調理記録の有無はどちらの列に入るかでだけ表れる**（ADR-068 決定3。詳細の `ShowMealOutput.cooked` は ADR-070）。
  */
 export type ListMealsOutput = {
   seen: MealSummaryOutput[];

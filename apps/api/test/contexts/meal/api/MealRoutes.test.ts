@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { MealOutput } from '@fridge-to-meal/contract';
+import type { ShowMealOutput } from '@fridge-to-meal/contract';
 import { createMealRoutes } from '../../../../src/contexts/meal/api/MealRoutes.js';
 import { IdentityRuleViolation } from '../../../../src/contexts/identity/domain/error/IdentityRuleViolation.js';
 import { MealRuleViolation } from '../../../../src/contexts/meal/domain/error/MealRuleViolation.js';
@@ -20,7 +20,7 @@ const idA = mealIdOf('22222222-2222-4222-8222-222222222222');
 const accessTokenA = 'access-token-a';
 
 /** 献立1件の出力。**素通しであること**を見るので、中身は空でない形にしておく（規則14）。 */
-const mealOutput: MealOutput = {
+const mealOutput: ShowMealOutput = {
   mealId: '22222222-2222-4222-8222-222222222222',
   title: '肉じゃが',
   ingredients: [{ name: 'にんじん', kind: 'main', amount: '1本' }],
@@ -29,6 +29,7 @@ const mealOutput: MealOutput = {
     covered: [{ name: 'にんじん', kind: 'main', amount: '1本', expiryDate: '2026-09-30' }],
     missing: [{ name: '牛肉', kind: 'main', amount: null }],
   },
+  cooked: false,
 };
 
 /**
@@ -40,7 +41,7 @@ const mealOutput: MealOutput = {
  */
 function setUp(
   overrides: {
-    returns?: MealOutput;
+    returns?: ShowMealOutput;
     throws?: Error;
     identifyHouseholdThrows?: Error;
   } = {},
@@ -126,6 +127,16 @@ describe('献立詳細の経路 MealRoutes', () => {
       const response = await routes.request(mealPath(), getRequest());
 
       await expect(responseBody(response)).resolves.toEqual(mealOutput);
+    });
+
+    it('調理記録の有無 cooked を詰め替えずに応答に載せる', async () => {
+      // 規則7 / FR-31 / ADR-070: 標本の既定は偽なので、真が届けば素通しである。
+      const { routes } = setUp({ returns: { ...mealOutput, cooked: true } });
+
+      const response = await routes.request(mealPath(), getRequest());
+
+      expect(response.status).toBe(200);
+      await expect(responseBody(response)).resolves.toMatchObject({ cooked: true });
     });
 
     it('POST /meals/:id では献立を返さない', async () => {

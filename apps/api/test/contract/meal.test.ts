@@ -5,6 +5,7 @@ import type {
   MealIngredientDto,
   MealOutput,
   MealSummaryOutput,
+  ShowMealOutput,
   SuggestionEntryOutput,
   SuggestMealsOutput,
 } from '@fridge-to-meal/contract';
@@ -288,6 +289,79 @@ describe('献立1件の出力 MealOutput', () => {
     };
 
     expect(output.ingredients[0]?.amount).toBeNull();
+  });
+});
+
+// ここから下は B-53b（献立詳細の出力に調理記録の有無を載せる。ADR-070）。
+
+describe('献立詳細の出力 ShowMealOutput', () => {
+  it('献立詳細の出力は献立1件の出力の中身と調理記録の有無 cooked を持つ', () => {
+    // 規則1 / FR-31 / ADR-070 決定1: `ShowMealOutput = MealOutput & { cooked }`。
+    const output: ShowMealOutput = { ...mealOutput(), cooked: true };
+
+    expect(output.cooked).toBe(true);
+  });
+
+  it('献立詳細の出力では cooked のキーを省略できない', () => {
+    // 設計書 10章: 省略可にすると「無い」と「偽」が2通りになる。
+    // @ts-expect-error 調理記録の有無のキーが無い値は献立詳細の出力ではない
+    const output: ShowMealOutput = mealOutput();
+
+    expect(output).toBeDefined();
+  });
+
+  it('献立詳細の出力の cooked に件数を渡せない', () => {
+    // 規則4 / ADR-070 決定2: 載せるのは有無の真偽1つで、件数ではない。
+    const output: ShowMealOutput = {
+      ...mealOutput(),
+      // @ts-expect-error 調理記録の有無は真偽である
+      cooked: 2,
+    };
+
+    expect(output).toBeDefined();
+  });
+
+  it('献立詳細の出力に調理記録の日時の列を持たせられない', () => {
+    // 規則4 / NFR-09 / ADR-070 決定2: 日時は載せない。
+    const output: ShowMealOutput = {
+      ...mealOutput(),
+      cooked: true,
+      // @ts-expect-error 調理記録の日時は契約に無い
+      cookingRecords: [],
+    };
+
+    expect(output).toBeDefined();
+  });
+
+  it('献立詳細の出力は献立1件の出力として読める', () => {
+    // 規則3 / 規則5 / ADR-070 決定1: 献立の中身は `MealOutput` のまま変えない。
+    const detail: ShowMealOutput = { ...mealOutput(), cooked: false };
+
+    const output: MealOutput = detail;
+
+    expect(output.title).toBe('肉じゃが');
+  });
+
+  it('献立1件の出力に調理記録の有無の真偽を持たせられない', () => {
+    // 規則3 / ADR-070 決定1: `MealOutput` 自体は変えない。
+    const output: MealOutput = {
+      ...mealOutput(),
+      // @ts-expect-error 調理記録の有無は献立1件の出力に無い
+      cooked: true,
+    };
+
+    expect(output).toBeDefined();
+  });
+
+  it('提案の1件に調理記録の有無の真偽を持たせられない', () => {
+    // 規則3 / ADR-067 理由(2) / ADR-070 決定1: 提案の JSON に `cooked` が生えない。
+    const entry: SuggestionEntryOutput = {
+      ...suggestionEntryOutput(),
+      // @ts-expect-error 調理記録の有無は提案の1件に無い
+      cooked: true,
+    };
+
+    expect(entry).toBeDefined();
   });
 });
 

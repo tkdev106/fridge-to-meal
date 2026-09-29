@@ -10,10 +10,13 @@
  * - **役割** … 材料の印は `note`、案内は `status`、注意表示は `complementary`
  * - **こちらが渡したデータ** … 献立の名称・材料の名称と分量・手順の文
  * - **件数** … 印がいくつ出るか、注意表示がいくつ出るか
+ *
+ * **記録済みの表示（B-53b）も文言を留めない。** `cooked` / `recorded` だけが違う2つの描画の
+ * 本文を比べ、**増えた文字**を記録済みの表示として観る（`cookedIndicator`）。
  */
 
 import { describe, expect, it } from 'vitest';
-import type { MealIngredientDto, MealOutput } from '@fridge-to-meal/contract';
+import type { MealIngredientDto, ShowMealOutput } from '@fridge-to-meal/contract';
 import { fireEvent, render, screen, within } from '../../support/dom/renderComponent.js';
 import { MealDetail } from '../../../src/features/meal/MealDetail.js';
 import type { MealDetailProps } from '../../../src/features/meal/MealDetail.js';
@@ -26,7 +29,7 @@ function seasoning(name: string, amount: string | null = null): MealIngredientDt
   return { name, kind: 'seasoning', amount };
 }
 
-function meal(overrides: Partial<MealOutput> = {}): MealOutput {
+function meal(overrides: Partial<ShowMealOutput> = {}): ShowMealOutput {
   return {
     mealId: 'meal-1',
     title: '豚こま肉と白菜の生姜焼き',
@@ -36,6 +39,7 @@ function meal(overrides: Partial<MealOutput> = {}): MealOutput {
       covered: [{ ...main('豚こま肉', '300g'), expiryDate: '2026-09-20' }],
       missing: [],
     },
+    cooked: false,
     ...overrides,
   };
 }
@@ -67,6 +71,58 @@ function cookedControl(): HTMLElement | null {
 /** 閉じる操作（「←」）。 */
 function closeControl(): HTMLElement | null {
   return screen.queryAllByRole('button')[0] ?? null;
+}
+
+/** 描いた本文（`textContent`）を読み、描いたものを片付けて返す。 */
+function bodyTextOf(state: MealDetailProps['meal'], overrides: RenderOverrides = {}): string {
+  const { container, unmount } = renderDetail(state, overrides);
+  const text = container.textContent ?? '';
+
+  unmount();
+
+  return text;
+}
+
+/**
+ * 2つの本文のうち、`after` にだけ増えた文字。共通の先頭と共通の末尾を落とした残りである
+ * （表示が1か所に差し込まれることを前提にする）。
+ */
+function addedTextOf(before: string, after: string): string {
+  let head = 0;
+  while (head < before.length && head < after.length && before[head] === after[head]) {
+    head += 1;
+  }
+
+  let tail = 0;
+  while (
+    tail < before.length - head &&
+    tail < after.length - head &&
+    before[before.length - 1 - tail] === after[after.length - 1 - tail]
+  ) {
+    tail += 1;
+  }
+
+  return after.slice(head, after.length - tail);
+}
+
+/**
+ * 記録済みの表示の文字。**仮の文言を期待値に書かない**（論点3）ので、`cooked` だけが違う
+ * 2つの描画を比べて増えた文字を取り出す（B-53b 規則8）。**何も増えなければここで落ちる** —
+ * 空文字のまま先へ進むと、`toContain('')` が常に通って観察が意味を失う。
+ */
+function cookedIndicator(): string {
+  const withoutRecord = bodyTextOf({ outcome: 'shown', meal: meal({ cooked: false }) });
+  const withRecord = bodyTextOf({ outcome: 'shown', meal: meal({ cooked: true }) });
+
+  const added = addedTextOf(withoutRecord, withRecord);
+  expect(added, '記録のある献立の描画に、増えた文字が無い').not.toBe('');
+
+  return added;
+}
+
+/** `text` に `part` が何回現れるか。 */
+function occurrencesOf(text: string, part: string): number {
+  return text.split(part).length - 1;
 }
 
 describe('献立詳細 MealDetail', () => {
@@ -275,7 +331,7 @@ describe('献立詳細 MealDetail', () => {
   });
 
   it('記録が通っても、記録の操作は同じ位置に残る', () => {
-    // FR-31 の前半。**記録済みかどうかの表示はこの周では出さない**（規則12 / B-53b）。
+    // FR-31 の前半。記録済みの表示を足しても操作は消さない（B-53b 規則9）。
     renderDetail({ outcome: 'shown', meal: meal() }, { recorded: true });
 
     expect(cookedControl()).not.toBeNull();
@@ -286,5 +342,106 @@ describe('献立詳細 MealDetail', () => {
     renderDetail({ outcome: 'shown', meal: meal() });
 
     expect(screen.queryAllByRole('status')).toHaveLength(0);
+  });
+
+  describe('記録済みの表示（B-53b）', () => {
+    it('記録のある献立を開いたら、記録済みの表示を出す', () => {
+      // FR-31 の後半 / B-53b 規則8 / ADR-070: `cooked` は開いた時点の事実である。
+      const withoutRecord = bodyTextOf({ outcome: 'shown', meal: meal({ cooked: false }) });
+      const withRecord = bodyTextOf({ outcome: 'shown', meal: meal({ cooked: true }) });
+
+      expect(addedTextOf(withoutRecord, withRecord)).not.toBe('');
+    });
+
+    it('記録の無い献立を開いただけでは、記録済みの表示を出さない', () => {
+      // B-53b 規則8: `cooked` も `recorded` も偽なら、表示の根拠が無い。
+      const indicator = cookedIndicator();
+
+      renderDetail({ outcome: 'shown', meal: meal({ cooked: false }) }, { recorded: false });
+
+      expect(document.body.textContent).not.toContain(indicator);
+      expect(screen.queryAllByRole('status')).toHaveLength(0);
+    });
+
+    it('記録の無い献立でも、この画面で記録が通ったら記録済みの表示を出す', () => {
+      // B-53b 規則8 / ADR-070 結果3: 門は記録のあとに詳細を取り直さないので、`recorded` で補う。
+      const indicator = cookedIndicator();
+
+      const text = bodyTextOf(
+        { outcome: 'shown', meal: meal({ cooked: false }) },
+        { recorded: true },
+      );
+
+      expect(text).toContain(indicator);
+    });
+
+    it('記録済みの表示は文字で出す', () => {
+      // NFR-17 / B-53b 規則10: 色だけで示さない。**文言そのものは留めない**（論点3）。
+      const indicator = cookedIndicator();
+
+      expect(indicator).toMatch(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u);
+    });
+
+    it('記録済みの表示を読み上げの割り込みにしない', () => {
+      // B-53b 規則10: 利用者の操作の結末ではなく開いた時点の事実であり、`status` は記録の
+      // 結末の案内が使っている。
+      renderDetail(
+        { outcome: 'shown', meal: meal({ cooked: true }) },
+        { recorded: false, recordFailureNotice: null },
+      );
+
+      expect(screen.queryAllByRole('status')).toHaveLength(0);
+    });
+
+    it('記録済みの献立でも、記録が通った案内は別に1つ出す', () => {
+      // B-53b 規則11: 記録が通った案内を記録済みの表示で置き換えない。
+      const indicator = cookedIndicator();
+
+      renderDetail({ outcome: 'shown', meal: meal({ cooked: true }) }, { recorded: true });
+
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+      expect(document.body.textContent).toContain(indicator);
+    });
+
+    it('記録済みの献立でも、記録の操作は同じ位置に残り、押せば届く', () => {
+      // FR-31 の前半 / 画面設計 4章 / B-53b 規則9: 記録済みでも操作を消さず、無効にもしない。
+      let recorded = 0;
+      renderDetail(
+        { outcome: 'shown', meal: meal({ cooked: true }) },
+        { onAddCookingRecord: () => (recorded += 1) },
+      );
+
+      fireEvent.click(cookedControl() as HTMLElement);
+
+      expect(recorded).toBe(1);
+    });
+
+    it('取れなかった回は、記録が通った直後でも記録済みの表示を出さない', () => {
+      // B-53b 規則9 / 設計 7章: 記録済みの表示は取れた献立の枝にだけ出す。
+      const afterRecord = bodyTextOf({ outcome: 'failed' }, { recorded: true });
+      const beforeRecord = bodyTextOf({ outcome: 'failed' }, { recorded: false });
+
+      expect(afterRecord).toBe(beforeRecord);
+    });
+
+    it('読み込み中は、記録が通った直後でも記録済みの表示を出さない', () => {
+      // B-53b 規則9: 読み込み中は献立が画面に無い。
+      const afterRecord = bodyTextOf({ outcome: 'loading' }, { recorded: true });
+      const beforeRecord = bodyTextOf({ outcome: 'loading' }, { recorded: false });
+
+      expect(afterRecord).toBe(beforeRecord);
+    });
+
+    it('記録があり、この画面でも記録が通ったとき、記録済みの表示は1つだけ出す', () => {
+      // B-53b 規則8: 両方が真でも重ねて出さない。
+      const indicator = cookedIndicator();
+
+      const text = bodyTextOf(
+        { outcome: 'shown', meal: meal({ cooked: true }) },
+        { recorded: true },
+      );
+
+      expect(occurrencesOf(text, indicator)).toBe(1);
+    });
   });
 });

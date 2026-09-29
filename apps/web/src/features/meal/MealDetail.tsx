@@ -13,10 +13,9 @@
  * **充足だけは開いた時点の在庫で算出されたもの**であり（FR-32 / ADR-009）、取り直すのは門の
  * 持ち分である。
  *
- * **この周で置いていないもの:**
- * - 記録済みかどうかの表示（FR-31 の後半）… `GET /meals/:id` の出力に調理記録の手がかりが
- *   無く、載せるには ADR が1本要る（B-48a 規則12 / ADR-067 結果3）。**B-53b** が持つ。
- *   この周は「記録の操作が、記録済みでも同じ位置にある」ところまでを満たす
+ * **記録済みの表示**（B-53b / FR-31 の後半）は、取れた献立の `cooked`（ADR-070）か、この画面で
+ * 直前の記録が通ったこと（`recorded`）のどちらかで出す（ADR-070 結果3）。記録の操作は記録済みでも
+ * 同じ位置に残る。
  */
 
 import { mealDetailIngredientsOf } from './MealDetailIngredients.js';
@@ -44,6 +43,12 @@ const COOKED_LABEL = 'これを作った';
 
 /** 記録が通ったことの案内（**仮**）。`status` で1つだけ出し、閉じるまで残す。 */
 const RECORDED_NOTICE = '作ったことを記録しました。';
+
+/**
+ * 記録済みの表示（仮の文言。B-53b / FR-31 の後半 / 画面設計 4章）。**記号と文字の両方で出す**
+ * （NFR-17 — 色だけで示さない）。
+ */
+const COOKED_INDICATOR = '✓ 記録済み（作ったことがある献立）';
 
 /**
  * 記録できなかったことの案内（**仮**）。**原因を断定しない** — 読みは
@@ -178,6 +183,11 @@ export function MealDetail({
        **確認ダイアログを出さない**（規則8）。 */}
       {shown !== null && (
         <>
+          {/* **記録済みの表示は `cooked` か直前の記録の結末のどちらかで出し、重ねない**（規則8 /
+           ADR-070 結果3）— 門は記録のあとに詳細を取り直さないので、`cooked` だけでは押した直後に
+           出ない。**読み上げの割り込み（`status`）にしない**（規則10）— 利用者の操作の結末ではなく、
+           開いた時点の事実である。記録が通った案内とは別に出す（規則11）。 */}
+          {(shown.cooked || recorded) && <p>{COOKED_INDICATOR}</p>}
           {recorded && <p role="status">{RECORDED_NOTICE}</p>}
           {recordFailureNotice !== null && (
             <p role="status">{RECORD_FAILURE_NOTICES[recordFailureNotice]}</p>

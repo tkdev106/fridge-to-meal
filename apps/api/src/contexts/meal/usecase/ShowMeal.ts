@@ -1,4 +1,4 @@
-import type { MealOutput } from '@fridge-to-meal/contract';
+import type { ShowMealOutput } from '@fridge-to-meal/contract';
 import type { HouseholdId } from '../../../shared/domain/HouseholdId.js';
 import type { ListStockItems } from '../../pantry/usecase/ListStockItems.js';
 import type { MealRepository } from '../domain/repository/MealRepository.js';
@@ -16,8 +16,10 @@ import { mealOutputOf, toMealStockItem } from './MealOutputs.js';
  *
  * **在庫を1件も変えない**（C-8 / 規則10）— 依存に在庫の書き込みの口を取らないことで
  * 型から読める。
+ *
+ * **調理記録の有無 `cooked` を載せる**（B-53b / ADR-070）— 充足と同じく開いた時点の事実である。
  */
-export type ShowMeal = (householdId: HouseholdId, mealId: MealId) => Promise<MealOutput>;
+export type ShowMeal = (householdId: HouseholdId, mealId: MealId) => Promise<ShowMealOutput>;
 
 /**
  * 献立詳細のユースケースを組み立てる。依存は引数で受け取り、実装の生成は `main.ts` に
@@ -45,10 +47,16 @@ export function showMeal(deps: {
 
     // **組み立ては提案の1件と同じ関数を通る**（規則16 / ADR-067 論点1）— 写しを2つ持つと、
     // 同じ献立が経路によって違う形で出る。足りない（足さない）のは由来だけである（規則8）。
-    return mealOutputOf(
-      meal,
-      mealStockItems.map((stockItem) => stockItem.name),
-      earliestExpiryDateByName(mealStockItems),
-    );
+    // **調理記録の有無は真偽1つだけ足す**（B-53b / ADR-070 決定1・2）— 1件以上なら件数に
+    // よらず真で、判定は `ListMeals` の振り分けと同じ。件数も日時も載せない（B-48a 規則12）。
+    // 提案の1件（`suggestionOutputOf`）には足さないので、提案の JSON は変わらない。
+    return {
+      ...mealOutputOf(
+        meal,
+        mealStockItems.map((stockItem) => stockItem.name),
+        earliestExpiryDateByName(mealStockItems),
+      ),
+      cooked: meal.cookingRecords.length > 0,
+    };
   };
 }

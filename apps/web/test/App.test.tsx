@@ -1296,6 +1296,7 @@ describe('門 App の献立詳細', () => {
           covered: [{ name: 'にんじん', kind: 'main', amount: null, expiryDate: null }],
           missing: [],
         },
+        cooked: false,
       },
     };
   }
@@ -1612,6 +1613,7 @@ describe('門 App の履歴タブ', () => {
         ingredients: [],
         steps: [],
         coverage: { covered: [], missing: [] },
+        cooked: false,
       },
     };
   }
