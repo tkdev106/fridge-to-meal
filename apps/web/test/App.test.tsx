@@ -177,17 +177,16 @@ function operationAt(index: number, expectedCount: number): HTMLElement {
   return found;
 }
 
-/** 在庫の一覧に出ている操作は2つ（登録を開く／ログアウト）である。 */
-const LIST_OPERATION_COUNT = 2;
-/** 登録の画面に出ている操作は4つ（閉じる／保存2つ／ログアウト）である。 */
-const REGISTER_OPERATION_COUNT = 4;
+/**
+ * 在庫の一覧に出ている操作は1つ（登録を開く）である。**ログアウトは在庫タブに置かない**
+ * （B-56c 規則12 — ログアウトへの経路は設定画面の1つだけ）。
+ */
+const LIST_OPERATION_COUNT = 1;
+/** 登録の画面に出ている操作は3つ（閉じる／保存2つ）である（B-56c 規則12）。 */
+const REGISTER_OPERATION_COUNT = 3;
 
 function openRegisterOperation(): HTMLElement {
   return operationAt(0, LIST_OPERATION_COUNT);
-}
-
-function signOutOperation(): HTMLElement {
-  return operationAt(1, LIST_OPERATION_COUNT);
 }
 
 function closeRegisterOperation(): HTMLElement {
@@ -308,21 +307,6 @@ describe('門 App のセッションの出し分け', () => {
 
     // FR-25 / B-38 設計 規則9: 器ごと外れる（入り直すと既定のタブに戻る）。
     expect(tabs()).toHaveLength(0);
-    expect(textboxes()).toHaveLength(1);
-  });
-
-  it('ログアウトの操作を押すと、ログインの画面へ戻る', async () => {
-    renderApp({ initialState: 'signedIn' }, { list: [loaded(carrot)] });
-
-    openPantry();
-    await screen.findByText(carrot.name);
-    fireEvent.click(signOutOperation());
-
-    // FR-25 / ADR-046 結果4 / `Session.ts` 規則8: 手元のセッションは必ず捨てられ、門は
-    // その変化を受けて画面を切り替える。**ログアウトを結線しているのは門である。**
-    await waitFor(() => {
-      expect(tabs()).toHaveLength(0);
-    });
     expect(textboxes()).toHaveLength(1);
   });
 });
@@ -1092,8 +1076,11 @@ describe('門 App のタブの結線', () => {
  * 観察はこの suite と同じ手がかりで行う（**仮の文言も記号も期待値に書かない**）。
  */
 describe('在庫の編集（B-55）', () => {
-  /** 編集の画面に出ている操作は3つ（閉じる／保存／ログアウト）である。下タブは `role="tab"` なので混ざらない。 */
-  const EDIT_OPERATION_COUNT = 3;
+  /**
+   * 編集の画面に出ている操作は2つ（閉じる／保存）である。下タブは `role="tab"` なので混ざらない。
+   * **ログアウトは置かない**（B-56c 規則12。編集の画面の規則12 はこの件数で押さえる）。
+   */
+  const EDIT_OPERATION_COUNT = 2;
 
   /** 打った分量。**テストが渡した値**なので、一覧に出ていないことを当ててよい（設計 規則6）。 */
   const EDITED_AMOUNT = '300g';
@@ -2434,5 +2421,400 @@ describe('門 App の履歴タブ', () => {
 
     expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
     expect(screen.queryByText(STIR_FRY)).toBeNull();
+  });
+});
+
+/**
+ * 門 `App` の設定（B-56c 設計 6章 規則1・8〜13 / 7章 / ADR-066）。
+ *
+ * 設定画面の中の判断（操作が2つ・確認を挟まない・送っている間）は `SettingsScreen.test.tsx`、
+ * 入口の置き方と描き分けは `HistoryTab.test.tsx` が押さえており、**ここで二重に書かない。**
+ * ここで観るのは門の結線だけ — 設定を開いているかを門が持つこと、ログアウトへの経路が
+ * 設定画面の1つだけであること、である。
+ *
+ * **仮の文言を期待値に書かない**（設計 10章 前提4）。入口は「`aria-pressed` を持たず、
+ * `listitem` の中にも無い `button`」で引き、設定画面の2つの操作は文書順の位置で引く
+ * （閉じるが先・ログアウトが後。設計 規則6）。
+ */
+describe('門 App の設定', () => {
+  const NIKUJAGA = '肉じゃが';
+  const GINGER_PORK = '豚こま肉と白菜の生姜焼き';
+  const STIR_FRY = 'にんじんと卵の炒めもの';
+  const NEW_MEAL = '新しいご飯';
+  /** 献立タブのカードに出る名称。 */
+  const SUGGESTED = '提案の献立';
+
+  /** 設定画面に出ている操作は2つ（閉じる／ログアウト）である（設計 規則6）。 */
+  const SETTINGS_OPERATION_COUNT = 2;
+
+  function summaryOf(mealId: string, title: string): MealSummaryOutput {
+    return { mealId, title, ingredientCount: 2 };
+  }
+
+  const mealA = summaryOf('meal-a', NIKUJAGA);
+  const mealB = summaryOf('meal-b', GINGER_PORK);
+  const mealC = summaryOf('meal-c', STIR_FRY);
+
+  function listed(
+    seen: readonly MealSummaryOutput[],
+    cooked: readonly MealSummaryOutput[] = [],
+  ): MealListOutcome {
+    return { outcome: 'loaded', meals: { seen: [...seen], cooked: [...cooked] } };
+  }
+
+  /** 提案が1件出ている状態。 */
+  function suggestedOne(mealId: string, title: string): LatestSuggestionOutcome {
+    return {
+      outcome: 'suggested',
+      pantryChanged: false,
+      suggestion: {
+        id: `suggestion-${mealId}`,
+        generatedAt: '2026-09-20T09:00:00.000Z',
+        entries: [
+          {
+            mealId,
+            origin: 'reused',
+            title,
+            ingredients: [],
+            steps: [],
+            coverage: { covered: [], missing: [] },
+          },
+        ],
+      },
+    };
+  }
+
+  /** 「新しい献立を求める」が返す提案（`requestNewMeals` の台本用）。 */
+  function newSuggestion(mealId: string, title: string): RequestNewMealsOutcome {
+    return {
+      outcome: 'suggested',
+      suggestion: {
+        id: `suggestion-${mealId}`,
+        generatedAt: '2026-09-21T09:00:00.000Z',
+        entries: [
+          {
+            mealId,
+            origin: 'generated',
+            title,
+            ingredients: [],
+            steps: [],
+            coverage: { covered: [], missing: [] },
+          },
+        ],
+      },
+    };
+  }
+
+  function openHistory(): void {
+    fireEvent.click(historyTab());
+  }
+
+  /**
+   * 設定への入口。**`aria-pressed` を持たず、`listitem` の中にも無い `button`** である
+   * （B-56c 規則4）。**先に1つだけであることを確かめる。**
+   */
+  function settingsEntry(): HTMLElement {
+    const entries = screen
+      .queryAllByRole('button')
+      .filter((button) => !button.hasAttribute('aria-pressed') && button.closest('li') === null);
+    expect(entries).toHaveLength(1);
+
+    const [entry] = entries;
+    if (entry === undefined) throw new Error('設定への入口が無い');
+
+    return entry;
+  }
+
+  /** 履歴タブで行が出るのを待ってから、設定への入口を押す。 */
+  async function openSettingsFromHistory(): Promise<void> {
+    openHistory();
+    await screen.findByText(NIKUJAGA);
+    fireEvent.click(settingsEntry());
+  }
+
+  function closeSettingsOperation(): HTMLElement {
+    return operationAt(0, SETTINGS_OPERATION_COUNT);
+  }
+
+  function signOutOperation(): HTMLElement {
+    return operationAt(1, SETTINGS_OPERATION_COUNT);
+  }
+
+  /** 押されていない側の列へ切り替える。**先に1つだけであることを確かめる。** */
+  function switchColumn(): void {
+    const toggles = screen.getAllByRole('button', { pressed: false });
+    expect(toggles).toHaveLength(1);
+
+    const [toggle] = toggles;
+    if (toggle === undefined) throw new Error('押されていない切り替えが無い');
+
+    fireEvent.click(toggle);
+  }
+
+  it('履歴タブの入口を押すと、履歴の行の代わりに設定画面が出る', async () => {
+    // 規則1 / `docs/screen-design.md` 2.1: 入口は履歴タブの右上にある。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA])],
+      },
+    );
+
+    await openSettingsFromHistory();
+
+    expect(screen.queryByText(NIKUJAGA)).toBeNull();
+    expect(screen.getAllByRole('button')).toHaveLength(SETTINGS_OPERATION_COUNT);
+  });
+
+  it('設定画面のログアウトを押すと、ログインの画面へ戻る', async () => {
+    // 規則12 / FR-25 / `docs/screen-design.md` 2.1 / 設計 7章 行1 / `Session.ts` 規則8:
+    // ログアウトへの経路は設定画面の1つだけである。手元のセッションは必ず捨てられ、門は
+    // その変化を受けて画面を切り替える。**ログアウトを結線しているのは門である。**
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA])],
+      },
+    );
+
+    await openSettingsFromHistory();
+    fireEvent.click(signOutOperation());
+
+    await waitFor(() => {
+      expect(tabs()).toHaveLength(0);
+    });
+    expect(textboxes()).toHaveLength(1);
+  });
+
+  it('履歴が取れなかった回も、設定を開いてログアウトできる', async () => {
+    // 規則2 / 設計 7章 行2 / FR-25: 履歴が取れなくてもログアウトへ届かなくなってはならない。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [{ outcome: 'failed' }],
+      },
+    );
+
+    openHistory();
+    // 取れなかった結末を画面へ流す（読み込み中にも入口はあるが、本題は取れなかった回である）。
+    await act(async () => {});
+    fireEvent.click(settingsEntry());
+    fireEvent.click(signOutOperation());
+
+    await waitFor(() => {
+      expect(tabs()).toHaveLength(0);
+    });
+  });
+
+  it('設定を閉じると、履歴の行が出る', async () => {
+    // 規則8: 閉じると履歴タブの一覧へ戻る。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA])],
+      },
+    );
+
+    await openSettingsFromHistory();
+    fireEvent.click(closeSettingsOperation());
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+  });
+
+  it('つくった側を選んでから設定を開いて閉じると、つくった列のままである', async () => {
+    // 規則8 / B-54b 規則6: 設定を出している間も `HistoryTab` は mount されたままである。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA], [mealC])],
+      },
+    );
+
+    openHistory();
+    await screen.findByText(NIKUJAGA);
+    switchColumn();
+    await screen.findByText(STIR_FRY);
+    fireEvent.click(settingsEntry());
+    fireEvent.click(closeSettingsOperation());
+
+    expect(await screen.findByText(STIR_FRY)).not.toBeNull();
+    expect(screen.queryByText(NIKUJAGA)).toBeNull();
+  });
+
+  it('設定を開いて閉じても、履歴を取り直さない', async () => {
+    // 規則11: 設定を開いても閉じても何も取りに行かない（履歴で代表する）。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA]), listed([mealB])],
+      },
+    );
+
+    await openSettingsFromHistory();
+    fireEvent.click(closeSettingsOperation());
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+    expect(screen.queryByText(GINGER_PORK)).toBeNull();
+  });
+
+  it('設定を開いたままタブを移って戻っても、設定のままである', async () => {
+    // 規則9 / ADR-066: 設定を開いているかは門が持ち、タブの移動では閉じない。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA])],
+      },
+    );
+
+    await openSettingsFromHistory();
+    openPantry();
+    await screen.findByText(carrot.name);
+    openHistory();
+
+    expect(screen.queryByText(NIKUJAGA)).toBeNull();
+    expect(screen.getAllByRole('button')).toHaveLength(SETTINGS_OPERATION_COUNT);
+  });
+
+  it('設定を開いたまま献立タブへ移ると、献立タブには設定を出さない', async () => {
+    // 規則1 / `docs/screen-design.md` 2.1: 設定を描くのは履歴タブだけである。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne('meal-s', SUGGESTED)] },
+      {},
+      { list: [listed([mealA])] },
+    );
+
+    await openSettingsFromHistory();
+    fireEvent.click(mealsTab());
+
+    expect(await screen.findByText(SUGGESTED)).not.toBeNull();
+    expect(screen.getAllByRole('listitem').length).toBeGreaterThan(0);
+  });
+
+  it('サインアウトして入り直すと、設定は閉じて履歴の行が出る', async () => {
+    // 規則10 / ADR-066 結果1 / NFR-09: 門は signedOut の間も生きているので、明示的に閉じる。
+    const { session } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA]), listed([mealA])],
+      },
+    );
+
+    await openSettingsFromHistory();
+    emit(session, 'signedOut');
+    emit(session, 'signedIn');
+    openHistory();
+
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+  });
+
+  it('設定を開いている間に新しい献立が届いて履歴を取り直しても、設定は閉じない', async () => {
+    // 規則11: 取り直しでは設定を閉じない。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { requestNewMeals: [newSuggestion('meal-n', NEW_MEAL)] },
+      {},
+      { list: [listed([mealA]), listed([mealB])] },
+    );
+
+    await openSettingsFromHistory();
+    fireEvent.click(mealsTab());
+    await screen.findByRole('button');
+    // 「新しい献立を求める」は献立タブの末尾の操作である（D-4）。
+    fireEvent.click(screen.getAllByRole('button').at(-1) as HTMLElement);
+    await screen.findByText(NEW_MEAL);
+    openHistory();
+    await act(async () => {});
+
+    expect(screen.getAllByRole('button')).toHaveLength(SETTINGS_OPERATION_COUNT);
+    expect(screen.queryByText(NIKUJAGA)).toBeNull();
+    expect(screen.queryByText(GINGER_PORK)).toBeNull();
+  });
+
+  it('設定を開いている間に在庫の登録が通って一覧を取り直しても、設定は閉じない', async () => {
+    // 規則11: 取り直しでは設定を閉じない。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot), loaded(chineseCabbage)], register: [{ outcome: 'registered' }] },
+      {},
+      {},
+      { list: [listed([mealA])] },
+    );
+
+    await openSettingsFromHistory();
+    openPantry();
+    await screen.findByText(carrot.name);
+    fireEvent.click(openRegisterOperation());
+    fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
+    fireEvent.click(saveAndCloseOperation());
+    await screen.findByText(chineseCabbage.name);
+    openHistory();
+
+    expect(screen.getAllByRole('button')).toHaveLength(SETTINGS_OPERATION_COUNT);
+    expect(screen.queryByText(NIKUJAGA)).toBeNull();
+  });
+
+  it('設定を開いている間も、下タブ3つは出ている', async () => {
+    // 規則13 / NFR-14: 下タブの帯は出したまま。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA])],
+      },
+    );
+
+    await openSettingsFromHistory();
+
+    expect(tabs()).toHaveLength(3);
+  });
+
+  it('在庫の一覧に出る操作は、登録を開く1つだけである', async () => {
+    // 規則12 / ADR-046 結果4 の暫定を解く: 在庫タブにログアウトを置かない。
+    renderApp({ initialState: 'signedIn' }, { list: [loaded(carrot)] });
+
+    openPantry();
+    await screen.findByText(carrot.name);
+
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+  });
+
+  it('在庫の登録の画面に出る操作は、閉じると保存2つの3つだけである', async () => {
+    // 規則12: 登録の画面にもログアウトを置かない。
+    renderApp({ initialState: 'signedIn' }, { list: [loaded(carrot)] });
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    fireEvent.click(screen.getAllByRole('button')[0] as HTMLElement);
+
+    expect(screen.getAllByRole('button')).toHaveLength(3);
   });
 });

@@ -163,7 +163,8 @@ describe('在庫タブの中身 PantryTab', () => {
     render(pantryTab({ stockItems: loaded(carrot, chineseCabbage) }));
 
     // 規則3: 置くのは1つである。行に削除の操作は無く（削除はスワイプ。B-23）、
-    // ログアウトは門の側に残る（規則16 / ADR-046 結果4）。
+    // ログアウトは在庫タブに置かない（B-56c 規則12 / `docs/screen-design.md` 2.1 —
+    // ログアウトへの経路は設定画面の1つだけ）。
     expect(screen.getAllByRole('button')).toHaveLength(1);
   });
 
