@@ -5,8 +5,8 @@
  * 画面を切り替える（`Session.ts` 規則8 — 手元のセッションは必ず捨てられる）。押している間だけ
  * 効かせない。
  *
- * 置き場所は `App.tsx` が決める。**暫定である**（ADR-046 結果4）— `docs/screen-design.md` 2.1 は
- * 設定を履歴タブの右上に置くと決めているが、`apps/web` にはまだタブが無い。
+ * **置き場所は設定画面である**（`SettingsScreen.tsx` / B-56c / `docs/screen-design.md` 2.1・8章）。
+ * 入口は履歴タブの右上にあり、ADR-046 結果4 の「暫定」（在庫タブの下）は解けた。
  */
 
 import { useState } from 'react';

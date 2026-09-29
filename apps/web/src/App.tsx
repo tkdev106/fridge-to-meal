@@ -12,7 +12,7 @@
  */
 import { useEffect, useState } from 'react';
 import { SignInForm } from './features/identity/SignInForm.js';
-import { SignOutButton } from './features/identity/SignOutButton.js';
+import { SettingsScreen } from './features/identity/SettingsScreen.js';
 import { HistoryTab } from './features/meal/HistoryTab.js';
 import type { HistoryTabState } from './features/meal/HistoryTab.js';
 import { cookingRecordFailureNoticeOf } from './features/meal/CookingRecordFailureNotice.js';
@@ -155,6 +155,16 @@ export function App({
    * 開き直すと、出どころごと置き換わる（B-54b 規則10）。
    */
   const [openMeal, setOpenMeal] = useState<OpenMeal | null>(null);
+
+  /**
+   * **設定を開いているか**（B-56c 設計 規則1 / `docs/screen-design.md` 2.1・8章）。
+   *
+   * **履歴タブではなく門が持つ** — 開いている献立（`openMeal`）と同じ置き方であり、理由も
+   * ADR-066 と同じである。タブを移っても閉じず（規則9）、閉じるのは設定画面の「閉じる」と
+   * サインイン済みでなくなった回だけである（規則10）。開いても閉じても何も取りに行かない
+   * （規則11）。
+   */
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // 開いた献立の取得の結末。**開くまでは「読み込み中」ですらない**（詳細を出していない）。
   const [mealDetail, setMealDetail] = useState<MealDetailState>({ outcome: 'loading' });
@@ -332,6 +342,18 @@ export function App({
     if (state === 'signedIn') return;
 
     setOpenMeal(null);
+  }, [state]);
+
+  /**
+   * **サインイン済みでなくなったら、設定も閉じる**（B-56c 規則10 / ADR-066 結果1 / NFR-09）。
+   *
+   * 門は signedOut の間も生き続けるので、mount には頼れない。閉じないと、入り直した回に
+   * 履歴タブが一覧ではなく設定のまま出る。
+   */
+  useEffect(() => {
+    if (state === 'signedIn') return;
+
+    setSettingsOpen(false);
   }, [state]);
 
   /**
@@ -568,9 +590,11 @@ export function App({
   // 1つ渡すだけで、いまどちらの画面が出ているかを知らない — 知ると、上の「在庫を取りに行く
   // 効果」と画面の遷移が同じ場所に混ざる。**取り直しても登録の画面は閉じない。**
   //
-  // ログアウトはその下に**暫定のまま**置く（規則16 — 設定画面ができたら移す。ADR-046 結果4・
-  // 結果5）。登録の画面を出している間も下に並ぶが、`PantryTab` に identity を持ち込まないため
-  // ここに残す。
+  // **在庫タブにログアウトを置かない**（B-56c 規則12）。ログアウトへの経路は、履歴タブの右上の
+  // 入口から開く設定画面の1つだけである（`docs/screen-design.md` 2.1・8章）。
+  //
+  // **設定画面を組むのも門である**（B-56c 規則1）。`HistoryTab` は `features/identity/` を
+  // import せず、組んだものを `settings` で受け取って一覧の代わりに描くだけである。
   //
   // **開いている献立の詳細は1つだけ組み、出どころのタブにだけ渡す**（B-54b 規則9）。もう片方の
   // タブは一覧のままであり、履歴から開いた詳細が献立タブに漏れない（逆も同じ）。
@@ -614,17 +638,14 @@ export function App({
           />
         }
         pantry={
-          <>
-            <PantryTab
-              stockItems={stockItems}
-              today={todayOf(new Date())}
-              onDelete={deleteAndReload}
-              onRegister={registerAndReload}
-              onUpdate={updateAndReload}
-              ingredientNames={ingredientNames}
-            />
-            <SignOutButton onSignOut={() => session.signOut()} />
-          </>
+          <PantryTab
+            stockItems={stockItems}
+            today={todayOf(new Date())}
+            onDelete={deleteAndReload}
+            onRegister={registerAndReload}
+            onUpdate={updateAndReload}
+            ingredientNames={ingredientNames}
+          />
         }
         history={
           // 履歴から開いた詳細も献立タブと同じ `MealDetail` を同じ口で出す（B-54b 規則11）。
@@ -632,6 +653,15 @@ export function App({
             meals={mealList}
             onOpenMeal={openMealFrom('history')}
             mealDetail={openMeal?.from === 'history' ? openMealDetail : null}
+            onOpenSettings={() => setSettingsOpen(true)}
+            settings={
+              settingsOpen ? (
+                <SettingsScreen
+                  onSignOut={() => session.signOut()}
+                  onClose={() => setSettingsOpen(false)}
+                />
+              ) : null
+            }
           />
         }
       />

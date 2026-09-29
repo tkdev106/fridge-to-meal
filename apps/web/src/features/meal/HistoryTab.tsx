@@ -15,8 +15,13 @@
  * **開いている献立を持つのは門である**（設計 規則9 / ADR-066 と同じ理由）。ここは行から
  * 識別子を渡し、渡された詳細を一覧の代わりに描くだけである（先行 `MealsTab.mealDetail`）。
  *
- * 設定への入口（同書 2.1）と名称での検索（FR-33）はまだ置かない。ログアウトは在庫タブの下の
- * ままである（ADR-046 結果4 の暫定）。
+ * **設定への入口もここに置く**（B-56c / 同書 2.1・7章 — 履歴タブの右上）。一覧を出す3つの状態
+ * （読み込み中・取れなかった・取れた）のすべてで出す — 履歴が取れなかった回にログアウトへ
+ * 届かなくなってはならない（B-56c 設計 規則2）。**設定を開いているかは門が持ち**（同 規則1 /
+ * ADR-066 と同じ理由）、ここは入口の押下を口で渡し、門が組んだ設定画面を一覧の代わりに描く
+ * だけである。`features/identity/` は import しない（中身は `ReactNode` で届く）。
+ *
+ * 名称での検索（FR-33）はまだ置かない。
  *
  * **文言は仮である**（`docs/screen-design.md` 冒頭・論点3）。
  */
@@ -34,6 +39,10 @@ export type HistoryTabProps = {
   onOpenMeal: (mealId: string) => void;
   /** null でなければ一覧の代わりにこれを描く（先行 MealsTab.mealDetail） */
   mealDetail: ReactNode | null;
+  /** 設定への入口が押された（docs/screen-design.md 2.1）。 */
+  onOpenSettings: () => void;
+  /** null でなければ一覧の代わりにこれを描く（先行 mealDetail）。 */
+  settings: ReactNode | null;
 };
 
 /** 2つの列（ADR-068 決定3）。キーは `ListMealsOutput` のものをそのまま使う。 */
@@ -63,6 +72,12 @@ const EMPTY_COLUMN_NOTICES: Readonly<Record<Column, string>> = {
   seen: '以前見た献立はまだありません。',
   cooked: 'つくった献立はまだありません。',
 };
+
+/**
+ * 設定への入口の名札（**仮**）。**記号だけにしない** — 読み上げに乗らない（B-56c 設計 規則4 /
+ * NFR-16）。
+ */
+const OPEN_SETTINGS_LABEL = '⚙ 設定';
 
 /** 主材料の件数（ADR-068 決定4。件数は主材料で数えたものがサーバから届く — C-16）。 */
 function ingredientCountText(ingredientCount: number): string {
@@ -98,6 +113,18 @@ function ColumnToggles({
 }
 
 /**
+ * 設定への入口（B-56c 設計 規則3・4）。**文書順で列の切り替え・案内・行より前に置く**（ワイヤーの
+ * 見出しの行の右端）。`aria-pressed` を付けない — 列の切り替えと区別する。
+ */
+function SettingsEntry({ onOpenSettings }: { onOpenSettings: () => void }) {
+  return (
+    <button type="button" onClick={onOpenSettings}>
+      {OPEN_SETTINGS_LABEL}
+    </button>
+  );
+}
+
+/**
  * 1列ぶんの行（設計 規則3・4・8）。**行そのものを開く操作にする**（ワイヤーに別の操作が無い）。
  * 名称と件数は別の要素に分けておく — 読み上げが名称で止まれるように（先行 `MealsTab`）。
  */
@@ -123,27 +150,46 @@ function MealRows({
   );
 }
 
-export function HistoryTab({ meals, onOpenMeal, mealDetail }: HistoryTabProps): JSX.Element {
-  // 詳細を開いている間もこの部品は mount されたままなので、選んだ列は戻っても保たれる（規則6）。
+export function HistoryTab({
+  meals,
+  onOpenMeal,
+  mealDetail,
+  onOpenSettings,
+  settings,
+}: HistoryTabProps): JSX.Element {
+  // 詳細・設定を開いている間もこの部品は mount されたままなので、選んだ列は戻っても保たれる
+  // （規則6 / B-56c 規則8）。
   const [selectedColumn, setSelectedColumn] = useState<Column>(INITIAL_COLUMN);
 
   // **詳細は結末より先に見る**（先行 `MealsTab`）。一覧と並べず入れ替え、列の切り替えも出さない。
   if (mealDetail !== null) return <div>{mealDetail}</div>;
 
-  // 読み込み中と取れなかった回は、切り替えを出さない — 切り替えた先にも見せるものが無い。
-  if (meals.outcome === 'loading') return <p role="status">{LOADING_NOTICE}</p>;
-  if (meals.outcome === 'failed') return <p role="status">{LOAD_FAILURE_NOTICE}</p>;
-
-  const rows = meals.meals[selectedColumn];
+  // 設定も入れ替わりであって足し算ではない。優先は詳細 → 設定 → 一覧（B-56c 規則5）。
+  if (settings !== null) return <div>{settings}</div>;
 
   return (
     <div>
-      <ColumnToggles selected={selectedColumn} onSelect={setSelectedColumn} />
-      {rows.length === 0 ? (
-        <p role="status">{EMPTY_COLUMN_NOTICES[selectedColumn]}</p>
-      ) : (
-        <MealRows meals={rows} onOpenMeal={onOpenMeal} />
-      )}
+      <SettingsEntry onOpenSettings={onOpenSettings} />
+      {historyBody()}
     </div>
   );
+
+  function historyBody(): JSX.Element {
+    // 読み込み中と取れなかった回は、切り替えを出さない — 切り替えた先にも見せるものが無い。
+    if (meals.outcome === 'loading') return <p role="status">{LOADING_NOTICE}</p>;
+    if (meals.outcome === 'failed') return <p role="status">{LOAD_FAILURE_NOTICE}</p>;
+
+    const rows = meals.meals[selectedColumn];
+
+    return (
+      <>
+        <ColumnToggles selected={selectedColumn} onSelect={setSelectedColumn} />
+        {rows.length === 0 ? (
+          <p role="status">{EMPTY_COLUMN_NOTICES[selectedColumn]}</p>
+        ) : (
+          <MealRows meals={rows} onOpenMeal={onOpenMeal} />
+        )}
+      </>
+    );
+  }
 }
