@@ -29,6 +29,13 @@
       "when": 1790609029973,
       "tag": "20260928152349_create_stock_item_names",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790852532254,
+      "tag": "20261001110212_create_delete_own_account",
+      "breakpoints": true
     }
   ]
 }

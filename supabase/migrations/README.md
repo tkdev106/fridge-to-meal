@@ -20,6 +20,28 @@ pnpm --filter @fridge-to-meal/api db:generate --name create_stock_items
 
 **`drizzle-kit push` は使わない。** 生成物が残らず、RLS を足す場所そのものが無くなる。
 
+## 関数を置く移行（表を作らない移行）
+
+スキーマを直さずに SQL だけを足すとき（例: `20261001110212_create_delete_own_account.sql`。B-56d /
+ADR-071）。**それでも `drizzle-kit` に空のファイルを作らせ、journal に載せる** — ファイル名と
+`meta/_journal.json` の `tag` を食い違わせないためである。
+
+```sh
+# 1. 空のファイルと journal の行と snapshot を作る（スキーマに差分が無いので snapshot は前と同じ中身）
+pnpm --filter @fridge-to-meal/api db:generate --custom --name create_delete_own_account
+# 2. 生成された空のファイルに本文を手で書く。表の移行と同じく begin; / commit; で囲む
+# 3. SQL と meta/ をまとめてコミットする
+```
+
+- **表を作らないので、下の RLS の4点は要らない**（`tableMigrations.test.ts` も表を作るファイルだけを見る）
+- **`public` に関数を置かない。** Supabase の API は `public` を公開しており、`execute` を与えた関数は
+  利用者から直接呼べてしまう。公開しないスキーマ（`private`）に置き、`usage` と `execute` は
+  `authenticated` にだけ与え、**`public` と `anon` から `execute` を取り上げる**（既定で PUBLIC に付く）
+- **`security definer` にするなら `set search_path = ''` とし、名前はすべてスキーマで修飾する。**
+  引数を取らず、本体を `auth.uid()` に縛る（ADR-071 結果1）
+- **新しいスキーマを作ったら、テストの作り直し（`apps/api/test/support/db/ApplyMigrations.ts`）にも
+  `drop schema if exists <名前> cascade` を足す。** 足さないと2回目の `create schema` が落ちる
+
 ## 生成物に手で足す4点
 
 | # | 何を |

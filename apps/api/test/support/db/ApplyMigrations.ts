@@ -13,8 +13,17 @@ import { OWNER_CONNECTION_STRING } from './ConnectionStrings.js';
  * 単独のトランザクションになり、表と RLS が別のトランザクションに割れる（ADR-028）。
  */
 
-/** 公開スキーマごと作り直す。手で作った `public` には既定の権限が付かないので与え直す。 */
+/**
+ * 公開スキーマごと作り直す。手で作った `public` には既定の権限が付かないので与え直す。
+ *
+ * 移行が作る `private`（利用者を消す関数の置き場。ADR-071 決定1）も消す — 残すと2回目の
+ * `create schema private` が落ちる。`auth.users` の行も消す — 前回の実行の利用者が残ると、
+ * 識別子をケースごとに固有にしても次の実行で衝突する（B-56d 設計 規則12）。表そのものは
+ * `supabase/local/init.sql` が持つので消さない。
+ */
 const RESET_SCHEMA_SQL = [
+  'drop schema if exists private cascade;',
+  'delete from auth.users;',
   'drop schema if exists public cascade;',
   'create schema public;',
   'grant usage on schema public to authenticated, anon;',
@@ -33,12 +42,25 @@ async function assertConnectable(connection: postgres.Sql): Promise<void> {
   }
 }
 
+async function resetSchemas(connection: postgres.Sql): Promise<void> {
+  try {
+    await connection.unsafe(RESET_SCHEMA_SQL).simple();
+  } catch (cause) {
+    throw new Error(
+      'ローカル Postgres の作り直しに失敗した。`auth.users` が無いなら、クラスタが' +
+        '`supabase/local/init.sql` の変更より古い（initdb でしか走らない）。' +
+        '`pnpm db:down` してから `pnpm db:up` する（`db:up:native` ならデータ置き場を消して立て直す）。',
+      { cause },
+    );
+  }
+}
+
 export default async function applyMigrations(): Promise<void> {
   const connection = postgres(OWNER_CONNECTION_STRING, { max: 1, onnotice: () => {} });
 
   try {
     await assertConnectable(connection);
-    await connection.unsafe(RESET_SCHEMA_SQL).simple();
+    await resetSchemas(connection);
 
     for (const [fileName, sql] of migrationSqlFiles) {
       try {

@@ -29,3 +29,15 @@ stable
 as $$
   select (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')::uuid;
 $$;
+
+-- 利用者の表（B-56d / ADR-071 決定1・3）。Supabase の実物に名前を揃え、列は `id` の1つだけ置く —
+-- アカウントを消す関数 `private.delete_own_account()`（移行が作る）が消す相手である。
+--
+-- **権限は `authenticator` にだけ与える。** テストが役を切り替える前に行を置き・数えるためで、
+-- `anon` / `authenticated` には与えない — 消せるのは関数を通したときだけである（ADR-071 決定3）。
+-- アプリは `authenticated` に切り替えてから問い合わせ、`authenticator` は noinherit なので、
+-- 切り替えた後の問い合わせはこの権限を持たない。本番のログインロールには与えない。
+create table auth.users (
+  id uuid primary key
+);
+grant select, insert on auth.users to authenticator;
