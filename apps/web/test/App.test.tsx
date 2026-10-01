@@ -37,6 +37,8 @@ import { FixedMealRequests } from './support/server/FixedMealRequests.js';
 import type { FixedMealRequestsOptions } from './support/server/FixedMealRequests.js';
 import { FixedIngredientNameRequests } from './support/server/FixedIngredientNameRequests.js';
 import type { FixedIngredientNameRequestsOptions } from './support/server/FixedIngredientNameRequests.js';
+import { FixedHouseholdDataRequests } from './support/server/FixedHouseholdDataRequests.js';
+import type { FixedHouseholdDataRequestsOptions } from './support/server/FixedHouseholdDataRequests.js';
 import { App } from '../src/App.js';
 import type { SessionState } from '../src/session/Session.js';
 import type { StockItemsOutcome } from '../src/server/StockItemRequests.js';
@@ -69,6 +71,7 @@ function renderApp(
   suggestionOptions: FixedSuggestionRequestsOptions = {},
   ingredientNameOptions: FixedIngredientNameRequestsOptions = {},
   mealOptions: FixedMealRequestsOptions = {},
+  householdDataOptions: FixedHouseholdDataRequestsOptions = {},
 ) {
   const session = new FixedSession(sessionOptions);
   const requests = new FixedStockItemRequests(requestOptions);
@@ -93,6 +96,10 @@ function renderApp(
   // 必ず取りに行くので、履歴が本題でない観点でも台本が1つ要る。
   const meals = new FixedMealRequests({ list: [{ outcome: 'failed' }], ...mealOptions });
 
+  // **既定は台本を持たない**（B-56f）。削除は確認を経なければ送られないので（規則4）、削除が
+  // 本題でない観点では呼ばれる口が無い。呼ばれたら落ちる。
+  const householdData = new FixedHouseholdDataRequests(householdDataOptions);
+
   render(
     <App
       session={session}
@@ -106,10 +113,11 @@ function renderApp(
       showMeal={meals.showMeal}
       addCookingRecord={meals.addCookingRecord}
       listMeals={meals.listMeals}
+      deleteHouseholdData={householdData.deleteHouseholdData}
     />,
   );
 
-  return { session, requests, suggestions, ingredientNames, meals };
+  return { session, requests, suggestions, ingredientNames, meals, householdData };
 }
 
 /**
@@ -2444,8 +2452,13 @@ describe('門 App の設定', () => {
   /** 献立タブのカードに出る名称。 */
   const SUGGESTED = '提案の献立';
 
-  /** 設定画面に出ている操作は2つ（閉じる／ログアウト）である（設計 規則6）。 */
-  const SETTINGS_OPERATION_COUNT = 2;
+  /**
+   * 確認の前に設定画面に出ている操作は3つ（閉じる／ログアウト／アカウントとデータの削除）である
+   * （B-56f 規則11。B-56c 規則6 の「2つ」を置き換えた）。
+   */
+  const SETTINGS_OPERATION_COUNT = 3;
+  /** 確認が出ている間の操作は4つ（閉じる／ログアウト／確かめる／やめる）である（B-56f 規則11）。 */
+  const CONFIRMING_OPERATION_COUNT = 4;
 
   function summaryOf(mealId: string, title: string): MealSummaryOutput {
     return { mealId, title, ingredientCount: 2 };
@@ -2538,6 +2551,21 @@ describe('門 App の設定', () => {
 
   function signOutOperation(): HTMLElement {
     return operationAt(1, SETTINGS_OPERATION_COUNT);
+  }
+
+  /** 確認の前の3番目の操作（アカウントとデータの削除。B-56f 規則11）。 */
+  function deleteOperation(): HTMLElement {
+    return operationAt(2, SETTINGS_OPERATION_COUNT);
+  }
+
+  /** 確認が出ている間の3番目の操作（確かめる。B-56f 規則11）。 */
+  function confirmDeletionOperation(): HTMLElement {
+    return operationAt(2, CONFIRMING_OPERATION_COUNT);
+  }
+
+  /** 確認が出ている間の先頭の操作（閉じる。B-56f 規則11）。 */
+  function closeWhileConfirmingOperation(): HTMLElement {
+    return operationAt(0, CONFIRMING_OPERATION_COUNT);
   }
 
   /** 押されていない側の列へ切り替える。**先に1つだけであることを確かめる。** */
@@ -2816,5 +2844,69 @@ describe('門 App の設定', () => {
     fireEvent.click(screen.getAllByRole('button')[0] as HTMLElement);
 
     expect(screen.getAllByRole('button')).toHaveLength(3);
+  });
+  it('削除を確かめて通ると、ログインの画面へ戻る', async () => {
+    // B-56f 規則7 / ADR-071 結果2 / `Session.ts` 規則8: 消えた回は門がすぐにサインアウトし、
+    // 門の状態が signedOut に移ってログインの画面が出る。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      { list: [listed([mealA])] },
+      { delete: [{ outcome: 'deleted' }] },
+    );
+
+    await openSettingsFromHistory();
+    fireEvent.click(deleteOperation());
+    fireEvent.click(confirmDeletionOperation());
+
+    await waitFor(() => {
+      expect(tabs()).toHaveLength(0);
+    });
+    expect(textboxes()).toHaveLength(1);
+  });
+
+  it('削除を確かめて失敗すると、サインアウトせず設定画面に留まる', async () => {
+    // B-56f 規則8 / 7章 / ADR-073 結果3: 失敗の回はサインアウトせず設定も閉じず、案内を出す。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      { list: [listed([mealA])] },
+      { delete: [{ outcome: 'failed' }] },
+    );
+
+    await openSettingsFromHistory();
+    fireEvent.click(deleteOperation());
+    fireEvent.click(confirmDeletionOperation());
+    await act(async () => {});
+
+    expect(tabs()).toHaveLength(3);
+    expect(screen.getAllByRole('button')).toHaveLength(CONFIRMING_OPERATION_COUNT);
+    expect(screen.queryAllByRole('status')).toHaveLength(1);
+  });
+
+  it('確認を出したまま設定を閉じて開き直すと、確認は出ていない', async () => {
+    // B-56f 規則5・11: 確認中の閉じるは設定ごと閉じ、確認の状態は `SettingsScreen` が持つ
+    // （門は持たない）。閉じても削除は送られない（規則4）。
+    const { householdData } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      { list: [listed([mealA])] },
+      { delete: [{ outcome: 'deleted' }] },
+    );
+
+    await openSettingsFromHistory();
+    fireEvent.click(deleteOperation());
+    fireEvent.click(closeWhileConfirmingOperation());
+    await screen.findByText(NIKUJAGA);
+    fireEvent.click(settingsEntry());
+
+    expect(screen.getAllByRole('button')).toHaveLength(SETTINGS_OPERATION_COUNT);
+    expect(householdData.deleteCount).toBe(0);
   });
 });

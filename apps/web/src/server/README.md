@@ -26,6 +26,8 @@
 | `StockItemRequests.ts` | 在庫の要求を組む工場と、読み込み・登録・削除の結末 |
 | `SuggestionRequests.ts` | 保存済みの提案を取りに行く工場と、その結末 |
 | `IngredientNameRequests.ts` | 補完の元になる食材名を取りに行く工場と、その結末 |
+| `MealRequests.ts` | 献立1件・調理記録・献立の履歴の要求を組む工場と、その結末 |
+| `HouseholdDataRequests.ts` | 世帯のデータ（と利用者）を消す工場と、その結末（消えた／失敗の2つ。`rule` を運ばない） |
 
 ## ここで守ること
 
