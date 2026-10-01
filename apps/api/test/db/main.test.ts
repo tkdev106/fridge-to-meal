@@ -9,6 +9,7 @@ import type { Bindings } from '../../src/main.js';
 import { composeDependencies, createApp } from '../../src/main.js';
 import type { HouseholdId } from '../../src/shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../src/shared/domain/HouseholdId.js';
+import { countUser, insertUser } from '../support/db/AuthUsers.js';
 import { APP_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
 import type { HouseholdRowCounts } from '../support/db/HouseholdRows.js';
 import { countHouseholdRows } from '../support/db/HouseholdRows.js';
@@ -56,6 +57,11 @@ const listAfterDeletionHousehold = householdIdOf('b56a1000-0004-4000-8000-000000
 const registerAfterDeletionHousehold = householdIdOf('b56a1000-0005-4000-8000-000000000005');
 const neverUsedHousehold = householdIdOf('b56a1000-0006-4000-8000-000000000006');
 const deletedTwiceHousehold = householdIdOf('b56a1000-0007-4000-8000-000000000007');
+
+// B-56d: データのあとに利用者も消す。先頭の並び（`b56d3000`）で他のケースと分けてある。
+const deletedUserHousehold = householdIdOf('b56d3000-0001-4000-8000-000000000001');
+const deletingOwnUserHousehold = householdIdOf('b56d3000-0002-4000-8000-000000000002');
+const untouchedUserHousehold = householdIdOf('b56d3000-0002-4000-8000-000000000012');
 
 /** どの世帯も保存していない在庫品の識別子（#15）。 */
 const unsavedStockItemId = 'b9990000-0000-4000-8000-0000000000ff';
@@ -183,12 +189,14 @@ async function deleteHouseholdDataRequest(household: HouseholdId) {
 }
 
 /**
- * 世帯の9表すべてに行を置く下ごしらえ（B-56a）。**既存の経路だけを通す** — 在庫品2件
+ * 世帯の利用者と9表すべての行を置く下ごしらえ（B-56a / B-56d）。利用者は `auth.users` に
+ * 役を切り替える前の `authenticator` で置く（B-56d 設計書 規則11）。行は**既存の経路だけを通す** — 在庫品2件
  * （`にんじん` / `たまねぎ`）を登録し、新しい献立を求め（仮の生成器が在庫品1件につき献立1件、
  * 材料1件・手順2件を返す。ADR-060）、1件目の献立に調理記録を1件足す。本題でないところで
  * 黙って失敗すると続きの `expect` が別の理由で落ちるので、各段の状態コードを確かめる。
  */
 async function seedHouseholdData(household: HouseholdId): Promise<void> {
+  await insertUser(rowConnection, household);
   await registeredStockItem(household, { name: 'にんじん' });
   await registeredStockItem(household, { name: 'たまねぎ' });
 
@@ -487,7 +495,7 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
     });
 
     it('世帯のデータを消したあとも、同じアクセストークンで在庫の一覧が 200 の空で返る', async () => {
-      // 規則12 / ADR-072 結果4: Auth の利用者には触れない。空の世帯として振る舞う。
+      // 利用者を消しても、トークンは期限まで通る（ADR-071 結果2。api では断らない）。
       await seedHouseholdData(listAfterDeletionHousehold);
       const deleteResponse = await deleteHouseholdDataRequest(listAfterDeletionHousehold);
       expect(deleteResponse.status).toBe(204);
@@ -499,7 +507,7 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
     });
 
     it('世帯のデータを消したあと、同じアクセストークンで登録した在庫品は一覧に出る', async () => {
-      // 規則12 / ADR-072 結果4: 再び登録すれば行が生まれる。
+      // 利用者を消しても、トークンは期限まで通る（ADR-071 結果2。api では断らない）。
       await seedHouseholdData(registerAfterDeletionHousehold);
       const deleteResponse = await deleteHouseholdDataRequest(registerAfterDeletionHousehold);
       expect(deleteResponse.status).toBe(204);
@@ -521,6 +529,7 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
 
     it('同じ世帯のデータを続けて2度消しても、2度目も 204 が返る', async () => {
       // 規則7: 2度目の呼び出しも同じ結末。
+      // 規則7（B-56d）: 1度目で利用者が消えていても、2度目は断らない。
       await seedHouseholdData(deletedTwiceHousehold);
       const firstResponse = await deleteHouseholdDataRequest(deletedTwiceHousehold);
       expect(firstResponse.status).toBe(204);
@@ -528,6 +537,28 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
       const response = await deleteHouseholdDataRequest(deletedTwiceHousehold);
 
       expect(response.status).toBe(204);
+    });
+  });
+
+  describe('世帯のデータを消す経路は利用者も消す（B-56d）', () => {
+    it('世帯のデータを消すと、その世帯の利用者も auth.users から消える', async () => {
+      // B-56d 設計書 規則5・10 / FR-27 / ADR-071 決定2: 同じ要求・同じトランザクションで利用者まで消す。
+      await seedHouseholdData(deletedUserHousehold);
+
+      const response = await deleteHouseholdDataRequest(deletedUserHousehold);
+
+      expect(response.status).toBe(204);
+      await expect(countUser(rowConnection, deletedUserHousehold)).resolves.toBe(0);
+    });
+
+    it('他世帯が自分の世帯のデータを消しても、こちらの利用者は auth.users に残る', async () => {
+      // B-56d 設計書 規則8 / C-9 / NFR-09: 誰を消すかはアクセストークンの世帯のクレームが決める。
+      await seedHouseholdData(untouchedUserHousehold);
+      await seedHouseholdData(deletingOwnUserHousehold);
+      const response = await deleteHouseholdDataRequest(deletingOwnUserHousehold);
+      expect(response.status).toBe(204);
+
+      await expect(countUser(rowConnection, untouchedUserHousehold)).resolves.toBe(1);
     });
   });
 });
