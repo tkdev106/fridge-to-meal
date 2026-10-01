@@ -17,13 +17,18 @@ const SIGN_OUT_LABEL = 'ログアウト';
 export type SignOutButtonProps = {
   /** サインアウトの実行。サーバ側の失敗は画面に届かない（`Session.ts` 規則8）。 */
   onSignOut: () => Promise<void>;
+  /**
+   * 外から効かせない（B-56f 設計 規則6）。設定画面が削除を送っている間に渡す — 結末が届く前に
+   * サインアウトすると、失敗の案内を出す相手が居なくなる。
+   */
+  disabled?: boolean;
 };
 
-export function SignOutButton({ onSignOut }: SignOutButtonProps) {
+export function SignOutButton({ onSignOut, disabled = false }: SignOutButtonProps) {
   const [sending, setSending] = useState(false);
 
   async function signOut() {
-    if (sending) return;
+    if (sending || disabled) return;
 
     setSending(true);
     try {
@@ -34,7 +39,7 @@ export function SignOutButton({ onSignOut }: SignOutButtonProps) {
   }
 
   return (
-    <button type="button" disabled={sending} onClick={signOut}>
+    <button type="button" disabled={sending || disabled} onClick={signOut}>
       {SIGN_OUT_LABEL}
     </button>
   );

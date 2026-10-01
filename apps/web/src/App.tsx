@@ -39,6 +39,7 @@ import type {
 import type { ListIngredientNames } from './server/IngredientNameRequests.js';
 import type { RequestNewMeals, ShowLatestSuggestion } from './server/SuggestionRequests.js';
 import type { AddCookingRecord, ListMeals, ShowMeal } from './server/MealRequests.js';
+import type { DeleteHouseholdData } from './server/HouseholdDataRequests.js';
 
 export type AppProps = {
   /** セッションの継ぎ目。画面はこの型だけを見る（ADR-046 決定3）。 */
@@ -98,6 +99,8 @@ export type AppProps = {
   addCookingRecord: AddCookingRecord;
   /** 献立の履歴を取りに行く口（B-54b）。組み立てるのはやはり `main.tsx` だけである。 */
   listMeals: ListMeals;
+  /** 世帯のデータを消す口（B-56f）。組み立てるのはやはり `main.tsx` だけである。 */
+  deleteHouseholdData: DeleteHouseholdData;
 };
 
 /** 開いている献立と、その出どころのタブ（B-54b 設計 規則9。門の内部の形で export しない）。 */
@@ -115,6 +118,7 @@ export function App({
   showMeal,
   addCookingRecord,
   listMeals,
+  deleteHouseholdData,
 }: AppProps) {
   // 購読を始めた時点の状態は subscribe が1度目に渡す（`Session.ts` 規則5）ので、
   // ここで先に決めない。最初の描画は購読が始まるまでの一瞬だけ 'unknown' でよい。
@@ -445,6 +449,22 @@ export function App({
   };
 
   /**
+   * アカウントとデータの削除の配線（FR-27 / B-56f 設計 規則7・8）。
+   *
+   * **消えた回はすぐにサインアウトしてから解決する**（ADR-071 結果2）— サーバではもう利用者が
+   * 居ないので、手元のセッションを残しても使い道が無い。門の状態が signedOut に移れば、
+   * 既存の効果が設定・開いた献立・履歴を閉じてログインの画面を出す。サインアウトのサーバ側の
+   * 失敗は画面に届かない（`Session.ts` 規則8）。**失敗した回はサインアウトしない** —
+   * データも利用者も残っており（ADR-073 結果3）、案内を出すのは設定画面である。
+   */
+  const deleteHouseholdDataAndSignOut: DeleteHouseholdData = async () => {
+    const outcome = await deleteHouseholdData();
+    if (outcome.outcome === 'deleted') await session.signOut();
+
+    return outcome;
+  };
+
+  /**
    * 献立詳細を開く（B-53 / 画面設計 2.3）。**どのタブから開いたかを添える**（B-54b 規則9）。
    * **前の記録の結末は持ち越さない**（B-53 規則12 / B-54b 規則10）— 持ち越すと、記録して
    * いない献立に記録の案内が出る。
@@ -659,6 +679,7 @@ export function App({
                 <SettingsScreen
                   onSignOut={() => session.signOut()}
                   onClose={() => setSettingsOpen(false)}
+                  onDeleteHouseholdData={deleteHouseholdDataAndSignOut}
                 />
               ) : null
             }
