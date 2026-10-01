@@ -43,7 +43,7 @@ flowchart LR
   pantry -->|"在庫スナップショットを供給<br/>顧客 / 供給者"| meal
   llm -.->|"献立（腐敗防止層 ACL 経由）"| meal
   identity -.-> pantry
-  identity -.-> meal
+  identity -.->|"利用者の削除 DeleteUser（ADR-073）"| meal
 ```
 
 在庫が上流、献立が下流。献立側の必要（期限の近い在庫を優先したい）が、在庫側の公開インターフェースを規定する。

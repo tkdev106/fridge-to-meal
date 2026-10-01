@@ -44,6 +44,8 @@ import { showMeal } from './contexts/meal/usecase/ShowMeal.js';
 import { listMeals } from './contexts/meal/usecase/ListMeals.js';
 import { listIngredientNames } from './contexts/meal/usecase/ListIngredientNames.js';
 import { deleteHouseholdData } from './contexts/meal/usecase/DeleteHouseholdData.js';
+import { UserDeleterImpl } from './contexts/identity/infrastructure/UserDeleterImpl.js';
+import { deleteUser } from './contexts/identity/usecase/DeleteUser.js';
 import { createStockItemRoutes } from './contexts/pantry/api/StockItemRoutes.js';
 import type { StockItemIdGenerator } from './contexts/pantry/domain/port/StockItemIdGenerator.js';
 import { stockItemIdOf } from './contexts/pantry/domain/value/StockItemId.js';
@@ -262,7 +264,8 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
     listMeals: transactionPerRequest(env, (tx) =>
       listMeals({ mealRepository: new MealRepositoryImpl(tx) }),
     ),
-    // 世帯のデータを消す口も同じ1要求1トランザクションで包む（B-56a 規則13 / ADR-029 決定3(a)）。
+    // 世帯のデータと利用者を消す口も同じ1要求1トランザクションで包む（B-56a 規則13 / B-56d /
+    // ADR-029 決定3(a)）。
     // 3つのリポジトリを**同じ `tx`** から作り、在庫の口も同じ `tx` の素のものを渡す — どれかが
     // 投げたら巻き戻しで1行も消えない（規則8）。生成器・採番・`now` は渡さない。
     deleteHouseholdData: transactionPerRequest(env, (tx) =>
@@ -270,6 +273,9 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
         deleteHouseholdStockItems: deleteHouseholdStockItems({
           stockItemRepository: new StockItemRepositoryImpl(tx),
         }),
+        // 利用者も同じ `tx` で消す（B-56d 規則10 / ADR-071 決定2）— 関数は `tx` に張られたクレームの
+        // 利用者を消すので、別のトランザクションで作るとデータと利用者が別々に確定してしまう。
+        deleteUser: deleteUser({ userDeleter: new UserDeleterImpl(tx) }),
         mealRepository: new MealRepositoryImpl(tx),
         suggestionRepository: new SuggestionRepositoryImpl(tx),
       }),

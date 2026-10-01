@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import type { DeleteUser } from '../../../../src/contexts/identity/usecase/DeleteUser.js';
+import { deleteUser } from '../../../../src/contexts/identity/usecase/DeleteUser.js';
 import { deleteHouseholdData } from '../../../../src/contexts/meal/usecase/DeleteHouseholdData.js';
 import type { Meal } from '../../../../src/contexts/meal/domain/entity/Meal.js';
 import { createMeal } from '../../../../src/contexts/meal/domain/entity/Meal.js';
@@ -20,6 +22,7 @@ import { stockItemIdOf } from '../../../../src/contexts/pantry/domain/value/Stoc
 import { deleteHouseholdStockItems } from '../../../../src/contexts/pantry/usecase/DeleteHouseholdStockItems.js';
 import type { HouseholdId } from '../../../../src/shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../../../src/shared/domain/HouseholdId.js';
+import { InMemoryUserDeleter } from '../../../support/identity/InMemoryUserDeleter.js';
 import { InMemoryMealRepository } from '../../../support/meal/InMemoryMealRepository.js';
 import { InMemorySuggestionRepository } from '../../../support/meal/InMemorySuggestionRepository.js';
 import { InMemoryStockItemRepository } from '../../../support/pantry/InMemoryStockItemRepository.js';
@@ -71,13 +74,18 @@ function stockItem(props: { id: string; householdId: HouseholdId; name: string }
 }
 
 /**
- * 2世帯ぶんの献立・提案・在庫品を1件ずつ置き、ユースケースを1つ組む。在庫の口は
- * `pantry/usecase` の本物を記憶上のリポジトリで組んで関数として渡す（ADR-033 決定2 / ADR-072 決定1）。
+ * 2世帯ぶんの献立・提案・在庫品を1件ずつと利用者を置き、ユースケースを1つ組む。在庫の口と
+ * 利用者の口は、それぞれ `pantry/usecase` と `identity/usecase` の本物を記憶上の実装で組んで
+ * 関数として渡す（ADR-033 決定2 / ADR-072 決定1 / B-56d 設計書 5章）。`empty` なら利用者も置かない。
  */
 async function setUp(props: { empty?: boolean } = {}) {
   const mealRepository = new InMemoryMealRepository();
   const suggestionRepository = new InMemorySuggestionRepository();
   const stockItemRepository = new InMemoryStockItemRepository();
+  const userDeleter =
+    props.empty === true
+      ? new InMemoryUserDeleter()
+      : new InMemoryUserDeleter(ourHousehold, neighborHousehold);
 
   if (props.empty !== true) {
     for (const [householdId, mealId, suggestionId, stockItemId, name] of [
@@ -98,16 +106,18 @@ async function setUp(props: { empty?: boolean } = {}) {
 
   const runDelete = deleteHouseholdData({
     deleteHouseholdStockItems: deleteHouseholdStockItems({ stockItemRepository }),
+    deleteUser: deleteUser({ userDeleter }),
     mealRepository,
     suggestionRepository,
   });
 
-  return { runDelete, mealRepository, suggestionRepository, stockItemRepository };
+  return { runDelete, mealRepository, suggestionRepository, stockItemRepository, userDeleter };
 }
 
 /** 本題の口だけを差し替え、残りは空の記憶上の実装で組む。失敗の伝え方を見るときに使う。 */
 function runDeleteWith(overrides: {
   deleteHouseholdStockItems?: (householdId: HouseholdId) => Promise<void>;
+  deleteUser?: DeleteUser;
   mealRepository?: MealRepository;
   suggestionRepository?: SuggestionRepository;
 }) {
@@ -115,6 +125,7 @@ function runDeleteWith(overrides: {
     deleteHouseholdStockItems:
       overrides.deleteHouseholdStockItems ??
       deleteHouseholdStockItems({ stockItemRepository: new InMemoryStockItemRepository() }),
+    deleteUser: overrides.deleteUser ?? deleteUser({ userDeleter: new InMemoryUserDeleter() }),
     mealRepository: overrides.mealRepository ?? new InMemoryMealRepository(),
     suggestionRepository: overrides.suggestionRepository ?? new InMemorySuggestionRepository(),
   });
@@ -124,11 +135,11 @@ function runDeleteWith(overrides: {
 type DeleteHouseholdDataDeps = Parameters<typeof deleteHouseholdData>[0];
 
 /**
- * deps のキーが3つだけなら `true`、1つでも他のキーがあれば `never`。
+ * deps のキーが4つだけなら `true`、1つでも他のキーがあれば `never`。
  * `never` になると下の代入が型検査で落ちる（先行 `MealListRoutes.test.ts`）。
  */
 type DepsTakeNeitherClockNorGeneratorNorIdPort = keyof DeleteHouseholdDataDeps extends
-  'deleteHouseholdStockItems' | 'mealRepository' | 'suggestionRepository'
+  'deleteHouseholdStockItems' | 'deleteUser' | 'mealRepository' | 'suggestionRepository'
   ? true
   : never;
 
@@ -194,9 +205,43 @@ describe('deleteHouseholdData', () => {
     });
   });
 
+  describe('利用者も消す（B-56d / FR-27 / ADR-071 決定2）', () => {
+    it('世帯のデータを消すと、その世帯の利用者も居なくなる', async () => {
+      // B-56d 設計書 規則5 / ADR-071 決定2: データと同じ要求で利用者まで消す。
+      const { runDelete, userDeleter } = await setUp();
+
+      await runDelete(ourHousehold);
+
+      expect(userDeleter.has(ourHousehold)).toBe(false);
+    });
+
+    it('利用者を消す時点で、その世帯の献立・提案・在庫品はすでに消えている', async () => {
+      // B-56d 設計書 規則5: 提案 → 献立 → 在庫 → 利用者の順で、利用者は必ず最後。
+      const { mealRepository, suggestionRepository, stockItemRepository } = await setUp();
+      let observedAtUserDeletion: unknown = 'まだ呼ばれていない';
+      const runDelete = deleteHouseholdData({
+        deleteHouseholdStockItems: deleteHouseholdStockItems({ stockItemRepository }),
+        deleteUser: async (householdId) => {
+          observedAtUserDeletion = {
+            meals: await mealRepository.findByHousehold(householdId),
+            latestSuggestion: await suggestionRepository.findLatestByHousehold(householdId),
+            stockItems: await stockItemRepository.findByHousehold(householdId),
+          };
+        },
+        mealRepository,
+        suggestionRepository,
+      });
+
+      await runDelete(ourHousehold);
+
+      expect(observedAtUserDeletion).toEqual({ meals: [], latestSuggestion: null, stockItems: [] });
+    });
+  });
+
   describe('消す物が無いとき（B-56a 規則7）', () => {
     it('在庫品も献立も提案も無い世帯でも、断らずに何も返さずに終わる', async () => {
       // 規則7: 存在を確かめない。「消えている」状態を求める操作である。
+      // 規則7（B-56d）: 利用者が居なくても断らない。
       const { runDelete } = await setUp({ empty: true });
 
       await expect(runDelete(ourHousehold)).resolves.toBeUndefined();
@@ -204,6 +249,7 @@ describe('deleteHouseholdData', () => {
 
     it('同じ世帯を続けて2度消しても、2度目も断らずに終わる', async () => {
       // 規則7: 2度目の呼び出しも同じ結末。
+      // 規則7（B-56d）: 利用者が居なくても断らない。
       const { runDelete } = await setUp();
       await runDelete(ourHousehold);
 
@@ -260,6 +306,35 @@ describe('deleteHouseholdData', () => {
       const failure = new Error('在庫を消せなかった');
       const runDelete = runDeleteWith({
         deleteHouseholdStockItems: async () => {
+          throw failure;
+        },
+      });
+
+      await expect(runDelete(ourHousehold)).rejects.toBe(failure);
+    });
+
+    it('在庫の口が投げたら、利用者は消えずに残る', async () => {
+      // B-56d 設計書 規則6 / ADR-071 決定2: 前の口が投げたら後続を呼ばない。データが残ったまま
+      // 利用者だけ消える状態を作らない。
+      const failure = new Error('在庫を消せなかった');
+      const userDeleter = new InMemoryUserDeleter(ourHousehold);
+      const runDelete = runDeleteWith({
+        deleteHouseholdStockItems: async () => {
+          throw failure;
+        },
+        deleteUser: deleteUser({ userDeleter }),
+      });
+
+      await expect(runDelete(ourHousehold)).rejects.toBe(failure);
+
+      expect(userDeleter.has(ourHousehold)).toBe(true);
+    });
+
+    it('利用者を消す口が投げた例外を包まずにそのまま伝える', async () => {
+      // B-56d 設計書 規則6・7章1行目 / ADR-045: 包まずに伝え、巻き戻しはトランザクションに任せる。
+      const failure = new Error('利用者を消せなかった');
+      const runDelete = runDeleteWith({
+        deleteUser: async () => {
           throw failure;
         },
       });
