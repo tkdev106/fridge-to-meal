@@ -12,27 +12,38 @@
  *   出し分けは `ScreenHeader.module.css` のメディアクエリだけで行う（規則2。JS で幅を読まない）
  */
 
-import type { JSX } from 'react';
+import type { JSX, ReactNode } from 'react';
 import { Icon } from '../icons/Icon.js';
 import styles from './ScreenHeader.module.css';
 
-export type ScreenHeaderProps = { title: string; onOpenSettings: () => void };
+export type ScreenHeaderProps = {
+  title: string;
+  onOpenSettings: () => void;
+  /**
+   * 題の行の下に添えるもの（献立の凡例など。B-61 規則3）。見出しの行の外枠（`header`）の中に
+   * 置く — `header` は入れ子にできないので、画面の側で別の `header` を作らせない。
+   */
+  children?: ReactNode;
+};
 
 /** 歯車の名前（原本の `aria-label`。ADR-074 決定1 — 文言の正は `docs/design/`）。 */
 const SETTINGS_LABEL = '設定';
 
-export function ScreenHeader({ title, onOpenSettings }: ScreenHeaderProps): JSX.Element {
+export function ScreenHeader({ title, onOpenSettings, children }: ScreenHeaderProps): JSX.Element {
   return (
     <header className={styles.header}>
-      <h1 className={styles.title}>{title}</h1>
-      <button
-        type="button"
-        className={styles.settings}
-        aria-label={SETTINGS_LABEL}
-        onClick={onOpenSettings}
-      >
-        <Icon name="settings" />
-      </button>
+      <div className={styles.row}>
+        <h1 className={styles.title}>{title}</h1>
+        <button
+          type="button"
+          className={styles.settings}
+          aria-label={SETTINGS_LABEL}
+          onClick={onOpenSettings}
+        >
+          <Icon name="settings" />
+        </button>
+      </div>
+      {children}
     </header>
   );
 }

@@ -28,6 +28,7 @@ import { describe, expect, it } from 'vitest';
 import type { MealSummaryOutput, StockItemDto } from '@fridge-to-meal/contract';
 import { act, fireEvent, render, screen, waitFor, within } from './support/dom/renderComponent.js';
 import { installPointerCapture } from './support/dom/pointerCapture.js';
+import { pressOperation } from './support/dom/pressOperation.js';
 import { FixedSession } from './support/session/FixedSession.js';
 import type { FixedSessionOptions } from './support/session/FixedSession.js';
 import { FixedStockItemRequests } from './support/server/FixedStockItemRequests.js';
@@ -261,15 +262,32 @@ function operationAt(index: number, expectedCount: number): HTMLElement {
 }
 
 /**
- * 在庫の一覧に出ている操作は1つ（登録を開く）である。**ログアウトは在庫タブに置かない**
- * （B-56c 規則12 — ログアウトへの経路は設定画面の1つだけ）。
+ * 在庫の一覧に出ている操作は、行ごとの `…` を除けば1つ（登録を開く）である。**ログアウトは
+ * 在庫タブに置かない**（B-56c 規則12 — ログアウトへの経路は設定画面の1つだけ）。行ごとの `…`
+ * は `aria-expanded` を持つ開閉ボタンであり（B-69 設計 規則3）、数えるときはそれで除く。
  */
 const LIST_OPERATION_COUNT = 1;
 /** 登録の画面に出ている操作は3つ（閉じる／保存2つ）である（B-56c 規則12）。 */
 const REGISTER_OPERATION_COUNT = 3;
 
+/** 行ごとの `…`（B-69 設計 規則3）を除いた、在庫の一覧の操作を文書順に。 */
+function listOperations(): readonly HTMLElement[] {
+  return contentOperations().filter((button) => !button.hasAttribute('aria-expanded'));
+}
+
+/** 行ごとの `…`（B-69 設計 規則3）を文書順に。 */
+function rowOperationToggles(): readonly HTMLElement[] {
+  return contentOperations().filter((button) => button.hasAttribute('aria-expanded'));
+}
+
 function openRegisterOperation(): HTMLElement {
-  return operationAt(0, LIST_OPERATION_COUNT);
+  const operations = listOperations();
+  expect(operations).toHaveLength(LIST_OPERATION_COUNT);
+
+  const [found] = operations;
+  if (found === undefined) throw new Error('登録を開く操作が無い');
+
+  return found;
 }
 
 function closeRegisterOperation(): HTMLElement {
@@ -281,8 +299,8 @@ function saveAndCloseOperation(): HTMLElement {
 }
 
 /**
- * 食材名の欄。**補完の `list` を持つため役割は `combobox` である**（B-50c）— 補完が0件の
- * 回も欄はこの役割のままである。
+ * 食材名の欄。**`role="combobox"` を明示しているため役割は `combobox` である**（B-50c /
+ * B-66 設計 規則13）— 補完が0件の回も欄はこの役割のままである。
  */
 function ingredientNameField(): HTMLElement {
   return screen.getByRole('combobox');
@@ -299,12 +317,33 @@ function soleRow(): HTMLElement {
   return row;
 }
 
-/** 行を横になぞる。**判断は `SwipeGesture.ts` の持ち分**で、ここは入力を送るだけである。 */
-function swipeSoleRow(): void {
+/**
+ * 行を消す — **なぞる → 現れた削除を押す → 確認の削除を押す**の3つを1つにしたもの
+ * （FR-06 / B-69 設計 規則1・6・11）。なぞっただけでは消えない。
+ *
+ * **判断は `SwipeGesture.ts` と `PantryList` の持ち分**で、ここは入力を送るだけである。
+ * 現れた削除は行の中の `aria-expanded` を持たない button、確認の削除は `role="dialog"` の中の
+ * 2つめの button である（同 規則8）。
+ */
+function deleteSoleRow(): void {
   const row = soleRow();
 
   fireEvent.pointerDown(row, { pointerId: 1, clientX: 0, clientY: 0 });
   fireEvent.pointerUp(row, { pointerId: 1, clientX: 100, clientY: 0 });
+
+  const revealed = within(soleRow())
+    .getAllByRole('button')
+    .filter((button) => !button.hasAttribute('aria-expanded'));
+  expect(revealed).toHaveLength(1);
+  const [revealedDelete] = revealed;
+  if (revealedDelete === undefined) throw new Error('行に削除が現れていない');
+  pressOperation(revealedDelete);
+
+  const confirmation = within(screen.getByRole('dialog')).getAllByRole('button');
+  expect(confirmation).toHaveLength(2);
+  const confirmDelete = confirmation.at(1);
+  if (confirmDelete === undefined) throw new Error('確認に削除が無い');
+  pressOperation(confirmDelete);
 }
 
 /** 献立タブ。`TAB_ORDER` の先頭であり、**起動時に開かれている**（ADR-064 / `navigation/Tabs.ts`）。 */
@@ -498,7 +537,7 @@ describe('門 App が在庫一覧を取り直す条件', () => {
     expect(screen.queryByText(chineseCabbage.name)).toBeNull();
   });
 
-  it('行を横になぞって消えたら、一覧を取り直す', async () => {
+  it('行の削除を確かめて消えたら、一覧を取り直す', async () => {
     renderApp(
       { initialState: 'signedIn' },
       {
@@ -509,7 +548,7 @@ describe('門 App が在庫一覧を取り直す条件', () => {
 
     openPantry();
     await screen.findByText(carrot.name);
-    swipeSoleRow();
+    deleteSoleRow();
 
     // FR-06 / ADR-050 決定3: **web で列から行を抜かない** — 取り直した結果が正である。
     expect(await screen.findByText(chineseCabbage.name)).not.toBeNull();
@@ -526,7 +565,7 @@ describe('門 App が在庫一覧を取り直す条件', () => {
 
     openPantry();
     await screen.findByText(carrot.name);
-    swipeSoleRow();
+    deleteSoleRow();
 
     // ADR-050 決定1・3: 利用者が求めたのは**その行が消えていること**である。
     // **取り直しはその読みの検めでもある** — 消えていなければ行がそのまま戻ってくる。
@@ -544,7 +583,7 @@ describe('門 App が在庫一覧を取り直す条件', () => {
 
     openPantry();
     await screen.findByText(carrot.name);
-    swipeSoleRow();
+    deleteSoleRow();
 
     // 断りが届いたことを待つ（案内が出るのは `DeleteFailureNotice.ts` の読みの帰結である）。
     await waitFor(() => {
@@ -980,7 +1019,7 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
 
     openPantry();
     await screen.findByText(carrot.name);
-    swipeSoleRow();
+    deleteSoleRow();
     await screen.findByText(chineseCabbage.name);
 
     fireEvent.click(mealsTab());
@@ -1486,7 +1525,7 @@ describe('門 App の献立詳細', () => {
 
     openPantry();
     await screen.findByText(carrot.name);
-    swipeSoleRow();
+    deleteSoleRow();
 
     // 消えたと読めたら一覧を取り直す（B-23 / ADR-050）。2件目の台本は空なので、行が
     // 消えたことが取り直しの合図である。
@@ -2836,7 +2875,7 @@ describe('門 App の設定', () => {
     openPantry();
 
     expect(await screen.findByText(carrot.name)).not.toBeNull();
-    expect(contentOperations()).toHaveLength(LIST_OPERATION_COUNT);
+    expect(listOperations()).toHaveLength(LIST_OPERATION_COUNT);
   });
 
   it('設定を開いたまま、開く前に選んでいたタブを押しても、設定を閉じてそのタブの中身を出す', async () => {
@@ -2929,14 +2968,16 @@ describe('門 App の設定', () => {
     expect(tabs()).toHaveLength(3);
   });
 
-  it('在庫の一覧に出る操作は、登録を開く1つだけである', async () => {
+  it('在庫の一覧に出る操作は、登録を開くものと行ごとの操作だけである', async () => {
     // 規則12 / ADR-046 結果4 の暫定を解く: 在庫タブにログアウトを置かない。
+    // B-69 設計 規則3: 行ごとの `…`（`aria-expanded` を持つ）が行の数だけ足される。
     renderApp({ initialState: 'signedIn' }, { list: [loaded(carrot)] });
 
     openPantry();
     await screen.findByText(carrot.name);
 
-    expect(contentOperations()).toHaveLength(1);
+    expect(listOperations()).toHaveLength(1);
+    expect(rowOperationToggles()).toHaveLength(1);
   });
 
   it('在庫の登録の画面に出る操作は、閉じると保存2つの3つだけである', async () => {
@@ -3522,7 +3563,7 @@ describe('門 App の接続が切れている間の在庫と設定の操作', ()
     await screen.findByText(carrot.name);
     fireEvent.click(openRegisterOperation());
 
-    // 規則6: 登録の画面を開くのは遷移である。食材名の欄は補完の `list` を持つので `combobox`。
+    // 規則6: 登録の画面を開くのは遷移である。食材名の欄は `role="combobox"` を明示しているので `combobox`。
     expect(ingredientNameField()).not.toBeNull();
   });
 
@@ -3552,7 +3593,7 @@ describe('門 App の接続が切れている間の在庫と設定の操作', ()
     expect((operationAt(1, EDIT_OPERATION_COUNT) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('接続が切れている間は、行をなぞっても削除が送られない', async () => {
+  it('接続が切れている間は、行の削除を確かめても削除が送られない', async () => {
     // 削除の台本は渡しておく — 送られた回も最後まで通り、落ちるのは記録の断定だけになる
     // （`docs/testing.md` 2章「用意した生成結果をわざと渡す」と同じ構え）。
     const { requests } = renderAppWith({
@@ -3562,10 +3603,10 @@ describe('門 App の接続が切れている間の在庫と設定の操作', ()
 
     openPantry();
     await screen.findByText(carrot.name);
-    swipeSoleRow();
+    deleteSoleRow();
     await act(async () => {});
 
-    // 規則11: 門 → `PantryTab` → `PantryList` へ `offline` が素通しされ、削除と読めた動きを捨てる。
+    // 規則11: 門 → `PantryTab` → `PantryList` へ `offline` が素通しされ、確認の削除が押せない（B-69）。
     expect(requests.deletedIds).toEqual([]);
     expect(screen.queryByText(carrot.name)).not.toBeNull();
   });
