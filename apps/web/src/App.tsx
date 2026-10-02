@@ -178,6 +178,14 @@ export function App({
    */
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  /**
+   * 世帯のデータの削除を送っている間か（B-60b 規則1・4・8）。**帯を止めるために門も持つ** —
+   * 設定画面の「送っている間はどの操作も効かない」（B-56f 規則6）は設定画面の中にしか及ばず、
+   * 帯のタブを押すと設定が閉じて（B-60 規則8）、失敗の案内を見ないまま残る。設定画面の
+   * `deleting` とは別に持つ（二重に持つ。設定画面の口と状態は変えない）。
+   */
+  const [deletingHouseholdData, setDeletingHouseholdData] = useState(false);
+
   // 開いた献立の取得の結末。**開くまでは「読み込み中」ですらない**（詳細を出していない）。
   const [mealDetail, setMealDetail] = useState<MealDetailState>({ outcome: 'loading' });
 
@@ -476,10 +484,16 @@ export function App({
    * データも利用者も残っており（ADR-073 結果3）、案内を出すのは設定画面である。
    */
   const deleteHouseholdDataAndSignOut: DeleteHouseholdData = async () => {
-    const outcome = await deleteHouseholdData();
-    if (outcome.outcome === 'deleted') await session.signOut();
+    // **結末がどちらでも・口が投げても帯を戻す**（B-60b 規則4）。戻し忘れると帯が効かないまま残る。
+    setDeletingHouseholdData(true);
+    try {
+      const outcome = await deleteHouseholdData();
+      if (outcome.outcome === 'deleted') await session.signOut();
 
-    return outcome;
+      return outcome;
+    } finally {
+      setDeletingHouseholdData(false);
+    }
   };
 
   /**
@@ -683,6 +697,9 @@ export function App({
           ) : null
         }
         onOpenSettings={() => setSettingsOpen(true)}
+        // **削除を送っている間は帯を止める**（B-60b 規則1）。確認を出しているだけの間・
+        // オフラインの間は止めない（同 規則5）。
+        disabled={deletingHouseholdData}
         meals={
           <MealsTab
             suggestion={suggestion}

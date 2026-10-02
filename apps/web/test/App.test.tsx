@@ -3076,6 +3076,171 @@ describe('門 App の設定', () => {
     expect(contentOperations()).toHaveLength(SETTINGS_OPERATION_COUNT);
     expect(householdData.deleteCount).toBe(0);
   });
+
+  /**
+   * 削除を送っている間の帯（B-60b 設計 6章 規則1〜5）。**送っている間は帯の3つのタブも帯の
+   * 「設定」も効かない** — B-56f 規則6（結末が届く前に画面を離れて失敗の案内を失わない）を
+   * 帯へ及ぼす。送っている間は `heldUntilSettled` で保留し、`settle` で解く（先行
+   * `requestNewMeals`）。止めたことは `disabled` と画面の見えで観る（`vi.fn()` を使わない）。
+   */
+
+  /** 世帯のデータの削除の保留を解く（先行 `settleSuggestions`）。 */
+  async function settleHouseholdData(householdData: FixedHouseholdDataRequests): Promise<void> {
+    await act(async () => {
+      householdData.settle();
+    });
+  }
+
+  /** 設定を開いて削除を確かめる（確認を出してから確かめる。B-56f 規則4）。 */
+  async function confirmDeletionFromHistory(): Promise<void> {
+    await openSettingsFromHistory();
+    fireEvent.click(deleteOperation());
+    fireEvent.click(confirmDeletionOperation());
+  }
+
+  it('削除を送っている間は、帯の3つのタブが押せない', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      { list: [listed([mealA])] },
+      { delete: [{ heldUntilSettled: { outcome: 'failed' } }] },
+    );
+
+    await confirmDeletionFromHistory();
+
+    // B-60b 規則1: 門が送っている間を持ち、器の帯を止める。
+    expect(tabs().map((tab) => (tab as HTMLButtonElement).disabled)).toEqual([true, true, true]);
+  });
+
+  it('削除を送っている間は、帯の「設定」が押せない', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      { list: [listed([mealA])] },
+      { delete: [{ heldUntilSettled: { outcome: 'failed' } }] },
+    );
+
+    await confirmDeletionFromHistory();
+
+    // B-60b 規則1: 帯の「設定」も止める。
+    expect((navigationSettings() as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('削除を送っている間に在庫タブを押しても、設定画面のままである', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      { list: [listed([mealA])] },
+      { delete: [{ heldUntilSettled: { outcome: 'failed' } }] },
+    );
+
+    await confirmDeletionFromHistory();
+    openPantry();
+
+    // B-60b 規則1 / B-56f 規則6: 押しても設定は閉じない（確認が出たままの操作の数で観る）。
+    expect(contentOperations()).toHaveLength(CONFIRMING_OPERATION_COUNT);
+  });
+
+  it('削除が失敗した回、送っている間にタブを押しても設定に留まり、失敗の案内が出る', async () => {
+    const { householdData } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      { list: [listed([mealA])] },
+      { delete: [{ heldUntilSettled: { outcome: 'failed' } }] },
+    );
+
+    await confirmDeletionFromHistory();
+    openPantry();
+    await settleHouseholdData(householdData);
+    await act(async () => {});
+
+    // B-60b 規則1・2 / B-56f 規則8 / `docs/screen-design.md` 8章: 失敗した回は設定画面に留まり、
+    // 原因を断定しない案内を出す。**これが失われていたのが B-60b の不具合の本体である。**
+    expect(screen.queryAllByRole('status')).toHaveLength(1);
+    expect(contentOperations()).toHaveLength(CONFIRMING_OPERATION_COUNT);
+  });
+
+  it('削除が失敗したあとは、帯のタブがまた押せる', async () => {
+    const { householdData } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      { list: [listed([mealA])] },
+      { delete: [{ heldUntilSettled: { outcome: 'failed' } }] },
+    );
+
+    await confirmDeletionFromHistory();
+    await settleHouseholdData(householdData);
+    await act(async () => {});
+
+    // B-60b 規則2・4: 結末が届いたら帯を戻す。下ろし忘れると帯が効かないまま残る。
+    expect(tabs().map((tab) => (tab as HTMLButtonElement).disabled)).toEqual([false, false, false]);
+  });
+
+  it('削除が失敗したあとに在庫タブを押すと、設定を閉じて在庫の一覧を出す', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      { list: [listed([mealA])] },
+      { delete: [{ outcome: 'failed' }] },
+    );
+
+    await confirmDeletionFromHistory();
+    await act(async () => {});
+    openPantry();
+
+    // B-60b 規則2 / B-60 規則8: 結末が届いたあとは、タブで設定を閉じてそのタブを出す。
+    expect(await screen.findByText(carrot.name)).not.toBeNull();
+    expect(listOperations()).toHaveLength(LIST_OPERATION_COUNT);
+  });
+
+  it('削除の確認を出しているだけの間は、在庫タブを押すと設定を閉じて在庫の一覧を出す', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      { list: [listed([mealA])] },
+    );
+
+    await openSettingsFromHistory();
+    fireEvent.click(deleteOperation());
+    openPantry();
+
+    // B-60b 規則5: 帯を止めるのは送っている間だけで、確認を出しているだけの間は止めない。
+    expect(await screen.findByText(carrot.name)).not.toBeNull();
+    expect(listOperations()).toHaveLength(LIST_OPERATION_COUNT);
+  });
+
+  it('接続が切れている間も、設定を開いたまま在庫タブを押すと設定を閉じて在庫の一覧を出す', async () => {
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      { list: [listed([mealA])] },
+      {},
+      { initialState: 'offline' },
+    );
+
+    await openSettingsFromHistory();
+    openPantry();
+
+    // B-60b 規則5 / B-70: オフラインは閲覧と遷移を止めない。帯も止めない。
+    expect(await screen.findByText(carrot.name)).not.toBeNull();
+    expect(listOperations()).toHaveLength(LIST_OPERATION_COUNT);
+  });
 });
 
 /**
