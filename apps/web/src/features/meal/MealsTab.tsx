@@ -254,7 +254,7 @@ function SuggestionBody({
         // 置くと、ボタンの押下が伝わった先で2回目が走る。
         //
         // **`li` に `role` / `tabIndex` / `aria-*` を付けない。** 付けると焦点の止まり先がボタンと
-        // 2つになり、操作が入れ子になる（NFR-16）。キーボードと読み上げはボタンが担う。
+        // 2つになり、操作が入れ子になる。キーボードと読み上げはボタンが担う。
         <li key={card.mealId} className={styles.card} onClick={() => onOpenMeal(card.mealId)}>
           {/* 再利用にだけ印を置き、名称の上に出す（FR-35 / D-3 / 原本 `MealCard`）。`note` は
               本文に添える補助であり、読み上げにも印として届く。 */}

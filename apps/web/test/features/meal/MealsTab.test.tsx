@@ -555,7 +555,7 @@ describe('献立タブ MealsTab の献立詳細への導線', () => {
   it('カード1枚ごとに、押せる操作は詳細を開く1つだけで、カードそのものは操作として現れない', () => {
     // B-61 規則10: 押下はカード全体で受けるが、読み上げとキーボードに現れる操作は
     // `作り方を見る` のボタン1つだけ。カードに `role="button"` を付けると焦点の止まり先が
-    // 2つになり、入れ子の操作になる（NFR-16）。
+    // 2つになり、入れ子の操作になる。
     renderTab(suggested(entry({ mealId: 'meal-1' }), entry({ mealId: 'meal-2' })));
 
     const cards = screen.getAllByRole('listitem');
@@ -645,7 +645,7 @@ describe('献立タブ MealsTab のカード全体を押せること', () => {
   });
 
   it('カードそのものには焦点が当たらない', () => {
-    // B-61 規則10: カードに `tabIndex` を付けない。焦点の止まり先はボタン1つだけ（NFR-16）。
+    // B-61 規則10: カードに `tabIndex` を付けない。焦点の止まり先はボタン1つだけ。
     renderTab(suggested(entry({ mealId: 'meal-1' }), entry({ mealId: 'meal-2' })));
 
     const card = cardAt(screen.getAllByRole('listitem'), 1);
@@ -660,13 +660,22 @@ describe('献立タブ MealsTab のカード全体を押せること', () => {
  *
  * ここに書く文言（`今日の献立` / `太字の材料は今日が期限です` / `材料4件・不足なし` /
  * `前に見た献立` / 注意表示）は**デザインから取ったもので、仮ではない**（ADR-074 /
- * `docs/screen-design.md` 論点3）。読み上げの文字 `今日が期限` は凡例の文から取った
- * （設計 10章 前提）。**見た目の値（太さ・余白・列の数）は見ない**（ADR-055 決定3）。
+ * `docs/screen-design.md` 論点3）。**読み上げにだけ届く文字はデザインに無い仮の文言なので、
+ * 期待値に書かない**（`docs/testing.md` 4.1）— 名称の直後に別の要素が付くかどうかで見る。
+ * **見た目の値（太さ・余白・列の数）は見ない**（ADR-055 決定3）。
  */
 const HEADING = '今日の献立';
 const LEGEND = '太字の材料は今日が期限です';
-const EXPIRING_TODAY_TEXT = '今日が期限';
 const CAUTION_TEXT = 'AI による提案です。分量・加熱時間等はご自身でご確認ください';
+
+/**
+ * 名称の要素の直後に添えられた、読み上げにだけ届く文字の要素（規則6）。無ければ `null`。
+ * 文言は仮なので見ず、**中身が空でない別の要素があること**だけを返す。
+ */
+function screenReaderAddition(name: HTMLElement): Element | null {
+  const next = name.nextElementSibling;
+  return next !== null && (next.textContent ?? '') !== '' ? next : null;
+}
 
 /** カードの無い6つの結末（見出しは出し、凡例は出さない）。 */
 const cardlessStates: readonly [string, Parameters<typeof MealsTab>[0]['suggestion']][] = [
@@ -819,7 +828,7 @@ describe('献立タブ MealsTab のカードの件数と使う在庫', () => {
     expect(within(card).queryByText('使う:', { exact: false })).toBeNull();
   });
 
-  it('期限が今日の材料にだけ、読み上げの文字「今日が期限」を1つ添える', () => {
+  it('期限が今日の材料にだけ、読み上げの文字を添える', () => {
     // 規則6 / NFR-17: 太字は色ではないが読み上げに届かない。翌日以降の材料には添えない。
     renderTab(
       suggested(
@@ -836,7 +845,8 @@ describe('献立タブ MealsTab のカードの件数と使う在庫', () => {
     );
 
     const card = cardAt(screen.getAllByRole('listitem'), 0);
-    expect(within(card).getAllByText(EXPIRING_TODAY_TEXT)).toHaveLength(1);
+    expect(screenReaderAddition(within(card).getByText('豚こま肉'))).not.toBeNull();
+    expect(screenReaderAddition(within(card).getByText('白菜'))).toBeNull();
   });
 
   it('読み上げの文字は、期限が今日の材料の名称の直後に、名称とは別の要素として並ぶ', () => {
@@ -857,9 +867,10 @@ describe('献立タブ MealsTab のカードの件数と使う在庫', () => {
 
     const card = cardAt(screen.getAllByRole('listitem'), 0);
     const pork = within(card).getByText('豚こま肉');
-    const expiringToday = within(card).getByText(EXPIRING_TODAY_TEXT);
+    const expiringToday = screenReaderAddition(pork);
     const napaCabbage = within(card).getByText('白菜');
-    expect(precedes(pork, expiringToday)).toBe(true);
+    if (expiringToday === null) throw new Error('読み上げの文字が無い');
+    expect(pork.contains(expiringToday)).toBe(false);
     expect(precedes(expiringToday, napaCabbage)).toBe(true);
   });
 
@@ -876,10 +887,11 @@ describe('献立タブ MealsTab のカードの件数と使う在庫', () => {
       ),
     );
 
-    const expiringToday = within(cardAt(screen.getAllByRole('listitem'), 0)).getByText(
-      EXPIRING_TODAY_TEXT,
+    const expiringToday = screenReaderAddition(
+      within(cardAt(screen.getAllByRole('listitem'), 0)).getByText('豚こま肉'),
     );
-    expect(expiringToday.closest('[aria-hidden="true"]')).toBeNull();
+    expect(expiringToday).not.toBeNull();
+    expect(expiringToday?.closest('[aria-hidden="true"]')).toBeNull();
   });
 
   it('期限が今日の材料があっても、生成のカードに note を置かない', () => {
