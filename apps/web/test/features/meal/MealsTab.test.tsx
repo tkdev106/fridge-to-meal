@@ -724,8 +724,9 @@ const cardlessStates: readonly [string, Parameters<typeof MealsTab>[0]['suggesti
 ];
 
 describe('献立タブ MealsTab の見出し', () => {
-  it('提案が出ている回、見出し「今日の献立」を水準2で1つ出す', () => {
-    // 規則1・2: 画面の見出しは h2 が先行（`SettingsScreen` / `StockItemForm`）。
+  it('提案が出ている回、見出し「今日の献立」を水準1で1つ出す', () => {
+    // 規則1・2: 画面の見出しは3つのタブで共通の見出しの行が `h1` で出す（B-60 規則13 /
+    // 原本 `MealScreen`）。
     renderTab(suggested(entry()));
 
     expect(screen.getAllByRole('heading', { level: 1, name: HEADING })).toHaveLength(1);
@@ -746,7 +747,7 @@ describe('献立タブ MealsTab の見出し', () => {
   });
 
   it('カードの献立の名称を、水準3の見出しで出す', () => {
-    // 規則2: 原本 `MealCard` も h3。画面の見出し（h2）の下に入る。
+    // 規則2: 原本 `MealCard` も h3。画面の見出し（h1。B-60）の下に入る。
     renderTab(suggested(entry({ title: '豚こま肉と白菜の生姜焼き' })));
 
     const card = cardAt(screen.getAllByRole('listitem'), 0);
