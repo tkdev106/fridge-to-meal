@@ -1,12 +1,12 @@
 /**
  * 設定画面（B-56c / B-56f / `docs/screen-design.md` 8章）。
  *
- * **操作は「閉じる」「ログアウト」「アカウントとデータの削除」の3つである**（B-56f 設計 規則11。
+ * **操作は「戻る」「ログアウト」「アカウントとデータを削除」の3つである**（B-56f 設計 規則11。
  * B-56c 設計 規則6 の「2つ」を置き換えた）。並びはこの順で、削除は確認の前は1操作だけである。
  *
- * **削除は確認を経なければ送られない**（FR-27 / 設計 規則4）。削除を押すと、取り消せないこと・
- * 在庫・献立・調理記録がすべて消えることを示す文と、確かめる操作・やめる操作の2つが削除の操作に
- * 置き換わる（並びは 閉じる → ログアウト → 確かめる → やめる）。確認は画面の中に描く —
+ * **削除は確認を経なければ送られない**（FR-27 / 設計 規則4）。削除を押すと、何が消えるかを問う文と、
+ * `削除する`・`やめる` の2つの操作が削除の操作に置き換わる（並びは 戻る → ログアウト → 削除する →
+ * やめる）。文から「取り消せない」は消えたが、確認を必須にすることは変えない（B-67 規則16）。確認は画面の中に描く —
  * `window.confirm` は描いて観察できず、確認のための依存も足さない。**確認を出しているかは
  * ここが持つ**（門は持たない。設定を閉じて開き直せば確認は出ていない。規則5）。
  *
@@ -25,34 +25,51 @@
  * 下端の「設定」である（同 規則4・12）。どのタブを押しても閉じる（同 規則8）。ここはセッションの
  * 型を見ず、口を受け取るだけである（ADR-046 決定3）。
  *
- * **文言は仮である**（`docs/screen-design.md` 論点3）。
+ * **見た目と文言はデザイン 13 / 13b に揃えた**（B-67。値は `SettingsScreen.module.css`）。
+ * 題 `設定` の `h1` の下に、帯 `アカウント`（ログアウトの行）と帯 `データ`（削除の操作と確認）を
+ * 見出し `h2` で置く — 帯は操作ではない（B-67 規則12・18 / 10章 前提2）。文言はデザインが正で
+ * ある（ADR-074 決定1）。削除の失敗の案内だけはデザインに無く暫定である。
  */
 
 import type { JSX } from 'react';
 import { useState } from 'react';
 import type { DeleteHouseholdDataOutcome } from '../../server/HouseholdDataRequests.js';
+import { Icon } from '../../icons/Icon.js';
 import { SignOutButton } from './SignOutButton.js';
+import styles from './SettingsScreen.module.css';
 
-/** 閉じる操作の名札（**仮**）。 */
-const CLOSE_LABEL = '← 戻る';
+/*
+ * 文言は原本 `docs/design/src/index.dc.html` 13 / 13b から取った（ADR-074 決定1 — デザインが正）。
+ */
 
-/** 画面の見出し（**仮**）。 */
+/**
+ * 閉じる操作の名前（B-67 規則11・20）。**見える文字は持たず**、`back` のアイコンだけを出す
+ * （先行 `MealDetail`）。
+ */
+const CLOSE_LABEL = '戻る';
+
+/** 画面の題（`h1`）。 */
 const SETTINGS_HEADING = '設定';
 
-/** 削除の操作の名札（**仮**）。 */
-const DELETE_LABEL = 'アカウントとデータの削除';
+/** ログアウトの行の上の帯。 */
+const ACCOUNT_BAND = 'アカウント';
 
-/** 確認の文（**仮**）。取り消せないことと、何が消えるかを示す（設計 規則4）。 */
-const CONFIRM_NOTICE =
-  'アカウントと、在庫・献立・調理記録のデータがすべて消えます。この操作は取り消せません。';
+/** 削除の置き場の上の帯。 */
+const DATA_BAND = 'データ';
 
-/** 確かめる操作の名札（**仮**）。 */
+/** 削除の操作の名札。 */
+const DELETE_LABEL = 'アカウントとデータを削除';
+
+/** 確認の文。何が消えるかを問う（B-67 規則15・16）。 */
+const CONFIRM_NOTICE = 'アカウントと、冷蔵庫の食材・履歴をすべて削除しますか';
+
+/** 確認の中で削除を送る操作の名札。 */
 const CONFIRM_LABEL = '削除する';
 
-/** やめる操作の名札（**仮**）。 */
+/** やめる操作の名札。 */
 const CANCEL_LABEL = 'やめる';
 
-/** 失敗の案内（**仮**）。原因を断定しない（設計 規則8）。 */
+/** 失敗の案内（**暫定** — デザインに無い）。原因を断定しない（設計 規則8）。 */
 const DELETE_FAILURE_NOTICE = 'いまは削除できませんでした。時間をおいてもう一度お試しください。';
 
 export type SettingsScreenProps = {
@@ -97,28 +114,56 @@ export function SettingsScreen({
   }
 
   return (
-    <div>
-      <button type="button" disabled={deleting} onClick={onClose}>
-        {CLOSE_LABEL}
-      </button>
-      <h2>{SETTINGS_HEADING}</h2>
-      <SignOutButton onSignOut={onSignOut} disabled={deleting} />
-      {confirming ? (
-        <div>
-          <p>{CONFIRM_NOTICE}</p>
-          <button type="button" disabled={deleting || offline} onClick={confirmDeletion}>
-            {CONFIRM_LABEL}
-          </button>
-          <button type="button" disabled={deleting} onClick={cancelDeletion}>
-            {CANCEL_LABEL}
-          </button>
-          {failed && <p role="status">{DELETE_FAILURE_NOTICE}</p>}
-        </div>
-      ) : (
-        <button type="button" onClick={() => setConfirming(true)}>
-          {DELETE_LABEL}
+    <div className={styles.screen}>
+      <div className={styles.header}>
+        <button
+          type="button"
+          className={styles.back}
+          aria-label={CLOSE_LABEL}
+          disabled={deleting}
+          onClick={onClose}
+        >
+          <Icon name="back" size={24} />
         </button>
-      )}
+        <h1 className={styles.title}>{SETTINGS_HEADING}</h1>
+      </div>
+      <h2 className={styles.band}>{ACCOUNT_BAND}</h2>
+      <SignOutButton onSignOut={onSignOut} disabled={deleting} className={styles.signOut} />
+      <h2 className={`${styles.band} ${styles.bandSpaced}`}>{DATA_BAND}</h2>
+      <div className={styles.dataArea}>
+        {confirming ? (
+          <div className={styles.confirmation}>
+            <p className={styles.confirmSentence}>{CONFIRM_NOTICE}</p>
+            <div className={styles.confirmActions}>
+              <button
+                type="button"
+                className={styles.confirm}
+                disabled={deleting || offline}
+                onClick={confirmDeletion}
+              >
+                {CONFIRM_LABEL}
+              </button>
+              <button
+                type="button"
+                className={styles.cancel}
+                disabled={deleting}
+                onClick={cancelDeletion}
+              >
+                {CANCEL_LABEL}
+              </button>
+            </div>
+            {failed && (
+              <p role="status" className={styles.failure}>
+                {DELETE_FAILURE_NOTICE}
+              </p>
+            )}
+          </div>
+        ) : (
+          <button type="button" className={styles.delete} onClick={() => setConfirming(true)}>
+            {DELETE_LABEL}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
