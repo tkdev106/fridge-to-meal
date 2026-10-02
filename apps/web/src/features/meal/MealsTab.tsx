@@ -8,8 +8,10 @@
  *
  * 反対に、**日本語はここにしか置かない**（先行 `PantryList.tsx`）。**一覧の見出し・凡例・カード・
  * 注意表示の文言はデザインから取った**（B-61 / ADR-074。原本 `docs/design/src/MealScreen.dc.html`・
- * `MealCard.dc.html`・`AiNotice.dc.html`）。**それ以外（読み込み中・出せない回・「新しい献立を
- * 求める」まわり）は仮のままである** — 後者は B-62 の持ち分である。
+ * `MealCard.dc.html`・`AiNotice.dc.html`）。**「新しい献立を見る」の面・失敗の帯・出せない回
+ * （S-4 / S-7）の文言も原本から取った**（B-62。原本 `RequestBlock.dc.html`・`index.dc.html` の
+ * 「案内の帯」・`MealScreen.dc.html` の state=short / limit）。**仮のまま残るのは原本に無いもの
+ * （読み込み中・取れなかった回・0件の断り）だけである。**
  *
  * **見た目の値は `MealsTab.module.css` にだけ置き**（ADR-055 決定1）、ここには class 名しか書かない。
  *
@@ -21,9 +23,11 @@
  * ADR-066 と同じ理由）— ここは渡された詳細を、カードの一覧の代わりに描くだけである。
  */
 
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { MealCard, MealCardIngredient } from './MealCards.js';
 import { mealCardsOf } from './MealCards.js';
+import { elapsedSecondsOf } from './ElapsedSeconds.js';
 import { Icon } from '../../icons/Icon.js';
 import styles from './MealsTab.module.css';
 import type { LatestSuggestionOutcome } from '../../server/SuggestionRequests.js';
@@ -38,15 +42,6 @@ const LOADING_NOTICE = '献立を読み込んでいます。';
  * **再試行の手段も置かない**（自動でも取りに行き直さない）。
  */
 const LOAD_FAILURE_NOTICE = '献立を読み込めませんでした。';
-
-/**
- * まだ1件も提案していない世帯への案内（S-8。**文言は暫定**）。
- *
- * **失敗ではない。** この経路は保存済みを読むだけで生成を呼ばないので（ADR-065 決定1）、
- * 一度も生成していなければ取れるものが無い。**出すべきは「新しい献立を求める」操作**だが、
- * それを置くのは B-49b なので、この周は案内だけを出す（feature flag で隠さない。`CLAUDE.md`）。
- */
-const NO_SUGGESTION_YET_NOTICE = 'まだ献立の提案がありません。';
 
 /**
  * 提案が0件だったときの断り。**サーバはこの形を返さない** — 提案は1件以上の献立を持つ
@@ -96,43 +91,58 @@ const EXPIRING_TODAY_TEXT = '今日が期限';
 const OPEN_MEAL_LABEL = '作り方を見る';
 
 /**
- * 「新しい献立を求める」操作の文言（**すべて仮**。B-49b / FR-36）。
+ * 「新しい献立を見る」の面の文言（B-62 / FR-36。原本 `RequestBlock`）。
  *
- * **押す前からの待ち時間の案内**（NFR-04）。生成は費用のかかる呼び出しであり、押してから
- * 応答が届くまで間が空くことを、送信中かどうかによらず先に伝える。
+ * **待ち時間の案内**（NFR-04 / D-2 の追記）。押す前に、応答が届くまで間が空くことを伝える。
+ * **生成中は出さない** — 代わりに `考えています…` と経過秒数を出す（原本 pending / 設計 規則1）。
  */
-const WAITING_NOTICE = '新しい献立を求めると、少し時間がかかります。';
+const WAITING_NOTICE = '時間がかかる場合があります';
 
-/** `pantryChanged` の手がかり（規則9）。**在庫を足し引きした後にだけ増える2つめの note。** */
-const PANTRY_CHANGED_NOTICE = '在庫が変わりました。新しい献立を求められます。';
+/** `pantryChanged` の手がかり（D-8 / 設計 規則2）。**生成中は出さない**（原本 `changed && !pending`）。 */
+const PANTRY_CHANGED_NOTICE = '冷蔵庫の食材が変わりました';
 
-/** 送信中の案内（S-5）。 */
-const REQUESTING_NOTICE = '新しい献立を求めています…';
+/** 生成中の案内（S-5 / 設計 規則1・6）。**これだけが status である** — 秒数は外に置く。 */
+const REQUESTING_NOTICE = '考えています…';
 
-/** 失敗の案内（S-6 / NFR-07）。**文言は原因を断定しない** — 継ぎ目が理由を持っていない。 */
-const REQUEST_FAILED_NOTICE = '新しい献立を求められませんでした。';
-
-/** 操作そのものの文言（FR-36）。 */
-const REQUEST_BUTTON_LABEL = '新しい献立を求める';
+/** 経過秒数の表記（設計 規則4）。 */
+function elapsedText(seconds: number): string {
+  return `${seconds}秒`;
+}
 
 /**
- * 在庫が足りない回の案内（S-4 / D-7。**文言は仮**である）。
- *
- * **失敗ではない**（200 で届く結末。ADR-041 / ADR-062 決定2）。**件数を言わない** —
- * 結末に在庫の数も閾値も載っておらず、web で数えない（設計 規則7）。
+ * 失敗の帯（S-6 / NFR-07 / 設計 規則9。原本 `index.dc.html` の「案内の帯」）。**原因を断定しない** —
+ * 継ぎ目が理由を持っていない。再試行は同じ「新しい献立を見る」で行う。
  */
-const INSUFFICIENT_STOCK_ITEMS_NOTICE = '在庫が足りないため、献立を提案できません。';
+const REQUEST_FAILED_NOTICE = '献立をつくれませんでした。もう一度お試しください';
 
-/** 在庫タブへ送る操作の文言（D-7。**仮**である）。 */
-const GO_TO_PANTRY_LABEL = '在庫を登録する';
+/** 失敗の帯に添える記号（先行 `SignInForm` の `REJECTED_MARK`）。飾りであり、読み上げに出さない。 */
+const REQUEST_FAILED_MARK = '!';
+
+/** 操作そのものの文言（FR-36。原本 `RequestBlock`）。 */
+const REQUEST_BUTTON_LABEL = '新しい献立を見る';
 
 /**
- * 1日の生成回数の上限に達した回の案内（S-7 / NFR-C2 / ADR-049。**文言は仮**である）。
+ * 在庫が足りない回の案内（S-4 / D-7。原本 `MealScreen` の state=short）。主文は2つの塊で、
+ * **塊の途中で折り返さない**（設計 規則14）。
  *
- * **いつ解けるかを告げない** — 24時間の窓は基準日時から遡って定まり（ADR-049 決定2）、
- * web にその材料が無い（設計 規則8）。**残り回数も持たない**（規則7）。
+ * **失敗ではない**（200 で届く結末。ADR-041 / ADR-062 決定2）。**件数を言うのは原本の文言だけ**
+ * である — 結末に在庫の数は載っておらず、web で数えない（B-49c 設計 規則7）。
  */
-const GENERATION_LIMIT_REACHED_NOTICE = '今日はこれ以上、新しい献立を求められません。';
+const INSUFFICIENT_STOCK_ITEMS_LINES = ['冷蔵庫にあるものを', '2つ以上登録してください'] as const;
+
+/** 在庫が足りない回の補足（原本 `MealScreen` の state=short）。 */
+const INSUFFICIENT_STOCK_ITEMS_NOTE = '献立は冷蔵庫の食材から考えます';
+
+/** 在庫タブへ送る操作の文言（D-7。原本 `MealScreen` の state=short）。 */
+const GO_TO_PANTRY_LABEL = '食材を登録する';
+
+/**
+ * 1日の生成回数の上限に達した回の案内（S-7 / NFR-C2 / ADR-049。原本 `MealScreen` の state=limit）。
+ *
+ * **いつ解けるかも残り回数も告げない** — 24時間の窓は基準日時から遡って定まり（ADR-049 決定2）、
+ * web にその材料が無い（D-9）。
+ */
+const GENERATION_LIMIT_REACHED_NOTICE = '今日の新しい献立は以上です';
 
 /**
  * 不足の件数の言い回し（D-4 / 原本 `MealCard`）。区切りは中黒。**件数はどちらも主材料で
@@ -199,8 +209,10 @@ export type MealsTabProps = {
   today: string;
   /** 「新しい献立を求める」操作（B-49b / FR-36）。 */
   onRequestNewMeals: () => void;
-  /** 要求を送っている間か（S-5）。 */
-  requestingNewMeals: boolean;
+  /** 生成を求めた時刻（ミリ秒）。null なら送っていない。送信中かどうかはこの値だけで決まる */
+  newMealsRequestedAt: number | null;
+  /** 時計（ミリ秒）。経過秒数を読むためだけに使う。門が `Date.now` を渡す */
+  now: () => number;
   /** 直前の要求が失敗したか（S-6 を含む）。 */
   newMealsFailed: boolean;
   /**
@@ -232,15 +244,19 @@ export type MealsTabProps = {
 function SuggestionBody({
   suggestion,
   cards,
+  dimmed,
   onOpenMeal,
 }: {
   suggestion: MealsTabState;
   cards: readonly MealCard[];
+  /** 生成中か。**カード群だけを薄くする**（D-6 / 設計 規則8）— 消さず、押せるのも今のまま。 */
+  dimmed: boolean;
   onOpenMeal: (mealId: string) => void;
 }) {
   if (suggestion.outcome === 'loading') return null;
   if (suggestion.outcome === 'failed') return <p>{LOAD_FAILURE_NOTICE}</p>;
-  if (suggestion.outcome !== 'suggested') return <p>{NO_SUGGESTION_YET_NOTICE}</p>;
+  // S-8 は文言を出さず、面だけを置く（原本 state=first / 設計 規則13）。
+  if (suggestion.outcome !== 'suggested') return null;
   if (cards.length === 0) return <p>{EMPTY_SUGGESTION_NOTICE}</p>;
 
   // **件数が1〜3件で変わることを隠さない**（D-1）。空きをプレースホルダで埋めると
@@ -249,7 +265,7 @@ function SuggestionBody({
   // `role="list"` を明示するのは、`list-style: none` で一覧の役割を落とす読み手（Safari）が
   // あるためである（B-61 規則13）。
   return (
-    <ul role="list" className={styles.cards}>
+    <ul role="list" className={dimmed ? `${styles.cards} ${styles.cardsDimmed}` : styles.cards}>
       {cards.map((card) => (
         // **押下の受け口はカード（`li`）の1か所だけ**（B-61 規則9・10）。札・名称・件数・余白の
         // どこを押しても、中のボタンを押しても、ここで1回だけ開く — ボタンにも `onClick` を
@@ -299,62 +315,136 @@ function CautionNotice() {
 }
 
 /**
- * 「新しい献立を求める」操作まわり（B-49b）。役割の割り当ては検分で決めた
- * （設計8章の一部として `/tdd` が引き継いだもの）。
+ * 生成中の経過秒数（NFR-04 / D-6 / 設計 規則4・5）。
  *
- * - 押す前からの待ち時間の案内（NFR-04）… `note`。送信中かどうかによらず常に出す
- * - `pantryChanged` の手がかり（規則9）… これも `note`。真のときだけ1つ増える
- * - 送信中の案内（S-5）と失敗の案内（S-6）… どちらも `status`。**同時には出さない**
- *   （送信中を優先する — 押した時点で失敗の案内を消すのは門の役目だが、ここでも
- *   両方が真になり得ないよう送信中を先に見る）
+ * **起点は門が持つ開始時刻である**（規則12）— ここで数え始めると、タブを離れて戻った回に0へ
+ * 戻る。**送信中だけ 1000ms ごとに描き直し、描くたびに `now()` を読む** — 間隔の回数を数えないので、
+ * 間隔の遅れが表示に溜まらない。送信が終わるか画面が外れたら止める。
+ */
+function useElapsedSeconds(startedAt: number | null, now: () => number): number | null {
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (startedAt === null) return;
+
+    const interval = setInterval(() => setTick((tick) => tick + 1), 1000);
+    return () => clearInterval(interval);
+  }, [startedAt]);
+
+  return startedAt === null ? null : elapsedSecondsOf(startedAt, now());
+}
+
+/**
+ * 失敗の帯（S-6 / NFR-07 / 設計 規則9）。置き場は面の直前（押したボタンの近く。設計 10章 前提2）。
+ * 記号は飾りで、文字が意味を運ぶ（NFR-17）。
+ */
+function RequestFailedBand() {
+  return (
+    <p role="status" className={styles.failedBand}>
+      <span aria-hidden="true" className={styles.failedMark}>
+        {REQUEST_FAILED_MARK}
+      </span>
+      <span>{REQUEST_FAILED_NOTICE}</span>
+    </p>
+  );
+}
+
+/**
+ * 「新しい献立を見る」の面（B-49b / B-62。原本 `RequestBlock`）。役割の割り当ては B-49b の検分で
+ * 決めたものを保つ。
+ *
+ * - 待ち時間の案内（NFR-04）… `note`。**待機中だけ出す**（設計 規則1）
+ * - `pantryChanged` の手がかり（D-8）… これも `note`。真で、**生成中でないとき**だけ出る（規則2）
+ * - 生成中の案内（S-5）と失敗の帯（S-6）… どちらも `status`。**同時には出さない**
+ *   （送信中を優先する — 押した時点で失敗の帯を消すのは門の役目だが、ここでも
+ *   両方が真になり得ないよう送信中を先に見る）。**秒数は status の外に置く**（規則6 —
+ *   入れると毎秒読み上げで割り込む）
+ *
+ * **文書順は幅で変えない**（手がかり → ボタン → 案内。規則10）。広い幅の横並びは CSS の配置だけで行う。
  */
 function RequestNewMealsControl({
   pantryChanged,
-  requesting,
+  elapsedSeconds,
   failed,
   offline,
   onRequestNewMeals,
 }: {
   pantryChanged: boolean;
-  requesting: boolean;
+  /** 生成中なら経過秒数、そうでなければ `null`。 */
+  elapsedSeconds: number | null;
   failed: boolean;
   offline: boolean;
   onRequestNewMeals: () => void;
 }) {
+  const requesting = elapsedSeconds !== null;
+
   return (
-    <div>
-      {/* NFR-04: 押す前からの待ち時間の案内。送信中かどうかによらず常に出す。 */}
-      <span role="note">{WAITING_NOTICE}</span>
-      {/* 規則9: 在庫が変わっている回だけ増える2つめの手がかり。 */}
-      {pantryChanged && <span role="note">{PANTRY_CHANGED_NOTICE}</span>}
+    <>
+      {!requesting && failed && <RequestFailedBand />}
+      <section className={styles.requestPanel}>
+        {pantryChanged && !requesting && (
+          <p role="note" className={styles.pantryChanged}>
+            {/* 緑の点は飾りであり、文字が意味を運ぶ（NFR-17）。 */}
+            <span aria-hidden="true" className={styles.pantryChangedDot} />
+            {PANTRY_CHANGED_NOTICE}
+          </p>
+        )}
 
-      {requesting && <p role="status">{REQUESTING_NOTICE}</p>}
-      {!requesting && failed && <p role="status">{REQUEST_FAILED_NOTICE}</p>}
+        {/* 送信中は押せない（S-5）。押し直しても2度目の要求を出さないのは門の役目であり、
+            ここは見た目の側から二重に守るだけである。**1度の求めで生成が2回走ると、
+            1日10回の枠（NFR-C2）が利用者の意図の倍で減る。**
+            **接続が切れている間も押せない**（B-70 規則7）。理由は門の帯が示すので、案内は足さない。 */}
+        <button
+          type="button"
+          className={`${styles.primaryButton} ${styles.requestButton}`}
+          onClick={onRequestNewMeals}
+          disabled={requesting || offline}
+        >
+          {REQUEST_BUTTON_LABEL}
+        </button>
 
-      {/* 送信中は押せない（S-5）。押し直しても2度目の要求を出さないのは門の役目であり、
-          ここは見た目の側から二重に守るだけである。**1度の求めで生成が2回走ると、
-          1日10回の枠（NFR-C2）が利用者の意図の倍で減る。**
-          **接続が切れている間も押せない**（B-70 規則7）。理由は門の帯が示すので、案内は足さない。 */}
-      <button type="button" onClick={onRequestNewMeals} disabled={requesting || offline}>
-        {REQUEST_BUTTON_LABEL}
-      </button>
-    </div>
+        {requesting ? (
+          <p className={styles.requestInfo}>
+            <span role="status">{REQUESTING_NOTICE}</span>
+            <span className={styles.elapsedSeconds}>{elapsedText(elapsedSeconds)}</span>
+          </p>
+        ) : (
+          <p role="note" className={styles.requestInfo}>
+            {WAITING_NOTICE}
+          </p>
+        )}
+      </section>
+    </>
   );
 }
 
 /**
- * 在庫が足りない回（S-4 / D-7）。**案内と、在庫タブへ送る操作1つだけ**を出す。
+ * 在庫が足りない回（S-4 / D-7 / 原本 `MealScreen` の state=short）。**案内と、在庫タブへ送る
+ * 操作1つだけ**を出す。主文と補足を合わせて status 1つにする（設計 規則14）。
  *
- * **「新しい献立を求める」を置かない** — 在庫が足りないまま求めても同じ結末が返るので、
+ * **「新しい献立を見る」を置かない** — 在庫が足りないまま求めても同じ結末が返るので、
  * 押しても呼べない操作になる。**カードも注意表示も出さない**（提案として描くものが無い）。
- * **直前の要求が失敗していても案内を増やさない** — この結末は失敗ではなく、S-6 の断りと
+ * **直前の要求が失敗していても案内を増やさない** — この結末は失敗ではなく、S-6 の帯と
  * 並べると「出せない理由」が2つあるように読める（ADR-041）。
  */
 function InsufficientStockItemsNotice({ onGoToPantry }: { onGoToPantry: () => void }) {
   return (
-    <div>
-      <p role="status">{INSUFFICIENT_STOCK_ITEMS_NOTICE}</p>
-      <button type="button" onClick={onGoToPantry}>
+    <div className={styles.outcome}>
+      <div role="status" className={styles.outcomePanel}>
+        <p className={styles.outcomeMessage}>
+          {INSUFFICIENT_STOCK_ITEMS_LINES.map((line) => (
+            <span key={line} className={styles.unbreakable}>
+              {line}
+            </span>
+          ))}
+        </p>
+        <p className={styles.outcomeNote}>{INSUFFICIENT_STOCK_ITEMS_NOTE}</p>
+      </div>
+      <button
+        type="button"
+        className={`${styles.primaryButton} ${styles.goToPantryButton}`}
+        onClick={onGoToPantry}
+      >
         {GO_TO_PANTRY_LABEL}
       </button>
     </div>
@@ -362,20 +452,39 @@ function InsufficientStockItemsNotice({ onGoToPantry }: { onGoToPantry: () => vo
 }
 
 /**
- * 1日の生成回数の上限に達した回（S-7 / NFR-C2 / ADR-049）。**案内だけ**を出す。
+ * 1日の生成回数の上限に達した回（S-7 / NFR-C2 / ADR-049 / 原本 `MealScreen` の state=limit）。
+ * **案内だけ**を出す。
  *
  * **操作を1つも置かない** — 求め直しても同じ結末が返り、**在庫タブへも送らない**
  * （在庫は原因ではない）。この回に利用者ができることは画面の中に無い。
  */
 function GenerationLimitReachedNotice() {
-  return <p role="status">{GENERATION_LIMIT_REACHED_NOTICE}</p>;
+  return (
+    <div role="status" className={`${styles.outcome} ${styles.outcomePanel}`}>
+      <p className={`${styles.outcomeMessage} ${styles.outcomeMessageBalanced}`}>
+        {GENERATION_LIMIT_REACHED_NOTICE}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * 縦の中ほどに置く結末か（S-4 / S-7 / S-8。設計 規則13〜16）。カードのある結末では高さを伸ばさない。
+ */
+function isCentered(suggestion: MealsTabState): boolean {
+  return (
+    suggestion.outcome === 'none' ||
+    suggestion.outcome === 'insufficientStockItems' ||
+    suggestion.outcome === 'generationLimitReached'
+  );
 }
 
 export function MealsTab({
   suggestion,
   today,
   onRequestNewMeals,
-  requestingNewMeals,
+  newMealsRequestedAt,
+  now,
   newMealsFailed,
   onGoToPantry,
   onOpenMeal,
@@ -390,7 +499,42 @@ export function MealsTab({
   // **詳細は結末より先に見る**（B-53）。開いている献立は、提案が読み込み中の回にも
   // 出せない回にも描けなければならない — 履歴から開いた献立は、在庫が足りない日にも
   // 読める（FR-30）。**一覧と並べず入れ替える**（先行 `PantryTab`）。
+  //
+  // **詳細を開いている間は秒数も進行線も描かない**（設計 10章 前提6）。戻れば門が持つ開始時刻から
+  // 正しい秒数が出る（規則12）。
   if (mealDetail !== null) return <div>{mealDetail}</div>;
+
+  return (
+    <MealsTabList
+      suggestion={suggestion}
+      today={today}
+      onRequestNewMeals={onRequestNewMeals}
+      newMealsRequestedAt={newMealsRequestedAt}
+      now={now}
+      newMealsFailed={newMealsFailed}
+      onGoToPantry={onGoToPantry}
+      onOpenMeal={onOpenMeal}
+      offline={offline}
+    />
+  );
+}
+
+/**
+ * 詳細を開いていないときの画面。経過秒数の描き直し（`useElapsedSeconds`）をここに閉じるのは、
+ * 詳細の側で時計を回さないためである。
+ */
+function MealsTabList({
+  suggestion,
+  today,
+  onRequestNewMeals,
+  newMealsRequestedAt,
+  now,
+  newMealsFailed,
+  onGoToPantry,
+  onOpenMeal,
+  offline = false,
+}: Omit<MealsTabProps, 'mealDetail'>) {
+  const elapsedSeconds = useElapsedSeconds(newMealsRequestedAt, now);
 
   const cards =
     suggestion.outcome === 'suggested' ? mealCardsOf(suggestion.suggestion.entries, today) : [];
@@ -398,7 +542,17 @@ export function MealsTab({
   // **見出しは結末に依らず1つ出し、各枝の中身はその下に置く**（B-61 規則1 / 原本 `MealScreen`）。
   // 凡例はカードが1枚以上あるときだけである（規則3）。
   return (
-    <div className={styles.screen}>
+    <div
+      className={
+        isCentered(suggestion) ? `${styles.screen} ${styles.screenCentered}` : styles.screen
+      }
+    >
+      {/* 生成中の進行線（設計 規則7）。飾りであり、状態は「考えています…」の status が伝える。 */}
+      {elapsedSeconds !== null && (
+        <div aria-hidden="true" className={styles.progress}>
+          <div className={styles.progressBar} />
+        </div>
+      )}
       <div className={styles.content}>
         <header className={styles.header}>
           <h2 className={styles.heading}>{HEADING}</h2>
@@ -408,7 +562,7 @@ export function MealsTab({
           suggestion={suggestion}
           cards={cards}
           onRequestNewMeals={onRequestNewMeals}
-          requestingNewMeals={requestingNewMeals}
+          elapsedSeconds={elapsedSeconds}
           newMealsFailed={newMealsFailed}
           onGoToPantry={onGoToPantry}
           onOpenMeal={onOpenMeal}
@@ -424,39 +578,85 @@ function MealsTabBody({
   suggestion,
   cards,
   onRequestNewMeals,
-  requestingNewMeals,
+  elapsedSeconds,
   newMealsFailed,
   onGoToPantry,
   onOpenMeal,
-  offline = false,
-}: Omit<MealsTabProps, 'today' | 'mealDetail'> & { cards: readonly MealCard[] }) {
+  offline,
+}: {
+  suggestion: MealsTabState;
+  cards: readonly MealCard[];
+  onRequestNewMeals: () => void;
+  /** 生成中なら経過秒数、そうでなければ `null`。 */
+  elapsedSeconds: number | null;
+  newMealsFailed: boolean;
+  onGoToPantry: () => void;
+  onOpenMeal: (mealId: string) => void;
+  offline: boolean;
+}) {
   if (suggestion.outcome === 'loading') return <p>{LOADING_NOTICE}</p>;
 
   // **出せない回は、提案の枝から先に分ける**（B-49c / 規則1〜6）。どちらも 200 で届く結末で
   // あり、失敗（S-6）にも「まだ提案が無い」（S-8）にも畳まない — 畳むと、利用者が次に何を
   // できるか（在庫を足す／待つ／求め直す）が画面から読み取れなくなる。
+  //
+  // 縦の空きは原本どおり、S-4 が 3:1、S-7 が 3:2、S-8 が 3:1（B-62 規則13〜15）。
   if (suggestion.outcome === 'insufficientStockItems') {
-    return <InsufficientStockItemsNotice onGoToPantry={onGoToPantry} />;
+    return (
+      <>
+        <div className={styles.spaceAbove} />
+        <InsufficientStockItemsNotice onGoToPantry={onGoToPantry} />
+        <div className={styles.spaceBelow} />
+      </>
+    );
   }
-  if (suggestion.outcome === 'generationLimitReached') return <GenerationLimitReachedNotice />;
+  if (suggestion.outcome === 'generationLimitReached') {
+    return (
+      <>
+        <div className={styles.spaceAbove} />
+        <GenerationLimitReachedNotice />
+        <div className={styles.spaceBelowLimit} />
+      </>
+    );
+  }
+
+  const control = (
+    <div className={styles.request}>
+      <RequestNewMealsControl
+        pantryChanged={suggestion.outcome === 'suggested' && suggestion.pantryChanged}
+        elapsedSeconds={elapsedSeconds}
+        failed={newMealsFailed}
+        offline={offline}
+        onRequestNewMeals={onRequestNewMeals}
+      />
+    </div>
+  );
+
+  // S-8 は文言を出さず、面だけを縦の中ほどに置く（原本 state=first / 規則13）。
+  if (suggestion.outcome === 'none') {
+    return (
+      <>
+        <div className={styles.spaceAbove} />
+        {control}
+        <div className={styles.spaceBelow} />
+      </>
+    );
+  }
 
   // **送っている間も、失敗した回も、渡された提案のカードを消さない**（S-5 / S-6 / D-6）。
   // 門が `suggestion` を差し替えるまでは、そのまま描き続ける。
   //
-  // 並びは**カード → 「新しい献立を求める」の面 → 注意表示**（B-61 規則11 / 原本 `MealScreen` /
+  // 並びは**カード → 「新しい献立を見る」の面 → 注意表示**（B-61 規則11 / 原本 `MealScreen` /
   // D-5「画面末尾に1回」）。注意表示はカードが1枚以上の提案のときだけ出す。
   return (
     <>
-      <SuggestionBody suggestion={suggestion} cards={cards} onOpenMeal={onOpenMeal} />
-      <div className={styles.request}>
-        <RequestNewMealsControl
-          pantryChanged={suggestion.outcome === 'suggested' && suggestion.pantryChanged}
-          requesting={requestingNewMeals}
-          failed={newMealsFailed}
-          offline={offline}
-          onRequestNewMeals={onRequestNewMeals}
-        />
-      </div>
+      <SuggestionBody
+        suggestion={suggestion}
+        cards={cards}
+        dimmed={elapsedSeconds !== null}
+        onOpenMeal={onOpenMeal}
+      />
+      {control}
       {cards.length > 0 && (
         <div className={styles.cautionArea}>
           <CautionNotice />

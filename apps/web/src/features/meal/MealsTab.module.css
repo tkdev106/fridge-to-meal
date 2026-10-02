@@ -11,9 +11,85 @@
  * 切り替えはこのファイルの末尾の1か所にだけ書く。
  */
 
-/* 画面の欄（原本 SP の `main` の余白）。 */
+/*
+ * 画面の欄（原本 SP の `main` の余白）。生成中の進行線の置き場でもある（原本 `main` の
+ * `position: relative`。設計 B-62 規則7）。
+ */
 .screen {
+  position: relative;
   padding: 0 16px 24px;
+}
+
+/*
+ * 縦の中ほどに置く結末（S-4 / S-7 / S-8。設計 B-62 規則16 / 10章 前提3）。欄を縦の flex にし、
+ * 最小の高さを「表示域 − 下タブ − 下端の安全域」にする。空きの比は各結末の `.space*` が持つ。
+ */
+.screenCentered {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - var(--tab-bar-height) - env(safe-area-inset-bottom, 0px));
+}
+
+.screenCentered .content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+/* 中ほどに置く結末の上下の空き（原本 `MealScreen` の `flex:3` / `flex:1` / `flex:2`）。 */
+.spaceAbove {
+  flex: 3;
+  min-height: 24px;
+}
+
+.spaceBelow {
+  flex: 1;
+  min-height: 24px;
+}
+
+.spaceBelowLimit {
+  flex: 2;
+  min-height: 24px;
+}
+
+/*
+ * 生成中の進行線（原本 `MealScreen` の progress / 設計 B-62 規則7）。欄の上端に高さ 2px で置く。
+ */
+.progress {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 2;
+  height: 2px;
+  overflow: hidden;
+}
+
+.progressBar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 32%;
+  background: var(--color-text);
+  animation: progress-indeterminate 1.8s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+/* 動きを減らす設定では動かさず、左端に止める（NFR-16 / 設計 B-62 規則7）。 */
+@media (prefers-reduced-motion: reduce) {
+  .progressBar {
+    animation: none;
+  }
 }
 
 /* 中身の欄（原本 `main` の内側の `div`）。最大幅は広い幅でだけ付ける。 */
@@ -65,6 +141,12 @@
   margin: 0;
   padding: 0;
   list-style: none;
+  transition: opacity 150ms;
+}
+
+/* 生成中は前の提案を薄く残す（D-6 / 原本 `dim` / 設計 B-62 規則8）。カード群だけを薄くする。 */
+.cardsDimmed {
+  opacity: 0.4;
 }
 
 /*
@@ -190,9 +272,176 @@
   cursor: pointer;
 }
 
-/* 「新しい献立を求める」の面の置き場（原本 `MealScreen` の `margin-top: 24px`）。面の見た目は B-62。 */
+/*
+ * 「新しい献立を見る」の面の置き場（原本 `MealScreen` の `margin-top: 24px`）。失敗の帯は面の
+ * 直前に並ぶ（設計 B-62 規則9 / 10章 前提2）。
+ */
 .request {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   margin-top: 24px;
+}
+
+/* 中ほどに置く S-8 では、上下の空きが余白を持つ。 */
+.screenCentered .request {
+  margin-top: 0;
+}
+
+/*
+ * 失敗の帯（原本 `index.dc.html` の「案内の帯」2行目 / S-6 / 設計 B-62 規則9）。
+ */
+.failedBand {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 16px;
+  background: var(--color-danger-surface);
+  color: var(--color-danger);
+  font-size: var(--font-size-14);
+  line-height: 1.6;
+}
+
+/* 帯の記号（原本は Inter の 500）。 */
+.failedMark {
+  flex: none;
+  font-weight: var(--font-weight-medium);
+}
+
+/*
+ * 「新しい献立を見る」の面（原本 `RequestBlock` の sp / 設計 B-62 規則10）。狭い幅は縦並びで、
+ * 文書順（手がかり → ボタン → 案内）のまま並ぶ。
+ */
+.requestPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+/* 在庫が変わった手がかり（D-8）。点は飾りで、文字が意味を運ぶ。 */
+.pantryChanged {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--color-positive);
+  font-size: var(--font-size-14);
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+}
+
+.pantryChangedDot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-positive);
+}
+
+/* 待ち時間の案内と、生成中の「考えています…」と秒数。 */
+.requestInfo {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-14);
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+}
+
+/* 経過秒数。桁が変わっても横にずれないよう数字の幅を揃える（設計 B-62 規則4）。 */
+.elapsedSeconds {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 主の操作（原本 `RequestBlock` / state=short のボタン / 設計 B-62 規則11）。素の button の枠と
+ * 地はここで消す（リセットでは消さない。設計 B-59 6章 規則3）。
+ */
+.primaryButton {
+  width: 100%;
+  height: var(--control-height-primary);
+  padding: 0 16px;
+  border: 0;
+  background: var(--color-text);
+  color: var(--color-background);
+  font-size: var(--font-size-16);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.primaryButton:active:not(:disabled) {
+  background: var(--color-text-secondary);
+}
+
+/* 生成中・オフラインの無効の見た目（原本 pending / 設計 B-62 規則3）。 */
+.primaryButton:disabled {
+  background: var(--color-border);
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+/* 「新しい献立を見る」。狭い幅では幅いっぱい（広い幅の 360px は末尾）。 */
+.requestButton {
+  flex: none;
+}
+
+/* 「食材を登録する」（原本 state=short の `max-width: 360px`）。 */
+.goToPantryButton {
+  max-width: 360px;
+}
+
+/*
+ * 出せない回（S-4 / S-7）の置き場（原本 `MealScreen` の state=short / limit）。狭い幅は最大幅なし、
+ * 広い幅は 520px（末尾）。
+ */
+.outcome {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  width: 100%;
+}
+
+/* 出せない回の控えめな面。 */
+.outcomePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 24px 16px;
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+/* 出せない回の主文。 */
+.outcomeMessage {
+  margin: 0;
+  font-size: var(--font-size-20);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+}
+
+/* S-7 の主文は行の長さを揃えて折り返す（原本 state=limit）。 */
+.outcomeMessageBalanced {
+  text-wrap: balance;
+}
+
+/* 主文の塊。塊の途中では折り返さない（設計 B-62 規則14）。 */
+.unbreakable {
+  display: inline-block;
+}
+
+/* S-4 の補足。 */
+.outcomeNote {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-14);
+  line-height: 1.6;
 }
 
 /* 注意表示の置き場（原本 `MealScreen` の `margin-top: 48px`）。 */
@@ -242,5 +491,48 @@
 
   .cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* 原本 PC には下タブが無い（設計 B-62 10章 前提3。B-60 が器を決めたら合わせ直す）。 */
+  .screenCentered {
+    min-height: 100dvh;
+  }
+
+  /*
+   * 面を横長にする（原本 `RequestBlock` の pc / 設計 B-62 規則10）。**文書順は変えず**、grid の
+   * 配置だけでボタンを左、手がかりと案内を右の列に縦に置く。手がかりが無い回は、案内が
+   * ボタンの高さの中ほどに来る。
+   */
+  .requestPanel {
+    display: grid;
+    grid-template-columns: 360px minmax(0, 1fr);
+    align-items: center;
+    column-gap: 24px;
+    row-gap: 4px;
+  }
+
+  .requestButton {
+    grid-row: 1 / span 2;
+    grid-column: 1;
+  }
+
+  .requestInfo {
+    grid-row: 1 / span 2;
+    grid-column: 2;
+  }
+
+  .pantryChanged {
+    grid-row: 1;
+    grid-column: 2;
+    align-self: end;
+  }
+
+  .pantryChanged ~ .requestInfo {
+    grid-row: 2;
+    align-self: start;
+  }
+
+  .outcome {
+    max-width: 520px;
   }
 }
