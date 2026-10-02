@@ -562,3 +562,99 @@ describe('登録の画面 StockItemForm の食材名の補完', () => {
     expect(registrations).toEqual([{ name: 'ゴーヤ', amount: null, expiryDate: null }]);
   });
 });
+
+/**
+ * 接続が切れている間（B-70 設計 6章 規則6・9・14 / 7章 行1 / FR-41 / NFR-15）。
+ *
+ * **止めるのは保存の2つと、欄での Enter（`<form>` の送信）である。** 打った値は消さず、
+ * 接続が戻れば同じ欄の値で保存できる。「←」は止めない（規則6）。
+ */
+describe('登録の画面 StockItemForm の接続が切れている間', () => {
+  /** `offline` を後から切り替えるために、描き直しの口を返す。 */
+  function renderFormWith(
+    onRegister: RegisterStockItem,
+    offline: boolean,
+    onClose: () => void = ignoreClose,
+  ) {
+    const rendered = render(
+      <StockItemForm
+        onRegister={onRegister}
+        onClose={onClose}
+        ingredientNames={{ outcome: 'loading' }}
+        offline={offline}
+      />,
+    );
+
+    return {
+      setOffline: (next: boolean) => {
+        rendered.rerender(
+          <StockItemForm
+            onRegister={onRegister}
+            onClose={onClose}
+            ingredientNames={{ outcome: 'loading' }}
+            offline={next}
+          />,
+        );
+      },
+    };
+  }
+
+  it('接続が切れている間は、「保存してもう1件」が押せない', () => {
+    renderFormWith(recordingRegister([], { outcome: 'registered' }), true);
+
+    fireEvent.change(ingredientNameField(), { target: { value: 'にんじん' } });
+
+    // 規則9 / FR-41: 登録は書き込みを伴う操作である。素の `disabled` プロパティで見る。
+    expect((saveAndStay() as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('接続が切れている間は、「保存して閉じる」が押せない', () => {
+    renderFormWith(recordingRegister([], { outcome: 'registered' }), true);
+
+    fireEvent.change(ingredientNameField(), { target: { value: 'にんじん' } });
+
+    // 規則9 / FR-41。
+    expect((saveAndClose() as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('接続が切れている間は、欄で Enter しても登録の口へ何も届かない', () => {
+    const registrations: RegisterStockItemInput[] = [];
+    renderFormWith(recordingRegister(registrations, { outcome: 'registered' }), true);
+
+    fireEvent.change(ingredientNameField(), { target: { value: 'にんじん' } });
+    fireEvent.submit(ingredientNameField());
+
+    // 規則9 / 7章 行1: 保存の本体で止める（ボタンを押さない経路も塞ぐ）。
+    expect(registrations).toEqual([]);
+  });
+
+  it('接続が切れている間に打った値は、接続が戻ってから保存すると登録の口へ届く', () => {
+    const registrations: RegisterStockItemInput[] = [];
+    const { setOffline } = renderFormWith(
+      recordingRegister(registrations, { outcome: 'registered' }),
+      true,
+    );
+
+    fillThreeFields();
+    setOffline(false);
+    fireEvent.click(saveAndStay());
+
+    // 規則9（入力は消さない）・規則14（戻れば押せるようになる）。
+    expect(registrations).toEqual([{ name: 'にんじん', amount: '2本', expiryDate: '2026-09-25' }]);
+  });
+
+  it('接続が切れていても、「←」で一覧へ戻せる', () => {
+    const closed: string[] = [];
+    const registrations: RegisterStockItemInput[] = [];
+    renderFormWith(recordingRegister(registrations, { outcome: 'registered' }), true, () =>
+      closed.push('close'),
+    );
+
+    const [closeOperation] = screen.getAllByRole('button');
+    fireEvent.click(closeOperation as HTMLElement);
+
+    // 規則6: 保存せずに閉じるのは遷移である。登録の口へは何も届かない。
+    expect(closed).toHaveLength(1);
+    expect(registrations).toEqual([]);
+  });
+});

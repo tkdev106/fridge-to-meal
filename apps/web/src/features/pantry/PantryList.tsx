@@ -178,9 +178,17 @@ export type PantryListProps = {
    * 実行環境の暦日を作るのは `todayOf` の仕事で、それを呼ぶのは `App.tsx` である。
    */
   today: string;
+  /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
+  offline?: boolean;
 };
 
-export function PantryList({ stockItems, today, onDelete, onEdit }: PantryListProps) {
+export function PantryList({
+  stockItems,
+  today,
+  onDelete,
+  onEdit,
+  offline = false,
+}: PantryListProps) {
   const [notice, setNotice] = useState<DeleteFailureNotice | null>(null);
   // 送っている間は次のスワイプを受け取らない。描き直す必要が無いので state にしない。
   const deleting = useRef(false);
@@ -189,6 +197,10 @@ export function PantryList({ stockItems, today, onDelete, onEdit }: PantryListPr
     // 二重に送っても2度目は 404 になり、それを「すでに消えている」と読む（ADR-050）ので
     // 害は無いが、往復を1つ無駄にする。
     if (deleting.current) return;
+    // **接続が切れている間は、削除と読めた動きを捨てる**（B-70 規則11）— スワイプは
+    // `disabled` を持たない。断りの案内も出さない（理由は門の帯が既に示している）。
+    // タップで編集を開くことは止めない（規則6）。
+    if (offline) return;
 
     deleting.current = true;
     setNotice(null);
