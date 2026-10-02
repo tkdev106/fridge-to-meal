@@ -31,6 +31,8 @@ export type IngredientNameComboboxProps = {
   /** `ingredientNameOptionsOf` の結果をそのまま */
   ingredientNames: readonly string[];
   autoFocus?: boolean;
+  /** 名前が空の断りが出ている間（B-65 規則10）。枠を赤にし、読み上げにも誤りと渡す */
+  invalid?: boolean;
 };
 
 /** 遷移を持つキー。これ以外のキーは既定の動作のまま通す。 */
@@ -52,6 +54,7 @@ export function IngredientNameCombobox({
   onChange,
   ingredientNames,
   autoFocus = false,
+  invalid = false,
 }: IngredientNameComboboxProps): JSX.Element {
   // 一覧と行の識別子。**固定の文字列にしない**（規則13 / B-50c 規則8）— 同じ部品が2つ
   // 描かれた回に、片方の欄がもう片方の一覧を指す。
@@ -111,7 +114,8 @@ export function IngredientNameCombobox({
       {/* 役割は `role="combobox"` で**明示する**（規則13）— 一覧が0件の回も役割が変わらない。 */}
       <input
         id={id}
-        className={styles.input}
+        className={invalid ? `${styles.input} ${styles.inputInvalid}` : styles.input}
+        aria-invalid={invalid || undefined}
         role="combobox"
         aria-autocomplete="list"
         aria-expanded={expanded}

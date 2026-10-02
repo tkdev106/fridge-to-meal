@@ -16,7 +16,8 @@
  * - **在庫品** … **テストが渡した名称**を `queryByText` / `findByText` で引く。**取り直したか
  *   どうかの検めは画面である**（設計 規則6）— 一覧の台本の2件目が出れば取り直している
  * - **件数の断定** … `listCount` を観るのは「取りに行かないこと」の1件だけ（同 規則6）
- * - **操作** … `getAllByRole('button')` を**文書順の位置**で引き、**先に件数を確かめる**
+ * - **操作** … 帯（`navigation`）の外の `button` を**文書順の位置**で引き、**先に件数を確かめる**
+ *   （帯には「設定」の `button` が常にある。B-60 規則4）
  *
  * **`vi.fn()` で呼び出し回数を数えない**（`docs/testing.md` 2章 / 設計 規則5）。差し替えは
  * `FixedSession` と `FixedStockItemRequests` である。**素で描く**（`<StrictMode>` を被せない。
@@ -178,14 +179,80 @@ function notices(): readonly HTMLElement[] {
 }
 
 /**
+ * 見出しの行の歯車（B-60 設計 6章 規則12・13）として数えるもの。**帯（`navigation`）の外にあり、
+ * 名前が `設定` の `button`** である — 帯の「設定」も同じ名前を持つため、置き場で絞る（同 8章）。
+ * 名前は原本から取った文言で仮ではない（ADR-074 決定1）。
+ */
+function headerSettingsButtons(): HTMLElement[] {
+  const navigation = screen.queryByRole('navigation');
+
+  return screen
+    .queryAllByRole('button', { name: '設定' })
+    .filter((operation) => navigation === null || !navigation.contains(operation));
+}
+
+/** 見出しの行の歯車。**先に1つだけであることを確かめる。** */
+function headerSettings(): HTMLElement {
+  const gears = headerSettingsButtons();
+  expect(gears).toHaveLength(1);
+
+  const [gear] = gears;
+  if (gear === undefined) throw new Error('見出しの歯車が無い');
+
+  return gear;
+}
+
+/**
+ * 帯（`navigation`）の外にある操作を**文書順**で引く（B-60）。帯には「設定」の `button` が
+ * 常にあるので（B-60 規則4）、画面の中身の操作を数えるときは帯の外に絞る。**見出しの歯車も
+ * 数えない**（`headerSettingsButtons`。B-60 規則12）— 一覧の先頭に結末によらず置かれるので、
+ * 数えると画面ごとの操作の数と位置が崩れる。**帯が無い画面（ログインの画面）では、画面の
+ * すべての操作である。**
+ */
+function contentOperations(): HTMLElement[] {
+  const navigation = screen.queryByRole('navigation');
+  const gears = headerSettingsButtons();
+
+  return screen
+    .queryAllByRole('button')
+    .filter((operation) => navigation === null || !navigation.contains(operation))
+    .filter((operation) => !gears.includes(operation));
+}
+
+/**
+ * 帯の外の操作が**ちょうど1つ**出るのを待って返す（`screen.findByRole('button')` を帯の外に
+ * 絞ったもの。複数あるうちは待ち続ける点も同じ）。
+ */
+async function findSoleContentOperation(): Promise<HTMLElement> {
+  return waitFor(() => {
+    const [operation, ...rest] = contentOperations();
+    if (operation === undefined || rest.length > 0) {
+      throw new Error('帯の外の操作がちょうど1つ出ている状態ではない');
+    }
+
+    return operation;
+  });
+}
+
+/**
+ * 帯の「設定」（B-60 規則4・7）。**帯（`navigation`）の中で名前で引く** — 見出しの歯車も同じ名前
+ * 「設定」を持つため、置き場で絞る（B-60 設計 8章）。文言は原本から取ったもので仮ではない
+ * （ADR-074 決定1）。
+ */
+function navigationSettings(): HTMLElement {
+  return within(screen.getByRole('navigation')).getByRole('button', { name: '設定' });
+}
+
+/**
  * 押せる操作を**文書順**で引く。**先に件数を確かめる**（設計 7章 行2）— 崩れた回に別の操作を
  * 押してしまうと、テストは何が壊れたか読めない形で落ちる。**名札は見ない**（設計 規則2）。
  *
  * **下タブは混ざらない。** 帯のタブは `role="tab"` を明示しており、この問い合わせに
- * 引っかからない（先行 `PantryTab.test.tsx`）。
+ * 引っかからない（先行 `PantryTab.test.tsx`）。**帯の「設定」も混ざらない** — 帯の外に絞って
+ * 引く（`contentOperations`。B-60）。
  */
 function operationAt(index: number, expectedCount: number): HTMLElement {
-  const operations = screen.getAllByRole('button');
+  const operations = contentOperations();
   expect(operations).toHaveLength(expectedCount);
 
   const found = operations.at(index);
@@ -205,12 +272,12 @@ const REGISTER_OPERATION_COUNT = 3;
 
 /** 行ごとの `…`（B-69 設計 規則3）を除いた、在庫の一覧の操作を文書順に。 */
 function listOperations(): readonly HTMLElement[] {
-  return screen.getAllByRole('button').filter((button) => !button.hasAttribute('aria-expanded'));
+  return contentOperations().filter((button) => !button.hasAttribute('aria-expanded'));
 }
 
 /** 行ごとの `…`（B-69 設計 規則3）を文書順に。 */
 function rowOperationToggles(): readonly HTMLElement[] {
-  return screen.queryAllByRole('button').filter((button) => button.hasAttribute('aria-expanded'));
+  return contentOperations().filter((button) => button.hasAttribute('aria-expanded'));
 }
 
 function openRegisterOperation(): HTMLElement {
@@ -756,7 +823,7 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
    * 1つ在るので（B-53）、`getByRole('button')` では引けない。**名札は見ない**（設計 規則2）。
    */
   function requestNewMealsOperation(): HTMLElement {
-    const operations = screen.getAllByRole('button');
+    const operations = contentOperations();
     const operation = operations.at(-1);
     if (operation === undefined) throw new Error('操作が1つも無い');
 
@@ -770,7 +837,7 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
       { requestNewMeals: [{ heldUntilSettled: newSuggestion('meal-new', NEW_MEAL) }] },
     );
 
-    await screen.findByRole('button');
+    await findSoleContentOperation();
     fireEvent.click(requestNewMealsOperation());
 
     // `@testing-library/jest-dom` は入れない（依存の追加は止まる条件）ので、素の
@@ -789,7 +856,7 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
       { requestNewMeals: [{ heldUntilSettled: newSuggestion('meal-new', NEW_MEAL) }] },
     );
 
-    await screen.findByRole('button');
+    await findSoleContentOperation();
     fireEvent.click(requestNewMealsOperation());
     fireEvent.click(requestNewMealsOperation());
 
@@ -883,7 +950,7 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
     // 失敗の枝と見分けられる。
     expect(screen.getAllByRole('status')).toHaveLength(1);
     expect(screen.queryAllByRole('note')).toHaveLength(0);
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(contentOperations()).toHaveLength(0);
   });
 
   it('押し直すと、前回の失敗の案内は消える', async () => {
@@ -927,7 +994,7 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
       { requestNewMeals: [{ heldUntilSettled: newSuggestion('meal-new', NEW_MEAL) }] },
     );
 
-    await screen.findByRole('button');
+    await findSoleContentOperation();
     fireEvent.click(requestNewMealsOperation());
     openPantry();
     await screen.findByText(carrot.name);
@@ -1043,7 +1110,7 @@ describe('門 App のタブの結線', () => {
       { show: [{ outcome: 'none' }], requestNewMeals: [{ outcome: 'insufficientStockItems' }] },
     );
 
-    fireEvent.click(await screen.findByRole('button'));
+    fireEvent.click(await findSoleContentOperation());
     await screen.findByText('冷蔵庫にあるものを');
 
     return app;
@@ -1057,7 +1124,7 @@ describe('門 App のタブの結線', () => {
   it('サインイン済みになった直後に開いているのは献立タブである', async () => {
     renderApp({ initialState: 'signedIn' }, { list: [loaded(carrot)] });
 
-    await screen.findByRole('button');
+    await findSoleContentOperation();
 
     // ADR-064 / ADR-066 結果1: 既定のタブを決めるのは門である（器ではない）。
     expect(mealsTab().getAttribute('aria-selected')).toBe('true');
@@ -1120,7 +1187,7 @@ describe('門 App のタブの結線', () => {
     // ADR-066 結果3: 提案の状態は門が持っており、タブを往復しても変わらない —
     // 戻った先が「まだ提案が無い（S-8）」や失敗（S-6）に化けない。**見分けは件数で行う**
     // （設計 規則2・11）: S-4 の枝は操作1つと案内1つを持ち、手がかり（`note`）を持たない。
-    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(contentOperations()).toHaveLength(1);
     expect(screen.getAllByRole('status')).toHaveLength(1);
     expect(screen.queryAllByRole('note')).toHaveLength(0);
   });
@@ -1128,7 +1195,7 @@ describe('門 App のタブの結線', () => {
   it('サインアウトして入り直すと、開いているのは既定の献立タブに戻る', async () => {
     const { session } = renderApp({ initialState: 'signedIn' }, { list: [loaded(carrot)] });
 
-    await screen.findByRole('button');
+    await findSoleContentOperation();
     openPantry();
     await screen.findByText(carrot.name);
 
@@ -1219,7 +1286,7 @@ describe('在庫の編集（B-55）', () => {
     // FR-05 / 設計 5章: 更新の口が門から通っていることの検めである。編集の欄は分量
     // （`textbox`）と期限（`type="date"`）の2つで、名称の欄は無い（設計 規則1）。
     expect(textboxes()).toHaveLength(1);
-    expect(screen.getAllByRole('button')).toHaveLength(EDIT_OPERATION_COUNT);
+    expect(contentOperations()).toHaveLength(EDIT_OPERATION_COUNT);
   });
 
   it('更新が通ると、一覧を取り直して新しい在庫品が出る', async () => {
@@ -1751,7 +1818,7 @@ describe('門 App の履歴タブ', () => {
 
   /** 列の切り替え（`aria-pressed` を持つ操作）。読み込み中と取れなかった回には出ない。 */
   function columnToggles(): readonly HTMLElement[] {
-    return screen.queryAllByRole('button').filter((button) => button.hasAttribute('aria-pressed'));
+    return contentOperations().filter((button) => button.hasAttribute('aria-pressed'));
   }
 
   /** 押されていない側の列へ切り替える。**先に1つだけであることを確かめる。** */
@@ -2061,8 +2128,8 @@ describe('門 App の履歴タブ', () => {
       { list: [listed([mealA]), listed([summaryOf('meal-n', NEW_MEAL), mealA])] },
     );
 
-    await screen.findByRole('button');
-    fireEvent.click(screen.getAllByRole('button').at(-1) as HTMLElement);
+    await findSoleContentOperation();
+    fireEvent.click(contentOperations().at(-1) as HTMLElement);
     await screen.findByText(NEW_MEAL);
 
     openHistory();
@@ -2084,7 +2151,7 @@ describe('門 App の履歴タブ', () => {
     );
 
     await screen.findByText(SUGGESTED);
-    fireEvent.click(screen.getAllByRole('button').at(-1) as HTMLElement);
+    fireEvent.click(contentOperations().at(-1) as HTMLElement);
     await waitFor(() => {
       expect(screen.queryByText(SUGGESTED)).toBeNull();
     });
@@ -2109,7 +2176,7 @@ describe('門 App の履歴タブ', () => {
     );
 
     await screen.findByText(SUGGESTED);
-    fireEvent.click(screen.getAllByRole('button').at(-1) as HTMLElement);
+    fireEvent.click(contentOperations().at(-1) as HTMLElement);
     await waitFor(() => {
       expect(screen.queryByText(SUGGESTED)).toBeNull();
     });
@@ -2131,7 +2198,7 @@ describe('門 App の履歴タブ', () => {
     );
 
     await screen.findByText(SUGGESTED);
-    fireEvent.click(screen.getAllByRole('button').at(-1) as HTMLElement);
+    fireEvent.click(contentOperations().at(-1) as HTMLElement);
     // B-62 規則9: 失敗の帯の文言（原本の「案内の帯」）で待つ。
     await screen.findByText('献立をつくれませんでした。もう一度お試しください', { exact: false });
 
@@ -2517,9 +2584,10 @@ describe('門 App の設定', () => {
   const NIKUJAGA = '肉じゃが';
   const GINGER_PORK = '豚こま肉と白菜の生姜焼き';
   const STIR_FRY = 'にんじんと卵の炒めもの';
-  const NEW_MEAL = '新しいご飯';
   /** 献立タブのカードに出る名称。 */
   const SUGGESTED = '提案の献立';
+  /** 献立詳細に出る名称（カードの名称と見分ける）。 */
+  const DETAIL = '詳細の献立';
 
   /**
    * 確認の前に設定画面に出ている操作は3つ（閉じる／ログアウト／アカウントとデータの削除）である
@@ -2566,52 +2634,15 @@ describe('門 App の設定', () => {
     };
   }
 
-  /** 「新しい献立を求める」が返す提案（`requestNewMeals` の台本用）。 */
-  function newSuggestion(mealId: string, title: string): RequestNewMealsOutcome {
-    return {
-      outcome: 'suggested',
-      suggestion: {
-        id: `suggestion-${mealId}`,
-        generatedAt: '2026-09-21T09:00:00.000Z',
-        entries: [
-          {
-            mealId,
-            origin: 'generated',
-            title,
-            ingredients: [],
-            steps: [],
-            coverage: { covered: [], missing: [] },
-          },
-        ],
-      },
-    };
-  }
-
   function openHistory(): void {
     fireEvent.click(historyTab());
   }
 
-  /**
-   * 設定への入口。**`aria-pressed` を持たず、`listitem` の中にも無い `button`** である
-   * （B-56c 規則4）。**先に1つだけであることを確かめる。**
-   */
-  function settingsEntry(): HTMLElement {
-    const entries = screen
-      .queryAllByRole('button')
-      .filter((button) => !button.hasAttribute('aria-pressed') && button.closest('li') === null);
-    expect(entries).toHaveLength(1);
-
-    const [entry] = entries;
-    if (entry === undefined) throw new Error('設定への入口が無い');
-
-    return entry;
-  }
-
-  /** 履歴タブで行が出るのを待ってから、設定への入口を押す。 */
+  /** 履歴タブで行が出るのを待ってから、帯の「設定」を押す（B-60 規則7）。 */
   async function openSettingsFromHistory(): Promise<void> {
     openHistory();
     await screen.findByText(NIKUJAGA);
-    fireEvent.click(settingsEntry());
+    fireEvent.click(navigationSettings());
   }
 
   function closeSettingsOperation(): HTMLElement {
@@ -2648,22 +2679,80 @@ describe('門 App の設定', () => {
     fireEvent.click(toggle);
   }
 
-  it('履歴タブの入口を押すと、履歴の行の代わりに設定画面が出る', async () => {
-    // 規則1 / `docs/screen-design.md` 2.1: 入口は履歴タブの右上にある。
+  it('帯の「設定」を押すと、献立タブの中身の代わりに設定画面が出る', async () => {
+    // B-60 規則7: 設定は4つ目の行き先であり、選んでいたタブの中身と入れ替わる。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne('meal-s', SUGGESTED)] },
+      {},
+      { list: [listed([mealA])] },
+    );
+
+    await screen.findByText(SUGGESTED);
+    fireEvent.click(navigationSettings());
+
+    expect(screen.queryByText(SUGGESTED)).toBeNull();
+    expect(contentOperations()).toHaveLength(SETTINGS_OPERATION_COUNT);
+  });
+
+  it.each<[string, () => Promise<void>, string]>([
+    [
+      '献立',
+      async () => {
+        await screen.findByText(SUGGESTED);
+      },
+      SUGGESTED,
+    ],
+    [
+      '在庫',
+      async () => {
+        openPantry();
+        await screen.findByText(carrot.name);
+      },
+      carrot.name,
+    ],
+    [
+      '履歴',
+      async () => {
+        openHistory();
+        await screen.findByText(NIKUJAGA);
+      },
+      NIKUJAGA,
+    ],
+  ])(
+    '見出しの歯車を押すと、タブの中身の代わりに設定画面が出る（%s）',
+    async (_label, showTab, shownInTab) => {
+      // B-60 規則12 / 規則7: 3つのタブの見出しの歯車は、帯の「設定」と同じ行き先を開く。
+      renderApp(
+        { initialState: 'signedIn' },
+        { list: [loaded(carrot)] },
+        { show: [suggestedOne('meal-s', SUGGESTED)] },
+        {},
+        { list: [listed([mealA])] },
+      );
+
+      await showTab();
+      fireEvent.click(headerSettings());
+
+      expect(screen.queryByText(shownInTab)).toBeNull();
+      expect(contentOperations()).toHaveLength(SETTINGS_OPERATION_COUNT);
+    },
+  );
+
+  it('設定を開いている間は、どのタブも選ばれていると読めない', async () => {
+    // B-60 規則7（原本 `TabBar active="none"`）。
     renderApp(
       { initialState: 'signedIn' },
       { list: [loaded(carrot)] },
       {},
       {},
-      {
-        list: [listed([mealA])],
-      },
+      { list: [listed([mealA])] },
     );
 
     await openSettingsFromHistory();
 
-    expect(screen.queryByText(NIKUJAGA)).toBeNull();
-    expect(screen.getAllByRole('button')).toHaveLength(SETTINGS_OPERATION_COUNT);
+    expect(tabs().filter((tab) => tab.getAttribute('aria-selected') === 'true')).toHaveLength(0);
   });
 
   it('設定画面のログアウトを押すと、ログインの画面へ戻る', async () => {
@@ -2689,8 +2778,8 @@ describe('門 App の設定', () => {
     expect(textboxes()).toHaveLength(1);
   });
 
-  it('履歴が取れなかった回も、設定を開いてログアウトできる', async () => {
-    // 規則2 / 設計 7章 行2 / FR-25: 履歴が取れなくてもログアウトへ届かなくなってはならない。
+  it('履歴が取れなかった回も、見出しの歯車から設定を開いてログアウトできる', async () => {
+    // B-60 規則12 / B-56c 規則2 / FR-25: 履歴が取れなくてもログアウトへ届かなくなってはならない。
     renderApp(
       { initialState: 'signedIn' },
       { list: [loaded(carrot)] },
@@ -2702,9 +2791,9 @@ describe('門 App の設定', () => {
     );
 
     openHistory();
-    // 取れなかった結末を画面へ流す（読み込み中にも入口はあるが、本題は取れなかった回である）。
+    // 取れなかった結末を画面へ流す（読み込み中にも歯車はあるが、本題は取れなかった回である）。
     await act(async () => {});
-    fireEvent.click(settingsEntry());
+    fireEvent.click(headerSettings());
     fireEvent.click(signOutOperation());
 
     await waitFor(() => {
@@ -2712,26 +2801,47 @@ describe('門 App の設定', () => {
     });
   });
 
-  it('設定を閉じると、履歴の行が出る', async () => {
-    // 規則8: 閉じると履歴タブの一覧へ戻る。
+  it('在庫タブから設定を開いて閉じると、在庫の一覧に戻る', async () => {
+    // B-60 規則9 / ADR-066: 閉じると開く前に選んでいたタブに戻る。
     renderApp(
       { initialState: 'signedIn' },
       { list: [loaded(carrot)] },
       {},
       {},
-      {
-        list: [listed([mealA])],
-      },
+      { list: [listed([mealA])] },
     );
 
-    await openSettingsFromHistory();
+    openPantry();
+    await screen.findByText(carrot.name);
+    fireEvent.click(navigationSettings());
     fireEvent.click(closeSettingsOperation());
 
-    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+    expect(await screen.findByText(carrot.name)).not.toBeNull();
   });
 
-  it('つくった側を選んでから設定を開いて閉じると、つくった列のままである', async () => {
-    // 規則8 / B-54b 規則6: 設定を出している間も `HistoryTab` は mount されたままである。
+  it('献立詳細を開いたまま設定を開いて閉じると、詳細に戻る', async () => {
+    // B-60 規則9: 開閉で開いている献立（`openMeal`）を変えない。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { show: [suggestedOne('meal-s', SUGGESTED)] },
+      {},
+      { list: [listed([mealA])], show: [offlineShownMeal('meal-s', DETAIL)] },
+    );
+
+    const card = (await screen.findAllByRole('listitem'))[0];
+    if (card === undefined) throw new Error('カードが1枚も無い');
+    fireEvent.click(within(card).getByRole('button'));
+    await screen.findByText(DETAIL);
+    fireEvent.click(navigationSettings());
+    fireEvent.click(closeSettingsOperation());
+
+    expect(await screen.findByText(DETAIL)).not.toBeNull();
+  });
+
+  it('つくった側を選んでから設定を開いて閉じると、履歴は以前見た列に戻る', async () => {
+    // B-60 規則10 / B-38 規則6: 設定を開くと選んでいたタブの中身は木から外れ、列の選択は
+    // タブを移ったときと同じく初期（以前見た）に戻る（B-56c 規則8 の置き換え）。
     renderApp(
       { initialState: 'signedIn' },
       { list: [loaded(carrot)] },
@@ -2746,11 +2856,11 @@ describe('門 App の設定', () => {
     await screen.findByText(NIKUJAGA);
     switchColumn();
     await screen.findByText(STIR_FRY);
-    fireEvent.click(settingsEntry());
+    fireEvent.click(navigationSettings());
     fireEvent.click(closeSettingsOperation());
 
-    expect(await screen.findByText(STIR_FRY)).not.toBeNull();
-    expect(screen.queryByText(NIKUJAGA)).toBeNull();
+    expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
+    expect(screen.queryByText(STIR_FRY)).toBeNull();
   });
 
   it('設定を開いて閉じても、履歴を取り直さない', async () => {
@@ -2772,29 +2882,26 @@ describe('門 App の設定', () => {
     expect(screen.queryByText(GINGER_PORK)).toBeNull();
   });
 
-  it('設定を開いたままタブを移って戻っても、設定のままである', async () => {
-    // 規則9 / ADR-066: 設定を開いているかは門が持ち、タブの移動では閉じない。
+  it('設定を開いたまま在庫タブを押すと、設定を閉じて在庫の一覧を出す', async () => {
+    // B-60 規則8: 設定を開いている間にタブを押すと、設定を閉じてそのタブを出す
+    // （B-56c 規則9「タブを移っても閉じない」の置き換え）。
     renderApp(
       { initialState: 'signedIn' },
       { list: [loaded(carrot)] },
       {},
       {},
-      {
-        list: [listed([mealA])],
-      },
+      { list: [listed([mealA])] },
     );
 
     await openSettingsFromHistory();
     openPantry();
-    await screen.findByText(carrot.name);
-    openHistory();
 
-    expect(screen.queryByText(NIKUJAGA)).toBeNull();
-    expect(screen.getAllByRole('button')).toHaveLength(SETTINGS_OPERATION_COUNT);
+    expect(await screen.findByText(carrot.name)).not.toBeNull();
+    expect(listOperations()).toHaveLength(LIST_OPERATION_COUNT);
   });
 
-  it('設定を開いたまま献立タブへ移ると、献立タブには設定を出さない', async () => {
-    // 規則1 / `docs/screen-design.md` 2.1: 設定を描くのは履歴タブだけである。
+  it('設定を開いたまま、開く前に選んでいたタブを押しても、設定を閉じてそのタブの中身を出す', async () => {
+    // B-60 規則8: 押したのが開く前に選んでいたタブでも同じ。
     renderApp(
       { initialState: 'signedIn' },
       { list: [loaded(carrot)] },
@@ -2803,11 +2910,27 @@ describe('門 App の設定', () => {
       { list: [listed([mealA])] },
     );
 
-    await openSettingsFromHistory();
+    await screen.findByText(SUGGESTED);
+    fireEvent.click(navigationSettings());
     fireEvent.click(mealsTab());
 
     expect(await screen.findByText(SUGGESTED)).not.toBeNull();
-    expect(screen.getAllByRole('listitem').length).toBeGreaterThan(0);
+  });
+
+  it('設定を開いている間に帯の「設定」をもう一度押しても、設定のままである', async () => {
+    // B-60 規則11: 開いているときに帯の「設定」を押しても何も変わらない。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      { list: [listed([mealA])] },
+    );
+
+    await openSettingsFromHistory();
+    fireEvent.click(navigationSettings());
+
+    expect(contentOperations()).toHaveLength(SETTINGS_OPERATION_COUNT);
   });
 
   it('サインアウトして入り直すと、設定は閉じて履歴の行が出る', async () => {
@@ -2830,51 +2953,24 @@ describe('門 App の設定', () => {
     expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
   });
 
-  it('設定を開いている間に新しい献立が届いて履歴を取り直しても、設定は閉じない', async () => {
-    // 規則11: 取り直しでは設定を閉じない。
-    renderApp(
+  it('取得が届く前に設定を開いても、届いたあと設定は閉じない', async () => {
+    // B-60 規則11 / B-56c 規則11: 結末が届いても設定を閉じない（取り直しでも同じ）。
+    const { requests, suggestions, meals } = renderApp(
       { initialState: 'signedIn' },
-      { list: [loaded(carrot)] },
-      { requestNewMeals: [newSuggestion('meal-n', NEW_MEAL)] },
+      { list: [{ heldUntilSettled: loaded(carrot) }] },
+      { show: [{ heldUntilSettled: suggestedOne('meal-s', SUGGESTED) }] },
       {},
-      { list: [listed([mealA]), listed([mealB])] },
+      { list: [{ heldUntilSettled: listed([mealA]) }] },
     );
 
-    await openSettingsFromHistory();
-    fireEvent.click(mealsTab());
-    await screen.findByRole('button');
-    // 「新しい献立を求める」は献立タブの末尾の操作である（D-4）。
-    fireEvent.click(screen.getAllByRole('button').at(-1) as HTMLElement);
-    await screen.findByText(NEW_MEAL);
-    openHistory();
-    await act(async () => {});
+    fireEvent.click(navigationSettings());
+    await settle(requests);
+    await settleSuggestions(suggestions);
+    await act(async () => {
+      meals.settle();
+    });
 
-    expect(screen.getAllByRole('button')).toHaveLength(SETTINGS_OPERATION_COUNT);
-    expect(screen.queryByText(NIKUJAGA)).toBeNull();
-    expect(screen.queryByText(GINGER_PORK)).toBeNull();
-  });
-
-  it('設定を開いている間に在庫の登録が通って一覧を取り直しても、設定は閉じない', async () => {
-    // 規則11: 取り直しでは設定を閉じない。
-    renderApp(
-      { initialState: 'signedIn' },
-      { list: [loaded(carrot), loaded(chineseCabbage)], register: [{ outcome: 'registered' }] },
-      {},
-      {},
-      { list: [listed([mealA])] },
-    );
-
-    await openSettingsFromHistory();
-    openPantry();
-    await screen.findByText(carrot.name);
-    fireEvent.click(openRegisterOperation());
-    fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
-    fireEvent.click(saveAndCloseOperation());
-    await screen.findByText(chineseCabbage.name);
-    openHistory();
-
-    expect(screen.getAllByRole('button')).toHaveLength(SETTINGS_OPERATION_COUNT);
-    expect(screen.queryByText(NIKUJAGA)).toBeNull();
+    expect(contentOperations()).toHaveLength(SETTINGS_OPERATION_COUNT);
   });
 
   it('設定を開いている間も、下タブ3つは出ている', async () => {
@@ -2912,9 +3008,9 @@ describe('門 App の設定', () => {
 
     openPantry();
     await screen.findByText(carrot.name);
-    fireEvent.click(screen.getAllByRole('button')[0] as HTMLElement);
+    fireEvent.click(contentOperations()[0] as HTMLElement);
 
-    expect(screen.getAllByRole('button')).toHaveLength(3);
+    expect(contentOperations()).toHaveLength(3);
   });
   it('削除を確かめて通ると、ログインの画面へ戻る', async () => {
     // B-56f 規則7 / ADR-071 結果2 / `Session.ts` 規則8: 消えた回は門がすぐにサインアウトし、
@@ -2955,7 +3051,7 @@ describe('門 App の設定', () => {
     await act(async () => {});
 
     expect(tabs()).toHaveLength(3);
-    expect(screen.getAllByRole('button')).toHaveLength(CONFIRMING_OPERATION_COUNT);
+    expect(contentOperations()).toHaveLength(CONFIRMING_OPERATION_COUNT);
     expect(screen.queryAllByRole('status')).toHaveLength(1);
   });
 
@@ -2975,9 +3071,9 @@ describe('門 App の設定', () => {
     fireEvent.click(deleteOperation());
     fireEvent.click(closeWhileConfirmingOperation());
     await screen.findByText(NIKUJAGA);
-    fireEvent.click(settingsEntry());
+    fireEvent.click(navigationSettings());
 
-    expect(screen.getAllByRole('button')).toHaveLength(SETTINGS_OPERATION_COUNT);
+    expect(contentOperations()).toHaveLength(SETTINGS_OPERATION_COUNT);
     expect(householdData.deleteCount).toBe(0);
   });
 });
@@ -3139,7 +3235,7 @@ const offlineMealC: MealSummaryOutput = {
 
 /** 「新しい献立を求める」操作。**末尾の1つである**（D-4）。 */
 function lastOperation(): HTMLButtonElement {
-  const operation = screen.getAllByRole('button').at(-1);
+  const operation = contentOperations().at(-1);
   if (operation === undefined) throw new Error('操作が1つも無い');
 
   return operation as HTMLButtonElement;
@@ -3156,39 +3252,23 @@ async function openOfflineCard(): Promise<void> {
 /** 詳細に出ている操作は2つ（閉じる／これを作った）である（B-53）。 */
 const OFFLINE_DETAIL_OPERATION_COUNT = 2;
 
-/**
- * 設定への入口。**`aria-pressed` を持たず、`listitem` の中にも無い `button`** である
- * （先行 `門 App の設定` の `settingsEntry`）。**先に1つだけであることを確かめる。**
- */
-function offlineSettingsEntry(): HTMLElement {
-  const entries = screen
-    .queryAllByRole('button')
-    .filter((button) => !button.hasAttribute('aria-pressed') && button.closest('li') === null);
-  expect(entries).toHaveLength(1);
-
-  const [entry] = entries;
-  if (entry === undefined) throw new Error('設定への入口が無い');
-
-  return entry;
-}
-
 /** 確認の前に設定画面に出ている操作は3つ（閉じる／ログアウト／アカウントとデータの削除）。 */
 const OFFLINE_SETTINGS_OPERATION_COUNT = 3;
 /** 確認が出ている間の操作は4つ（閉じる／ログアウト／確かめる／やめる）。 */
 const OFFLINE_CONFIRMING_OPERATION_COUNT = 4;
 
-/** 履歴タブで行が出るのを待ってから、設定への入口を押す。 */
+/** 履歴タブで行が出るのを待ってから、帯の「設定」を押す（B-60 規則7）。 */
 async function openOfflineSettings(): Promise<void> {
   fireEvent.click(historyTab());
   await screen.findByText(OFFLINE_NIKUJAGA);
-  fireEvent.click(offlineSettingsEntry());
+  fireEvent.click(navigationSettings());
 }
 
 describe('門 App のオフラインの帯', () => {
   it('サインイン済みで接続が切れていると、帯を1つ出す', async () => {
     renderAppWith({ connectivity: 'offline' });
 
-    await screen.findByRole('button');
+    await findSoleContentOperation();
 
     // 規則4 / `docs/screen-design.md` 9章: 帯は1つで、`role="status"` で読み上げに伝える。
     expect(offlineBanners()).toHaveLength(1);
@@ -3202,7 +3282,7 @@ describe('門 App のオフラインの帯', () => {
   it('接続しているときは帯を出さない', async () => {
     renderAppWith({ connectivity: 'online' });
 
-    await screen.findByRole('button');
+    await findSoleContentOperation();
 
     // 規則4。
     expect(offlineBanners()).toHaveLength(0);
@@ -3211,7 +3291,7 @@ describe('門 App のオフラインの帯', () => {
   it('接続が戻ると帯は消える', async () => {
     const { connectivity } = renderAppWith({ connectivity: 'offline' });
 
-    await screen.findByRole('button');
+    await findSoleContentOperation();
     emitConnectivity(connectivity, 'online');
 
     // 規則4: `online` に戻れば消す。
@@ -3221,7 +3301,7 @@ describe('門 App のオフラインの帯', () => {
   it('接続が切れると、表示中の画面に帯が出る', async () => {
     const { connectivity } = renderAppWith({ connectivity: 'online' });
 
-    await screen.findByRole('button');
+    await findSoleContentOperation();
     emitConnectivity(connectivity, 'offline');
 
     // 規則1・3・4: 門が購読して状態を持ち、変化を受けて帯を出す。
@@ -3231,7 +3311,7 @@ describe('門 App のオフラインの帯', () => {
   it('帯は下タブより前に出る', async () => {
     renderAppWith({ connectivity: 'offline' });
 
-    await screen.findByRole('button');
+    await findSoleContentOperation();
     const banner = soleOfflineBanner();
 
     // 規則4: 帯は `<main>` の最初の子で、器より前にある。**class は辿らず文書順で観る。**
@@ -3262,7 +3342,7 @@ describe('門 App のオフラインの帯', () => {
   it('接続が切れたままサインアウトすると、ログインの画面でも帯が出たままである', async () => {
     const { session } = renderAppWith({ connectivity: 'offline' });
 
-    await screen.findByRole('button');
+    await findSoleContentOperation();
     emit(session, 'signedOut');
 
     // 規則3: 接続状態は門が持ち、セッションと一緒に捨てない。
@@ -3468,7 +3548,7 @@ describe('門 App の接続が切れている間も止めない閲覧と遷移',
     await openOfflineSettings();
 
     // 規則6: 設定を開くのは遷移である。
-    expect(screen.getAllByRole('button')).toHaveLength(OFFLINE_SETTINGS_OPERATION_COUNT);
+    expect(contentOperations()).toHaveLength(OFFLINE_SETTINGS_OPERATION_COUNT);
     expect(screen.queryByText(OFFLINE_NIKUJAGA)).toBeNull();
   });
 

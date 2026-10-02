@@ -97,30 +97,6 @@
   width: 100%;
 }
 
-/* 見出しの行と凡例（原本 SP の `header`）。 */
-.header {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-height: 48px;
-  padding: 16px 0 24px;
-}
-
-/*
- * 画面の見出し。原本は `h1` だがアプリでは `h2` に置く（設計 B-61 規則2）— 見た目は原本の値。
- * 行の高さ 48px は、B-60 が右に設定の歯車（48px 四方）を置く場所の高さに揃えておく。
- */
-.heading {
-  display: flex;
-  align-items: center;
-  min-height: 48px;
-  margin: 0;
-  font-size: var(--font-size-20);
-  font-weight: var(--font-weight-medium);
-  line-height: 1.45;
-  letter-spacing: 0.02em;
-}
-
 /* 凡例（D-4 の追記）。 */
 .legend {
   margin: 0;
@@ -472,9 +448,9 @@
 /*
  * 広い幅（原本 PC）。カード3列・中身の最大幅 1080px・原本 PC の余白（設計 B-61 規則12）。
  *
- * **切り替え幅 1024px は仮である。B-60 が決めた値に置き換える**（サイドナビ 240px が入ると
- * この幅では3列が狭くなる）。CSS 変数はメディアクエリに使えないのでトークンにできず、
- * ここ1か所にだけ書く。
+ * **切り替え幅 1024px は `docs/screen-design.md` 2.1 の写しである**（B-60 で決めた。ADR-076）。
+ * CSS 変数はメディアクエリに使えないのでトークンにできず、このファイルではここ1か所にだけ書く
+ * （ほかの module にも同じ値の写しがある。ADR-076 決定3）。
  */
 @media (min-width: 1024px) {
   .screen {
@@ -483,10 +459,6 @@
 
   .content {
     max-width: 1080px;
-  }
-
-  .header {
-    padding: 40px 0 32px;
   }
 
   .cards {

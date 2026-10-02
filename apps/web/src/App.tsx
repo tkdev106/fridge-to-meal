@@ -168,10 +168,13 @@ export function App({
   /**
    * **設定を開いているか**（B-56c 設計 規則1 / `docs/screen-design.md` 2.1・8章）。
    *
-   * **履歴タブではなく門が持つ** — 開いている献立（`openMeal`）と同じ置き方であり、理由も
-   * ADR-066 と同じである。タブを移っても閉じず（規則9）、閉じるのは設定画面の「閉じる」と
-   * サインイン済みでなくなった回だけである（規則10）。開いても閉じても何も取りに行かない
-   * （規則11）。
+   * **門が持つ** — 開いている献立（`openMeal`）と同じ置き方であり、理由も ADR-066 と同じである。
+   * **設定はタブの外の4つ目の行き先であり**（B-60 設計 6章 規則7）、器（`TabbedScreen`）が
+   * 選んでいたタブの中身の代わりに描く。**開く入口は、SP では3つのタブの見出しの歯車、PC では
+   * サイドナビの下端の「設定」である**（B-60 規則4・12）。閉じるのは設定画面の「閉じる」、**タブを押した回**
+   * （B-60 規則8。B-56c 規則9「タブを移っても閉じない」はここで置き換わった）、サインイン済みで
+   * なくなった回（B-56c 規則10）である。開閉で `selectedTab` も `openMeal` も変えない
+   * （B-60 規則9）。開いても閉じても何も取りに行かない（B-56c 規則11）。
    */
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -367,7 +370,7 @@ export function App({
    * **サインイン済みでなくなったら、設定も閉じる**（B-56c 規則10 / ADR-066 結果1 / NFR-09）。
    *
    * 門は signedOut の間も生き続けるので、mount には頼れない。閉じないと、入り直した回に
-   * 履歴タブが一覧ではなく設定のまま出る。
+   * タブの中身ではなく設定のまま出る。
    */
   useEffect(() => {
     if (state === 'signedIn') return;
@@ -630,11 +633,12 @@ export function App({
   // 1つ渡すだけで、いまどちらの画面が出ているかを知らない — 知ると、上の「在庫を取りに行く
   // 効果」と画面の遷移が同じ場所に混ざる。**取り直しても登録の画面は閉じない。**
   //
-  // **在庫タブにログアウトを置かない**（B-56c 規則12）。ログアウトへの経路は、履歴タブの右上の
-  // 入口から開く設定画面の1つだけである（`docs/screen-design.md` 2.1・8章）。
+  // **在庫タブにログアウトを置かない**（B-56c 規則12）。ログアウトへの経路は設定画面の1つだけで
+  // ある（`docs/screen-design.md` 2.1・8章）。
   //
-  // **設定画面を組むのも門である**（B-56c 規則1）。`HistoryTab` は `features/identity/` を
-  // import せず、組んだものを `settings` で受け取って一覧の代わりに描くだけである。
+  // **設定画面を組むのも門である**（B-56c 規則1）。組んだものは器（`TabbedScreen`）の `settings`
+  // に渡し、器が選んでいたタブの中身の代わりに描く（B-60 規則7）。`features/` は
+  // `features/identity/` を import しない。
   //
   // **開いている献立の詳細は1つだけ組み、出どころのタブにだけ渡す**（B-54b 規則9）。もう片方の
   // タブは一覧のままであり、履歴から開いた詳細が献立タブに漏れない（逆も同じ）。
@@ -659,7 +663,26 @@ export function App({
         // 選んでいるタブは門が持つ（ADR-066 決定2）。器へは値と、押されたことを受ける口を
         // 渡すだけで、**運ばれてくるのは `TabId` だけ**である（同 決定3）。
         selectedTab={selectedTab}
-        onSelectTab={setSelectedTab}
+        // **設定を開いている間にタブを押すと、設定を閉じてそのタブを出す**（B-60 設計 6章
+        // 規則8）。押したのが開く前に選んでいたタブでも同じである。
+        onSelectTab={(tab) => {
+          setSettingsOpen(false);
+          setSelectedTab(tab);
+        }}
+        // **設定は4つ目の行き先である**（B-60 規則7）。組むのは門で、器はタブの中身の代わりに
+        // 描くだけである。開閉で `selectedTab` も開いている献立も変えない（同 規則9）— 閉じれば
+        // 開く前に選んでいたタブ（詳細を開いていれば詳細）に戻る。
+        settings={
+          settingsOpen ? (
+            <SettingsScreen
+              onSignOut={() => session.signOut()}
+              onClose={() => setSettingsOpen(false)}
+              onDeleteHouseholdData={deleteHouseholdDataAndSignOut}
+              offline={offline}
+            />
+          ) : null
+        }
+        onOpenSettings={() => setSettingsOpen(true)}
         meals={
           <MealsTab
             suggestion={suggestion}
@@ -681,6 +704,7 @@ export function App({
             // 決める（先行 `PantryTab` の一覧 ⇄ 登録）。
             mealDetail={openMeal?.from === 'meals' ? openMealDetail : null}
             offline={offline}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         }
         pantry={
@@ -692,6 +716,7 @@ export function App({
             onUpdate={updateAndReload}
             ingredientNames={ingredientNames}
             offline={offline}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         }
         history={
@@ -701,16 +726,6 @@ export function App({
             onOpenMeal={openMealFrom('history')}
             mealDetail={openMeal?.from === 'history' ? openMealDetail : null}
             onOpenSettings={() => setSettingsOpen(true)}
-            settings={
-              settingsOpen ? (
-                <SettingsScreen
-                  onSignOut={() => session.signOut()}
-                  onClose={() => setSettingsOpen(false)}
-                  onDeleteHouseholdData={deleteHouseholdDataAndSignOut}
-                  offline={offline}
-                />
-              ) : null
-            }
           />
         }
       />
