@@ -256,6 +256,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 apps/web/                  React + Vite（PWA）— API のクライアント
   src/session/             セッションの継ぎ目。**ここは画面ではない**（ADR-046 決定3）。@supabase/* を import してよい唯一の場所
   src/navigation/          下タブの器（B-38）。**ここも画面ではない継ぎ目**で、3コンテキストの画面を並べる
+  src/connectivity/       接続状態の継ぎ目とオフラインの帯（B-70）。**ここも画面ではない継ぎ目**で、門と main.tsx だけが引く
   src/icons/               アイコンの部品（B-59。原本の11個の SVG）。**ここも画面ではない** — `features/` を横断して引かれる
   src/global.css           `:root` のトークン・リセット・地（B-59 / ADR-055 決定2）。`index.html` が読む
   src/features/pantry/     画面もコンテキスト単位で切る（PantryTab が一覧と登録を出し分ける / PantryList / PantrySections / RemainingDays）
