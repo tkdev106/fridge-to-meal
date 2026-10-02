@@ -21,8 +21,8 @@ export default defineConfig({
       workbox: {
         // 在庫や献立の API 応答はキャッシュしない。
         // オフラインでの登録・編集を許さない方針（FR-41）と揃える。
-        // 書体（woff2）は precache しない。Zen Kaku Gothic New だけで 242 ファイルあり、
-        // 全部を入れるとアプリの外枠を持つという ADR-016 の範囲を越える（ADR-075）。
+        // 書体（woff2）は precache しない。Zen Kaku Gothic New だけで 242 ファイル（約3MB）あり、
+        // 全部を落とすと unicode-range の分割を活かせない。使った分割だけを下で持つ（ADR-075）。
         // fonts.css は css として従来どおり precache される。
         globPatterns: ['**/*.{js,css,html,svg,png}'],
         navigateFallbackDenylist: [/^\/api\//],

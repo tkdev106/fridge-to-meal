@@ -1601,18 +1601,18 @@ flowchart TD
 
 ### ADR-075　書体をデザインの原本から取り出して `apps/web/public/fonts/` に自前で置き、実行時に使った分割だけを端末に持つ　`提案`
 
-- **状況** — デザイン（ADR-074）は書体を `Inter` と `Zen Kaku Gothic New`（太さ 400 / 500）と決めたが、アプリがそれをどう読み込むかは決まっていなかった（ADR-074 結果3）。B-59 は `global.css` に書体の並びだけを書き、ファイルが無いので手元の書体に落ちていた。原本 `docs/design/screens.html` は Google Fonts の css2 応答（`@font-face` 256個。`unicode-range` で分割され、Inter は可変書体で 400 と 500 が同じファイル）と、その woff2 をすべて内包している。書体は2つとも SIL OFL 1.1 で、Reserved Font Name は無い。依存パッケージは足さない（backlog B-59b）。
+- **状況** — デザイン（ADR-074）は書体を `Inter` と `Zen Kaku Gothic New`（太さ 400 / 500）と決めたが、アプリがそれをどう読み込むかは決まっていなかった（ADR-074 結果3）。B-59 は `global.css` に書体の並びだけを書き、ファイルが無いので手元の書体に落ちていた。原本 `docs/design/screens.html` は Google Fonts の css2 応答（`@font-face` 256個。`unicode-range` で分割され、Inter は可変書体で 400 と 500 が同じファイル）と、その woff2 をすべて内包している。書体は2つとも SIL OFL 1.1 で、Reserved Font Name は無い。**書体はアプリの外枠の静的資産であってデータではない**ので、端末に持つことは ADR-016 の「外枠だけ」の内側にある（従来の precache の対象にも woff2 が入っていた）。依存パッケージは足さない（backlog B-59b）。
 - **決定** — 4つ。
   1. **書体ファイルを自前で置く。** 原本に同梱された woff2 を取り出し、`apps/web/public/fonts/<書体>-<版>/` に置く（Inter 7、Zen 121 × 2）。`@font-face` の一覧は原本の css2 応答の順・`unicode-range`・`font-display: swap` をそのまま保ち、`src` だけを置いたファイルへ向けて `apps/web/public/fonts/fonts.css` に置く。`index.html` が `<link>` で読む。**書体のために第三者へ要求を出さない。** 取り出しは使い捨ての手順で行い、仕組みを常設しない（ADR-053 結果5 と同じ考え方）。
   2. **各書体のディレクトリに `OFL.txt`（name 表の著作権表示と OFL 1.1 の全文）を置く。** OFL が同梱に求める条件である。
-  3. **woff2 は precache せず、`/fonts/` の woff2 を実行時に CacheFirst で持つ。** Google の分割は日本語のために約240個あり、全部を precache すると初回に約3MB を落とす。画面が使う分割だけを取りに行き、取ったものは端末に残す。`fonts.css` は CSS として従来どおり precache される。**API の応答をキャッシュしない設定は動かさない**（FR-41 / ADR-016）。
+  3. **woff2 は precache せず、`/fonts/` の woff2 を実行時に CacheFirst で持つ。** Zen は日本語のために 121 分割 × 2 太さ（242 ファイル）あり、全部を precache すると初回に約3MB を落とす。画面が使う分割だけを取りに行き、取ったものは端末に残す。`fonts.css` は CSS として従来どおり precache される。**API の応答をキャッシュしない設定は動かさない**（FR-41 / ADR-016）。
   4. **ADR-055 の「グローバルな CSS は1枚」は「トークンとリセットを置く CSS は1枚」と読む。** `fonts.css` には `@font-face` 以外を書かない。置き換えはしない。
 - **比較した案**
 
   | | 案 | 退ける理由 |
   | --- | --- | --- |
   | **A** | **原本から取り出して自前で置く**（採用） | — |
-  | B | Google Fonts の `<link>` | 起動のたびに第三者（Google）へ要求が出る。食生活は生活実態を推測できる情報であり（NFR-11 の趣旨）、外部へ出るものを増やさない。オフラインの外枠では書体が描けず、外部の可用性にも依る |
+  | B | Google Fonts の `<link>` | 起動のたびに第三者（Google）へ要求が出る。`unicode-range` の分割のどれを取りに行ったかから、画面に出た文字（食材名）がある程度推測できる。食生活は生活実態を推測できる情報であり（NFR-11 の趣旨）、外部へ出るものを増やさない。オフラインの外枠では書体が描けず、外部の可用性にも依る |
   | C | 書体を部分集合にせず1ファイルで置く | Zen は太さごとに数 MB あり、初回の表示が遅れる（NFR-01）。変換の道具（fontTools 等）も要る |
   | D | npm の書体パッケージ（`@fontsource/*`） | 依存の追加になる（backlog B-59b が止まる条件として挙げている） |
   | E | 一覧を `global.css` に入れる | 256 ブロックがトークンとリセットを埋もれさせ、ADR-055 決定2 の「1枚で全体を見渡せる」が崩れる |
