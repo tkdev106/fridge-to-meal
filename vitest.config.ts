@@ -13,6 +13,11 @@ export default defineConfig({
     // **configDefaults.exclude を残す** — 上書きすると node_modules まで走査してしまう。
     exclude: [...configDefaults.exclude, 'apps/api/test/db/**'],
     environment: 'node',
+    // **書体の一覧と global.css だけは css の中身を読ませる**（B-59b）。既定（`include: []`）の
+    // vitest は css を処理せず、`?raw` で読んでも空文字になるため、書体の一覧の検査
+    // （`apps/web/test/fonts/`）が中身を見られない。他の css まで処理させると描くテストが
+    // 遅くなるので、当てるのはこの2枚に限る。
+    css: { include: [/apps\/web\/public\/fonts\/fonts\.css/, /apps\/web\/src\/global\.css/] },
     coverage: {
       include: ['apps/api/src/contexts/*/domain/**', 'apps/api/src/contexts/*/usecase/**'],
     },

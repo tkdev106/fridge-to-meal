@@ -23,6 +23,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { useId, useState } from 'react';
 import type { IngredientNamesState } from './IngredientNameOptions.js';
 import { ingredientNameOptionsOf } from './IngredientNameOptions.js';
+import { IngredientNameCombobox } from './IngredientNameCombobox.js';
 import type { RegisterFailureNotice } from './RegisterFailureNotice.js';
 import { registerFailureNoticeOf } from './RegisterFailureNotice.js';
 import type { StockItemFormValues } from './StockItemFormValues.js';
@@ -116,12 +117,19 @@ export type StockItemFormProps = {
    * どちらを空の列に倒すかの判断は `ingredientNameOptionsOf` が1か所で持つ。
    */
   ingredientNames: IngredientNamesState;
+  /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
+  offline?: boolean;
 };
 
-export function StockItemForm({ onRegister, onClose, ingredientNames }: StockItemFormProps) {
-  // `<datalist>` と欄を結ぶ識別子。**固定の文字列にしない**（設計 規則8）— 同じ画面が2つ
-  // 描かれた回に `id` が衝突し、片方の欄がもう片方の一覧を引く。
-  const ingredientNameListId = useId();
+export function StockItemForm({
+  onRegister,
+  onClose,
+  ingredientNames,
+  offline = false,
+}: StockItemFormProps) {
+  // 食材名の見出しと欄を結ぶ識別子。**固定の文字列にしない**（B-50c 設計 規則8）— 同じ画面が
+  // 2つ描かれた回に `id` が衝突し、片方の見出しがもう片方の欄を指す。
+  const ingredientNameFieldId = useId();
   const ingredientNameOptions = ingredientNameOptionsOf(ingredientNames);
   const [values, setValues] = useState<StockItemFormValues>(EMPTY_STOCK_ITEM_FORM);
   // 送っている間は、どちらの保存で送ったかを持つ（null なら送っていない）。**どちらも
@@ -133,7 +141,8 @@ export function StockItemForm({ onRegister, onClose, ingredientNames }: StockIte
   const sending = sendingFor !== null;
   // 保存の2つに当てる条件。**「←」には `sending` だけが当たる**（下の閉じる操作の注記）—
   // 食材名が空でも「捨てて戻る」は効かねばならないので、`registerInput === null` は含めない。
-  const saveDisabled = registerInput === null || sending;
+  // **接続が切れている間も保存の2つと Enter を止める**（B-70 規則9）。入力は消さない。
+  const saveDisabled = registerInput === null || sending || offline;
 
   function changeField(field: keyof StockItemFormValues) {
     return (event: ChangeEvent<HTMLInputElement>) => {
@@ -185,8 +194,8 @@ export function StockItemForm({ onRegister, onClose, ingredientNames }: StockIte
       {/* 閉じる操作は見出しの行、つまり**画面のいちばん上**に置く（B-39 設計 規則7・8 /
           `docs/screen-design.md` 6章のワイヤー）。**`type="submit"` にしない** — 押した回に
           保存が走ってしまい、「捨てて戻る」ではなくなる。
-          **確認は出さない**（規則7 / 要件 5.5）。登録し直すコストが低く、削除で確認を出さないのと
-          同じ構えである。
+          **確認は出さない**（規則7 / 要件 5.5）。登録し直すコストが低い — 在庫品の削除は確認を挟む
+          ようになった（B-69）が、あちらは保存済みの1件を消すので取り消しが効かない。
           **送っている間は押せない**（規則10 / 規則11）。「送った1件はもう届いているので、閉じるのを
           止めても取り消せない」は**通った回にしか成り立たない** — 断られた回と失敗した回は、
           結末が届く前に閉じると**案内が出ないまま画面が消え、打った入力も捨てられる。**
@@ -197,31 +206,22 @@ export function StockItemForm({ onRegister, onClose, ingredientNames }: StockIte
 
       <h2>{HEADING}</h2>
 
-      <label>
-        {FIELD_LABELS.name}
-        {/* 開いた直後はこの欄に焦点が当たる（B-39 設計 規則13 / B-12 設計 規則10b / NFR-15）。
-            登録の画面は開くまで木に無い（`PantryTab`）ので、mount のときに当てれば「開いた
-            直後」と一致する。**効果と `ref` を置かない** — 描き直しのたびに当て直す条件を
-            自分で持つことになる。 */}
-        {/* 補完は `list` で `<datalist>` に結ぶ（FR-02 / B-50c 設計 2章）。**依存を足さない** —
-            部分一致の絞り込みも上下キーでの選択もブラウザが持っており、**打った文字をそのまま
-            登録できる**（FR-03）。**補完が0件でも `list` を外さない** — 外すと欄の役割が
-            描き直しのたびに変わる。 */}
-        <input
-          autoFocus
-          list={ingredientNameListId}
-          value={values.name}
-          onChange={changeField('name')}
-        />
-      </label>
-
-      {/* **名称のほかに何も置かない**（設計 規則9）。`<option>` にラベルを足すと、未確定の
-          文言（`docs/screen-design.md` 論点3）がここに入り込む。 */}
-      <datalist id={ingredientNameListId}>
-        {ingredientNameOptions.map((name) => (
-          <option key={name} value={name} />
-        ))}
-      </datalist>
+      {/* 欄と直下の一覧は部品1つに閉じる（B-66）。**欄の名前はここに残す** — `htmlFor` で部品の
+          欄に結ぶ。 */}
+      <label htmlFor={ingredientNameFieldId}>{FIELD_LABELS.name}</label>
+      {/* 開いた直後はこの欄に焦点が当たる（B-39 設計 規則13 / B-12 設計 規則10b / NFR-15）。
+          登録の画面は開くまで木に無い（`PantryTab`）ので、mount のときに当てれば「開いた
+          直後」と一致する。**効果と `ref` を置かない** — 描き直しのたびに当て直す条件を
+          自分で持つことになる。
+          補完は欄の直下の一覧に出る（FR-02 / B-66）。絞り込みとキー操作は部品が持ち、
+          **打った文字をそのまま登録できる**（FR-03）— 部品が値を書き換えるのは選んだときだけ。 */}
+      <IngredientNameCombobox
+        id={ingredientNameFieldId}
+        autoFocus
+        value={values.name}
+        onChange={(name) => setValues((previous) => ({ ...previous, name }))}
+        ingredientNames={ingredientNameOptions}
+      />
 
       <label>
         {FIELD_LABELS.amount}

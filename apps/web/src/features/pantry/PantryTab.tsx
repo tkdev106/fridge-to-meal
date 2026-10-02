@@ -70,6 +70,8 @@ export type PantryTabProps = {
    * 使わず、この画面は中身も読まない（読むのは `StockItemForm` の側である）。
    */
   ingredientNames: IngredientNamesState;
+  /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
+  offline?: boolean;
 };
 
 export function PantryTab({
@@ -79,7 +81,9 @@ export function PantryTab({
   onRegister,
   onUpdate,
   ingredientNames,
+  offline = false,
 }: PantryTabProps): JSX.Element {
+  // `offline`（B-70）はこの画面では読まず、書き込みを持つ3つの画面へ素通しする。
   // 開いた直後は一覧である（規則2 / 要件 第7章）。
   const [registering, setRegistering] = useState(false);
   // 編集している在庫品1件（null なら編集していない。B-55 設計 規則16・17）。**行から
@@ -95,6 +99,7 @@ export function PantryTab({
         onRegister={onRegister}
         onClose={() => setRegistering(false)}
         ingredientNames={ingredientNames}
+        offline={offline}
       />
     );
   }
@@ -106,7 +111,12 @@ export function PantryTab({
   // mount のたびに作り直される（同 規則2・17 / `StockItemEditForm` の初期値）。
   if (editing !== null) {
     return (
-      <StockItemEditForm stockItem={editing} onUpdate={onUpdate} onClose={() => setEditing(null)} />
+      <StockItemEditForm
+        stockItem={editing}
+        onUpdate={onUpdate}
+        onClose={() => setEditing(null)}
+        offline={offline}
+      />
     );
   }
 
@@ -121,7 +131,13 @@ export function PantryTab({
       {/* 行のタップで編集へ移る（B-55 設計 規則15・16 / `docs/screen-design.md` 2章
           `pantry --> edit`）。**どの動きをタップと読むかは一覧の側の判断である**
           （`SwipeGesture.ts`）— ここは受け取った1件を持つだけである。 */}
-      <PantryList stockItems={stockItems} today={today} onDelete={onDelete} onEdit={setEditing} />
+      <PantryList
+        stockItems={stockItems}
+        today={today}
+        onDelete={onDelete}
+        onEdit={setEditing}
+        offline={offline}
+      />
     </>
   );
 }

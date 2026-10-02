@@ -27,6 +27,7 @@ import { describe, expect, it } from 'vitest';
 import type { MealSummaryOutput, StockItemDto } from '@fridge-to-meal/contract';
 import { act, fireEvent, render, screen, waitFor, within } from './support/dom/renderComponent.js';
 import { installPointerCapture } from './support/dom/pointerCapture.js';
+import { pressOperation } from './support/dom/pressOperation.js';
 import { FixedSession } from './support/session/FixedSession.js';
 import type { FixedSessionOptions } from './support/session/FixedSession.js';
 import { FixedStockItemRequests } from './support/server/FixedStockItemRequests.js';
@@ -39,8 +40,11 @@ import { FixedIngredientNameRequests } from './support/server/FixedIngredientNam
 import type { FixedIngredientNameRequestsOptions } from './support/server/FixedIngredientNameRequests.js';
 import { FixedHouseholdDataRequests } from './support/server/FixedHouseholdDataRequests.js';
 import type { FixedHouseholdDataRequestsOptions } from './support/server/FixedHouseholdDataRequests.js';
+import { FixedConnectivity } from './support/connectivity/FixedConnectivity.js';
+import type { FixedConnectivityOptions } from './support/connectivity/FixedConnectivity.js';
 import { App } from '../src/App.js';
 import type { SessionState } from '../src/session/Session.js';
+import type { ConnectivityState } from '../src/connectivity/Connectivity.js';
 import type { StockItemsOutcome } from '../src/server/StockItemRequests.js';
 import type { MealListOutcome, MealOutcome } from '../src/server/MealRequests.js';
 import type {
@@ -72,6 +76,7 @@ function renderApp(
   ingredientNameOptions: FixedIngredientNameRequestsOptions = {},
   mealOptions: FixedMealRequestsOptions = {},
   householdDataOptions: FixedHouseholdDataRequestsOptions = {},
+  connectivityOptions: FixedConnectivityOptions = {},
 ) {
   const session = new FixedSession(sessionOptions);
   const requests = new FixedStockItemRequests(requestOptions);
@@ -100,6 +105,9 @@ function renderApp(
   // 本題でない観点では呼ばれる口が無い。呼ばれたら落ちる。
   const householdData = new FixedHouseholdDataRequests(householdDataOptions);
 
+  // **既定は接続している状態**（B-70）。接続が本題でない観点は、これまでどおり何も止まらない。
+  const connectivity = new FixedConnectivity(connectivityOptions);
+
   render(
     <App
       session={session}
@@ -114,10 +122,11 @@ function renderApp(
       addCookingRecord={meals.addCookingRecord}
       listMeals={meals.listMeals}
       deleteHouseholdData={householdData.deleteHouseholdData}
+      connectivity={connectivity}
     />,
   );
 
-  return { session, requests, suggestions, ingredientNames, meals, householdData };
+  return { session, requests, suggestions, ingredientNames, meals, householdData, connectivity };
 }
 
 /**
@@ -186,15 +195,32 @@ function operationAt(index: number, expectedCount: number): HTMLElement {
 }
 
 /**
- * 在庫の一覧に出ている操作は1つ（登録を開く）である。**ログアウトは在庫タブに置かない**
- * （B-56c 規則12 — ログアウトへの経路は設定画面の1つだけ）。
+ * 在庫の一覧に出ている操作は、行ごとの `…` を除けば1つ（登録を開く）である。**ログアウトは
+ * 在庫タブに置かない**（B-56c 規則12 — ログアウトへの経路は設定画面の1つだけ）。行ごとの `…`
+ * は `aria-expanded` を持つ開閉ボタンであり（B-69 設計 規則3）、数えるときはそれで除く。
  */
 const LIST_OPERATION_COUNT = 1;
 /** 登録の画面に出ている操作は3つ（閉じる／保存2つ）である（B-56c 規則12）。 */
 const REGISTER_OPERATION_COUNT = 3;
 
+/** 行ごとの `…`（B-69 設計 規則3）を除いた、在庫の一覧の操作を文書順に。 */
+function listOperations(): readonly HTMLElement[] {
+  return screen.getAllByRole('button').filter((button) => !button.hasAttribute('aria-expanded'));
+}
+
+/** 行ごとの `…`（B-69 設計 規則3）を文書順に。 */
+function rowOperationToggles(): readonly HTMLElement[] {
+  return screen.queryAllByRole('button').filter((button) => button.hasAttribute('aria-expanded'));
+}
+
 function openRegisterOperation(): HTMLElement {
-  return operationAt(0, LIST_OPERATION_COUNT);
+  const operations = listOperations();
+  expect(operations).toHaveLength(LIST_OPERATION_COUNT);
+
+  const [found] = operations;
+  if (found === undefined) throw new Error('登録を開く操作が無い');
+
+  return found;
 }
 
 function closeRegisterOperation(): HTMLElement {
@@ -206,8 +232,8 @@ function saveAndCloseOperation(): HTMLElement {
 }
 
 /**
- * 食材名の欄。**補完の `list` を持つため役割は `combobox` である**（B-50c）— 補完が0件の
- * 回も欄はこの役割のままである。
+ * 食材名の欄。**`role="combobox"` を明示しているため役割は `combobox` である**（B-50c /
+ * B-66 設計 規則13）— 補完が0件の回も欄はこの役割のままである。
  */
 function ingredientNameField(): HTMLElement {
   return screen.getByRole('combobox');
@@ -224,12 +250,33 @@ function soleRow(): HTMLElement {
   return row;
 }
 
-/** 行を横になぞる。**判断は `SwipeGesture.ts` の持ち分**で、ここは入力を送るだけである。 */
-function swipeSoleRow(): void {
+/**
+ * 行を消す — **なぞる → 現れた削除を押す → 確認の削除を押す**の3つを1つにしたもの
+ * （FR-06 / B-69 設計 規則1・6・11）。なぞっただけでは消えない。
+ *
+ * **判断は `SwipeGesture.ts` と `PantryList` の持ち分**で、ここは入力を送るだけである。
+ * 現れた削除は行の中の `aria-expanded` を持たない button、確認の削除は `role="dialog"` の中の
+ * 2つめの button である（同 規則8）。
+ */
+function deleteSoleRow(): void {
   const row = soleRow();
 
   fireEvent.pointerDown(row, { pointerId: 1, clientX: 0, clientY: 0 });
   fireEvent.pointerUp(row, { pointerId: 1, clientX: 100, clientY: 0 });
+
+  const revealed = within(soleRow())
+    .getAllByRole('button')
+    .filter((button) => !button.hasAttribute('aria-expanded'));
+  expect(revealed).toHaveLength(1);
+  const [revealedDelete] = revealed;
+  if (revealedDelete === undefined) throw new Error('行に削除が現れていない');
+  pressOperation(revealedDelete);
+
+  const confirmation = within(screen.getByRole('dialog')).getAllByRole('button');
+  expect(confirmation).toHaveLength(2);
+  const confirmDelete = confirmation.at(1);
+  if (confirmDelete === undefined) throw new Error('確認に削除が無い');
+  pressOperation(confirmDelete);
 }
 
 /** 献立タブ。`TAB_ORDER` の先頭であり、**起動時に開かれている**（ADR-064 / `navigation/Tabs.ts`）。 */
@@ -423,7 +470,7 @@ describe('門 App が在庫一覧を取り直す条件', () => {
     expect(screen.queryByText(chineseCabbage.name)).toBeNull();
   });
 
-  it('行を横になぞって消えたら、一覧を取り直す', async () => {
+  it('行の削除を確かめて消えたら、一覧を取り直す', async () => {
     renderApp(
       { initialState: 'signedIn' },
       {
@@ -434,7 +481,7 @@ describe('門 App が在庫一覧を取り直す条件', () => {
 
     openPantry();
     await screen.findByText(carrot.name);
-    swipeSoleRow();
+    deleteSoleRow();
 
     // FR-06 / ADR-050 決定3: **web で列から行を抜かない** — 取り直した結果が正である。
     expect(await screen.findByText(chineseCabbage.name)).not.toBeNull();
@@ -451,7 +498,7 @@ describe('門 App が在庫一覧を取り直す条件', () => {
 
     openPantry();
     await screen.findByText(carrot.name);
-    swipeSoleRow();
+    deleteSoleRow();
 
     // ADR-050 決定1・3: 利用者が求めたのは**その行が消えていること**である。
     // **取り直しはその読みの検めでもある** — 消えていなければ行がそのまま戻ってくる。
@@ -469,7 +516,7 @@ describe('門 App が在庫一覧を取り直す条件', () => {
 
     openPantry();
     await screen.findByText(carrot.name);
-    swipeSoleRow();
+    deleteSoleRow();
 
     // 断りが届いたことを待つ（案内が出るのは `DeleteFailureNotice.ts` の読みの帰結である）。
     await waitFor(() => {
@@ -905,7 +952,7 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
 
     openPantry();
     await screen.findByText(carrot.name);
-    swipeSoleRow();
+    deleteSoleRow();
     await screen.findByText(chineseCabbage.name);
 
     fireEvent.click(mealsTab());
@@ -1411,7 +1458,7 @@ describe('門 App の献立詳細', () => {
 
     openPantry();
     await screen.findByText(carrot.name);
-    swipeSoleRow();
+    deleteSoleRow();
 
     // 消えたと読めたら一覧を取り直す（B-23 / ADR-050）。2件目の台本は空なので、行が
     // 消えたことが取り直しの合図である。
@@ -2825,14 +2872,16 @@ describe('門 App の設定', () => {
     expect(tabs()).toHaveLength(3);
   });
 
-  it('在庫の一覧に出る操作は、登録を開く1つだけである', async () => {
+  it('在庫の一覧に出る操作は、登録を開くものと行ごとの操作だけである', async () => {
     // 規則12 / ADR-046 結果4 の暫定を解く: 在庫タブにログアウトを置かない。
+    // B-69 設計 規則3: 行ごとの `…`（`aria-expanded` を持つ）が行の数だけ足される。
     renderApp({ initialState: 'signedIn' }, { list: [loaded(carrot)] });
 
     openPantry();
     await screen.findByText(carrot.name);
 
-    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(listOperations()).toHaveLength(1);
+    expect(rowOperationToggles()).toHaveLength(1);
   });
 
   it('在庫の登録の画面に出る操作は、閉じると保存2つの3つだけである', async () => {
@@ -2907,6 +2956,596 @@ describe('門 App の設定', () => {
     fireEvent.click(settingsEntry());
 
     expect(screen.getAllByRole('button')).toHaveLength(SETTINGS_OPERATION_COUNT);
+    expect(householdData.deleteCount).toBe(0);
+  });
+});
+
+/**
+ * 接続状態（B-70 設計 6章 規則1〜14 / 7章 / FR-41 / `docs/screen-design.md` 9章 / ADR-016 /
+ * ADR-066）。
+ *
+ * **帯は文言 `オフラインです` で引く。** ADR-074 で文言の正は `docs/design/`（「案内の帯」）に
+ * 移り、この文言は仮ではない（検分で決めた。`docs/testing.md` 4.1 の「仮の文言を期待値に
+ * 書かない」には当たらない）。
+ *
+ * 接続状態は `FixedConnectivity` の `initialState` と `emit` で与え、emit は `act` で包む
+ * （先行 `emit(session, …)`）。**止めたことは `disabled` と差し替えが受け取った記録で観る**
+ * （`vi.fn()` を使わない。`docs/testing.md` 2章）。
+ */
+
+/** 帯の文言（`docs/design/README.md`「案内の帯」/ ADR-074）。 */
+const OFFLINE_BANNER = 'オフラインです';
+
+const OFFLINE_NIKUJAGA = '肉じゃが';
+const OFFLINE_STIR_FRY = 'にんじんと卵の炒めもの';
+/** 献立タブのカードに出る名称。 */
+const OFFLINE_SUGGESTED = '提案の献立';
+/** 取り直したことを観るための、提案の2件目の台本に置く名称。 */
+const OFFLINE_ANOTHER_SUGGESTED = '別の提案の献立';
+/** 「新しい献立を求める」で届く献立の名称。 */
+const OFFLINE_NEW_MEAL = '新しいご飯';
+/** 詳細に出る名称。**カードの名称と別にしておく** — どちらが出ているかを見分ける。 */
+const OFFLINE_DETAIL = '詳細の献立';
+
+/** 出ている帯。 */
+function offlineBanners(): readonly HTMLElement[] {
+  return screen.queryAllByText(OFFLINE_BANNER);
+}
+
+/** 帯がちょうど1つ出ていることを確かめてから、それを返す。 */
+function soleOfflineBanner(): HTMLElement {
+  const found = offlineBanners();
+  expect(found).toHaveLength(1);
+
+  const [banner] = found;
+  if (banner === undefined) throw new Error('帯が無い');
+
+  return banner;
+}
+
+/**
+ * 接続状態の変化を配る。**`act` で包む**（先行 `emit`）— 操作から始まらない更新なので、
+ * 包まないとテストは描き直される前の木を見る。
+ */
+function emitConnectivity(connectivity: FixedConnectivity, state: ConnectivityState): void {
+  act(() => {
+    connectivity.emit(state);
+  });
+}
+
+type OfflineRenderOptions = {
+  readonly session?: FixedSessionOptions;
+  readonly requests?: FixedStockItemRequestsOptions;
+  readonly suggestions?: FixedSuggestionRequestsOptions;
+  readonly meals?: FixedMealRequestsOptions;
+  readonly householdData?: FixedHouseholdDataRequestsOptions;
+  /** 購読を始めた時点の接続状態。既定は接続している状態。 */
+  readonly connectivity?: ConnectivityState;
+};
+
+/**
+ * 門を描く。**既定はサインイン済みで、在庫は `carrot` 1件**である — 接続状態の観点の多くは
+ * サインイン済みの画面で観るため、本題でない台本をここに寄せる。
+ */
+function renderAppWith(options: OfflineRenderOptions = {}) {
+  return renderApp(
+    options.session ?? { initialState: 'signedIn' },
+    options.requests ?? { list: [loaded(carrot)] },
+    options.suggestions ?? {},
+    {},
+    options.meals ?? {},
+    options.householdData ?? {},
+    options.connectivity === undefined ? {} : { initialState: options.connectivity },
+  );
+}
+
+/** 提案が1件出ている状態。**カードの中の開く操作を押せる。** */
+function offlineSuggestedOne(mealId: string, title: string): LatestSuggestionOutcome {
+  return {
+    outcome: 'suggested',
+    pantryChanged: false,
+    suggestion: {
+      id: `suggestion-${mealId}`,
+      generatedAt: '2026-09-20T09:00:00.000Z',
+      entries: [
+        {
+          mealId,
+          origin: 'reused',
+          title,
+          ingredients: [],
+          steps: [],
+          coverage: { covered: [], missing: [] },
+        },
+      ],
+    },
+  };
+}
+
+/** 「新しい献立を求める」が返す提案（`requestNewMeals` の台本用）。 */
+function offlineNewSuggestion(mealId: string, title: string): RequestNewMealsOutcome {
+  return {
+    outcome: 'suggested',
+    suggestion: {
+      id: `suggestion-${mealId}`,
+      generatedAt: '2026-09-21T09:00:00.000Z',
+      entries: [
+        {
+          mealId,
+          origin: 'generated',
+          title,
+          ingredients: [],
+          steps: [],
+          coverage: { covered: [], missing: [] },
+        },
+      ],
+    },
+  };
+}
+
+/** 取れた献立1件。**材料を持たせない** — 名称以外の文字が画面に混ざらないようにする。 */
+function offlineShownMeal(mealId: string, title: string): MealOutcome {
+  return {
+    outcome: 'shown',
+    meal: {
+      mealId,
+      title,
+      ingredients: [],
+      steps: [],
+      coverage: { covered: [], missing: [] },
+      cooked: false,
+    },
+  };
+}
+
+function offlineListed(
+  seen: readonly MealSummaryOutput[],
+  cooked: readonly MealSummaryOutput[] = [],
+): MealListOutcome {
+  return { outcome: 'loaded', meals: { seen: [...seen], cooked: [...cooked] } };
+}
+
+const offlineMealA: MealSummaryOutput = {
+  mealId: 'meal-a',
+  title: OFFLINE_NIKUJAGA,
+  ingredientCount: 2,
+};
+const offlineMealC: MealSummaryOutput = {
+  mealId: 'meal-c',
+  title: OFFLINE_STIR_FRY,
+  ingredientCount: 2,
+};
+
+/** 「新しい献立を求める」操作。**末尾の1つである**（D-4）。 */
+function lastOperation(): HTMLButtonElement {
+  const operation = screen.getAllByRole('button').at(-1);
+  if (operation === undefined) throw new Error('操作が1つも無い');
+
+  return operation as HTMLButtonElement;
+}
+
+/** 献立タブのカードの開く操作を押す。**カード1枚の回はカードの中の1つだけ**である（B-53）。 */
+async function openOfflineCard(): Promise<void> {
+  const card = (await screen.findAllByRole('listitem'))[0];
+  if (card === undefined) throw new Error('カードが1枚も無い');
+
+  fireEvent.click(within(card).getByRole('button'));
+}
+
+/** 詳細に出ている操作は2つ（閉じる／これを作った）である（B-53）。 */
+const OFFLINE_DETAIL_OPERATION_COUNT = 2;
+
+/**
+ * 設定への入口。**`aria-pressed` を持たず、`listitem` の中にも無い `button`** である
+ * （先行 `門 App の設定` の `settingsEntry`）。**先に1つだけであることを確かめる。**
+ */
+function offlineSettingsEntry(): HTMLElement {
+  const entries = screen
+    .queryAllByRole('button')
+    .filter((button) => !button.hasAttribute('aria-pressed') && button.closest('li') === null);
+  expect(entries).toHaveLength(1);
+
+  const [entry] = entries;
+  if (entry === undefined) throw new Error('設定への入口が無い');
+
+  return entry;
+}
+
+/** 確認の前に設定画面に出ている操作は3つ（閉じる／ログアウト／アカウントとデータの削除）。 */
+const OFFLINE_SETTINGS_OPERATION_COUNT = 3;
+/** 確認が出ている間の操作は4つ（閉じる／ログアウト／確かめる／やめる）。 */
+const OFFLINE_CONFIRMING_OPERATION_COUNT = 4;
+
+/** 履歴タブで行が出るのを待ってから、設定への入口を押す。 */
+async function openOfflineSettings(): Promise<void> {
+  fireEvent.click(historyTab());
+  await screen.findByText(OFFLINE_NIKUJAGA);
+  fireEvent.click(offlineSettingsEntry());
+}
+
+describe('門 App のオフラインの帯', () => {
+  it('サインイン済みで接続が切れていると、帯を1つ出す', async () => {
+    renderAppWith({ connectivity: 'offline' });
+
+    await screen.findByRole('button');
+
+    // 規則4 / `docs/screen-design.md` 9章: 帯は1つで、`role="status"` で読み上げに伝える。
+    expect(offlineBanners()).toHaveLength(1);
+    expect(
+      screen
+        .getAllByRole('status')
+        .filter((status) => status.textContent?.includes(OFFLINE_BANNER) === true),
+    ).toHaveLength(1);
+  });
+
+  it('接続しているときは帯を出さない', async () => {
+    renderAppWith({ connectivity: 'online' });
+
+    await screen.findByRole('button');
+
+    // 規則4。
+    expect(offlineBanners()).toHaveLength(0);
+  });
+
+  it('接続が戻ると帯は消える', async () => {
+    const { connectivity } = renderAppWith({ connectivity: 'offline' });
+
+    await screen.findByRole('button');
+    emitConnectivity(connectivity, 'online');
+
+    // 規則4: `online` に戻れば消す。
+    expect(offlineBanners()).toHaveLength(0);
+  });
+
+  it('接続が切れると、表示中の画面に帯が出る', async () => {
+    const { connectivity } = renderAppWith({ connectivity: 'online' });
+
+    await screen.findByRole('button');
+    emitConnectivity(connectivity, 'offline');
+
+    // 規則1・3・4: 門が購読して状態を持ち、変化を受けて帯を出す。
+    expect(offlineBanners()).toHaveLength(1);
+  });
+
+  it('帯は下タブより前に出る', async () => {
+    renderAppWith({ connectivity: 'offline' });
+
+    await screen.findByRole('button');
+    const banner = soleOfflineBanner();
+
+    // 規則4: 帯は `<main>` の最初の子で、器より前にある。**class は辿らず文書順で観る。**
+    // 器の中身（`tabpanel`）も下タブ（`tablist`）も、帯より後ろに来る。
+    expect(
+      banner.compareDocumentPosition(screen.getByRole('tabpanel')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('ログインの画面でも、接続が切れていれば帯を出す', () => {
+    renderAppWith({ session: { initialState: 'signedOut' }, connectivity: 'offline' });
+
+    // 規則5: 帯はサインイン済みの画面とログインの画面の両方に出す。
+    expect(offlineBanners()).toHaveLength(1);
+    expect(textboxes()).toHaveLength(1);
+  });
+
+  it('セッションが分からない間は、接続が切れていても帯を出さない', () => {
+    renderAppWith({ session: { initialState: 'unknown' }, connectivity: 'offline' });
+
+    // 規則5 / ADR-046 結果4: `unknown` の間は今どおり何も出さない。
+    expect(offlineBanners()).toHaveLength(0);
+    expect(tabs()).toHaveLength(0);
+    expect(textboxes()).toHaveLength(0);
+  });
+
+  it('接続が切れたままサインアウトすると、ログインの画面でも帯が出たままである', async () => {
+    const { session } = renderAppWith({ connectivity: 'offline' });
+
+    await screen.findByRole('button');
+    emit(session, 'signedOut');
+
+    // 規則3: 接続状態は門が持ち、セッションと一緒に捨てない。
+    expect(textboxes()).toHaveLength(1);
+    expect(offlineBanners()).toHaveLength(1);
+  });
+
+  it('接続が切れていても、サインイン済みになれば在庫一覧を取りに行き、取れた在庫品が出る', async () => {
+    renderAppWith({ connectivity: 'offline' });
+
+    openPantry();
+
+    // 規則6 / 7章 行2: 閲覧は止めない。取得は走り、結末は既存のまま扱う。
+    expect(await screen.findByText(carrot.name)).not.toBeNull();
+  });
+
+  it('接続していると読める間に取得が失敗しても、帯は出さない', async () => {
+    renderAppWith({ requests: { list: [{ outcome: 'failed' }] }, connectivity: 'online' });
+
+    openPantry();
+    await act(async () => {});
+
+    // 規則2 / 7章 行3: `onLine` が真でも届かないことはあり、その回は既存の失敗のまま。
+    // 継ぎ目は見分けない。
+    expect(offlineBanners()).toHaveLength(0);
+  });
+});
+
+describe('門 App の接続が切れている間の献立の操作', () => {
+  it('接続が切れると、「新しい献立を求める」が押せない', async () => {
+    const { connectivity } = renderAppWith({
+      suggestions: { show: [offlineSuggestedOne('meal-1', OFFLINE_SUGGESTED)] },
+    });
+
+    await screen.findByText(OFFLINE_SUGGESTED);
+    emitConnectivity(connectivity, 'offline');
+
+    // 規則7: 門から `MealsTab` へ `offline` が配られている。
+    expect(lastOperation().disabled).toBe(true);
+  });
+
+  it('接続が戻ると、「新しい献立を求める」がまた押せる', async () => {
+    const { connectivity } = renderAppWith({
+      suggestions: { show: [offlineSuggestedOne('meal-1', OFFLINE_SUGGESTED)] },
+      connectivity: 'offline',
+    });
+
+    await screen.findByText(OFFLINE_SUGGESTED);
+    emitConnectivity(connectivity, 'online');
+
+    // 規則14: 戻ったら止めた操作は押せるようになる。
+    expect(lastOperation().disabled).toBe(false);
+  });
+
+  it('接続が戻っても、新しい献立の要求を自分では送らない', async () => {
+    const { connectivity, suggestions } = renderAppWith({
+      suggestions: {
+        show: [offlineSuggestedOne('meal-1', OFFLINE_SUGGESTED)],
+        requestNewMeals: [offlineNewSuggestion('meal-new', OFFLINE_NEW_MEAL)],
+      },
+      connectivity: 'offline',
+    });
+
+    await screen.findByText(OFFLINE_SUGGESTED);
+    emitConnectivity(connectivity, 'online');
+    await act(async () => {});
+
+    // 規則14 / ADR-016: 保留・再送をしない。**起きないことは件数でしか観られない**
+    // （C-15 と同じ構え。`docs/testing.md` 2章）。
+    expect(suggestions.requestNewMealsCount).toBe(0);
+  });
+
+  it('接続が戻っても、在庫一覧を取りに行き直さない', async () => {
+    const { connectivity, requests } = renderAppWith({
+      requests: { list: [loaded(carrot), loaded(chineseCabbage)] },
+    });
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    emitConnectivity(connectivity, 'offline');
+    emitConnectivity(connectivity, 'online');
+    await act(async () => {});
+
+    // 規則14 / NFR-07 の構え: 復帰時に自動で取り直さない。
+    expect(requests.listCount).toBe(1);
+  });
+
+  it('接続が戻っても、保存済みの提案を取りに行き直さない', async () => {
+    const { connectivity, suggestions } = renderAppWith({
+      suggestions: {
+        show: [
+          offlineSuggestedOne('meal-1', OFFLINE_SUGGESTED),
+          offlineSuggestedOne('meal-2', OFFLINE_ANOTHER_SUGGESTED),
+        ],
+      },
+    });
+
+    await screen.findByText(OFFLINE_SUGGESTED);
+    emitConnectivity(connectivity, 'offline');
+    emitConnectivity(connectivity, 'online');
+    await act(async () => {});
+
+    // 規則14。
+    expect(suggestions.showCount).toBe(1);
+  });
+
+  it('新しい献立を送っている間に接続が切れても、届いた献立に入れ替わる', async () => {
+    const { connectivity, suggestions } = renderAppWith({
+      suggestions: {
+        show: [offlineSuggestedOne('meal-1', OFFLINE_SUGGESTED)],
+        requestNewMeals: [{ heldUntilSettled: offlineNewSuggestion('meal-new', OFFLINE_NEW_MEAL) }],
+      },
+    });
+
+    await screen.findByText(OFFLINE_SUGGESTED);
+    fireEvent.click(lastOperation());
+    emitConnectivity(connectivity, 'offline');
+    await settleSuggestions(suggestions);
+
+    // 規則13 / ADR-016: 送っている途中の要求は取り消さず、結末の扱いは今のまま。
+    expect(await screen.findByText(OFFLINE_NEW_MEAL)).not.toBeNull();
+    expect(screen.queryByText(OFFLINE_SUGGESTED)).toBeNull();
+  });
+
+  it('接続が切れると、開いている献立詳細の「これを作った」が押せない', async () => {
+    const { connectivity } = renderAppWith({
+      suggestions: { show: [offlineSuggestedOne('meal-1', OFFLINE_SUGGESTED)] },
+      meals: { show: [offlineShownMeal('meal-1', OFFLINE_DETAIL)] },
+    });
+
+    await openOfflineCard();
+    await screen.findByText(OFFLINE_DETAIL);
+    emitConnectivity(connectivity, 'offline');
+
+    // 規則8: 門から `MealDetail` へ `offline` が配られている。
+    expect((operationAt(1, OFFLINE_DETAIL_OPERATION_COUNT) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+});
+
+describe('門 App の接続が切れている間も止めない閲覧と遷移', () => {
+  it('接続が切れていても、タブを移れる', async () => {
+    renderAppWith({ connectivity: 'offline' });
+
+    fireEvent.click(pantryTab());
+
+    // 規則6: タブの移動は止めない。
+    expect(await screen.findByText(carrot.name)).not.toBeNull();
+  });
+
+  it('接続が切れていても、カードから献立詳細を開ける', async () => {
+    const { meals } = renderAppWith({
+      suggestions: { show: [offlineSuggestedOne('meal-1', OFFLINE_SUGGESTED)] },
+      meals: { show: [offlineShownMeal('meal-1', OFFLINE_DETAIL)] },
+      connectivity: 'offline',
+    });
+
+    await openOfflineCard();
+
+    // 規則6: 詳細を開くのは閲覧であり、献立1件を取りに行く。
+    expect(await screen.findByText(OFFLINE_DETAIL)).not.toBeNull();
+    expect(meals.shownMealIds).toEqual(['meal-1']);
+  });
+
+  it('接続が切れていても、献立詳細を閉じるとカードの一覧に戻る', async () => {
+    renderAppWith({
+      suggestions: { show: [offlineSuggestedOne('meal-1', OFFLINE_SUGGESTED)] },
+      meals: { show: [offlineShownMeal('meal-1', OFFLINE_DETAIL)] },
+      connectivity: 'offline',
+    });
+
+    await openOfflineCard();
+    await screen.findByText(OFFLINE_DETAIL);
+    fireEvent.click(operationAt(0, OFFLINE_DETAIL_OPERATION_COUNT));
+
+    // 規則6・8: 閉じる操作は止めない。
+    expect(await screen.findByText(OFFLINE_SUGGESTED)).not.toBeNull();
+  });
+
+  it('接続が切れていても、履歴の列を切り替えられる', async () => {
+    renderAppWith({
+      meals: { list: [offlineListed([offlineMealA], [offlineMealC])] },
+      connectivity: 'offline',
+    });
+
+    fireEvent.click(historyTab());
+    await screen.findByText(OFFLINE_NIKUJAGA);
+    const toggles = screen.getAllByRole('button', { pressed: false });
+    expect(toggles).toHaveLength(1);
+    fireEvent.click(toggles[0] as HTMLElement);
+
+    // 規則6: 列の切り替えは閲覧である。
+    expect(await screen.findByText(OFFLINE_STIR_FRY)).not.toBeNull();
+  });
+
+  it('接続が切れていても、設定画面を開ける', async () => {
+    renderAppWith({
+      meals: { list: [offlineListed([offlineMealA])] },
+      connectivity: 'offline',
+    });
+
+    await openOfflineSettings();
+
+    // 規則6: 設定を開くのは遷移である。
+    expect(screen.getAllByRole('button')).toHaveLength(OFFLINE_SETTINGS_OPERATION_COUNT);
+    expect(screen.queryByText(OFFLINE_NIKUJAGA)).toBeNull();
+  });
+
+  it('接続が切れていても、設定画面を閉じて履歴に戻れる', async () => {
+    renderAppWith({
+      meals: { list: [offlineListed([offlineMealA])] },
+      connectivity: 'offline',
+    });
+
+    await openOfflineSettings();
+    fireEvent.click(operationAt(0, OFFLINE_SETTINGS_OPERATION_COUNT));
+
+    // 規則6。
+    expect(await screen.findByText(OFFLINE_NIKUJAGA)).not.toBeNull();
+  });
+});
+
+describe('門 App の接続が切れている間の在庫と設定の操作', () => {
+  /** 編集の画面に出ている操作は2つ（閉じる／保存）である（B-55）。 */
+  const EDIT_OPERATION_COUNT = 2;
+
+  /** 行をタップする。**押下と離上を同じ座標に送る**（先行 `在庫の編集（B-55）`）。 */
+  function tapSoleRow(): void {
+    const row = soleRow();
+
+    fireEvent.pointerDown(row, { pointerId: 1, clientX: 0, clientY: 0 });
+    fireEvent.pointerUp(row, { pointerId: 1, clientX: 0, clientY: 0 });
+  }
+
+  it('接続が切れていても、在庫の登録の画面を開ける', async () => {
+    renderAppWith({ connectivity: 'offline' });
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    fireEvent.click(openRegisterOperation());
+
+    // 規則6: 登録の画面を開くのは遷移である。食材名の欄は `role="combobox"` を明示しているので `combobox`。
+    expect(ingredientNameField()).not.toBeNull();
+  });
+
+  it('接続が切れると、登録の画面の保存が2つとも押せない', async () => {
+    const { connectivity } = renderAppWith();
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    fireEvent.click(openRegisterOperation());
+    fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
+    emitConnectivity(connectivity, 'offline');
+
+    // 規則9: 門 → `PantryTab` → `StockItemForm` へ `offline` が素通しされている。
+    expect((operationAt(1, REGISTER_OPERATION_COUNT) as HTMLButtonElement).disabled).toBe(true);
+    expect((saveAndCloseOperation() as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('接続が切れると、編集の画面の保存が押せない', async () => {
+    const { connectivity } = renderAppWith();
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    tapSoleRow();
+    emitConnectivity(connectivity, 'offline');
+
+    // 規則10: 門 → `PantryTab` → `StockItemEditForm` へ `offline` が素通しされている。
+    expect((operationAt(1, EDIT_OPERATION_COUNT) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('接続が切れている間は、行の削除を確かめても削除が送られない', async () => {
+    // 削除の台本は渡しておく — 送られた回も最後まで通り、落ちるのは記録の断定だけになる
+    // （`docs/testing.md` 2章「用意した生成結果をわざと渡す」と同じ構え）。
+    const { requests } = renderAppWith({
+      requests: { list: [loaded(carrot), loaded(carrot)], remove: [{ outcome: 'deleted' }] },
+      connectivity: 'offline',
+    });
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    deleteSoleRow();
+    await act(async () => {});
+
+    // 規則11: 門 → `PantryTab` → `PantryList` へ `offline` が素通しされ、確認の削除が押せない（B-69）。
+    expect(requests.deletedIds).toEqual([]);
+    expect(screen.queryByText(carrot.name)).not.toBeNull();
+  });
+
+  it('接続が切れると、設定の確認の中の削除の操作が押せない', async () => {
+    const { connectivity, householdData } = renderAppWith({
+      meals: { list: [offlineListed([offlineMealA])] },
+      householdData: { delete: [{ outcome: 'failed' }] },
+    });
+
+    await openOfflineSettings();
+    fireEvent.click(operationAt(2, OFFLINE_SETTINGS_OPERATION_COUNT));
+    emitConnectivity(connectivity, 'offline');
+    const confirm = operationAt(2, OFFLINE_CONFIRMING_OPERATION_COUNT) as HTMLButtonElement;
+    fireEvent.click(confirm);
+    await act(async () => {});
+
+    // 規則12: 門 → `SettingsScreen` へ `offline` が配られ、削除は送られない。
+    expect(confirm.disabled).toBe(true);
     expect(householdData.deleteCount).toBe(0);
   });
 });

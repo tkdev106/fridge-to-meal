@@ -56,6 +56,7 @@ function renderDetail(state: MealDetailProps['meal'], overrides: RenderOverrides
       recording={overrides.recording ?? false}
       recordFailureNotice={overrides.recordFailureNotice ?? null}
       recorded={overrides.recorded ?? false}
+      offline={overrides.offline ?? false}
     />,
   );
 }
@@ -590,5 +591,32 @@ describe('献立詳細 MealDetail', () => {
       expect(precedes(innermostElementContaining(indicator), notice)).toBe(true);
       expect(precedes(notice, cookedControl() as HTMLElement)).toBe(true);
     });
+  });
+});
+
+/**
+ * 接続が切れている間（B-70 設計 6章 規則6・8 / FR-41 / FR-22）。
+ *
+ * **止めるのは「これを作った」だけ**で、閉じる操作は止めない（止めるのは送っている間だけのまま）。
+ */
+describe('献立詳細 MealDetail の接続が切れている間', () => {
+  it('接続が切れている間は、「これを作った」が押せない', () => {
+    renderDetail({ outcome: 'shown', meal: meal() }, { offline: true });
+
+    // 規則8 / FR-41: 調理記録は書き込みを伴う操作である。素の `disabled` プロパティで見る。
+    expect((cookedControl() as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('接続が切れていても、閉じる操作は効く', () => {
+    let closed = false;
+    renderDetail(
+      { outcome: 'shown', meal: meal() },
+      { offline: true, onClose: () => (closed = true) },
+    );
+
+    fireEvent.click(closeControl() as HTMLElement);
+
+    // 規則6・8: 一覧へ戻るのは遷移である。
+    expect(closed).toBe(true);
   });
 });

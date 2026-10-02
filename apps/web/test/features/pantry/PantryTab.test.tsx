@@ -16,7 +16,8 @@
  *   名称は一覧が出ていなくても当たる。そちらは **`listitem` の有無**（一覧だけが `<li>` を描く）で観る
  * - **登録の画面が出ている** … `queryAllByRole('textbox')` が1つ以上（一覧は `textbox` を
  *   1つも描かない。期限の欄は `type="date"` なのでこの役割に入らず、欄は [食材名, 分量] の2つ）
- * - **操作** … `getAllByRole('button')` を**文書順の位置**で引く。一覧では1つ（＝登録を開く）、
+ * - **操作** … `getAllByRole('button')` を**文書順の位置**で引く。一覧では先頭が登録を開く操作で、
+ *   その後ろに行ごとの `…`（`aria-expanded` を持つ。B-69）が並ぶ。
  *   登録の画面では先頭が閉じる操作・末尾が保存である
  *
  * **閉じたことを「渡した関数が呼ばれた回数」で観ない**（`docs/testing.md` 2章 / B-39 設計 8章）。
@@ -116,8 +117,8 @@ function operationAt(index: number): HTMLElement {
 }
 
 /**
- * 食材名の欄。**補完の `list` を持つため役割は `combobox` である**（B-50c）— 補完が0件の
- * 回も欄はこの役割のままである。
+ * 食材名の欄。**`role="combobox"` を明示しているため役割は `combobox` である**（B-50c /
+ * B-66 設計 規則13）— 補完が0件の回も欄はこの役割のままである。
  *
  * **`instanceof HTMLInputElement` で絞らない** — 役割で引いている以上、入力の欄であることは
  * 問い合わせの側が保証している。**DOM の形を辿らない**（ADR-052 結果3）。
@@ -159,13 +160,15 @@ describe('在庫タブの中身 PantryTab', () => {
     expect(screen.queryByText(carrot.name)).toBeNull();
   });
 
-  it('一覧のときに押せる操作は、登録を開くもの1つだけである', () => {
+  it('一覧のときに押せる操作は、登録を開くもの1つと行ごとの操作である', () => {
     render(pantryTab({ stockItems: loaded(carrot, chineseCabbage) }));
 
-    // 規則3: 置くのは1つである。行に削除の操作は無く（削除はスワイプ。B-23）、
+    // 規則3: 行ごとの `…`（`aria-expanded` を持つ。B-69 設計 規則3）を除けば置くのは1つである。
     // ログアウトは在庫タブに置かない（B-56c 規則12 / `docs/screen-design.md` 2.1 —
     // ログアウトへの経路は設定画面の1つだけ）。
-    expect(screen.getAllByRole('button')).toHaveLength(1);
+    const operations = screen.getAllByRole('button');
+    expect(operations.filter((button) => !button.hasAttribute('aria-expanded'))).toHaveLength(1);
+    expect(operations.filter((button) => button.hasAttribute('aria-expanded'))).toHaveLength(2);
   });
 
   it('登録から閉じる操作を押すと、一覧へ戻る', () => {
@@ -342,7 +345,7 @@ describe('在庫タブの中身と下タブの器', () => {
  */
 
 /**
- * 分量の欄。**`textbox` はこれ1つだけである** — 食材名は `combobox`（B-50c）、期限は
+ * 分量の欄。**`textbox` はこれ1つだけである** — 食材名は `role="combobox"` を明示しているため `combobox`（B-50c / B-66）、期限は
  * `type="date"` なので、どちらもこの役割に入らない。
  */
 function amountField(): HTMLInputElement {

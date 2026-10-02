@@ -69,6 +69,7 @@ function renderTab(
       onGoToPantry={overrides.onGoToPantry ?? (() => {})}
       onOpenMeal={overrides.onOpenMeal ?? (() => {})}
       mealDetail={overrides.mealDetail ?? null}
+      offline={overrides.offline ?? false}
     />,
   );
 }
@@ -967,5 +968,58 @@ describe('献立タブ MealsTab の注意表示', () => {
     renderTab(suggested(entry()));
 
     expect(precedes(requestControl(), screen.getByRole('complementary'))).toBe(true);
+  });
+});
+
+/**
+ * 接続が切れている間（B-70 設計 6章 規則6・7 / 7章 行1 / FR-41）。
+ *
+ * **止めるのは「新しい献立を求める」だけ**で、カードを開くことも在庫タブへ送ることも止めない
+ * （規則6 — 閲覧と遷移は止めない）。理由は門が出す帯が示すので、この画面は案内を足さない。
+ */
+describe('献立タブ MealsTab の接続が切れている間', () => {
+  it('接続が切れている間は、「新しい献立を求める」が押せない', () => {
+    renderTab(suggested(entry()), { offline: true });
+
+    // 規則7 / FR-41: 生成は書き込みを伴う操作である。
+    expect(requestControl().disabled).toBe(true);
+  });
+
+  it('接続が切れていても、カードの開く操作は押せ、その献立の識別子が届く', () => {
+    const opened: string[] = [];
+    renderTab(suggested(entry({ mealId: 'meal-1' }), entry({ mealId: 'meal-2' })), {
+      offline: true,
+      onOpenMeal: (mealId) => opened.push(mealId),
+    });
+
+    const cards = screen.getAllByRole('listitem');
+    fireEvent.click(within(cardAt(cards, 1)).getByRole('button'));
+
+    // 規則6: 詳細を開くのは閲覧である。
+    expect(opened).toEqual(['meal-2']);
+  });
+
+  it('接続が切れていても、在庫が足りない回の在庫タブへ送る操作は効く', () => {
+    const wentToPantry: string[] = [];
+    renderTab(
+      { outcome: 'insufficientStockItems' },
+      { offline: true, onGoToPantry: () => wentToPantry.push('pantry') },
+    );
+
+    fireEvent.click(screen.getByRole('button'));
+
+    // 規則6: タブを移すのは遷移である（D-7）。
+    expect(wentToPantry).toHaveLength(1);
+  });
+
+  it('接続が切れていても、画面に新しい案内を足さない', () => {
+    const online = renderTab(suggested(entry()), { offline: false });
+    const onlineStatusCount = screen.queryAllByRole('status').length;
+    online.unmount();
+
+    renderTab(suggested(entry()), { offline: true });
+
+    // 7章 行1: 理由は門の帯が示すので、二重に案内しない。
+    expect(screen.queryAllByRole('status')).toHaveLength(onlineStatusCount);
   });
 });

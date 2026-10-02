@@ -36,8 +36,9 @@
   --font-weight-medium: 500;
 
   /*
-   * 書体の並び（原本の画面の根）。**書体ファイルはここで読み込まない**（B-59b）—
-   * 読み込むまでは手元にある書体に落ちる。
+   * 書体の並び（原本の画面の根）。先頭2つの読み込みは `public/fonts/fonts.css`
+   * （index.html が読む。ADR-075）であってここではない — まだ取りに行っていない分割の
+   * 文字は、並びの3つ目以降（手元にある書体）に落ちる。
    */
   --font-family:
     'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui,

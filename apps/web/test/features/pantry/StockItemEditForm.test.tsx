@@ -347,3 +347,77 @@ describe('編集の画面 StockItemEditForm の案内', () => {
     expect(screen.queryByDisplayValue('300g')).not.toBeNull();
   });
 });
+
+/**
+ * 接続が切れている間（B-70 設計 6章 規則6・10・14 / 7章 行1 / FR-41 / FR-05 / NFR-15）。
+ *
+ * **止めるのは保存と、欄での Enter（`<form>` の送信）である。** 打った分量は消さない。
+ * 保存せずに閉じることは止めない（規則6）。
+ */
+describe('編集の画面 StockItemEditForm の接続が切れている間', () => {
+  /** `offline` を後から切り替えるために、描き直しの口を返す。 */
+  function renderEditFormWith(offline: boolean, onClose: () => void = ignoreClose) {
+    const requests = new FixedStockItemRequests({ update: [{ outcome: 'updated' }] });
+    const stockItem = stockItemOf();
+
+    const rendered = render(
+      <StockItemEditForm
+        stockItem={stockItem}
+        onUpdate={requests.updateStockItem}
+        onClose={onClose}
+        offline={offline}
+      />,
+    );
+
+    return {
+      requests,
+      setOffline: (next: boolean) => {
+        rendered.rerender(
+          <StockItemEditForm
+            stockItem={stockItem}
+            onUpdate={requests.updateStockItem}
+            onClose={onClose}
+            offline={next}
+          />,
+        );
+      },
+    };
+  }
+
+  it('接続が切れている間は、保存が押せない', () => {
+    renderEditFormWith(true);
+
+    // 規則10 / FR-41: 更新は書き込みを伴う操作である。素の `disabled` プロパティで見る。
+    expect((saveOperation() as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('接続が切れている間は、欄で Enter しても更新の口へ何も届かない', () => {
+    const { requests } = renderEditFormWith(true);
+
+    fireEvent.change(amountField(), { target: { value: typedValues.amount } });
+    fireEvent.submit(amountField());
+
+    // 規則10 / 7章 行1: 保存の本体で止める（ボタンを押さない経路も塞ぐ）。
+    expect(requests.receivedUpdates).toEqual([]);
+  });
+
+  it('接続が切れている間に打った分量は、欄に残る', () => {
+    const { setOffline } = renderEditFormWith(true);
+
+    fireEvent.change(amountField(), { target: { value: typedValues.amount } });
+    setOffline(false);
+
+    // 規則10（入力は消さない）・規則14（戻っても欄を作り直さない）。
+    expect(amountField().value).toBe('300g');
+  });
+
+  it('接続が切れていても、保存せずに閉じられる', () => {
+    const closed: string[] = [];
+    renderEditFormWith(true, () => closed.push('close'));
+
+    fireEvent.click(operationAt(0));
+
+    // 規則6: 保存せずに閉じるのは遷移である。
+    expect(closed).toHaveLength(1);
+  });
+});
