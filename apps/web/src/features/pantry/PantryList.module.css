@@ -8,7 +8,7 @@
  * 原本の値を直に書く（規則12）。
  *
  * **動きを付けない**（規則8）— ずらしも開閉も即時である。
- * **SP で `…` を見た目から隠すこと・3列の行はここに無い**（B-64b。切り替える幅は B-60）。
+ * SP（幅 1024px 未満）は3列の行で `…` を見た目からだけ隠し、PC は `…` を4列目に置く（末尾のメディアクエリ。B-60 / ADR-076）。
  */
 
 /* 帯・行の包み（確認の間は `inert`。規則9）。帯の間は 24px（規則14）。 */
@@ -83,14 +83,17 @@
   background: var(--color-surface);
 }
 
-/* 行の中身。名称・分量・残日数・`…` の4列（原本 PC の rowCols。`…` はどの幅でも置く。B-69 規則3）。 */
+/*
+ * 行の中身。SP は名称・分量・残日数の3列（原本 SP の rowCols / rowPad）。`…` は木に置いたまま
+ * 列から外し、見た目からだけ隠す（下の `.toggle`）。PC は `…` を4列目に置く（末尾のメディアクエリ）。
+ */
 .rowContent {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px 72px 48px;
+  grid-template-columns: minmax(0, 1fr) 72px 72px;
   column-gap: 12px;
   align-items: center;
   height: 100%;
-  padding: 0 0 0 16px;
+  padding: 0 16px;
   background: inherit;
 }
 
@@ -175,8 +178,27 @@
   cursor: pointer;
 }
 
-.toggle:hover,
+/*
+ * SP の `…`（B-64 規則13）。**木からも読み上げの木からも外さず、見た目からだけ隠す** — 外すと
+ * SP で外付けのキーボードと読み上げから編集・削除に届く経路が消える（論点4 #2）。焦点がある間と
+ * 開いている間は行の右端に重ねて見せる。隠れている間はポインタを通し、行のタップとなぞりに任せる。
+ */
+.toggle {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.toggle:focus-visible,
 .toggle[aria-expanded='true'] {
+  opacity: 1;
+  pointer-events: auto;
+  background: var(--color-surface-muted);
+}
+
+.toggle:hover {
   background: var(--color-surface-muted);
 }
 
@@ -232,4 +254,21 @@
   color: var(--color-background);
   font-size: var(--font-size-14);
   cursor: pointer;
+}
+
+/*
+ * PC（幅 1024px 以上。値の正は `docs/screen-design.md` 2.1 / ADR-076。CSS 変数はメディアクエリに
+ * 使えないので写しを書く）。`…` を行末の4列目に見せる（原本 PC の rowCols / rowPad）。
+ */
+@media (min-width: 1024px) {
+  .rowContent {
+    grid-template-columns: minmax(0, 1fr) 72px 72px 48px;
+    padding: 0 0 0 16px;
+  }
+
+  .toggle {
+    position: static;
+    opacity: 1;
+    pointer-events: auto;
+  }
 }

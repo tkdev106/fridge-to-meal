@@ -7,20 +7,19 @@
  * と `RegisterFailureNotice.test.ts` が既に押さえている。ここで確かめるのは**切り出せないもの**
  * だけ — いまどちらの画面を出しているか、操作でどちらへ移るか、移っても残らないものである。
  *
- * **仮の文言と記号を期待値に書かない**（ADR-052 結果2 / `docs/testing.md` 4.1）。「←」も
- * 保存の名札も未確定であり（B-65 の持ち分。`docs/screen-design.md` 論点3 / B-39 設計 規則15）、
- * 留めると**文言を変えただけで赤くなる**。**一覧の見出し `冷蔵庫` と登録を開く操作の名前
- * `食材を追加` は例外である** — デザインが正になった（ADR-074 結果1 / B-64 設計 規則1・2）ので、
- * 末尾の suite はこの2つを期待値に置く。それ以外の観察は次の3つだけで行う。
+ * **文言は ADR-074 で確定した**（`docs/design/`。B-65）。それでもこのファイルの観点は文言に
+ * 頼らずに書いたまま残す — 「＋」「戻る」も保存の名札も見出しも、留めると**文言を変えただけで
+ * 赤くなる**。観察は次の3つで行う（例外は末尾の B-60・B-64・B-65 の観点で、見出し `冷蔵庫`・歯車の名前 `設定`・
+ * 登録を開く操作の名前 `食材を追加`・編集の画面の残日数の文字を見る）。
  *
  * - **一覧が出ている** … **テストが渡した在庫品の名称**を `queryByText` で引く。**編集が絡む観点では
  *   名称で観られない**（B-55）— 編集の画面は対象の在庫品の名称を出すため（B-55 設計 規則1）、
  *   名称は一覧が出ていなくても当たる。そちらは **`listitem` の有無**（一覧だけが `<li>` を描く）で観る
  * - **登録の画面が出ている** … `queryAllByRole('textbox')` が1つ以上（一覧は `textbox` を
  *   1つも描かない。期限の欄は `type="date"` なのでこの役割に入らず、欄は [食材名, 分量] の2つ）
- * - **操作** … `getAllByRole('button')` を**文書順の位置**で引く。一覧では先頭が登録を開く操作で、
- *   その後ろに行ごとの `…`（`aria-expanded` を持つ。B-69）が並ぶ。
- *   登録の画面では先頭が閉じる操作・末尾が保存である
+ * - **操作** … `getAllByRole('button')` から**名前 `設定` のもの（見出しの歯車。B-60）を除いて**
+ *   **文書順の位置**で引く。一覧では先頭が登録を開く操作で、その後ろに行ごとの `…`
+ *   （`aria-expanded` を持つ。B-69）が並ぶ。登録の画面では先頭が閉じる操作・末尾が保存である
  *
  * **閉じたことを「渡した関数が呼ばれた回数」で観ない**（`docs/testing.md` 2章 / B-39 設計 8章）。
  * 送っていないことも、`vi.fn()` ではなく**テストが持つ配列の中身**で見る。
@@ -100,27 +99,52 @@ function pantryTab(overrides: Partial<PantryTabProps> = {}) {
       onRegister={neverRegister}
       onUpdate={neverUpdate}
       ingredientNames={{ outcome: 'loading' }}
+      onOpenSettings={() => {}}
       {...overrides}
     />
   );
 }
 
 /**
- * 押せる操作を**文書順の位置**で引く（負の位置は末尾から数える）。
+ * 名前 `設定` の操作 — 見出しの行の歯車（B-60 設計 6章 規則13）と、器を挟む観点では帯の「設定」。
+ * 名前は原本から取った文言で仮ではない（ADR-074 決定1）ので、名前で引く。
+ */
+function settingsButtons(): HTMLElement[] {
+  return screen.queryAllByRole('button', { name: '設定' });
+}
+
+/**
+ * 在庫の操作を**文書順**で引く。**見出しの歯車（と帯の「設定」）は数えない**（B-60）— 歯車は
+ * 一覧の先頭に置かれるので、数えると「一覧の先頭の操作＝登録を開く」が崩れる。
+ */
+function contentButtons(): HTMLElement[] {
+  const settings = settingsButtons();
+
+  return screen.queryAllByRole('button').filter((button) => !settings.includes(button));
+}
+
+/** `before` が文書順で `after` より前にあるか（jsdom はレイアウトを持たない）。 */
+function precedes(before: Node, after: Node): boolean {
+  return (before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+}
+
+/**
+ * 押せる操作を**文書順の位置**で引く（負の位置は末尾から数える）。**見出しの歯車は数えない**
+ * （`contentButtons`。B-60）。
  *
  * **下タブは混ざらない。** 帯のタブは `role="tab"` を明示しており、この問い合わせに
  * 引っかからない（`TabbedScreen.tsx` / 2026-09-21 に実物で確認）。
  */
 function operationAt(index: number): HTMLElement {
-  const found = screen.getAllByRole('button').at(index);
+  const found = contentButtons().at(index);
   if (found === undefined) throw new Error(`${index} 番目の操作が無い`);
 
   return found;
 }
 
 /**
- * 食材名の欄。**補完の `list` を持つため役割は `combobox` である**（B-50c）— 補完が0件の
- * 回も欄はこの役割のままである。
+ * 食材名の欄。**`role="combobox"` を明示しているため役割は `combobox` である**（B-50c /
+ * B-66 設計 規則13）— 補完が0件の回も欄はこの役割のままである。
  *
  * **`instanceof HTMLInputElement` で絞らない** — 役割で引いている以上、入力の欄であることは
  * 問い合わせの側が保証している。**DOM の形を辿らない**（ADR-052 結果3）。
@@ -168,8 +192,8 @@ describe('在庫タブの中身 PantryTab', () => {
 
     // 規則3: 行ごとの `…`（`aria-expanded` を持つ。B-69 設計 規則3）を除けば置くのは1つである。
     // ログアウトは在庫タブに置かない（B-56c 規則12 / `docs/screen-design.md` 2.1 —
-    // ログアウトへの経路は設定画面の1つだけ）。
-    const operations = screen.getAllByRole('button');
+    // ログアウトへの経路は設定画面の1つだけ）。見出しの歯車は数えない（B-60）。
+    const operations = contentButtons();
     expect(operations.filter((button) => !button.hasAttribute('aria-expanded'))).toHaveLength(1);
     expect(operations.filter((button) => button.hasAttribute('aria-expanded'))).toHaveLength(2);
   });
@@ -280,6 +304,9 @@ function TabbedPantryTab({ pantry }: { pantry: ReactNode }) {
       history={otherContents.history}
       selectedTab={selectedTab}
       onSelectTab={setSelectedTab}
+      // 設定はこの観点の本題でない（B-60）。開いていない状態で渡す。
+      settings={null}
+      onOpenSettings={() => {}}
     />
   );
 }
@@ -348,7 +375,7 @@ describe('在庫タブの中身と下タブの器', () => {
  */
 
 /**
- * 分量の欄。**`textbox` はこれ1つだけである** — 食材名は `combobox`（B-50c）、期限は
+ * 分量の欄。**`textbox` はこれ1つだけである** — 食材名は `role="combobox"` を明示しているため `combobox`（B-50c / B-66）、期限は
  * `type="date"` なので、どちらもこの役割に入らない。
  */
 function amountField(): HTMLInputElement {
@@ -361,8 +388,8 @@ function amountField(): HTMLInputElement {
 /**
  * 期限の欄。**この観点で唯一もろい引き方である。**
  *
- * `input[type="date"]` は ARIA の役割に写らないため `textbox` で引けず、ラベルの文言は仮である
- * （規則15）。そこで**値が空の入力が1つだけになった状態**で引く — 食材名と分量を先に埋めて
+ * `input[type="date"]` は ARIA の役割に写らないため `textbox` で引けない。この観点はラベルの
+ * 文言に頼らずに書いたので、**値が空の入力が1つだけになった状態**で引く — 食材名と分量を先に埋めて
  * おくことが前提である。欄が増えたり順が変わったりすると、この引き方は壊れる。
  */
 function expiryDateField(): HTMLElement {
@@ -384,7 +411,7 @@ function fillRegisterFields(): void {
  * 「一覧へ戻らない」ではなく別の理由で落ち、何が壊れたか読めなくなる。**名札は見ない**（規則15）。
  */
 function saveOperations(): readonly HTMLElement[] {
-  const operations = screen.getAllByRole('button');
+  const operations = contentButtons();
   expect(operations).toHaveLength(3);
 
   return operations.slice(1);
@@ -614,7 +641,7 @@ function editAmountField(): HTMLInputElement {
  * **この数を先に確かめる** — 崩れた回に閉じる操作を保存として押すと、何が壊れたか読めない。
  */
 function editOperations(): readonly HTMLElement[] {
-  const found = screen.getAllByRole('button');
+  const found = contentButtons();
   expect(found).toHaveLength(2);
 
   return found;
@@ -663,7 +690,7 @@ describe('在庫タブの中身と編集', () => {
 
     // 規則16 / 規則5: 出すのは常に一方だけである。編集の画面の操作は閉じると保存の2つで、
     // 一覧の側の「＋」は木に無い。
-    expect(screen.getAllByRole('button')).toHaveLength(2);
+    expect(contentButtons()).toHaveLength(2);
   });
 
   it('編集から閉じる操作を押すと、一覧へ戻る', () => {
@@ -843,11 +870,6 @@ function pantryHeadings(): readonly HTMLElement[] {
   return screen.queryAllByRole('heading', { level: 1, name: '冷蔵庫' });
 }
 
-/** `a` が文書順で `b` より前にあるか。 */
-function precedes(a: Node, b: Node): boolean {
-  return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
-}
-
 describe('在庫タブの見出しの行', () => {
   it.each([
     ['読み込み中', { outcome: 'loading' } as const],
@@ -904,5 +926,97 @@ describe('在庫タブの見出しの行', () => {
 
     expect([precedes(heading, open), precedes(open, firstToggle)]).toEqual([true, true]);
     expect(operationAt(0)).toBe(open);
+  });
+});
+
+/**
+ * 見出しの行（B-60 設計 6章 規則12〜13）。
+ *
+ * **題 `冷蔵庫` と歯車の名前 `設定` は原本から取った文言であり、仮ではない**（ADR-074 決定1）。
+ * 歯車を置くのは**一覧の側だけ**で、登録・編集の画面には置かない（原本に無い）。
+ */
+describe('在庫タブの中身の見出しの行', () => {
+  it.each<[string, PantryTabProps['stockItems']]>([
+    ['読み込み中', { outcome: 'loading' }],
+    ['取れなかった', { outcome: 'failed' }],
+    ['取れた', loaded(carrot)],
+  ])('一覧を出している回は、一覧の結末によらず歯車を置く（%s）', (_label, stockItems) => {
+    // B-60 規則12: 取れなかった回にも置く — どのタブからもログアウトに届く。
+    render(pantryTab({ stockItems }));
+
+    expect(settingsButtons()).toHaveLength(1);
+  });
+
+  it('一覧の見出しは「冷蔵庫」である', () => {
+    // B-60 規則13（原本 `PantryScreen`）。1つの一覧に `h1` は1つ。
+    render(pantryTab());
+
+    const headings = screen.getAllByRole('heading', { level: 1 });
+    expect(headings.map((heading) => heading.textContent)).toEqual(['冷蔵庫']);
+  });
+
+  it('歯車を押すと、設定を開く求めが届く', () => {
+    // B-60 規則12 / ADR-066: 設定を開いているかは門が持ち、画面は押下を口で渡すだけである。
+    const openedSettings: string[] = [];
+    render(pantryTab({ onOpenSettings: () => openedSettings.push('settings') }));
+
+    fireEvent.click(screen.getByRole('button', { name: '設定' }));
+
+    expect(openedSettings).toEqual(['settings']);
+  });
+
+  it('見出しの行は在庫の一覧より前にあり、その中は見出し・登録を開く操作・歯車の順である', () => {
+    // B-60 規則12（原本: 見出しは一覧の先頭）。B-64 規則2 で登録を開く操作が見出しの行に入り、
+    // 原本 `PantryScreen` の並び（`+` の右に歯車）に揃えた。
+    render(pantryTab());
+
+    const heading = screen.getByRole('heading', { level: 1, name: '冷蔵庫' });
+    const gear = screen.getByRole('button', { name: '設定' });
+    const openRegister = operationAt(0);
+    const [firstRow] = screen.getAllByRole('listitem');
+    if (firstRow === undefined) throw new Error('行が無い');
+
+    expect([precedes(heading, openRegister), precedes(openRegister, gear)]).toEqual([true, true]);
+    for (const headerPart of [heading, gear]) {
+      expect(precedes(headerPart, firstRow)).toBe(true);
+    }
+  });
+
+  it('登録の画面には歯車を置かない', () => {
+    // B-60 規則12 / 2章: 登録の画面に歯車は無い（原本に無い）。
+    render(pantryTab());
+
+    fireEvent.click(operationAt(0));
+
+    expect(settingsButtons()).toHaveLength(0);
+  });
+
+  it('編集の画面には歯車を置かない', () => {
+    // B-60 規則12 / 2章: 編集の画面に歯車は無い（原本に無い）。
+    render(pantryTab());
+
+    tapRowAt(0, 1);
+
+    expect(settingsButtons()).toHaveLength(0);
+  });
+});
+
+/**
+ * 編集の画面へ基準日を渡すこと（B-65 設計 4章 / 5章 / 6章 規則8 / NFR-17）。
+ *
+ * 残日数の文字は ADR-074 で確定した（`docs/design/` の原本 ★11）ので literal で書く。
+ * **一覧が消えたあとで観る** — 一覧の行も残日数を出すため、行が残っていると編集の画面が
+ * 出したものと読み分けられない。
+ */
+describe('在庫タブの中身と編集の基準日', () => {
+  it('編集の画面には、在庫タブが受け取った基準日で数えた残日数が出る', () => {
+    renderWithUpdate({}, { stockItems: loaded({ ...carrot, expiryDate: '2026-09-22' }) });
+
+    tapRowAt(0, 1);
+    // 前提: 一覧は消え、編集の画面に入れ替わっている（行の残日数を数えないため）。
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+
+    // B-65 規則8 / 4章: 基準日 2026-09-20 は `PantryTab` から編集の画面へ渡る。
+    expect(screen.queryByText('あと2日')).not.toBeNull();
   });
 });

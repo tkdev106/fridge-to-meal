@@ -6,7 +6,8 @@
  * トークンから `var(--…)` で引く。**暗幕の色はトークンを足さず、`--color-text` からここで作る**
  * （規則12。原本の rgba(31,30,27,0.4) は文字色の 40%）。
  *
- * **中央に置く PC のダイアログ（幅 400px・2列）はここに無い**（B-64b）。動きも付けない（規則8）。
+ * SP は下から出る面、PC（幅 1024px 以上）は中央の幅 400px のダイアログ（末尾のメディアクエリ）。
+ * 動きは付けない（規則8）。
  */
 
 /* 暗幕。画面全体（見出しの行と下タブの帯も）を覆う。押しても何もしない（規則10）。 */
@@ -80,4 +81,28 @@
   background: var(--color-border);
   color: var(--color-text-muted);
   cursor: default;
+}
+
+/*
+ * PC（幅 1024px 以上。値の正は `docs/screen-design.md` 2.1 / ADR-076。CSS 変数はメディアクエリに
+ * 使えないので写しを書く）。中央の幅 400px のダイアログで、操作は `やめる` | `削除` の2列
+ * （原本 `confirmPC`。DOM の順のまま並べる）。
+ */
+@media (min-width: 1024px) {
+  .dialog {
+    top: 50%;
+    right: auto;
+    bottom: auto;
+    left: 50%;
+    width: 400px;
+    gap: 32px;
+    padding: 32px 24px 24px;
+    border: 1px solid var(--color-border);
+    transform: translate(-50%, -50%);
+  }
+
+  .operations {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
 }
