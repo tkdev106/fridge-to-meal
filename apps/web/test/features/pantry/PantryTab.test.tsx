@@ -274,6 +274,9 @@ function TabbedPantryTab({ pantry }: { pantry: ReactNode }) {
       history={otherContents.history}
       selectedTab={selectedTab}
       onSelectTab={setSelectedTab}
+      // 設定はこの観点の本題でない（B-60）。開いていない状態で渡す。
+      settings={null}
+      onOpenSettings={() => {}}
     />
   );
 }

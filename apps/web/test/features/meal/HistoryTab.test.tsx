@@ -48,7 +48,6 @@ function propsOf(meals: HistoryTabState, overrides: Partial<HistoryTabProps> = {
     onOpenMeal: overrides.onOpenMeal ?? (() => {}),
     mealDetail: overrides.mealDetail ?? null,
     onOpenSettings: overrides.onOpenSettings ?? (() => {}),
-    settings: overrides.settings ?? null,
   };
 }
 
@@ -446,40 +445,5 @@ describe('履歴タブ HistoryTab', () => {
 
     expect(outsideRows).toHaveLength(3);
     expect(outsideRows.filter((button) => button.hasAttribute('aria-pressed'))).toHaveLength(2);
-  });
-
-  it('設定が渡されていれば、行の代わりに設定を描く', () => {
-    // B-56c 規則5 / 先行 `mealDetail`
-    renderTab(bothColumns, { settings: <p>目印の設定</p> });
-
-    expect(screen.queryByText('目印の設定')).not.toBeNull();
-    expect(screen.queryByText(NIKUJAGA)).toBeNull();
-  });
-
-  it('設定が渡されている間は、列の切り替えも入口も出さない', () => {
-    // B-56c 規則5: 入れ替わりであって足し算ではない。
-    renderTab(bothColumns, { settings: <p>目印の設定</p> });
-
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
-  });
-
-  it('詳細と設定の両方が渡されていれば、詳細を描く', () => {
-    // B-56c 規則5: 描き分けの優先は詳細 → 設定 → 一覧。
-    renderTab(bothColumns, { mealDetail: <p>目印の詳細</p>, settings: <p>目印の設定</p> });
-
-    expect(screen.queryByText('目印の詳細')).not.toBeNull();
-    expect(screen.queryByText('目印の設定')).toBeNull();
-  });
-
-  it('設定を閉じて一覧に戻っても、選んでいた列のままである', () => {
-    // B-56c 規則8 / B-54b 規則6: 設定を出している間も `HistoryTab` は mount されたまま。
-    const { rerender } = renderTab(bothColumns);
-    fireEvent.click(unpressedToggle());
-
-    rerender(<HistoryTab {...propsOf(bothColumns, { settings: <p>目印の設定</p> })} />);
-    rerender(<HistoryTab {...propsOf(bothColumns)} />);
-
-    expect(screen.queryByText(STIR_FRY)).not.toBeNull();
-    expect(screen.queryByText(NIKUJAGA)).toBeNull();
   });
 });

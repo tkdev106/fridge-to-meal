@@ -18,8 +18,9 @@
  * **設定への入口もここに置く**（B-56c / 同書 2.1・7章 — 履歴タブの右上）。一覧を出す3つの状態
  * （読み込み中・取れなかった・取れた）のすべてで出す — 履歴が取れなかった回にログアウトへ
  * 届かなくなってはならない（B-56c 設計 規則2）。**設定を開いているかは門が持ち**（同 規則1 /
- * ADR-066 と同じ理由）、ここは入口の押下を口で渡し、門が組んだ設定画面を一覧の代わりに描く
- * だけである。`features/identity/` は import しない（中身は `ReactNode` で届く）。
+ * ADR-066 と同じ理由）、ここは入口の押下を口で渡すだけである。**設定画面を描くのはここではない**
+ * — 設定はタブの外の4つ目の行き先になり、器（`TabbedScreen`）が選んでいたタブの中身の代わりに
+ * 描く（B-60 設計 6章 規則7）。`features/identity/` は import しない。
  *
  * 名称での検索（FR-33）はまだ置かない。
  *
@@ -41,8 +42,6 @@ export type HistoryTabProps = {
   mealDetail: ReactNode | null;
   /** 設定への入口が押された（docs/screen-design.md 2.1）。 */
   onOpenSettings: () => void;
-  /** null でなければ一覧の代わりにこれを描く（先行 mealDetail）。 */
-  settings: ReactNode | null;
 };
 
 /** 2つの列（ADR-068 決定3）。キーは `ListMealsOutput` のものをそのまま使う。 */
@@ -155,17 +154,14 @@ export function HistoryTab({
   onOpenMeal,
   mealDetail,
   onOpenSettings,
-  settings,
 }: HistoryTabProps): JSX.Element {
-  // 詳細・設定を開いている間もこの部品は mount されたままなので、選んだ列は戻っても保たれる
-  // （規則6 / B-56c 規則8）。
+  // 詳細を開いている間もこの部品は mount されたままなので、選んだ列は戻っても保たれる（規則6）。
+  // **設定を開くと、ここは木から外れる**（B-60 規則10 / B-38 規則6）— タブを移ったときと同じく、
+  // 戻ったときの列は初期に戻る（B-56c 規則8 はここで置き換わった）。
   const [selectedColumn, setSelectedColumn] = useState<Column>(INITIAL_COLUMN);
 
   // **詳細は結末より先に見る**（先行 `MealsTab`）。一覧と並べず入れ替え、列の切り替えも出さない。
   if (mealDetail !== null) return <div>{mealDetail}</div>;
-
-  // 設定も入れ替わりであって足し算ではない。優先は詳細 → 設定 → 一覧（B-56c 規則5）。
-  if (settings !== null) return <div>{settings}</div>;
 
   return (
     <div>
