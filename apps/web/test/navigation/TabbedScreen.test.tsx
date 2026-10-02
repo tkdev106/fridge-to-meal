@@ -20,6 +20,12 @@
  * **`vi.fn()` で呼び出し回数を数えない**（`docs/testing.md` 2章）。`onSelectTab` が受け取った
  * `TabId` を**控えて観る**。
  *
+ * **選んでいるタブの見た目は、当たっている class をタブどうしで比べて観る**（ADR-055 決定1 /
+ * backlog B-59）。見た目の値（色・寸法・太さ）は単体テストで見ず（ADR-055 決定3）、**class 名の
+ * literal も書かない** — 名前は CSS Modules が生成するものであり、留めると名前を変えただけで
+ * 赤くなる。観るのは「選んでいるタブと選んでいないタブで違う」「選んでいないタブどうしは同じ」
+ * という関係だけである。
+ *
  * **タブは並びの位置で引く。** 名前で引けない以上、`TAB_ORDER` の何番目かで指す。
  * **`TAB_ORDER` の値をここに再掲しない** — 並びそのものは `Tabs.test.ts` が押さえている。
  */
@@ -28,7 +34,6 @@ import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '../support/dom/renderComponent.js';
 import type { TabId } from '../../src/navigation/Tabs.js';
 import { TAB_ORDER } from '../../src/navigation/Tabs.js';
-import { tabStyleOf } from '../../src/navigation/TabAppearance.js';
 import type { TabbedScreenProps } from '../../src/navigation/TabbedScreen.js';
 import { TabbedScreen } from '../../src/navigation/TabbedScreen.js';
 
@@ -87,50 +92,6 @@ function tabFor(tab: TabId): HTMLElement {
   return found;
 }
 
-/**
- * `CSSProperties` のキーを CSS の属性名に直す（`borderTopWidth` → `border-top-width`）。
- */
-function cssPropertyNameOf(key: string): string {
-  return key.replace(/[A-Z]/g, (upper) => `-${upper.toLowerCase()}`);
-}
-
-/**
- * 見た目を**同じ正規化を通してから**読み出す（`docs/testing.md` 3章 の「同じ正規化を通った
- * 者どうしを比べる」— RLS の述語の突き合わせと同じ構え）。
- *
- * `CSSProperties` 側は数値でも書けるうえ、ブラウザ（jsdom）は `'currentColor'` のような値を
- * 書き換えることがある。そこで**期待の側もいったん要素に当ててから読み戻し**、木から読んだ
- * 値と同じ土俵に乗せる。**具体値はここにも書かない。**
- *
- * **読むキーは `tabStyleOf` が返したものすべてである。** 一部の項目だけを突き合わせると、
- * **戻り値の一部しか当てていない実装でも緑になる**（B-41 設計 6章 規則6 は丸ごと当てることを
- * 求めている）。
- */
-function styleValuesOf(
-  source: CSSStyleDeclaration,
-  keys: readonly string[],
-): Record<string, string> {
-  return Object.fromEntries(
-    keys.map((key) => [key, source.getPropertyValue(cssPropertyNameOf(key))]),
-  );
-}
-
-/** 木に当たっている見た目。読むのは `tabStyleOf` が返したキーだけ。 */
-function appliedStyleOf(tab: HTMLElement, selected: boolean): Record<string, string> {
-  return styleValuesOf(tab.style, Object.keys(tabStyleOf(selected)));
-}
-
-/**
- * 当たっているべき見た目。いったん要素に当てて読み戻し、木の側と同じ正規化を通す。
- */
-function expectedStyleOf(selected: boolean): Record<string, string> {
-  const expected = tabStyleOf(selected);
-  const scratch = document.createElement('button');
-  Object.assign(scratch.style, expected);
-
-  return styleValuesOf(scratch.style, Object.keys(expected));
-}
-
 describe('下タブの器 TabbedScreen', () => {
   it('渡された選択中のタブの中身だけを描く', () => {
     renderTabbedScreen({ selectedTab: 'pantry' });
@@ -163,14 +124,28 @@ describe('下タブの器 TabbedScreen', () => {
     expect(tabFor('history').getAttribute('aria-selected')).not.toBe('true');
   });
 
-  it('渡された選択中のタブには、選んでいるときの見た目が当たっている', () => {
+  it('選んでいるタブと選んでいないタブには、違う class が当たる', () => {
     renderTabbedScreen({ selectedTab: 'pantry' });
 
-    // B-41 設計 6章 規則6・規則7: 見た目の値は `TabAppearance.ts` にだけ置き、
-    // 「選ばれているか」だけで決まる（`TabId` ごとに変わらない）。**太さの具体値は書かない。**
-    expect(appliedStyleOf(tabFor('pantry'), true)).toEqual(expectedStyleOf(true));
-    expect(appliedStyleOf(tabFor('meals'), false)).toEqual(expectedStyleOf(false));
-    expect(appliedStyleOf(tabFor('history'), false)).toEqual(expectedStyleOf(false));
+    // ADR-055 決定1 / backlog B-59: 選んでいるときの見た目は class で当てる（色に依らない手がかり。
+    // B-41 規則1・2）。**名前の literal は書かず、タブどうしで比べる。**
+    expect(tabFor('pantry').className).not.toBe(tabFor('meals').className);
+  });
+
+  it('選んでいないタブには、どのタブにも同じ class が当たる', () => {
+    renderTabbedScreen({ selectedTab: 'pantry' });
+
+    // ADR-055 決定1 / backlog B-59（B-41 規則7）: 見た目は「選んでいるか」だけで決まり、
+    // `TabId` ごとに分けない。
+    expect(tabFor('meals').className).toBe(tabFor('history').className);
+  });
+
+  it('選んでいないタブにも見た目の class が当たっている', () => {
+    renderTabbedScreen({ selectedTab: 'pantry' });
+
+    // ADR-055 決定1 / backlog B-59: 選んでいない側の見た目も class で明示する
+    // （太さを両方明示する。設計 B-59 6章 規則7）。**class が空のまま「違う」を満たす実装をここで落とす。**
+    expect(tabFor('meals').className).not.toBe('');
   });
 
   it('タブを押すと、そのタブの識別子が渡した口に届く', () => {
@@ -235,14 +210,14 @@ describe('下タブの器 TabbedScreen', () => {
     expect(tabFor('meals').getAttribute('aria-selected')).not.toBe('true');
   });
 
-  it('渡される選択中のタブが変わると、色に依らない見た目の手がかりも移る', () => {
+  it('渡される選択中のタブが変わると、選んでいるときの class も移る', () => {
     const { rerender } = renderTabbedScreen({ selectedTab: 'meals' });
+    const selectedClassBefore = tabFor('meals').className;
 
     rerender({ selectedTab: 'pantry' });
 
-    // B-41 設計 6章 規則1・2 の波及。**手がかりが増えるだけでは1つに保てない。**
-    expect(appliedStyleOf(tabFor('pantry'), true)).toEqual(expectedStyleOf(true));
-    expect(appliedStyleOf(tabFor('meals'), false)).toEqual(expectedStyleOf(false));
+    // ADR-055 決定1 / backlog B-59（B-41 規則1・2 の波及）: **手がかりが増えるだけでは1つに保てない。**
+    expect(tabFor('pantry').className).toBe(selectedClassBefore);
   });
 
   it('中身がまだ無いタブも帯から消さない', () => {
