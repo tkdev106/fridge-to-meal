@@ -117,8 +117,8 @@ function operationAt(index: number): HTMLElement {
 }
 
 /**
- * 食材名の欄。**補完の `list` を持つため役割は `combobox` である**（B-50c）— 補完が0件の
- * 回も欄はこの役割のままである。
+ * 食材名の欄。**`role="combobox"` を明示しているため役割は `combobox` である**（B-50c /
+ * B-66 設計 規則13）— 補完が0件の回も欄はこの役割のままである。
  *
  * **`instanceof HTMLInputElement` で絞らない** — 役割で引いている以上、入力の欄であることは
  * 問い合わせの側が保証している。**DOM の形を辿らない**（ADR-052 結果3）。
@@ -345,7 +345,7 @@ describe('在庫タブの中身と下タブの器', () => {
  */
 
 /**
- * 分量の欄。**`textbox` はこれ1つだけである** — 食材名は `combobox`（B-50c）、期限は
+ * 分量の欄。**`textbox` はこれ1つだけである** — 食材名は `role="combobox"` を明示しているため `combobox`（B-50c / B-66）、期限は
  * `type="date"` なので、どちらもこの役割に入らない。
  */
 function amountField(): HTMLInputElement {

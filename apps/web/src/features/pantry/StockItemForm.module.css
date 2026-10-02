@@ -121,11 +121,6 @@
   outline: none;
 }
 
-/* 名前が空の断りが出ている間の食材名の欄（規則10）。焦点の枠のほうを優先する。 */
-.inputInvalid:not(:focus) {
-  border-color: var(--color-danger);
-}
-
 /* 編集の画面の名称。欄の位置に高さ 48px の素の文字で出す（規則9）。 */
 .fixedName {
   display: flex;

@@ -26,8 +26,8 @@ const NO_OPTIONS: readonly string[] = [];
  * **並べ替えない・畳み直さない**（B-50c 設計 規則5）— 並び（コード単位の昇順）も重複の
  * 畳み方（名称の完全一致。C-6）もサーバが決めたものであり、web が握り直すと2か所がずれる。
  *
- * **絞り込みもしない。** 打ちかけの文字に合う名称を選ぶのは `<datalist>` を持つブラウザの
- * 仕事であり（設計 2章）、ここで先回りすると**自由入力を止める**実装へ近づく（FR-03）。
+ * **ここでは絞り込まない。** 打ちかけの文字に合う名称を選ぶのは `IngredientNameCompletion.ts`
+ * である（B-66）。ここは3つの結末を名称の列に倒すだけで、打ちかけの文字を知らない。
  */
 export function ingredientNameOptionsOf(state: IngredientNamesState): readonly string[] {
   return state.outcome === 'loaded' ? state.ingredientNames : NO_OPTIONS;

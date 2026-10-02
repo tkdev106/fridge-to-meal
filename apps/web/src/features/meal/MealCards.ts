@@ -15,7 +15,7 @@
 import type { CoveredMealIngredientDto, SuggestionEntryOutput } from '@fridge-to-meal/contract';
 
 /**
- * カードの「使う:」に出す1件（D-4）。
+ * カードの使う在庫の欄に出す1件（D-4）。
  *
  * **畳んでいるのは在庫品（`StockItem`）ではなく、賄えると判定された材料（`MealIngredient`）で
  * ある。** 用語表はこの2語を別物として分けており（C-5 — 材料は `StockItemId` を持たず、名称を
@@ -24,10 +24,10 @@ import type { CoveredMealIngredientDto, SuggestionEntryOutput } from '@fridge-to
  * 利用者に見せているのは「この在庫を使う」という読みである。**型としては材料を持っている。**
  *
  * `expiringToday` は**基準日と同じ期限**であることだけを表す。**色だけに頼らない**ための
- * 手がかりであり（NFR-17）、印そのものの形と文言は `.tsx` が決める。
+ * 手がかりであり（NFR-17）、見せ方（太字と、読み上げにだけ届く文字）は `.tsx` が決める（D-4 の追記 / B-61）。
  *
  * **期限を過ぎたものに別の印を置かない。** `docs/screen-design.md` D-4 が決めているのは
- * 「期限が今日の食材に `(今日)` を添える」ところまでで、超過の見せ方は決まっていない
+ * 「期限が今日の食材を示す」ところまで（2026-10-02 の追記で太字に改めた）で、超過の見せ方は決まっていない
  * （同書 論点3）。在庫一覧の側（`RemainingDays.ts`）は「N日過ぎ」を出すが、**献立のカードへ
  * 持ち込むのはこの周の決めごとではない。**
  */
@@ -37,8 +37,8 @@ export type MealCardIngredient = {
 };
 // **名は材料である**（用語表 / C-5）。畳んでいるのは献立の材料のうち賄えるもの
 // （`CoveredMealIngredientDto`）であって、在庫品（`StockItem`）ではない — 材料は
-// `StockItemId` を持たず、名称を文字列として複製したものである。画面が「使う:」と
-// 読ませるのは D-4 が決めた**見出しの文言**であり、型名をそちらに寄せない。
+// `StockItemId` を持たず、名称を文字列として複製したものである。画面が「使う在庫」と
+// 読ませるのは D-4 の**欄の読み**であり、型名をそちらに寄せない（見出しの文言は D-4 の追記で外れた）。
 
 /** カード1枚（D-4）。**材料の内訳は持たない** — 内訳は献立詳細（B-53）の持ち分である。 */
 export type MealCard = {
@@ -50,12 +50,12 @@ export type MealCard = {
   readonly ingredientCount: number;
   /** 不足する材料の件数。**同じく主材料だけである**（C-16 / ADR-023）。 */
   readonly missingCount: number;
-  /** 「使う:」に出す材料。**期限の早い順に3件まで**（FR-18 / D-4）。 */
+  /** 使う在庫の欄に出す材料。**期限の早い順に3件まで**（FR-18 / D-4）。 */
   readonly usedIngredients: readonly MealCardIngredient[];
 };
 
 /**
- * 「使う:」に出す上限（D-4「期限が近い在庫を優先して2〜3件」）。
+ * 使う在庫の欄に出す上限（D-4「期限が近い在庫を優先して2〜3件」）。
  *
  * カードに材料を全部並べると縦に伸び、**3件を見比べられなくなる。**
  */
@@ -99,7 +99,7 @@ function byEarliestExpiryDate(
  * **その献立の規模が伝わらなくなる**（D-4）。賄えるものと不足するものの合計がそのまま
  * 主材料の件数である。
  *
- * **並べ替えるのは「使う:」の中だけ**で、カードどうしの並びは提案のままである（C-12）。
+ * **並べ替えるのは使う在庫の欄の中だけ**で、カードどうしの並びは提案のままである（C-12）。
  */
 export function mealCardsOf(
   entries: readonly SuggestionEntryOutput[],
