@@ -7,9 +7,9 @@
  * `StockItemFormValues.test.ts`、断りから案内を選ぶ判断は `RegisterFailureNotice.test.ts`、
  * B-12 が置いた既存の振る舞いの網羅は B-40 の持ち分であり、ここで二重に書かない。
  *
- * **仮の文言と記号を期待値に書かない**（ADR-052 結果2 / `docs/testing.md` 4.1 /
- * B-39 設計 規則15）。見出しも2つの保存の名札も「←」も案内も未確定である
- * （`docs/screen-design.md` 論点3）。観察はこの3つだけで行う。
+ * **文言は ADR-074 で確定した**（`docs/design/`。B-65）。確定した文言を期待値に書くのは末尾の
+ * B-65 の suite だけで、それより前の観点は文言に頼らず、次の3つで観る（B-39 のときの書き方の
+ * まま残す — 文言が変わっても振る舞いの観点が赤くならないようにするため）。
  *
  * - **登録の口へ何が届いたか** … テストが持つ配列に積まれた入力。押した直後に同期で見える
  * - **欄に何が残っているか** … `queryByDisplayValue` に**テストが打った値**を当てる
@@ -126,8 +126,8 @@ function amountField(): HTMLElement {
 /**
  * 期限の欄。**この suite で唯一もろい引き方である。**
  *
- * `input[type="date"]` は ARIA の役割に写らないため `textbox` で引けず、ラベルの文言は仮である
- * （規則15）。そこで**値が空の入力が1つだけになった状態**で引く — 食材名と分量を先に埋めて
+ * `input[type="date"]` は ARIA の役割に写らないため `textbox` で引けない。B-39 の観点はラベルの
+ * 文言に頼らずに書いたので、**値が空の入力が1つだけになった状態**で引く — 食材名と分量を先に埋めて
  * おくことが前提である。欄が増えたり順が変わったりすると、この引き方は壊れる。
  */
 function expiryDateField(): HTMLElement {
@@ -349,7 +349,8 @@ describe('登録の画面 StockItemForm の2つの保存', () => {
  *
  * **案内は文言で観ない**（設計 規則11）。出ていること／消えたことは
  * `queryAllByRole('paragraph')` の**数**で、断りの別は**2回の描画の文字列が一致しないこと**で
- * 観る。**文面そのものは期待値に書かない** — 未確定である（`docs/screen-design.md` 論点3）。
+ * 観る。**この suite では文面そのものを期待値に書かない** — B-40 のときの書き方のまま残す
+ * （文言は ADR-074 で確定した。文面を見るのは末尾の B-65 の suite である）。
  *
  * 差し替えは `FixedStockItemRequests` を使う（設計 5章）。上の suite の局所の口と違い、
  * **結末を順に配れて保留もできる**ため、「断られたあともう一度送る」「次の保存を始める」を
@@ -380,7 +381,7 @@ function soleNoticeText(): string {
   return notice.textContent ?? '';
 }
 
-/** 案内が届くまで待つ。**待つ条件に仮の文言を使わない**（設計 規則7・11）。 */
+/** 案内が届くまで待つ。**待つ条件に文言を使わない**（設計 規則7・11）。 */
 async function waitForSoleNotice(): Promise<string> {
   await waitFor(() => {
     expect(notices()).toHaveLength(1);
@@ -415,7 +416,7 @@ describe('登録の画面 StockItemForm の3欄と案内', () => {
 
     fireEvent.click(saveAndStay());
 
-    // ADR-032 決定3 / B-24: 断りは案内1つで伝える。**文面は見ない**（未確定である）。
+    // ADR-032 決定3 / B-24: 断りは案内1つで伝える。**文面は見ない**（文面は B-65 の suite が見る）。
     await waitForSoleNotice();
     expect(requests.registeredInputs).toHaveLength(1);
   });
@@ -567,7 +568,7 @@ describe('登録の画面 StockItemForm の食材名の補完', () => {
  * 接続が切れている間（B-70 設計 6章 規則6・9・14 / 7章 行1 / FR-41 / NFR-15）。
  *
  * **止めるのは保存の2つと、欄での Enter（`<form>` の送信）である。** 打った値は消さず、
- * 接続が戻れば同じ欄の値で保存できる。「←」は止めない（規則6）。
+ * 接続が戻れば同じ欄の値で保存できる。「戻る」は止めない（規則6）。
  */
 describe('登録の画面 StockItemForm の接続が切れている間', () => {
   /** `offline` を後から切り替えるために、描き直しの口を返す。 */
@@ -643,7 +644,7 @@ describe('登録の画面 StockItemForm の接続が切れている間', () => {
     expect(registrations).toEqual([{ name: 'にんじん', amount: '2本', expiryDate: '2026-09-25' }]);
   });
 
-  it('接続が切れていても、「←」で一覧へ戻せる', () => {
+  it('接続が切れていても、「戻る」で一覧へ戻せる', () => {
     const closed: string[] = [];
     const registrations: RegisterStockItemInput[] = [];
     renderFormWith(recordingRegister(registrations, { outcome: 'registered' }), true, () =>
@@ -656,5 +657,241 @@ describe('登録の画面 StockItemForm の接続が切れている間', () => {
     // 規則6: 保存せずに閉じるのは遷移である。登録の口へは何も届かない。
     expect(closed).toHaveLength(1);
     expect(registrations).toEqual([]);
+  });
+});
+
+/**
+ * 見た目と文言（B-65 設計 6章 規則2・3・5・6・8・10・13 / ADR-074 / FR-13 / NFR-16）。
+ *
+ * **文言は ADR-074 で確定した**（`docs/design/` の原本 ★10）ので、ここでは文言を期待値に
+ * literal で書く。CSS の値は見ない（ADR-055 決定3）。並びは**文書順**で観る（先行
+ * `MealDetail.test.tsx` の `precedes`）。
+ *
+ * 欄は**名前で引く**。期限の欄は役割に写らない（`type="date"`）ので `getByLabelText` で引き、
+ * 欄の名前の後ろに箱の文字（`日付を選ぶ` / 日付）が続いて読まれてよい（規則6）ため、頭だけを当てる。
+ */
+
+/** `node` が `other` より前に在るか（文書の並びで。先行 `MealDetail.test.tsx`）。 */
+function precedes(node: Node, other: Node): boolean {
+  return (node.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+}
+
+/** 食材名の欄。名前は `食材名`（札 `任意` は付かない。規則3）。 */
+function namedIngredientNameField(): HTMLElement {
+  return screen.getByRole('combobox', { name: '食材名' });
+}
+
+/** 分量の欄。名前は `分量` と札 `任意`（規則3）。 */
+function namedAmountField(): HTMLElement {
+  return screen.getByRole('textbox', { name: /^分量\s*任意$/ });
+}
+
+/** 期限の欄。名前の頭が `期限` と札 `任意`（規則3・6）。 */
+function namedExpiryDateField(): HTMLInputElement {
+  return screen.getByLabelText(/^期限\s*任意/) as HTMLInputElement;
+}
+
+/** 残日数の文字（規則8。一覧と同じ語）。 */
+const remainingDaysText = /^(今日|あと\d+日|\d+日過ぎ)$/;
+
+/**
+ * 日付の選択を開く口を**投げる関数に差し替えて**から `run` を走らせ、終わったら戻す（規則6）。
+ * jsdom 30 には `showPicker` が無い。投げる環境でも素の振る舞いに任せることを観るために置く。
+ */
+function withThrowingShowPicker(run: () => void): void {
+  const original = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'showPicker');
+  Object.defineProperty(HTMLInputElement.prototype, 'showPicker', {
+    configurable: true,
+    writable: true,
+    value: () => {
+      throw new DOMException('showPicker は使えない', 'NotAllowedError');
+    },
+  });
+
+  try {
+    run();
+  } finally {
+    if (original === undefined) {
+      Reflect.deleteProperty(HTMLInputElement.prototype, 'showPicker');
+    } else {
+      Object.defineProperty(HTMLInputElement.prototype, 'showPicker', original);
+    }
+  }
+}
+
+/** 3欄を名前で引いて打ち、期限の欄は押してから選ぶ（規則6。押すと日付の選択が開く）。 */
+function fillThreeNamedFieldsByPicking(): void {
+  fireEvent.change(namedIngredientNameField(), { target: { value: typedValues.name } });
+  fireEvent.change(namedAmountField(), { target: { value: typedValues.amount } });
+  fireEvent.click(namedExpiryDateField());
+  fireEvent.change(namedExpiryDateField(), { target: { value: typedValues.expiryDate } });
+}
+
+describe('登録の画面 StockItemForm の見た目と文言', () => {
+  it('見出しは「食材を登録」の h1 が1つだけである', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    // B-65 規則2 / ADR-074。
+    expect(
+      screen.getAllByRole('heading').map((heading) => [heading.tagName, heading.textContent]),
+    ).toEqual([['H1', '食材を登録']]);
+  });
+
+  it('「戻る」という名前の操作を押すと、一覧へ戻す口が呼ばれる', () => {
+    const closed: string[] = [];
+    render(
+      <StockItemForm
+        onRegister={recordingRegister([], { outcome: 'registered' })}
+        onClose={() => closed.push('close')}
+        ingredientNames={{ outcome: 'loading' }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+
+    // B-65 規則2: 戻るはアイコンだけで、名前は `aria-label="戻る"` で読ませる。
+    expect(closed).toEqual(['close']);
+  });
+
+  it('「戻る」の操作は見える文字を持たない', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    // B-65 規則2 / ADR-074: `back` のアイコンだけを置く（先行 `MealDetail` の `.back`）。
+    expect(screen.getByRole('button', { name: '戻る' }).textContent).toBe('');
+  });
+
+  it('食材名の欄の名前は「食材名」である', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    // B-65 規則3: 食材名には札 `任意` を付けない（必須の欄である）。
+    expect(namedIngredientNameField()).not.toBeNull();
+  });
+
+  it('分量の欄の名前は「分量」と札「任意」である', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    // B-65 規則3 / FR-13: 任意であることを札の文字で伝える。
+    expect(namedAmountField()).not.toBeNull();
+  });
+
+  it('期限の欄は名前が「期限」と札「任意」で引ける', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    // B-65 規則3 / FR-13。
+    expect(namedExpiryDateField()).not.toBeNull();
+  });
+
+  it('期限の欄は日付の欄である', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    // B-65 規則6: 素の `<input type="date">` を残し、見える箱の上に重ねる。
+    expect(namedExpiryDateField().type).toBe('date');
+  });
+
+  it('置き文字「例: 300g」は分量の欄に出る', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    // B-65 規則5 / ADR-010: 置き文字は分量の欄の `placeholder` である。
+    expect(screen.getByPlaceholderText('例: 300g')).toBe(namedAmountField());
+  });
+
+  it('開いた直後は期限の箱に「日付を選ぶ」が出る', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    // B-65 規則6 / ADR-074: 期限が空のときの箱の文字。
+    expect(screen.queryByText('日付を選ぶ')).not.toBeNull();
+  });
+
+  it('期限を選ぶと、期限の箱に「M月D日（曜）」が出る', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    fireEvent.change(namedExpiryDateField(), { target: { value: '2026-10-03' } });
+
+    // B-65 規則6・7 / ADR-074。
+    expect(screen.queryByText('10月3日（土）')).not.toBeNull();
+  });
+
+  it('期限を選ぶと、「日付を選ぶ」は消える', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    fireEvent.change(namedExpiryDateField(), { target: { value: '2026-10-03' } });
+
+    // B-65 規則6: 箱の文字は値から作る。値があれば空のときの文字を出さない。
+    expect(screen.queryByText('日付を選ぶ')).toBeNull();
+  });
+
+  it('登録の画面では、期限を選んでも残日数を出さない', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    fireEvent.change(namedExpiryDateField(), { target: { value: '2026-10-03' } });
+
+    // B-65 規則8 / 設計 10章: 残日数は編集の画面だけに出す（登録は基準日を受け取らない）。
+    expect(screen.queryByText(remainingDaysText)).toBeNull();
+  });
+
+  it('日付の選択を開く口が無くても、期限の欄で選んだ日付が登録の口へ届く', () => {
+    // 前提: jsdom 30 には `showPicker` が無い（無い環境を作るために差し替えない）。
+    expect('showPicker' in HTMLInputElement.prototype).toBe(false);
+    const registrations: RegisterStockItemInput[] = [];
+    renderForm(recordingRegister(registrations, { outcome: 'registered' }));
+
+    fillThreeNamedFieldsByPicking();
+    fireEvent.click(saveAndStay());
+
+    // B-65 規則6・13: 無い環境では素の振る舞いに任せ、送る中身は変えない。
+    expect(registrations).toEqual([{ name: 'にんじん', amount: '2本', expiryDate: '2026-09-25' }]);
+  });
+
+  it('日付の選択を開く口が投げても、期限の欄で選んだ日付が登録の口へ届く', () => {
+    const registrations: RegisterStockItemInput[] = [];
+    renderForm(recordingRegister(registrations, { outcome: 'registered' }));
+
+    withThrowingShowPicker(() => {
+      fillThreeNamedFieldsByPicking();
+      fireEvent.click(saveAndStay());
+    });
+
+    // B-65 規則6・13: 投げる環境でも例外を外へ出さず、送る中身は変えない。
+    expect(registrations).toEqual([{ name: 'にんじん', amount: '2本', expiryDate: '2026-09-25' }]);
+  });
+
+  it('食材名が空という断りは「! 食材名を入れてください」の段落1つで出る', async () => {
+    renderFormWith({ register: [{ outcome: 'rejected', rule: 'name.empty' }] });
+
+    fireEvent.change(namedIngredientNameField(), { target: { value: 'にんじん' } });
+    fireEvent.click(saveAndStay());
+
+    // B-65 規則10 / ADR-074: 頭に `!` を付け、文末の句点は付けない。同時に出る断りは1つ。
+    expect(await waitForSoleNotice()).toMatch(/^!\s*食材名を入れてください$/);
+  });
+
+  it('食材名が空という断りは、食材名の欄と分量の欄の間に出る', async () => {
+    renderFormWith({ register: [{ outcome: 'rejected', rule: 'name.empty' }] });
+
+    fireEvent.change(namedIngredientNameField(), { target: { value: 'にんじん' } });
+    fireEvent.click(saveAndStay());
+    await waitForSoleNotice();
+    const [notice] = notices();
+
+    // B-65 規則10: 食材名の欄の直下に出す（どこを直すかが位置で読める）。
+    expect([
+      precedes(namedIngredientNameField(), notice as HTMLElement),
+      precedes(notice as HTMLElement, namedAmountField()),
+    ]).toEqual([true, true]);
+  });
+
+  it('期限の書式の断りは、期限の欄と「保存してもう1件」の間に出る', async () => {
+    renderFormWith({ register: [{ outcome: 'rejected', rule: 'expiryDate.format' }] });
+
+    fireEvent.change(namedIngredientNameField(), { target: { value: 'にんじん' } });
+    fireEvent.click(saveAndStay());
+    await waitForSoleNotice();
+    const [notice] = notices();
+
+    // B-65 規則10: ほかの断りの位置は今のまま（欄群の後、保存の操作の前）。
+    expect([
+      precedes(namedExpiryDateField(), notice as HTMLElement),
+      precedes(notice as HTMLElement, screen.getByRole('button', { name: '保存してもう1件' })),
+    ]).toEqual([true, true]);
   });
 });

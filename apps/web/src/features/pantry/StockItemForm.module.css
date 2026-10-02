@@ -1,0 +1,269 @@
+/*
+ * 食材の登録・編集の見た目（設計 B-65 6章 規則1〜12 / 原本 `docs/design/src/IngredientForm.dc.html`
+ * の SP。入力欄は `index.dc.html`）。
+ *
+ * **見た目の値はここにだけ置く**（ADR-055 決定1）。`StockItemForm.tsx` と `StockItemEditForm.tsx`
+ * は class 名しか書かない — 原本が1部品の add / edit なので、2画面でこの module を共有する。
+ * 色・文字の大きさ・太さ・操作の高さ・フォーカスはトークン（`src/global.css` の `:root`）から
+ * `var(--…)` で引き、ここで新しい色を作らない。トークンに無い寸法は原本の値を直に書く。
+ *
+ * **PC の右から出るパネルはここに無い**（B-65b。切り替える幅は B-60 が決める）。
+ */
+
+/*
+ * 画面の根。縦の flex にし、最小の高さを「表示域から下タブの帯と下端の安全域を引いた値」に
+ * して、保存の操作群を下へ押しやる（規則12 / NFR-14）。帯のぶんの余白は器（`TabbedScreen` の
+ * `.panel`）が持つ。
+ */
+.form {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - var(--tab-bar-height) - env(safe-area-inset-bottom, 0px));
+  padding: 8px 16px 0;
+}
+
+/* 見出しの行。左の -12px は戻るのアイコンの線を本文の左端に揃えるため（原本）。 */
+.header {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  min-height: var(--control-height-secondary);
+  margin: 16px 0 0 -12px;
+}
+
+/*
+ * 戻る。見えるのは `back` のアイコンだけで、押せる範囲は 48px 四方（規則2 / NFR-16）。
+ * 素の button の枠と地はここで消す（リセットでは全体を消さない。B-59 規則3）。
+ */
+.back {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height-secondary);
+  height: var(--control-height-secondary);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+/* 送っている間。押せないことを弱い文字色で示す。 */
+.back:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+/* 見出し（第1階層）。 */
+.heading {
+  margin: 0;
+  font-size: var(--font-size-20);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.45;
+}
+
+/* 欄群。見出しとの間 32px、欄の間 24px（原本）。 */
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-top: 32px;
+}
+
+/* 欄1つ。欄の名前と欄の間 8px（原本）。 */
+.field,
+.nameField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 欄の名前。小さく字間を空けた補助の文字（規則3）。札 `任意` と横に並べる。 */
+.fieldLabel {
+  display: flex;
+  gap: 8px;
+  font-size: var(--font-size-12);
+  line-height: 1.5;
+  letter-spacing: 0.12em;
+  color: var(--color-text-secondary);
+}
+
+/* 札 `任意`（規則3）。 */
+.optional {
+  color: var(--color-text-muted);
+}
+
+/*
+ * 入力欄（規則4）。高さ 48px・白の面・1px の枠・左右 16px。
+ * 焦点がある間は文字色の 2px の枠にし、左右を 15px にして文字の位置を動かさない（NFR-16）。
+ */
+.input,
+.dateBox {
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--control-height-secondary);
+  padding: 0 16px;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  font-variant-numeric: tabular-nums;
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
+}
+
+.input:focus,
+.dateBox:focus-within {
+  padding: 0 15px;
+  border: 2px solid var(--color-text);
+  outline: none;
+}
+
+/* 名前が空の断りが出ている間の食材名の欄（規則10）。焦点の枠のほうを優先する。 */
+.inputInvalid:not(:focus) {
+  border-color: var(--color-danger);
+}
+
+/* 編集の画面の名称。欄の位置に高さ 48px の素の文字で出す（規則9）。 */
+.fixedName {
+  display: flex;
+  align-items: center;
+  min-height: var(--control-height-secondary);
+}
+
+/*
+ * 期限の箱（規則6）。素の日付欄（`.dateInput`）を上に透明に重ねるので、位置の基準になる。
+ */
+.dateBox {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* 期限が空のときの `日付を選ぶ`。 */
+.datePlaceholder {
+  color: var(--color-text-muted);
+}
+
+/* 残日数（規則8）。箱の右端に 14px。色は帯で選ぶ（下の3つ）。 */
+.remainingDays {
+  margin-left: auto;
+  font-size: var(--font-size-14);
+}
+
+.remainingDaysUrgent {
+  color: var(--color-danger);
+}
+
+.remainingDaysSoon {
+  color: var(--color-caution);
+}
+
+.remainingDaysRest {
+  color: var(--color-text-secondary);
+}
+
+/*
+ * 箱に重ねた素の日付欄（規則6）。ふだんは透明で、押すと日付の選択が開く。
+ * **焦点がある間は不透明にして箱の文字を隠す** — キーボードで打ちかけの数字が見えなく
+ * ならないように（見えない入力を作らない。NFR-16）。
+ */
+.dateInput {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0 15px;
+  border: 0;
+  background: var(--color-surface);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.dateInput:focus {
+  outline: none;
+  opacity: 1;
+}
+
+/* 断り（規則10）。14px・赤。 */
+.notice {
+  margin: 0;
+  font-size: var(--font-size-14);
+  line-height: 1.6;
+  color: var(--color-danger);
+}
+
+/* 欄群の後に出る断りは、欄群との間を空ける。 */
+.fields + .notice {
+  margin-top: 16px;
+}
+
+/*
+ * 断りの頭の `!`（Inter・500）。Inter は書体の並び（`--font-family`）の先頭なので、太さだけ足す。
+ * 飾りなので読み上げから外してある。
+ */
+.noticeMark {
+  font-weight: var(--font-weight-medium);
+}
+
+/* 保存の操作群。下へ押しやる（規則12）。 */
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: auto;
+  padding: 40px 0 24px;
+}
+
+/* 主の保存（規則11）。文字色の地・地の色の文字。 */
+.primary {
+  width: 100%;
+  max-width: 360px;
+  height: var(--control-height-primary);
+  border: 0;
+  background: var(--color-text);
+  color: var(--color-background);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.primary:active:not(:disabled) {
+  background: var(--color-text-secondary);
+}
+
+/* 登録の `保存して閉じる`（規則11）。文字色の 1px の枠・透明の地。 */
+.secondary {
+  width: 100%;
+  max-width: 360px;
+  height: var(--control-height-secondary);
+  border: 1px solid var(--color-text);
+  background: transparent;
+  color: var(--color-text);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.secondary:active:not(:disabled) {
+  background: var(--color-surface-muted);
+}
+
+/*
+ * 無効の間（規則11）。弱い文字色にして押せないと読めるようにする。主の保存は地を控えめな面に
+ * 落とし、弱い文字色との組にする。
+ */
+.primary:disabled {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+.secondary:disabled {
+  border-color: var(--color-text-muted);
+  color: var(--color-text-muted);
+  cursor: default;
+}

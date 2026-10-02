@@ -116,6 +116,7 @@ export function PantryTab({
         onUpdate={onUpdate}
         onClose={() => setEditing(null)}
         offline={offline}
+        today={today}
       />
     );
   }

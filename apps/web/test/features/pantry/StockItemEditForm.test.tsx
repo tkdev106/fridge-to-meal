@@ -8,9 +8,9 @@
  * 既に押さえている。ここで確かめるのは**切り出せないもの**だけ — 欄に何が出ているか、
  * 打った値がどう更新の口へ届くか、選ばれた案内が画面にどう現れるかである。
  *
- * **仮の文言と記号を期待値に書かない**（ADR-052 結果2 / `docs/testing.md` 4.1 / 設計 規則19）。
- * 見出しも保存の名札も「←」も案内の文面も未確定である（`docs/screen-design.md` 論点3）。
- * 観察はこの4つだけで行う。
+ * **文言は ADR-074 で確定した**（`docs/design/`。B-65）。確定した文言を期待値に書くのは末尾の
+ * B-65 の suite だけで、それより前の観点は文言に頼らず、次の4つで観る（B-55 のときの書き方の
+ * まま残す — 文言が変わっても振る舞いの観点が赤くならないようにするため）。
  *
  * - **欄に出ている値** … `queryByDisplayValue` に**テストが渡した／打った値**を当てる
  * - **更新の口へ届いたもの** … `FixedStockItemRequests` が持つ配列の中身（識別子と入力の組）
@@ -45,6 +45,12 @@ function stockItemOf(overrides: Partial<StockItemDto> = {}): StockItemDto {
   };
 }
 
+/**
+ * 残日数を数える基準日（B-65 設計 5章）。**本体は現在時刻を読まず、呼び出し側が渡す**
+ * （`docs/testing.md` 5章）。B-65 より前の観点にとっては本題でないので固定で渡す。
+ */
+const today = '2026-09-20';
+
 /** 打つ値の標本。**期待値は各 `it` の literal で別に置く**（`docs/testing.md` 3章）。 */
 const typedValues = { amount: '300g', expiryDate: '2026-09-30' } as const;
 
@@ -59,6 +65,7 @@ function renderEditForm(
       stockItem={stockItem}
       onUpdate={requests.updateStockItem}
       onClose={ignoreClose}
+      today={today}
     />,
   );
 
@@ -79,8 +86,8 @@ function amountField(): HTMLInputElement {
 /**
  * 期限の欄。**この suite で唯一もろい引き方である。**
  *
- * `input[type="date"]` は ARIA の役割に写らないため `textbox` で引けず、ラベルの文言は仮である
- * （設計 規則19）。そこで**いま出ている値で引く** — 開いた直後の値はテストが渡した在庫品の
+ * `input[type="date"]` は ARIA の役割に写らないため `textbox` で引けない。B-55 の観点はラベルの
+ * 文言に頼らずに書いたので、**いま出ている値で引く** — 開いた直後の値はテストが渡した在庫品の
  * ものであり（規則2）、分量の値と重ならないようにしてある。
  */
 function expiryDateField(currentValue: string): HTMLElement {
@@ -286,7 +293,7 @@ describe('編集の画面 StockItemEditForm の案内', () => {
 
     fireEvent.click(saveOperation());
 
-    // ADR-032 決定3 / 7章 行2: 断りは案内1つで伝える。**文面は見ない**（未確定である）。
+    // ADR-032 決定3 / 7章 行2: 断りは案内1つで伝える。**文面は見ない**（文面は B-65 の suite が見る）。
     await waitFor(() => {
       expect(notices()).toHaveLength(1);
     });
@@ -366,6 +373,7 @@ describe('編集の画面 StockItemEditForm の接続が切れている間', () 
         onUpdate={requests.updateStockItem}
         onClose={onClose}
         offline={offline}
+        today={today}
       />,
     );
 
@@ -378,6 +386,7 @@ describe('編集の画面 StockItemEditForm の接続が切れている間', () 
             onUpdate={requests.updateStockItem}
             onClose={onClose}
             offline={next}
+            today={today}
           />,
         );
       },
@@ -419,5 +428,185 @@ describe('編集の画面 StockItemEditForm の接続が切れている間', () 
 
     // 規則6: 保存せずに閉じるのは遷移である。
     expect(closed).toHaveLength(1);
+  });
+});
+
+/**
+ * 見た目と文言（B-65 設計 6章 規則2・3・5・6・8・9・13 / ADR-074 / FR-05 / FR-13 / NFR-17）。
+ *
+ * **文言は ADR-074 で確定した**（`docs/design/` の原本 ★10・11）ので、ここでは文言を期待値に
+ * literal で書く。CSS の値は見ない（ADR-055 決定3）。並びは**文書順**で観る（先行
+ * `MealDetail.test.tsx` の `precedes`）。
+ *
+ * 期限の欄は役割に写らない（`type="date"`）ので、**欄の名前で引く**（`getByLabelText`）。
+ * 欄の名前の後ろに箱の文字（`日付を選ぶ` / 日付 / 残日数）が続いて読まれてよい（規則6）ため、
+ * 頭だけを当てる。
+ */
+
+/** `node` が `other` より前に在るか（文書の並びで。先行 `MealDetail.test.tsx`）。 */
+function precedes(node: Node, other: Node): boolean {
+  return (node.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+}
+
+/** 分量の欄。名前は `分量` と札 `任意`（規則3）。 */
+function namedAmountField(): HTMLElement {
+  return screen.getByRole('textbox', { name: /^分量\s*任意$/ });
+}
+
+/** 期限の欄。名前の頭が `期限` と札 `任意`（規則3・6）。 */
+function namedExpiryDateField(): HTMLInputElement {
+  return screen.getByLabelText(/^期限\s*任意/) as HTMLInputElement;
+}
+
+/** 残日数の文字（規則8。一覧と同じ語）。 */
+const remainingDaysText = /^(今日|あと\d+日|\d+日過ぎ)$/;
+
+/**
+ * 日付の選択を開く口を**投げる関数に差し替えて**から `run` を走らせ、終わったら戻す（規則6）。
+ * jsdom 30 には `showPicker` が無い。投げる環境でも素の振る舞いに任せることを観るために置く。
+ */
+function withThrowingShowPicker(run: () => void): void {
+  const original = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'showPicker');
+  Object.defineProperty(HTMLInputElement.prototype, 'showPicker', {
+    configurable: true,
+    writable: true,
+    value: () => {
+      throw new DOMException('showPicker は使えない', 'NotAllowedError');
+    },
+  });
+
+  try {
+    run();
+  } finally {
+    if (original === undefined) {
+      Reflect.deleteProperty(HTMLInputElement.prototype, 'showPicker');
+    } else {
+      Object.defineProperty(HTMLInputElement.prototype, 'showPicker', original);
+    }
+  }
+}
+
+describe('編集の画面 StockItemEditForm の見た目と文言', () => {
+  it('見出しは「食材を編集」の h1 が1つだけである', () => {
+    renderEditForm();
+
+    // B-65 規則2 / ADR-074: 名称は見出しではなく食材名の欄の位置に出す（規則9）。
+    expect(
+      screen.getAllByRole('heading').map((heading) => [heading.tagName, heading.textContent]),
+    ).toEqual([['H1', '食材を編集']]);
+  });
+
+  it('「戻る」という名前の操作を押すと、一覧へ戻す口が呼ばれる', () => {
+    const closed: string[] = [];
+    render(
+      <StockItemEditForm
+        stockItem={stockItemOf()}
+        onUpdate={new FixedStockItemRequests().updateStockItem}
+        onClose={() => closed.push('close')}
+        today={today}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+
+    // B-65 規則2: 戻るはアイコンだけで、名前は `aria-label="戻る"` で読ませる。
+    expect(closed).toEqual(['close']);
+  });
+
+  it('「戻る」の操作は見える文字を持たない', () => {
+    renderEditForm();
+
+    // B-65 規則2 / ADR-074: `back` のアイコンだけを置く（先行 `MealDetail` の `.back`）。
+    expect(screen.getByRole('button', { name: '戻る' }).textContent).toBe('');
+  });
+
+  it('欄の名前「食材名」の後ろに在庫品の名称が出る', () => {
+    renderEditForm(stockItemOf({ name: 'にんじん' }));
+
+    // B-65 規則9 / FR-05: 名称は食材名の欄の位置に、変えられない文字で出す。
+    expect(precedes(screen.getByText('食材名'), screen.getByText('にんじん'))).toBe(true);
+  });
+
+  it('分量の欄の名前は「分量」と札「任意」である', () => {
+    renderEditForm();
+
+    // B-65 規則3 / FR-13: 任意であることを札の文字で伝える。
+    expect(namedAmountField()).not.toBeNull();
+  });
+
+  it('期限の欄は名前が「期限」と札「任意」で、日付の欄である', () => {
+    renderEditForm();
+
+    // B-65 規則3・6: 素の `<input type="date">` を残す。
+    expect(namedExpiryDateField().type).toBe('date');
+  });
+
+  it('分量が未設定の在庫品を開くと、分量の欄に置き文字「例: 300g」が出る', () => {
+    renderEditForm(stockItemOf({ amount: null }));
+
+    // B-65 規則5 / ADR-010: 置き文字は分量の欄の `placeholder` である。
+    expect(screen.getByPlaceholderText('例: 300g')).toBe(namedAmountField());
+  });
+
+  it('期限のある在庫品を開くと、期限が「M月D日（曜）」で出る', () => {
+    renderEditForm(stockItemOf({ expiryDate: '2026-09-22' }));
+
+    // B-65 規則6・7 / ADR-074。
+    expect(screen.queryByText('9月22日（火）')).not.toBeNull();
+  });
+
+  it('期限のある在庫品を開くと、基準日から数えた残日数が出る', () => {
+    renderEditForm(stockItemOf({ expiryDate: '2026-09-22' }));
+
+    // B-65 規則8 / NFR-17: 基準日 2026-09-20 から2日。色だけに頼らず文字で出す。
+    expect(screen.queryByText('あと2日')).not.toBeNull();
+  });
+
+  it('期限の欄を変えると、残日数は変えた後の値で数え直される', () => {
+    renderEditForm(stockItemOf({ expiryDate: '2026-09-22' }));
+
+    fireEvent.change(namedExpiryDateField(), { target: { value: '2026-09-24' } });
+
+    // B-65 規則8: 残日数は期限の欄の**今の値**から数える。
+    expect(screen.queryByText('あと4日')).not.toBeNull();
+    expect(screen.queryByText('あと2日')).toBeNull();
+  });
+
+  it('期限が未設定の在庫品を開くと、期限の箱に「日付を選ぶ」が出る', () => {
+    renderEditForm(stockItemOf({ expiryDate: null }));
+
+    // B-65 規則6 / ADR-074。
+    expect(screen.queryByText('日付を選ぶ')).not.toBeNull();
+  });
+
+  it('期限が未設定の在庫品を開くと、残日数を出さない', () => {
+    renderEditForm(stockItemOf({ expiryDate: null }));
+
+    // B-65 規則8 / FR-13: 値が無ければ残日数も無い。
+    expect(screen.queryByText(remainingDaysText)).toBeNull();
+  });
+
+  it('日付の選択を開く口が投げても、期限の欄で選んだ日付が更新の口へ届く', () => {
+    const requests = renderEditForm(stockItemOf({ id: '1', amount: '2本' }), {
+      update: [{ outcome: 'updated' }],
+    });
+
+    withThrowingShowPicker(() => {
+      fireEvent.click(namedExpiryDateField());
+      fireEvent.change(namedExpiryDateField(), { target: { value: '2026-09-30' } });
+      fireEvent.click(saveOperation());
+    });
+
+    // B-65 規則6・13: 投げる環境では素の振る舞いに任せ、送る中身は変えない。
+    expect(requests.receivedUpdates).toEqual([
+      { id: '1', input: { amount: '2本', expiryDate: '2026-09-30' } },
+    ]);
+  });
+
+  it('「保存」という名前の操作は、操作の末尾に在る', () => {
+    renderEditForm();
+
+    // B-65 規則11・13 / ADR-074: 編集の保存の名札は `保存`。並び（戻る → 保存）は変えない。
+    expect(screen.getByRole('button', { name: '保存' })).toBe(saveOperation());
   });
 });
