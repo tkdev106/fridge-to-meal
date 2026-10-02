@@ -232,8 +232,8 @@ function saveAndCloseOperation(): HTMLElement {
 }
 
 /**
- * 食材名の欄。**補完の `list` を持つため役割は `combobox` である**（B-50c）— 補完が0件の
- * 回も欄はこの役割のままである。
+ * 食材名の欄。**`role="combobox"` を明示しているため役割は `combobox` である**（B-50c /
+ * B-66 設計 規則13）— 補完が0件の回も欄はこの役割のままである。
  */
 function ingredientNameField(): HTMLElement {
   return screen.getByRole('combobox');
@@ -3483,7 +3483,7 @@ describe('門 App の接続が切れている間の在庫と設定の操作', ()
     await screen.findByText(carrot.name);
     fireEvent.click(openRegisterOperation());
 
-    // 規則6: 登録の画面を開くのは遷移である。食材名の欄は補完の `list` を持つので `combobox`。
+    // 規則6: 登録の画面を開くのは遷移である。食材名の欄は `role="combobox"` を明示しているので `combobox`。
     expect(ingredientNameField()).not.toBeNull();
   });
 
