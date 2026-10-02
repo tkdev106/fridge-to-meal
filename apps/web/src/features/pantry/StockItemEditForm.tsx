@@ -76,12 +76,15 @@ export type StockItemEditFormProps = {
   onUpdate: UpdateStockItem;
   /** 一覧へ戻す（設計 規則7・8）。**通った回と、保存せずに閉じた回に呼ぶ。** */
   onClose: () => void;
+  /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
+  offline?: boolean;
 };
 
 export function StockItemEditForm({
   stockItem,
   onUpdate,
   onClose,
+  offline = false,
 }: StockItemEditFormProps): JSX.Element {
   // 開いた直後の欄はその行の値である（設計 規則2 / NFR-15）。**取り直した一覧で書き換えない**
   // （同 規則17）ので、初期値としてだけ読む — 編集の対象は行から受け取った1件である。
@@ -101,7 +104,8 @@ export function StockItemEditForm({
    * `null` を返さない）ので、止めるのは「送っている間」だけである（規則7）。
    */
   async function save() {
-    if (sending) return;
+    // **接続が切れている間も止める**（B-70 規則10）。Enter もここで止まり、入力は消さない。
+    if (sending || offline) return;
 
     setSending(true);
     setNotice(null);
@@ -162,7 +166,7 @@ export function StockItemEditForm({
 
       {/* 保存は画面の下半分に置く（NFR-14）。**1つだけである**（設計 規則5）。
           `<form>` の送信にしてあるので、欄で Enter を打った回もここに落ちる。 */}
-      <button type="submit" disabled={sending}>
+      <button type="submit" disabled={sending || offline}>
         {sending ? SENDING_LABEL : SAVE_LABEL}
       </button>
     </form>

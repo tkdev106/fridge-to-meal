@@ -281,9 +281,17 @@ export type PantryListProps = {
    * 実行環境の暦日を作るのは `todayOf` の仕事で、それを呼ぶのは `App.tsx` である。
    */
   today: string;
+  /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
+  offline?: boolean;
 };
 
-export function PantryList({ stockItems, today, onDelete, onEdit }: PantryListProps) {
+export function PantryList({
+  stockItems,
+  today,
+  onDelete,
+  onEdit,
+  offline = false,
+}: PantryListProps) {
   const [notice, setNotice] = useState<DeleteFailureNotice | null>(null);
   const [rowOperations, setRowOperations] = useState<RowOperations>(IDLE);
   // 送っている間は次の削除を送らない。描き直す必要が無いので state にしない。
@@ -305,6 +313,10 @@ export function PantryList({ stockItems, today, onDelete, onEdit }: PantryListPr
     // 二重に送っても2度目は 404 になり、それを「すでに消えている」と読む（ADR-050）ので
     // 害は無いが、往復を1つ無駄にする。
     if (deleting.current) return;
+    // **接続が切れている間は送らない**（B-70 規則11）。確認の `削除` は `disabled` になって
+    // いるので、ここは最後の守りである。断りの案内も出さない（理由は門の帯が既に示している）。
+    // なぞる・確認を開く・やめる・タップで編集を開くことは止めない（規則6）。
+    if (offline) return;
 
     deleting.current = true;
     setNotice(null);
@@ -383,6 +395,8 @@ export function PantryList({ stockItems, today, onDelete, onEdit }: PantryListPr
       {current.kind === 'confirming' && (
         <StockItemDeleteConfirmation
           stockItem={current.stockItem}
+          // 接続が切れている間は確定だけを止める（B-70 規則11 / FR-41）。確認は開いたまま残る。
+          confirmDisabled={offline}
           onCancel={() => {
             dispatch({ kind: 'dismissed' });
             // 焦点はその行の `…` に戻す。行がもう無ければ戻さない（B-69 規則13）。

@@ -116,9 +116,16 @@ export type StockItemFormProps = {
    * どちらを空の列に倒すかの判断は `ingredientNameOptionsOf` が1か所で持つ。
    */
   ingredientNames: IngredientNamesState;
+  /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
+  offline?: boolean;
 };
 
-export function StockItemForm({ onRegister, onClose, ingredientNames }: StockItemFormProps) {
+export function StockItemForm({
+  onRegister,
+  onClose,
+  ingredientNames,
+  offline = false,
+}: StockItemFormProps) {
   // `<datalist>` と欄を結ぶ識別子。**固定の文字列にしない**（設計 規則8）— 同じ画面が2つ
   // 描かれた回に `id` が衝突し、片方の欄がもう片方の一覧を引く。
   const ingredientNameListId = useId();
@@ -133,7 +140,8 @@ export function StockItemForm({ onRegister, onClose, ingredientNames }: StockIte
   const sending = sendingFor !== null;
   // 保存の2つに当てる条件。**「←」には `sending` だけが当たる**（下の閉じる操作の注記）—
   // 食材名が空でも「捨てて戻る」は効かねばならないので、`registerInput === null` は含めない。
-  const saveDisabled = registerInput === null || sending;
+  // **接続が切れている間も保存の2つと Enter を止める**（B-70 規則9）。入力は消さない。
+  const saveDisabled = registerInput === null || sending || offline;
 
   function changeField(field: keyof StockItemFormValues) {
     return (event: ChangeEvent<HTMLInputElement>) => {

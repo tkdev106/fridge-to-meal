@@ -59,19 +59,23 @@ export type SettingsScreenProps = {
   onClose: () => void;
   /** 削除を送る。消えた回のサインアウトは門が済ませてから解決する（B-56f 設計 5章）。 */
   onDeleteHouseholdData: () => Promise<DeleteHouseholdDataOutcome>;
+  /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
+  offline?: boolean;
 };
 
 export function SettingsScreen({
   onSignOut,
   onClose,
   onDeleteHouseholdData,
+  offline = false,
 }: SettingsScreenProps): JSX.Element {
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [failed, setFailed] = useState(false);
 
   async function confirmDeletion() {
-    if (deleting) return;
+    // **接続が切れている間は確定を止める**（B-70 規則12）。確認を開く・やめるは止めない。
+    if (deleting || offline) return;
 
     setDeleting(true);
     setFailed(false);
@@ -99,7 +103,7 @@ export function SettingsScreen({
       {confirming ? (
         <div>
           <p>{CONFIRM_NOTICE}</p>
-          <button type="button" disabled={deleting} onClick={confirmDeletion}>
+          <button type="button" disabled={deleting || offline} onClick={confirmDeletion}>
             {CONFIRM_LABEL}
           </button>
           <button type="button" disabled={deleting} onClick={cancelDeletion}>

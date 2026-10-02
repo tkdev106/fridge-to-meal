@@ -26,6 +26,7 @@ import { pressOperation } from '../../support/dom/pressOperation.js';
 import { FixedStockItemRequests } from '../../support/server/FixedStockItemRequests.js';
 import type { FixedStockItemRequestsOptions } from '../../support/server/FixedStockItemRequests.js';
 import { PantryList } from '../../../src/features/pantry/PantryList.js';
+import type { DeleteStockItem } from '../../../src/server/StockItemRequests.js';
 
 const TODAY = '2026-09-20';
 
@@ -856,5 +857,96 @@ describe('在庫一覧 PantryList の削除の確認', () => {
     await waitFor(() => {
       expect(screen.queryAllByRole('paragraph')).toHaveLength(1);
     });
+  });
+});
+
+/**
+ * 接続が切れている間の削除（B-70 設計 6章 規則6・11・14 / 7章 行1 / FR-41 / FR-06。B-69 で
+ * 確認を挟んだあとの形）。
+ *
+ * **確認の `削除` を押せなくする**（SettingsScreen の確定と同じ構え）。なぞる・確認を開く・
+ * やめるは止めない — どれも書き込みを伴わない。タップで編集を開くことも止めない（規則6）。
+ *
+ * 届いたものも届かなかったことも、**テストが持つ配列の中身**で見る（`docs/testing.md` 2章）。
+ */
+describe('在庫一覧 PantryList の接続が切れている間', () => {
+  /** `offline` を後から切り替えるために、描き直しの口を返す。 */
+  function renderTwoRowsWith(edits: StockItemDto[], onDelete: DeleteStockItem, offline: boolean) {
+    const rendered = render(
+      <PantryList
+        today={TODAY}
+        onDelete={onDelete}
+        onEdit={recordingEdit(edits)}
+        stockItems={{ outcome: 'loaded', stockItems: twoRows }}
+        offline={offline}
+      />,
+    );
+
+    return {
+      setOffline: (next: boolean) => {
+        rendered.rerender(
+          <PantryList
+            today={TODAY}
+            onDelete={onDelete}
+            onEdit={recordingEdit(edits)}
+            stockItems={{ outcome: 'loaded', stockItems: twoRows }}
+            offline={next}
+          />,
+        );
+      },
+    };
+  }
+
+  it('接続が切れている間は、確認の削除が押せない', () => {
+    renderTwoRowsWith([], recordingDelete([]), true);
+
+    openConfirmationBySwipe();
+
+    // 規則11 / FR-41: 削除は書き込みを伴う操作である。
+    expect(confirmDeletion()).toHaveProperty('disabled', true);
+  });
+
+  it('接続が切れている間は、確認の削除を押しても削除の口へ何も届かず、行は残る', async () => {
+    const deletedIds: string[] = [];
+    renderTwoRowsWith([], recordingDelete(deletedIds), true);
+
+    openConfirmationBySwipe();
+    fireEvent.click(confirmDeletion());
+    await act(async () => {});
+
+    expect(deletedIds).toEqual([]);
+    expect(screen.queryByText('白菜')).not.toBeNull();
+  });
+
+  it('接続が切れている間も、確認はやめられる', () => {
+    renderTwoRowsWith([], recordingDelete([]), true);
+
+    openConfirmationBySwipe();
+    pressOperation(cancelConfirmation());
+
+    // 規則6: やめるは書き込みを伴わない。
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('接続が切れていても、行をタップするとその在庫品が編集の口へ届く', () => {
+    const edits: StockItemDto[] = [];
+    renderTwoRowsWith(edits, recordingDelete([]), true);
+
+    pressAndRelease({ x: 0, y: 0 });
+
+    // 規則6・11: 編集の画面を開くのは遷移である。
+    expect(edits).toEqual([twoRows[1]]);
+  });
+
+  it('接続が戻ると、確認の削除でなぞった行の識別子が削除の口へ届く', () => {
+    const deletedIds: string[] = [];
+    const { setOffline } = renderTwoRowsWith([], recordingDelete(deletedIds), true);
+
+    openConfirmationBySwipe();
+    setOffline(false);
+    pressOperation(confirmDeletion());
+
+    // 規則14: 戻れば止めた操作は元に戻る。
+    expect(deletedIds).toEqual(['2']);
   });
 });

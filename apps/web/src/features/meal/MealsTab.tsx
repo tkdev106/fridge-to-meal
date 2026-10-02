@@ -182,6 +182,8 @@ export type MealsTabProps = {
    * （先行 `PantryTab` の一覧 ⇄ 登録の入れ替わり）。
    */
   mealDetail: ReactNode | null;
+  /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
+  offline?: boolean;
 };
 
 /**
@@ -247,11 +249,13 @@ function RequestNewMealsControl({
   pantryChanged,
   requesting,
   failed,
+  offline,
   onRequestNewMeals,
 }: {
   pantryChanged: boolean;
   requesting: boolean;
   failed: boolean;
+  offline: boolean;
   onRequestNewMeals: () => void;
 }) {
   return (
@@ -266,8 +270,9 @@ function RequestNewMealsControl({
 
       {/* 送信中は押せない（S-5）。押し直しても2度目の要求を出さないのは門の役目であり、
           ここは見た目の側から二重に守るだけである。**1度の求めで生成が2回走ると、
-          1日10回の枠（NFR-C2）が利用者の意図の倍で減る。** */}
-      <button type="button" onClick={onRequestNewMeals} disabled={requesting}>
+          1日10回の枠（NFR-C2）が利用者の意図の倍で減る。**
+          **接続が切れている間も押せない**（B-70 規則7）。理由は門の帯が示すので、案内は足さない。 */}
+      <button type="button" onClick={onRequestNewMeals} disabled={requesting || offline}>
         {REQUEST_BUTTON_LABEL}
       </button>
     </div>
@@ -312,6 +317,7 @@ export function MealsTab({
   onGoToPantry,
   onOpenMeal,
   mealDetail,
+  offline = false,
 }: MealsTabProps) {
   // 出し分けだけを行い、計算を持たない（先行 `PantryList`）。
   //
@@ -342,6 +348,7 @@ export function MealsTab({
         pantryChanged={suggestion.outcome === 'suggested' && suggestion.pantryChanged}
         requesting={requestingNewMeals}
         failed={newMealsFailed}
+        offline={offline}
         onRequestNewMeals={onRequestNewMeals}
       />
     </div>

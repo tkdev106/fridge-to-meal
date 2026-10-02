@@ -19,6 +19,11 @@ export type StockItemDeleteConfirmationProps = {
   stockItem: StockItemDto;
   onConfirm: () => void;
   onCancel: () => void;
+  /**
+   * 確認の `削除` を押せなくするか（B-70 / FR-41。接続が切れている間）。省略は `false`。
+   * **やめる・Esc は止めない** — どちらも書き込みを伴わない（先行 `SettingsScreen` の確定）。
+   */
+  confirmDisabled?: boolean;
 };
 
 /**
@@ -35,6 +40,7 @@ export function StockItemDeleteConfirmation({
   stockItem,
   onConfirm,
   onCancel,
+  confirmDisabled = false,
 }: StockItemDeleteConfirmationProps): JSX.Element {
   const questionId = useId();
   const cancelRef = useRef<HTMLButtonElement>(null);
@@ -63,7 +69,7 @@ export function StockItemDeleteConfirmation({
       <button ref={cancelRef} type="button" autoFocus onClick={onCancel}>
         やめる
       </button>
-      <button ref={confirmRef} type="button" onClick={onConfirm}>
+      <button ref={confirmRef} type="button" disabled={confirmDisabled} onClick={onConfirm}>
         削除
       </button>
     </div>

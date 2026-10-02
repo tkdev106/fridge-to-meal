@@ -50,6 +50,7 @@ function renderSettings(
       onSignOut={overrides.onSignOut ?? (() => Promise.resolve())}
       onClose={overrides.onClose ?? (() => {})}
       onDeleteHouseholdData={overrides.onDeleteHouseholdData ?? deletion.deleteHouseholdData}
+      offline={overrides.offline ?? false}
     />,
   );
 
@@ -330,5 +331,69 @@ describe('設定画面 SettingsScreen', () => {
     fireEvent.click(cancelOperation());
 
     expect(screen.queryAllByRole('status')).toHaveLength(0);
+  });
+});
+
+/**
+ * 接続が切れている間（B-70 設計 6章 規則6・12 / FR-41 / FR-27）。
+ *
+ * **止めるのは確認の中の削除の操作（確かめる）だけ**で、確認を開くこと・やめること・
+ * ログアウト・閉じることは止めない（規則6 / `Session.ts` 規則8 — サインアウトは手元を必ず捨てる）。
+ */
+describe('設定画面 SettingsScreen の接続が切れている間', () => {
+  it('接続が切れている間は、確認の中の削除の操作が押せない', () => {
+    renderSettings({ offline: true });
+
+    fireEvent.click(deleteOperation());
+
+    // 規則12 / FR-41: 世帯のデータを消すのは書き込みを伴う操作である。
+    expect((confirmOperation() as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('接続が切れていても、削除の確認を開ける', () => {
+    renderSettings({ offline: true });
+
+    fireEvent.click(deleteOperation());
+
+    // 規則12・6: 確認を開くのは遷移である。
+    expect(screen.getAllByRole('button')).toHaveLength(CONFIRMING_OPERATION_COUNT);
+  });
+
+  it('接続が切れていても、確認をやめると最初の3つの操作に戻る', () => {
+    const { deletion } = renderSettings({ offline: true });
+
+    fireEvent.click(deleteOperation());
+    fireEvent.click(cancelOperation());
+
+    // 規則12・6: やめるのは遷移であり、削除は送られない。
+    expect(screen.getAllByRole('button')).toHaveLength(SETTINGS_OPERATION_COUNT);
+    expect(deletion.deleteCount).toBe(0);
+  });
+
+  it('接続が切れていても、ログアウトが届く', async () => {
+    const signedOut: string[] = [];
+    renderSettings({
+      offline: true,
+      onSignOut: () => {
+        signedOut.push('signOut');
+        return Promise.resolve();
+      },
+    });
+
+    fireEvent.click(signOutOperation());
+    await flush();
+
+    // 規則6 / `Session.ts` 規則8: サインアウトは手元のセッションを捨てるだけで止めない。
+    expect(signedOut).toHaveLength(1);
+  });
+
+  it('接続が切れていても、閉じる求めが届く', () => {
+    const closed: string[] = [];
+    renderSettings({ offline: true, onClose: () => closed.push('close') });
+
+    fireEvent.click(closeOperation());
+
+    // 規則6: 設定を閉じるのは遷移である。
+    expect(closed).toHaveLength(1);
   });
 });
