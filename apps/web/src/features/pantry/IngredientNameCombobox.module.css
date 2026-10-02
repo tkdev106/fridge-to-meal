@@ -33,6 +33,11 @@
   border: 2px solid var(--color-text);
 }
 
+/* 名前が空の断りが出ている間（B-65 規則10）。焦点の枠のほうを優先する。 */
+.inputInvalid:not(:focus) {
+  border-color: var(--color-danger);
+}
+
 /* 一覧。欄の直下に重ね、上辺の枠は欄と共有する（原本）。件数と高さの上限は置かない（設計 10章）。 */
 .listbox {
   position: absolute;

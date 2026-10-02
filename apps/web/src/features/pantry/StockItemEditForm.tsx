@@ -14,14 +14,18 @@
  * **保存の操作は1つである**（設計 規則5）— 編集は在庫品1件に閉じ、次の1件が無いので
  * 「保存してもう1件」（FR-08 は登録の話）を置かない。
  *
- * 反対に、**日本語はここにしか置かない**（設計 規則19 / B-12 設計 規則9）。文言も配色も
- * 未確定であり（`docs/screen-design.md` 論点3）、以下の日本語は仮のものである。
+ * 反対に、**日本語はここにしか置かない**（設計 規則19 / B-12 設計 規則9）。見出し・欄の名前・
+ * 置き文字・保存の名札は ADR-074 で確定した原本（`docs/design/src/IngredientForm.dc.html` の edit）
+ * に揃えてある（B-65）。原本に無い断りと送信中の名札は従来の文言のままである。
+ *
+ * **見た目の値は `StockItemForm.module.css` にだけ置く**（B-65 設計 規則1 / ADR-055 決定1）—
+ * 登録の画面と module を共有する（原本が1部品の add / edit であるため）。
  *
  * 更新の実行は引数で受け取る。**組み立てるのは `main.tsx` だけ**であり、この画面は基点も
  * `fetch` もトークンの取り出し方も知らない（設計 9章 / B-22 設計 規則1・4）。
  */
 
-import type { ChangeEvent, FormEvent, JSX } from 'react';
+import type { ChangeEvent, FormEvent, JSX, MouseEvent } from 'react';
 import { useState } from 'react';
 import type { StockItemDto } from '@fridge-to-meal/contract';
 import type { StockItemEditValues } from './StockItemFormValues.js';
@@ -29,24 +33,55 @@ import { stockItemEditValuesOf, updateStockItemInputOf } from './StockItemFormVa
 import type { UpdateFailureNotice } from './UpdateFailureNotice.js';
 import { updateFailureNoticeOf } from './UpdateFailureNotice.js';
 import type { UpdateStockItem } from '../../server/StockItemRequests.js';
+import { Icon } from '../../icons/Icon.js';
+import { expiryDateLabelOf, remainingDaysLabelOf } from './ExpiryDateLabel.js';
+import type { ExpirySection } from './PantrySections.js';
+import { expirySectionOf } from './PantrySections.js';
+import { remainingDaysOf } from './RemainingDays.js';
+import styles from './StockItemForm.module.css';
+
+/** 画面の見出し（B-65 規則2 / ADR-074）。名称は見出しにせず、食材名の位置に出す（規則9）。 */
+const HEADING = '食材を編集';
+
+/** 名称の位置の名前（B-65 規則9）。欄ではなく、変えられない文字の名前である。 */
+const NAME_LABEL = '食材名';
 
 /**
- * 欄の見出し。**どちらにも必須の印を付けない**（設計 規則3 / FR-13）— 空にして保存すれば
- * 「消す」を表す。名称の欄は無い（設計 規則1）。
+ * 欄の名前。**どちらにも必須の印を付けない**（設計 規則3 / FR-13）— 空にして保存すれば
+ * 「消す」を表す。任意であることは札 `任意`（`OPTIONAL_LABEL`）の文字で伝える（B-65 規則3）。
  */
 const FIELD_LABELS: Record<keyof StockItemEditValues, string> = {
-  amount: '分量（任意）',
-  expiryDate: '期限（任意）',
+  amount: '分量',
+  expiryDate: '期限',
 };
 
-/** 保存の操作の名札。**1つである**（設計 規則5）。 */
-const SAVE_LABEL = '保存して閉じる';
+/** 任意の欄に添える札（B-65 規則3）。欄の名前の一部として読まれてよい。 */
+const OPTIONAL_LABEL = '任意';
+
+/** 分量の置き文字（B-65 規則5）。値は自由文字列のまま（ADR-010）。 */
+const AMOUNT_PLACEHOLDER = '例: 300g';
+
+/** 期限が空のときに箱に出す文字（B-65 規則6）。 */
+const EXPIRY_DATE_PLACEHOLDER = '日付を選ぶ';
+
+/** 保存の操作の名札。**1つである**（設計 規則5 / B-65 規則11）。 */
+const SAVE_LABEL = '保存';
 
 /**
- * 保存せずに閉じる操作の名札（設計 規則7・8。`docs/screen-design.md` 6章のワイヤーの「←」）。
- * **仮の文言である** — 記号だけでは読み上げに乗らないため、いまは文字を添えてある。
+ * 保存せずに閉じる操作の名前（設計 規則7・8 / B-65 規則2）。**見える文字は持たず**、`back` の
+ * アイコンだけを出す — 名前は `aria-label` で読ませる（先行 `MealDetail.tsx`）。
  */
-const CLOSE_LABEL = '← 戻る';
+const CLOSE_LABEL = '戻る';
+
+/**
+ * 残日数の色を帯で選ぶ（B-65 規則8）。帯の決め方は一覧と同じ `expirySectionOf` に任せる。
+ * **色だけに頼らない** — 文字（`remainingDaysLabelOf`）が常に出る（NFR-17）。
+ */
+const REMAINING_DAYS_CLASSES: Record<ExpirySection, string | undefined> = {
+  urgent: styles.remainingDaysUrgent,
+  soon: styles.remainingDaysSoon,
+  rest: styles.remainingDaysRest,
+};
 
 /**
  * 送っている間の名札。受け付けないこと（設計 規則7）を、操作の見た目だけでなく文字でも伝える。
@@ -78,6 +113,8 @@ export type StockItemEditFormProps = {
   onClose: () => void;
   /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
   offline?: boolean;
+  /** 残日数を数える基準日（YYYY-MM-DD）。呼び出し側が渡す。ここで new Date() を読まない */
+  today: string;
 };
 
 export function StockItemEditForm({
@@ -85,6 +122,7 @@ export function StockItemEditForm({
   onUpdate,
   onClose,
   offline = false,
+  today,
 }: StockItemEditFormProps): JSX.Element {
   // 開いた直後の欄はその行の値である（設計 規則2 / NFR-15）。**取り直した一覧で書き換えない**
   // （同 規則17）ので、初期値としてだけ読む — 編集の対象は行から受け取った1件である。
@@ -125,6 +163,9 @@ export function StockItemEditForm({
     }
   }
 
+  // 残日数は期限の欄の**今の値**から数える（B-65 規則8）。空・壊れた値なら `null` で、出さない。
+  const remainingDays = remainingDaysOf(values.expiryDate, today);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -132,43 +173,110 @@ export function StockItemEditForm({
   }
 
   return (
-    <form onSubmit={submit}>
-      {/* 閉じる操作は見出しの行、つまり**画面のいちばん上**に置く（先行 `StockItemForm.tsx`）。
-          **`type="submit"` にしない** — 押した回に保存が走ってしまう。
-          **送っている間は押せない**（設計 規則7）— 結末が届く前に閉じると、断りの案内が
-          出ないまま画面が消え、打った入力も捨てられる。利用者は保存できたと思い込む。 */}
-      <button type="button" disabled={sending} onClick={onClose}>
-        {CLOSE_LABEL}
-      </button>
+    <form className={styles.form} onSubmit={submit}>
+      <div className={styles.header}>
+        {/* 閉じる操作は見出しの行、つまり**画面のいちばん上**に置く（先行 `StockItemForm.tsx`）。
+            **`type="submit"` にしない** — 押した回に保存が走ってしまう。
+            **送っている間は押せない**（設計 規則7）— 結末が届く前に閉じると、断りの案内が
+            出ないまま画面が消え、打った入力も捨てられる。利用者は保存できたと思い込む。
+            見えるのはアイコンだけで、名前は `aria-label`（B-65 規則2）。 */}
+        <button
+          type="button"
+          className={styles.back}
+          disabled={sending}
+          onClick={onClose}
+          aria-label={CLOSE_LABEL}
+        >
+          <Icon name="back" size={24} />
+        </button>
 
-      {/* 名称は**出すが変えられない**（設計 規則1 / `UpdateStockItemInput` に名称が無い）—
-          何を編集しているか分からないまま打たせない。欄にしないのは、送れない値を編集させる
-          形になるためである。 */}
-      <h2>{stockItem.name}</h2>
+        <h1 className={styles.heading}>{HEADING}</h1>
+      </div>
 
-      <label>
-        {FIELD_LABELS.amount}
-        {/* 開いた直後の焦点はこの欄である（設計 規則18 / NFR-15）— 編集できる先頭の欄であり、
-            編集の画面は開くまで木に無い（`PantryTab`）ので mount のときに当てれば足りる。
-            **効果と `ref` を置かない。**
-            分量は自由文字列。数値と単位に分けない（ADR-010）。 */}
-        <input autoFocus value={values.amount} onChange={changeField('amount')} />
-      </label>
+      <div className={styles.fields}>
+        {/* 名称は**出すが変えられない**（設計 規則1 / `UpdateStockItemInput` に名称が無い / B-65
+            規則9）— 何を編集しているか分からないまま打たせない。欄にしないのは、送れない値を
+            編集させる形になるためである。 */}
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>{NAME_LABEL}</span>
+          <span className={styles.fixedName}>{stockItem.name}</span>
+        </div>
 
-      <label>
-        {FIELD_LABELS.expiryDate}
-        {/* YYYY-MM-DD を返す日付の欄（先行 `StockItemForm.tsx`）。書式の検めは置かない
-            （設計 規則4）— 正規化と検めはサーバの1か所に残す。 */}
-        <input type="date" value={values.expiryDate} onChange={changeField('expiryDate')} />
-      </label>
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>
+            <span>{FIELD_LABELS.amount}</span>
+            <span className={styles.optional}>{OPTIONAL_LABEL}</span>
+          </span>
+          {/* 開いた直後の焦点はこの欄である（設計 規則18 / NFR-15）— 編集できる先頭の欄であり、
+              編集の画面は開くまで木に無い（`PantryTab`）ので mount のときに当てれば足りる。
+              **効果と `ref` を置かない。**
+              分量は自由文字列。数値と単位に分けない（ADR-010）。 */}
+          <input
+            autoFocus
+            className={styles.input}
+            placeholder={AMOUNT_PLACEHOLDER}
+            value={values.amount}
+            onChange={changeField('amount')}
+          />
+        </label>
 
-      {notice !== null && <p>{NOTICES[notice]}</p>}
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>
+            <span>{FIELD_LABELS.expiryDate}</span>
+            <span className={styles.optional}>{OPTIONAL_LABEL}</span>
+          </span>
+          {/* 見える箱の上に素の日付欄を透明に重ねる（B-65 規則6）。箱の文字（日付と残日数）は
+              値から作り、`<label>` の中に置くので欄の名前の後ろに続いて読まれる（NFR-17）。 */}
+          <span className={styles.dateBox}>
+            {values.expiryDate === '' ? (
+              <span className={styles.datePlaceholder}>{EXPIRY_DATE_PLACEHOLDER}</span>
+            ) : (
+              <span>{expiryDateLabelOf(values.expiryDate)}</span>
+            )}
+            {remainingDays !== null && (
+              <span
+                className={`${styles.remainingDays} ${REMAINING_DAYS_CLASSES[expirySectionOf(remainingDays)] ?? ''}`}
+              >
+                {remainingDaysLabelOf(remainingDays)}
+              </span>
+            )}
+            {/* YYYY-MM-DD を返す日付の欄（先行 `StockItemForm.tsx`）。書式の検めは置かない
+                （設計 規則4）— 正規化と検めはサーバの1か所に残す。 */}
+            <input
+              type="date"
+              className={styles.dateInput}
+              value={values.expiryDate}
+              onChange={changeField('expiryDate')}
+              onClick={openDatePicker}
+            />
+          </span>
+        </label>
+      </div>
 
-      {/* 保存は画面の下半分に置く（NFR-14）。**1つだけである**（設計 規則5）。
+      {notice !== null && <p className={styles.notice}>{NOTICES[notice]}</p>}
+
+      {/* 保存は画面の下半分に置く（NFR-14 / B-65 規則12）。**1つだけである**（設計 規則5）。
           `<form>` の送信にしてあるので、欄で Enter を打った回もここに落ちる。 */}
-      <button type="submit" disabled={sending || offline}>
-        {sending ? SENDING_LABEL : SAVE_LABEL}
-      </button>
+      <div className={styles.actions}>
+        <button type="submit" className={styles.primary} disabled={sending || offline}>
+          {sending ? SENDING_LABEL : SAVE_LABEL}
+        </button>
+      </div>
     </form>
   );
+}
+
+/**
+ * 日付の欄を押したら日付の選択を開く（B-65 規則6。先行 `StockItemForm.tsx` と同じ扱い）。
+ * **`showPicker` が無い・投げる環境では素の振る舞いに任せる** — 投げても例外を外へ出さない。
+ */
+function openDatePicker(event: MouseEvent<HTMLInputElement>): void {
+  const input = event.currentTarget;
+  if (typeof input.showPicker !== 'function') return;
+
+  try {
+    input.showPicker();
+  } catch {
+    // 開けない環境（利用者の操作と見なされない・iframe の制限など）は素の欄の振る舞いに任せる。
+  }
 }
