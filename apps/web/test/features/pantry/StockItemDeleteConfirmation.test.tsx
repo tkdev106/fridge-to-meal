@@ -5,7 +5,8 @@
  *
  * **仮の文言を期待値に書かない**（`docs/testing.md` 4.1）。名前（`aria-labelledby` の文）は
  * **テストが渡した名称と分量を含むか**で見る。操作は `getAllByRole('button')` を**文書順の位置**で
- * 引き（[やめる, 削除]。規則8）、**先に件数を確かめる**。
+ * 引き（[やめる, 削除]。規則8）、**先に件数を確かめる**。**操作の名前 `やめる` / `削除` は原本 9b の
+ * 文言であり**（ADR-074 結果1）、B-64 の suite は文書順の確かめにこの2つを期待値に置く。
  *
  * **`vi.fn()` で呼び出しを検めない**（`docs/testing.md` 2章）。届いた求めはテストが持つ配列に積む。
  */
@@ -32,7 +33,7 @@ const cabbageWithoutAmount: StockItemDto = {
 };
 
 function renderConfirmation(stockItem: StockItemDto = porkWithAmount, received: string[] = []) {
-  render(
+  return render(
     <StockItemDeleteConfirmation
       stockItem={stockItem}
       onConfirm={() => received.push('confirm')}
@@ -151,5 +152,56 @@ describe('在庫品の削除の確認 StockItemDeleteConfirmation', () => {
     fireEvent.keyDown(cancelOperation(), { key: 'Tab', shiftKey: true });
 
     expect(document.activeElement).toBe(confirmOperation());
+  });
+});
+
+/**
+ * 暗幕と操作の並び（B-64 設計 6章 規則10・11 / 原本 `confirm` / `confirmSP`）。
+ *
+ * **暗幕は ARIA の役割でも文でも見えない**（読み上げから外し、押しても何もしない）。そこで
+ * `container.querySelector('[aria-hidden="true"]')` の1行だけ DOM を辿って引く —
+ * **class 名では引かない**（ADR-055 結果1）。見た目（色・位置）は見ない。
+ */
+
+/** 暗幕。**在ることを先に確かめる。** */
+function scrimIn(container: HTMLElement): HTMLElement {
+  const scrim = container.querySelector<HTMLElement>('[aria-hidden="true"]');
+  expect(scrim).not.toBeNull();
+  if (scrim === null) throw new Error('暗幕が無い');
+
+  return scrim;
+}
+
+describe('在庫品の削除の確認 StockItemDeleteConfirmation の暗幕と並び', () => {
+  it('確認が描くもののうち、ダイアログの外にあるもの（暗幕）は読み上げから外れている', () => {
+    const { container } = renderConfirmation();
+
+    // B-64 規則10: 暗幕は読み上げから外し（`aria-hidden`）、ダイアログとは別の要素である。
+    // 押せる操作は増やさない — 暗幕を button にしない（読み上げから外したものも数える）。
+    const scrim = scrimIn(container);
+    const dialog = screen.getByRole('dialog');
+    expect([scrim.contains(dialog), dialog.contains(scrim)]).toEqual([false, false]);
+    expect(screen.getAllByRole('button', { hidden: true })).toHaveLength(2);
+  });
+
+  it('暗幕を押しても、やめる求めも削除の求めも届かない', () => {
+    const received: string[] = [];
+    const { container } = renderConfirmation(porkWithAmount, received);
+
+    fireEvent.click(scrimIn(container));
+
+    // B-64 規則10 / `docs/screen-design.md` 5章: 閉じる手段は `やめる` と Esc の2つだけである。
+    expect(received).toEqual([]);
+    expect(screen.queryAllByRole('dialog')).toHaveLength(1);
+  });
+
+  it('確認の操作は、文書順に `やめる`・`削除` である', () => {
+    renderConfirmation();
+
+    // B-64 規則11 / B-69 規則8: 見た目は `削除` が上でも、DOM の順は `やめる` → `削除` のまま。
+    expect(screen.getAllByRole('button')).toEqual([
+      screen.getByRole('button', { name: 'やめる' }),
+      screen.getByRole('button', { name: '削除' }),
+    ]);
   });
 });

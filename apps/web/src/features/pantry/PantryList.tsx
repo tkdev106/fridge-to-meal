@@ -18,6 +18,12 @@
  * 現れ、行末の `…` を開くと `編集` / `削除` が出る。どちらの `削除` も同じ確認
  * （`StockItemDeleteConfirmation`）を開き、**消すのは確認の `削除` を押したときだけである。**
  * どの出来事でどの状態へ移るかは `RowOperations.ts` が持ち、ここはその状態を1つ持って配線する。
+ *
+ * **確認を出している間は、一覧（帯・行・削除の断りの案内）を `inert` にする**（B-64 設計 規則9 /
+ * 論点4 #1）。確認はその包みの外に置く。見出しの行と下タブの帯は `inert` にしない — 状態を
+ * 持つのはここであり、外へ出すと持ち方が動く（同 10章）。届かないことは暗幕と確認の Tab の巡回が担う。
+ *
+ * **見た目の値は `PantryList.module.css` にだけ置く**（ADR-055 決定1 / B-64 設計 規則12）。
  */
 
 import { useId, useRef, useState } from 'react';
@@ -31,16 +37,32 @@ import { IDLE, nextRowOperations, opensEditOnTap } from './RowOperations.js';
 import { StockItemDeleteConfirmation } from './StockItemDeleteConfirmation.js';
 import type { SwipePoint } from './SwipeGesture.js';
 import { isDeleteSwipe, isTap } from './SwipeGesture.js';
+import styles from './PantryList.module.css';
+import { Icon } from '../../icons/Icon.js';
 import type { DeleteStockItem, StockItemsOutcome } from '../../server/StockItemRequests.js';
 
 /**
  * 帯の見出し。**見出し自体がテキストの警告**になっていることで、色を使わなくても
- * 期限の近さが読める（NFR-17 / screen-design 5章）。以下すべて仮の文言である。
+ * 期限の近さが読める（NFR-17 / screen-design 5章）。文言はデザインが正である
+ * （ADR-074 結果1 / B-64 設計 規則3）。
  */
 const SECTION_HEADINGS: Record<ExpirySection, string> = {
-  urgent: '期限 今日まで',
+  urgent: '今日まで',
   soon: '期限が近い',
   rest: 'その他',
+};
+
+/**
+ * 見出しに `!` を添える帯（B-64 設計 規則3）。最も急ぐ帯だけである。`!` は `aria-hidden` で
+ * 見出しの名前に入れない — 名前は文だけが運ぶ（先行 B-68 規則9 の断りの記号）。
+ */
+const ALERTED_SECTIONS: ReadonlySet<ExpirySection> = new Set(['urgent']);
+
+/** 帯ごとの見た目（地と文字色・残日数の色）。値は module の側にある（B-64 設計 規則3・5）。 */
+const SECTION_CLASSES: Record<ExpirySection, { band: string; remainingDays: string }> = {
+  urgent: { band: styles.bandUrgent ?? '', remainingDays: styles.remainingDaysUrgent ?? '' },
+  soon: { band: styles.bandSoon ?? '', remainingDays: styles.remainingDaysSoon ?? '' },
+  rest: { band: styles.bandRest ?? '', remainingDays: styles.remainingDaysRest ?? '' },
 };
 
 /** 期限が未設定のときに残日数の欄へ出す印（FR-13 / screen-design 5章）。 */
@@ -123,6 +145,7 @@ type RowShowing = 'nothing' | 'revealed' | 'operationsOpen';
  */
 function StockItemRow({
   row,
+  section,
   showing,
   onEvent,
   onTap,
@@ -131,6 +154,8 @@ function StockItemRow({
   focusToggle,
 }: {
   row: ListedStockItem;
+  /** 行が入っている帯。残日数の色を選ぶためだけに使う（B-64 設計 5章 / 規則5）。 */
+  section: ExpirySection;
   showing: RowShowing;
   onEvent: (event: RowOperationEvent) => void;
   onTap: (stockItem: StockItemDto) => void;
@@ -142,9 +167,20 @@ function StockItemRow({
   const pressedPoint = useRef<SwipePoint | null>(null);
   const operationsId = useId();
   const { stockItem } = row;
+  const rowClass = [
+    styles.row,
+    showing === 'revealed' ? styles.rowRevealed : '',
+    showing === 'operationsOpen' ? styles.rowOperationsOpen : '',
+  ]
+    .filter((name) => name !== '' && name !== undefined)
+    .join(' ');
+  // 期限なしの `－` は弱い文字色、それ以外は帯の文字色（B-64 設計 規則5）。色は文に添えるだけである。
+  const remainingDaysClass =
+    row.remainingDays === null ? styles.remainingDaysNone : SECTION_CLASSES[section].remainingDays;
 
   return (
     <li
+      className={rowClass}
       // 縦は送り、横はこちらで受け取る（`SwipeGesture.ts`）。指定しないと、横へ引いた指も
       // 送りとして browser に取られ、離上が届かないことがある。
       style={{ touchAction: 'pan-y' }}
@@ -183,34 +219,45 @@ function StockItemRow({
         pressedPoint.current = null;
       }}
     >
-      <span>{stockItem.name}</span>
-      {stockItem.amount !== null && <span>{stockItem.amount}</span>}
-      {/* 期限の表現は色に頼らず、必ずテキストを出す（NFR-17）。 */}
-      <span>{remainingDaysText(row.remainingDays)}</span>
-      <button
-        ref={(toggle) => {
-          registerToggle(stockItem.id, toggle);
-        }}
-        type="button"
-        aria-label="操作"
-        aria-expanded={showing === 'operationsOpen'}
-        aria-controls={operationsId}
-        onClick={() => {
-          onEvent({ kind: 'operationsToggled', stockItemId: stockItem.id });
-        }}
-        // 開いた直後は焦点が `…` に残る。ここでの Esc も開いた中身を閉じる（開閉ボタンの形）。
-        onKeyDown={(event) => {
-          if (event.key !== 'Escape' || showing !== 'operationsOpen') return;
+      {/* 行の中身（名称・分量・残日数・`…`）。なぞった行ではこれを左へずらし、下の `削除` を
+          見せる（B-64 設計 規則7）。 */}
+      <div className={styles.rowContent}>
+        <span className={styles.name}>{stockItem.name}</span>
+        {/* 分量が無い行も欄は空のまま置き、列をずらさない。`null` も `－` も文字にしない
+            （B-64 設計 規則4 / FR-13）。 */}
+        <span className={styles.amount}>{stockItem.amount ?? ''}</span>
+        {/* 期限の表現は色に頼らず、必ずテキストを出す（NFR-17）。 */}
+        <span className={`${styles.remainingDays} ${remainingDaysClass}`}>
+          {remainingDaysText(row.remainingDays)}
+        </span>
+        <button
+          ref={(toggle) => {
+            registerToggle(stockItem.id, toggle);
+          }}
+          type="button"
+          className={styles.toggle}
+          aria-label="操作"
+          aria-expanded={showing === 'operationsOpen'}
+          aria-controls={operationsId}
+          onClick={() => {
+            onEvent({ kind: 'operationsToggled', stockItemId: stockItem.id });
+          }}
+          // 開いた直後は焦点が `…` に残る。ここでの Esc も開いた中身を閉じる（開閉ボタンの形）。
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape' || showing !== 'operationsOpen') return;
 
-          event.preventDefault();
-          onEvent({ kind: 'dismissed' });
-        }}
-      >
-        …
-      </button>
+            event.preventDefault();
+            onEvent({ kind: 'dismissed' });
+          }}
+        >
+          {/* 名前は `aria-label` の `操作` が運ぶ（B-64 設計 規則6）。 */}
+          <Icon name="more" size={24} />
+        </button>
+      </div>
       {showing === 'operationsOpen' && (
         <div
           id={operationsId}
+          className={styles.operations}
           // 開いた中身を Esc で閉じたら、焦点はその行の `…` に戻す（B-69 規則13 / NFR-16）。
           onKeyDown={(event) => {
             if (event.key !== 'Escape') return;
@@ -222,6 +269,7 @@ function StockItemRow({
         >
           <button
             type="button"
+            className={styles.operation}
             onClick={() => {
               onEvent({ kind: 'dismissed' });
               onEdit(stockItem);
@@ -231,6 +279,7 @@ function StockItemRow({
           </button>
           <button
             type="button"
+            className={`${styles.operation} ${styles.operationDanger}`}
             onClick={() => {
               onEvent({ kind: 'deleteChosen', stockItem });
             }}
@@ -242,6 +291,7 @@ function StockItemRow({
       {showing === 'revealed' && (
         <button
           type="button"
+          className={styles.revealedDelete}
           onClick={() => {
             onEvent({ kind: 'deleteChosen', stockItem });
           }}
@@ -370,27 +420,39 @@ export function PantryList({
 
   return (
     <div>
-      {notice !== null && <p>{NOTICES[notice]}</p>}
+      {/* 確認を出している間は、帯・行・削除の断りの案内を `inert` にする（B-64 設計 規則9）。
+          確認（暗幕と `role="dialog"`）はこの包みの外に置く。 */}
+      <div className={styles.sections} inert={current.kind === 'confirming'}>
+        {notice !== null && <p className={styles.notice}>{NOTICES[notice]}</p>}
 
-      {sections.map((section) => (
-        <section key={section.section}>
-          <h2>{SECTION_HEADINGS[section.section]}</h2>
-          <ul>
-            {section.stockItems.map((row) => (
-              <StockItemRow
-                key={row.stockItem.id}
-                row={row}
-                showing={showingOf(row.stockItem.id)}
-                onEvent={dispatch}
-                onTap={tapRow}
-                onEdit={onEdit}
-                registerToggle={registerToggle}
-                focusToggle={focusToggle}
-              />
-            ))}
-          </ul>
-        </section>
-      ))}
+        {sections.map((section) => (
+          <section key={section.section}>
+            <h2 className={`${styles.band} ${SECTION_CLASSES[section.section].band}`}>
+              {ALERTED_SECTIONS.has(section.section) && (
+                <span className={styles.alertMark} aria-hidden="true">
+                  !
+                </span>
+              )}
+              <span>{SECTION_HEADINGS[section.section]}</span>
+            </h2>
+            <ul className={styles.rows}>
+              {section.stockItems.map((row) => (
+                <StockItemRow
+                  key={row.stockItem.id}
+                  row={row}
+                  section={section.section}
+                  showing={showingOf(row.stockItem.id)}
+                  onEvent={dispatch}
+                  onTap={tapRow}
+                  onEdit={onEdit}
+                  registerToggle={registerToggle}
+                  focusToggle={focusToggle}
+                />
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
 
       {current.kind === 'confirming' && (
         <StockItemDeleteConfirmation

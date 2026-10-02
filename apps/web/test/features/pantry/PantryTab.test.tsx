@@ -7,9 +7,11 @@
  * と `RegisterFailureNotice.test.ts` が既に押さえている。ここで確かめるのは**切り出せないもの**
  * だけ — いまどちらの画面を出しているか、操作でどちらへ移るか、移っても残らないものである。
  *
- * **仮の文言と記号を期待値に書かない**（ADR-052 結果2 / `docs/testing.md` 4.1）。「＋」「←」も
- * 保存の名札も見出しも未確定であり（`docs/screen-design.md` 論点3 / B-39 設計 規則15）、留めると
- * **文言を変えただけで赤くなる**。観察は次の3つだけで行う。
+ * **仮の文言と記号を期待値に書かない**（ADR-052 結果2 / `docs/testing.md` 4.1）。「←」も
+ * 保存の名札も未確定であり（B-65 の持ち分。`docs/screen-design.md` 論点3 / B-39 設計 規則15）、
+ * 留めると**文言を変えただけで赤くなる**。**一覧の見出し `冷蔵庫` と登録を開く操作の名前
+ * `食材を追加` は例外である** — デザインが正になった（ADR-074 結果1 / B-64 設計 規則1・2）ので、
+ * 末尾の suite はこの2つを期待値に置く。それ以外の観察は次の3つだけで行う。
  *
  * - **一覧が出ている** … **テストが渡した在庫品の名称**を `queryByText` で引く。**編集が絡む観点では
  *   名称で観られない**（B-55）— 編集の画面は対象の在庫品の名称を出すため（B-55 設計 規則1）、
@@ -145,9 +147,10 @@ describe('在庫タブの中身 PantryTab', () => {
   it('登録を開く操作を押すと、登録の入力の欄が出る', () => {
     render(pantryTab());
 
-    fireEvent.click(operationAt(0));
+    fireEvent.click(screen.getByRole('button', { name: '食材を追加' }));
 
-    // 規則3 / FR-01: 一覧の側に登録を開く操作を1つ置く。**記号も名札も見ない**（規則15）。
+    // 規則3 / FR-01: 一覧の側に登録を開く操作を1つ置く。名前はデザインが正である
+    // （B-64 設計 規則2 / ADR-074 結果1）。
     expect(screen.queryAllByRole('textbox').length).toBeGreaterThan(0);
   });
 
@@ -825,5 +828,81 @@ describe('在庫タブの中身と編集', () => {
     // 規則2・17: 開くたびに**その行の値**が出る（前に開いた行の値を持ち回さない）。
     expect(editAmountField().value).toBe('1玉');
     expect(requests.receivedUpdates).toEqual([]);
+  });
+});
+
+/**
+ * 一覧の見出しの行（B-64 設計 6章 規則1・2 / ADR-074 / デザイン ★9）。
+ *
+ * **見出し `冷蔵庫` と操作の名前 `食材を追加` はデザインが正である**（ADR-074 結果1）ので、
+ * ここでは期待値に置く。**見た目（アイコン・余白・class 名）は見ない**（ADR-055 結果1）。
+ */
+
+/** 一覧の見出し `冷蔵庫`（`h1`）をすべて引く。 */
+function pantryHeadings(): readonly HTMLElement[] {
+  return screen.queryAllByRole('heading', { level: 1, name: '冷蔵庫' });
+}
+
+/** `a` が文書順で `b` より前にあるか。 */
+function precedes(a: Node, b: Node): boolean {
+  return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+}
+
+describe('在庫タブの見出しの行', () => {
+  it.each([
+    ['読み込み中', { outcome: 'loading' } as const],
+    ['取れなかった', { outcome: 'failed' } as const],
+    ['0件', loaded()],
+    ['在庫品あり', loaded(carrot)],
+  ])('一覧の結末が%sでも、見出し `冷蔵庫` を1つ出す', (_label, stockItems) => {
+    render(pantryTab({ stockItems }));
+
+    // B-64 規則1 / ADR-074: 見出しは一覧の結末に関わらず出す（登録を開く操作を置く B-39 規則3 と同じ構え）。
+    expect(pantryHeadings()).toHaveLength(1);
+  });
+
+  it('登録の画面を開くと、見出し `冷蔵庫` は描かれなくなる', () => {
+    render(pantryTab({ stockItems: loaded(carrot) }));
+
+    fireEvent.click(operationAt(0));
+
+    // B-64 規則1 / B-39 規則1: 登録の画面は一覧と入れ替わる。見出しも一覧の側のものである。
+    expect(screen.queryByRole('heading', { name: '冷蔵庫' })).toBeNull();
+  });
+
+  it('編集の画面を開くと、見出し `冷蔵庫` は描かれなくなる', () => {
+    render(pantryTab({ stockItems: loaded(carrot) }));
+
+    tapRowAt(0, 1);
+
+    // B-64 規則1 / B-55 規則16: 編集の画面も一覧と入れ替わる。
+    expect(screen.queryByRole('heading', { name: '冷蔵庫' })).toBeNull();
+  });
+
+  it('登録を開く操作の名前は `食材を追加` である', () => {
+    render(pantryTab({ stockItems: loaded(carrot) }));
+
+    // B-64 規則2 / NFR-16: アイコンだけのボタンでも名前で読める。名前は `aria-label` の文だけで、
+    // 記号を混ぜない（完全一致）。
+    expect(screen.queryAllByRole('button', { name: '食材を追加' })).toHaveLength(1);
+  });
+
+  it('`食材を追加` は見出し `冷蔵庫` の後ろ、行の操作より前に並ぶ', () => {
+    render(pantryTab({ stockItems: loaded(carrot, chineseCabbage) }));
+
+    // B-64 規則2: 見出しの行の右に置く。文書順で h1 → `食材を追加` → 1行目の `…`。
+    const headings = pantryHeadings();
+    const opens = screen.queryAllByRole('button', { name: '食材を追加' });
+    expect([headings.length, opens.length]).toEqual([1, 1]);
+
+    const [heading] = headings;
+    const [open] = opens;
+    const firstToggle = screen.getAllByRole('button', { name: '操作' })[0];
+    if (heading === undefined || open === undefined || firstToggle === undefined) {
+      throw new Error('見出し・登録を開く操作・行の操作のどれかが無い');
+    }
+
+    expect([precedes(heading, open), precedes(open, firstToggle)]).toEqual([true, true]);
+    expect(operationAt(0)).toBe(open);
   });
 });

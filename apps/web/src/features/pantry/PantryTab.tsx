@@ -21,8 +21,10 @@
  * セッションも `fetch` も基点も知らない。ログアウトも知らない — ログアウトは設定画面にあり、
  * 在庫タブには置かない（B-56c 規則12 / `docs/screen-design.md` 2.1）。
  *
- * **日本語はここには登録を開く操作の名札だけを置く**（規則15）。見出し・欄のラベル・保存・
- * 「←」・案内は `StockItemForm.tsx` の持ち分である。
+ * **日本語はここには一覧の見出し `冷蔵庫` と登録を開く操作の名前だけを置く**（規則15 /
+ * B-64 設計 規則1・2）。欄のラベル・保存・「←」・案内は `StockItemForm.tsx` の持ち分である。
+ *
+ * **見た目の値は `PantryTab.module.css` にだけ置く**（ADR-055 決定1 / B-64 設計 規則12）。
  */
 
 import type { JSX } from 'react';
@@ -33,6 +35,8 @@ import { PantryList } from './PantryList.js';
 import type { PantryListState } from './PantryList.js';
 import { StockItemEditForm } from './StockItemEditForm.js';
 import { StockItemForm } from './StockItemForm.js';
+import styles from './PantryTab.module.css';
+import { Icon } from '../../icons/Icon.js';
 import type {
   DeleteStockItem,
   RegisterStockItem,
@@ -40,11 +44,15 @@ import type {
 } from '../../server/StockItemRequests.js';
 
 /**
- * 登録を開く操作の名札。**仮の文言である**（`docs/screen-design.md` 論点3 / 規則15）—
- * 同書 5章のワイヤーは見出しの行の右端に「＋」を置いており、記号だけでは読み上げに乗らない
- * ため、いまは文字を添えてある。
+ * 一覧の見出し（B-64 設計 規則1 / デザイン ★9）。文言はデザインが正である（ADR-074 結果1）。
  */
-const OPEN_REGISTER_LABEL = '＋ 食材を追加';
+const PANTRY_HEADING = '冷蔵庫';
+
+/**
+ * 登録を開く操作の名前（B-64 設計 規則2）。見えるのは `plus` のアイコンだけで、名前は
+ * `aria-label` のこの文だけが運ぶ（アイコンは `aria-hidden`）。
+ */
+const OPEN_REGISTER_LABEL = '食材を追加';
 
 export type PantryTabProps = {
   /** 在庫一覧の3値。**門から素通しで受け取る**（B-22 設計 規則10 / B-39 設計 規則4）。 */
@@ -120,13 +128,24 @@ export function PantryTab({
     );
   }
 
-  // 登録を開く操作は一覧より前に置く（規則3。`docs/screen-design.md` 5章の見出しの行の右端）。
-  // **一覧が取れなかった回も置いたままにする** — 取得の断りは登録に及ばない（7章）。
+  // 見出しの行（`h1` と、右に登録を開く操作）は一覧より前に置く（規則3 / B-64 設計 規則1・2）。
+  // **一覧の結末に関わらず置いたままにする** — 取得の断りは登録に及ばない（7章）。
+  // 右側は操作の並びとして組む（いまは `+` 1つ。歯車は B-60 が `+` の右に足す。B-64 設計 10章）。
   return (
-    <>
-      <button type="button" onClick={() => setRegistering(true)}>
-        {OPEN_REGISTER_LABEL}
-      </button>
+    <div className={styles.screen}>
+      <header className={styles.header}>
+        <h1 className={styles.heading}>{PANTRY_HEADING}</h1>
+        <div className={styles.headerOperations}>
+          <button
+            type="button"
+            className={styles.iconButton}
+            aria-label={OPEN_REGISTER_LABEL}
+            onClick={() => setRegistering(true)}
+          >
+            <Icon name="plus" size={24} />
+          </button>
+        </div>
+      </header>
 
       {/* 行のタップで編集へ移る（B-55 設計 規則15・16 / `docs/screen-design.md` 2章
           `pantry --> edit`）。**どの動きをタップと読むかは一覧の側の判断である**
@@ -138,6 +157,6 @@ export function PantryTab({
         onEdit={setEditing}
         offline={offline}
       />
-    </>
+    </div>
   );
 }

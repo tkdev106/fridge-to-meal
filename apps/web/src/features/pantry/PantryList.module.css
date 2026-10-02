@@ -1,0 +1,235 @@
+/*
+ * 在庫一覧の帯と行の見た目（設計 B-64 6章 規則3〜8・14 / 原本 `docs/design/src/PantryScreen.dc.html`
+ * と部品一覧の「スマホ・横スワイプ中」「PC・行末の操作を開いた」）。
+ *
+ * **見た目の値はここにだけ置く**（ADR-055 決定1）。色・文字の大きさ・太さ・操作の高さは
+ * トークン（`src/global.css` の `:root`）から `var(--…)` で引き、ここで新しい色を作らない。
+ * トークンに無い寸法（行の高さ 56px・列の幅 72px・ずらし 96px・開いた中身の幅 160px・余白）は
+ * 原本の値を直に書く（規則12）。
+ *
+ * **動きを付けない**（規則8）— ずらしも開閉も即時である。
+ * **SP で `…` を見た目から隠すこと・3列の行はここに無い**（B-64b。切り替える幅は B-60）。
+ */
+
+/* 帯・行の包み（確認の間は `inert`。規則9）。帯の間は 24px（規則14）。 */
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* 消せなかった案内。デザインに描かれていないので、行と同じ左右の余白だけを取る。 */
+.notice {
+  margin: 0;
+  padding: 0 16px;
+}
+
+/* 帯の見出し（原本の帯。高さ 32px・小さく字間を空けた文字）。地と文字色は帯ごとに下で当てる。 */
+.band {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  margin: 0;
+  padding: 0 16px;
+  font-size: var(--font-size-12);
+  font-weight: var(--font-weight-regular);
+  line-height: 1.5;
+  letter-spacing: 0.12em;
+}
+
+.bandUrgent {
+  background: var(--color-danger-surface);
+  color: var(--color-danger);
+}
+
+.bandSoon {
+  background: var(--color-caution-surface);
+  color: var(--color-caution);
+}
+
+.bandRest {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+/* `今日まで` に添える `!`（原本は太さ 500・字間なし。書体は `--font-family` に任せる — 先頭が Inter）。 */
+.alertMark {
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0;
+}
+
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * 1行。高さ 56px・下に区切り線（原本）。開いた中身（`.operations`）を行の直下へ重ねるため
+ * `position: relative` にする。はみ出しは切らない — 切ると開いた中身が見えなくなる（規則7）。
+ */
+.row {
+  position: relative;
+  height: 56px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-background);
+  cursor: pointer;
+  /* なぞる操作で文字が選ばれないようにする（ポインタでなぞると選択の色が乗る）。 */
+  user-select: none;
+}
+
+.row:hover {
+  background: var(--color-surface);
+}
+
+/* 行の中身。名称・分量・残日数・`…` の4列（原本 PC の rowCols。`…` はどの幅でも置く。B-69 規則3）。 */
+.rowContent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 72px 72px 48px;
+  column-gap: 12px;
+  align-items: center;
+  height: 100%;
+  padding: 0 0 0 16px;
+  background: inherit;
+}
+
+/*
+ * なぞった行（規則7）。赤の地の上で中身を左へ 96px ずらし、右端の `削除` を見せる。
+ * はみ出しを切るのはこの間だけである（開いた中身とは同時に出ない。`RowOperations` 規則2・3）。
+ */
+.rowRevealed {
+  overflow: hidden;
+  background: var(--color-danger);
+}
+
+.rowRevealed:hover {
+  background: var(--color-danger);
+}
+
+.rowRevealed .rowContent {
+  position: relative;
+  z-index: 1;
+  transform: translateX(-96px);
+  background: var(--color-background);
+}
+
+/* 行末の操作を開いた行（規則6）。行の地を面の白にする。 */
+.rowOperationsOpen {
+  background: var(--color-surface);
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.amount {
+  font-size: var(--font-size-14);
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 残日数。色は帯の文字色で、文に添えるだけである（規則5 / NFR-17）。 */
+.remainingDays {
+  font-size: var(--font-size-14);
+  line-height: 1.6;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.remainingDaysUrgent {
+  color: var(--color-danger);
+}
+
+.remainingDaysSoon {
+  color: var(--color-caution);
+}
+
+.remainingDaysRest {
+  color: var(--color-text-secondary);
+}
+
+/* 期限なしの `－`。 */
+.remainingDaysNone {
+  color: var(--color-text-muted);
+}
+
+/*
+ * 行末の `…`。押せる範囲は 48px 四方（NFR-16）。素の button の枠と地はここで消す
+ * （リセットでは全体を消さない。B-59 規則3）。
+ */
+.toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height-secondary);
+  height: var(--control-height-secondary);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.toggle:hover,
+.toggle[aria-expanded='true'] {
+  background: var(--color-surface-muted);
+}
+
+/* 開いた中身（規則6 / 原本「PC・行末の操作を開いた」）。行の直下の右端に重ねる。 */
+.operations {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  width: 160px;
+  margin-top: -1px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  cursor: default;
+}
+
+.operation {
+  height: 44px;
+  padding: 0 16px;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  font-size: var(--font-size-16);
+  letter-spacing: 0.02em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.operation:hover {
+  background: var(--color-background);
+}
+
+.operationDanger {
+  color: var(--color-danger);
+}
+
+.operationDanger:hover {
+  background: var(--color-danger-surface);
+}
+
+/* なぞって現れる `削除`（規則7 / 原本「スマホ・横スワイプ中」）。行の右端の下、幅 96px・行の高さ。 */
+.revealedDelete {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 96px;
+  padding: 0;
+  border: 0;
+  background: var(--color-danger);
+  color: var(--color-background);
+  font-size: var(--font-size-14);
+  cursor: pointer;
+}

@@ -1,0 +1,57 @@
+/*
+ * 在庫タブの一覧の側の見た目（設計 B-64 6章 規則1・2・14 / 原本 `docs/design/src/PantryScreen.dc.html`
+ * の SP）。
+ *
+ * **見た目の値はここにだけ置く**（ADR-055 決定1）。色・文字の大きさ・太さ・操作の高さは
+ * トークン（`src/global.css` の `:root`）から `var(--…)` で引く。トークンに無い寸法（余白・
+ * 最大幅）は原本の値を直に書く（規則12）。
+ *
+ * **PC の余白（見出し 40px 0 32px・画面 0 48px 64px）はここに無い**（B-64b。切り替える幅は B-60）。
+ */
+
+/* 一覧の側の根。最大幅 720px（規則14。SP の 390 では効かない）と、下の余白 24px（原本 `L.pad`）。 */
+.screen {
+  width: 100%;
+  max-width: 720px;
+  padding-bottom: 24px;
+}
+
+/* 見出しの行。`h1` を左、操作の並びを右に置く（原本 header。SP の余白 16px 16px 24px）。 */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--control-height-secondary);
+  padding: 16px 16px 24px;
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--font-size-20);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+}
+
+/* 右の操作の並び。右の -12px はアイコンの線を本文の右端に揃えるため（原本 `L.plusMr`）。 */
+.headerOperations {
+  display: flex;
+  margin-right: -12px;
+}
+
+/*
+ * アイコンだけの操作。押せる範囲は 48px 四方（NFR-16）。
+ * 素の button の枠と地はここで消す（リセットでは全体を消さない。B-59 規則3）。
+ */
+.iconButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height-secondary);
+  height: var(--control-height-secondary);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+}

@@ -1,0 +1,83 @@
+/*
+ * 在庫品の削除の確認の見た目（設計 B-64 6章 規則10・11 / 原本 `docs/design/src/PantryScreen.dc.html`
+ * の `confirm` と `confirmSP`）。
+ *
+ * **見た目の値はここにだけ置く**（ADR-055 決定1）。色・文字の大きさ・太さ・操作の高さは
+ * トークンから `var(--…)` で引く。**暗幕の色はトークンを足さず、`--color-text` からここで作る**
+ * （規則12。原本の rgba(31,30,27,0.4) は文字色の 40%）。
+ *
+ * **中央に置く PC のダイアログ（幅 400px・2列）はここに無い**（B-64b）。動きも付けない（規則8）。
+ */
+
+/* 暗幕。画面全体（見出しの行と下タブの帯も）を覆う。押しても何もしない（規則10）。 */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--color-text) 40%, transparent);
+}
+
+/* 下から出る面（規則11）。暗幕と下タブの帯より上に重ねる。下端の安全域を余白に足す。 */
+.dialog {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 32px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.question {
+  margin: 0;
+  font-size: var(--font-size-16);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.75;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 操作2つを縦に並べる。**見た目は `削除` が上・`やめる` が下**で、DOM の順（`やめる` → `削除`）は
+ * 変えない（規則11 / B-69 規則8）。
+ */
+.operations {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 12px;
+}
+
+.cancel,
+.confirm {
+  width: 100%;
+  height: var(--control-height-secondary);
+  border-radius: 0;
+  font-size: var(--font-size-16);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+/* `やめる`（枠のみ）。 */
+.cancel {
+  border: 1px solid var(--color-text);
+  background: transparent;
+  color: var(--color-text);
+}
+
+/* `削除`（赤の地）。 */
+.confirm {
+  border: 0;
+  background: var(--color-danger);
+  color: var(--color-background);
+  font-weight: var(--font-weight-medium);
+}
+
+/* 接続が切れて押せない `削除`（B-70 規則11）。先行 `SignInForm` の `.primary:disabled` と同じ見た目。 */
+.confirm:disabled {
+  background: var(--color-border);
+  color: var(--color-text-muted);
+  cursor: default;
+}
