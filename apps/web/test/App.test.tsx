@@ -178,16 +178,44 @@ function notices(): readonly HTMLElement[] {
 }
 
 /**
- * 帯（`navigation`）の外にある操作を**文書順**で引く（B-60）。帯には「設定」の `button` が
- * 常にあるので（B-60 規則4）、画面の中身の操作を数えるときは帯の外に絞る。**帯が無い画面
- * （ログインの画面）では、画面のすべての操作である。**
+ * 見出しの行の歯車（B-60 設計 6章 規則12・13）として数えるもの。**帯（`navigation`）の外にあり、
+ * 名前が `設定` の `button`** である — 帯の「設定」も同じ名前を持つため、置き場で絞る（同 8章）。
+ * 名前は原本から取った文言で仮ではない（ADR-074 決定1）。
  */
-function contentOperations(): HTMLElement[] {
+function headerSettingsButtons(): HTMLElement[] {
   const navigation = screen.queryByRole('navigation');
 
   return screen
-    .queryAllByRole('button')
+    .queryAllByRole('button', { name: '設定' })
     .filter((operation) => navigation === null || !navigation.contains(operation));
+}
+
+/** 見出しの行の歯車。**先に1つだけであることを確かめる。** */
+function headerSettings(): HTMLElement {
+  const gears = headerSettingsButtons();
+  expect(gears).toHaveLength(1);
+
+  const [gear] = gears;
+  if (gear === undefined) throw new Error('見出しの歯車が無い');
+
+  return gear;
+}
+
+/**
+ * 帯（`navigation`）の外にある操作を**文書順**で引く（B-60）。帯には「設定」の `button` が
+ * 常にあるので（B-60 規則4）、画面の中身の操作を数えるときは帯の外に絞る。**見出しの歯車も
+ * 数えない**（`headerSettingsButtons`。B-60 規則12）— 一覧の先頭に結末によらず置かれるので、
+ * 数えると画面ごとの操作の数と位置が崩れる。**帯が無い画面（ログインの画面）では、画面の
+ * すべての操作である。**
+ */
+function contentOperations(): HTMLElement[] {
+  const navigation = screen.queryByRole('navigation');
+  const gears = headerSettingsButtons();
+
+  return screen
+    .queryAllByRole('button')
+    .filter((operation) => navigation === null || !navigation.contains(operation))
+    .filter((operation) => !gears.includes(operation));
 }
 
 /**
@@ -2549,22 +2577,6 @@ describe('門 App の設定', () => {
     fireEvent.click(historyTab());
   }
 
-  /**
-   * 履歴タブの設定への入口。**帯の外にあり、`aria-pressed` を持たず、`listitem` の中にも無い
-   * `button`** である（B-56c 規則4）。**先に1つだけであることを確かめる。**
-   */
-  function settingsEntry(): HTMLElement {
-    const entries = contentOperations().filter(
-      (button) => !button.hasAttribute('aria-pressed') && button.closest('li') === null,
-    );
-    expect(entries).toHaveLength(1);
-
-    const [entry] = entries;
-    if (entry === undefined) throw new Error('設定への入口が無い');
-
-    return entry;
-  }
-
   /** 履歴タブで行が出るのを待ってから、帯の「設定」を押す（B-60 規則7）。 */
   async function openSettingsFromHistory(): Promise<void> {
     openHistory();
@@ -2623,6 +2635,50 @@ describe('門 App の設定', () => {
     expect(contentOperations()).toHaveLength(SETTINGS_OPERATION_COUNT);
   });
 
+  it.each<[string, () => Promise<void>, string]>([
+    [
+      '献立',
+      async () => {
+        await screen.findByText(SUGGESTED);
+      },
+      SUGGESTED,
+    ],
+    [
+      '在庫',
+      async () => {
+        openPantry();
+        await screen.findByText(carrot.name);
+      },
+      carrot.name,
+    ],
+    [
+      '履歴',
+      async () => {
+        openHistory();
+        await screen.findByText(NIKUJAGA);
+      },
+      NIKUJAGA,
+    ],
+  ])(
+    '見出しの歯車を押すと、タブの中身の代わりに設定画面が出る（%s）',
+    async (_label, showTab, shownInTab) => {
+      // B-60 規則12 / 規則7: 3つのタブの見出しの歯車は、帯の「設定」と同じ行き先を開く。
+      renderApp(
+        { initialState: 'signedIn' },
+        { list: [loaded(carrot)] },
+        { show: [suggestedOne('meal-s', SUGGESTED)] },
+        {},
+        { list: [listed([mealA])] },
+      );
+
+      await showTab();
+      fireEvent.click(headerSettings());
+
+      expect(screen.queryByText(shownInTab)).toBeNull();
+      expect(contentOperations()).toHaveLength(SETTINGS_OPERATION_COUNT);
+    },
+  );
+
   it('設定を開いている間は、どのタブも選ばれていると読めない', async () => {
     // B-60 規則7（原本 `TabBar active="none"`）。
     renderApp(
@@ -2661,8 +2717,8 @@ describe('門 App の設定', () => {
     expect(textboxes()).toHaveLength(1);
   });
 
-  it('履歴が取れなかった回も、設定を開いてログアウトできる', async () => {
-    // 規則2 / 設計 7章 行2 / FR-25: 履歴が取れなくてもログアウトへ届かなくなってはならない。
+  it('履歴が取れなかった回も、見出しの歯車から設定を開いてログアウトできる', async () => {
+    // B-60 規則12 / B-56c 規則2 / FR-25: 履歴が取れなくてもログアウトへ届かなくなってはならない。
     renderApp(
       { initialState: 'signedIn' },
       { list: [loaded(carrot)] },
@@ -2674,9 +2730,9 @@ describe('門 App の設定', () => {
     );
 
     openHistory();
-    // 取れなかった結末を画面へ流す（読み込み中にも入口はあるが、本題は取れなかった回である）。
+    // 取れなかった結末を画面へ流す（読み込み中にも歯車はあるが、本題は取れなかった回である）。
     await act(async () => {});
-    fireEvent.click(settingsEntry());
+    fireEvent.click(headerSettings());
     fireEvent.click(signOutOperation());
 
     await waitFor(() => {

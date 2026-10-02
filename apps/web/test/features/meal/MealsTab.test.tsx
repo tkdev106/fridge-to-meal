@@ -68,6 +68,7 @@ function renderTab(
       onOpenMeal={overrides.onOpenMeal ?? (() => {})}
       mealDetail={overrides.mealDetail ?? null}
       offline={overrides.offline ?? false}
+      onOpenSettings={overrides.onOpenSettings ?? (() => {})}
     />,
   );
 }
@@ -81,12 +82,46 @@ function cardAt(cards: readonly HTMLElement[], index: number): HTMLElement {
 }
 
 /**
+ * 見出しの行の歯車（B-60 設計 6章 規則13）。名前 `設定` は原本から取った文言で仮ではない
+ * （ADR-074 決定1）ので、名前で引く。
+ */
+function headerSettingsButtons(): HTMLElement[] {
+  return screen.queryAllByRole('button', { name: '設定' });
+}
+
+/**
+ * 献立の操作を**文書順**で引く。**見出しの歯車は数えない**（B-60）— 歯車は結末によらず一覧の
+ * 先頭に置かれるので（同 規則12）、数えると結末ごとの操作の数が読めなくなる。
+ */
+function contentButtons(): HTMLElement[] {
+  const gears = headerSettingsButtons();
+
+  return screen.queryAllByRole('button').filter((button) => !gears.includes(button));
+}
+
+/** 献立の操作が**ちょうど1つ**であることを確かめて返す（`getByRole('button')` から歯車を除いたもの）。 */
+function soleContentButton(): HTMLElement {
+  const buttons = contentButtons();
+  expect(buttons).toHaveLength(1);
+
+  const [button] = buttons;
+  if (button === undefined) throw new Error('献立の操作が無い');
+
+  return button;
+}
+
+/** `before` が文書順で `after` より前にあるか（jsdom はレイアウトを持たない）。 */
+function precedes(before: Node, after: Node): boolean {
+  return (before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+}
+
+/**
  * 「新しい献立を求める」操作。**末尾の1つである**（B-49b / D-4）— カードの中にも
  * 詳細を開く操作が1つずつ在るので（B-53）、`getByRole('button')` では引けない。
  * **名札は見ない**（仮の文言である）。
  */
 function requestControl(): HTMLButtonElement {
-  const buttons = screen.getAllByRole('button');
+  const buttons = contentButtons();
   const control = buttons[buttons.length - 1];
   if (control === undefined) throw new Error('操作が1つも無い');
 
@@ -228,25 +263,25 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
     // **カード1枚ごとに詳細を開く操作が1つ在る**（B-53）ので、カード1枚の回は2つである。
     renderTab(suggested(entry()));
 
-    expect(screen.getAllByRole('button')).toHaveLength(2);
+    expect(contentButtons()).toHaveLength(2);
   });
 
   it('まだ提案が無い回にも、操作を出す', () => {
     renderTab({ outcome: 'none' });
 
-    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(contentButtons()).toHaveLength(1);
   });
 
   it('取れなかった回にも、操作を出す', () => {
     renderTab({ outcome: 'failed' });
 
-    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(contentButtons()).toHaveLength(1);
   });
 
   it('読み込み中は操作を出さない', () => {
     renderTab({ outcome: 'loading' });
 
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(contentButtons()).toHaveLength(0);
   });
 
   it('押す前から待ち時間の案内を出し、送信中も出したままにする', () => {
@@ -344,7 +379,7 @@ describe('献立タブ MealsTab の在庫が足りない回（S-4）', () => {
     // 押しても呼べない操作を置かない（D-7）。
     renderTab({ outcome: 'insufficientStockItems' });
 
-    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(contentButtons()).toHaveLength(1);
   });
 
   it('在庫が足りない回の操作を押すと、在庫タブへ送る口が呼ばれる', () => {
@@ -359,7 +394,7 @@ describe('献立タブ MealsTab の在庫が足りない回（S-4）', () => {
       },
     );
 
-    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(soleContentButton());
 
     expect(wentToPantry).toBe(true);
   });
@@ -376,7 +411,7 @@ describe('献立タブ MealsTab の在庫が足りない回（S-4）', () => {
       },
     );
 
-    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(soleContentButton());
 
     expect(requested).toBe(false);
   });
@@ -418,7 +453,7 @@ describe('献立タブ MealsTab の上限に達した回（S-7）', () => {
     // 規則3: 案内だけを出す。**在庫タブへは送らない**（在庫は原因ではない）。
     renderTab({ outcome: 'generationLimitReached' });
 
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(contentButtons()).toHaveLength(0);
   });
 
   it('上限に達した回は、案内を1つ出す', () => {
@@ -455,13 +490,13 @@ describe('献立タブ MealsTab の出せない回と他の枝の見分け', () 
   it('上限に達した回は、まだ提案が無い回と違って操作を1つも出さない', () => {
     // 規則5: S-8 に畳まない。畳まれていれば両方に操作が出る。
     const limitReached = renderTab({ outcome: 'generationLimitReached' });
-    const limitReachedButtons = screen.queryAllByRole('button').length;
+    const limitReachedButtons = contentButtons().length;
     limitReached.unmount();
 
     renderTab({ outcome: 'none' });
 
     expect(limitReachedButtons).toBe(0);
-    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(contentButtons()).toHaveLength(1);
   });
 
   it('在庫が足りない回の操作は、まだ提案が無い回の操作とは別の口を呼ぶ', () => {
@@ -478,13 +513,13 @@ describe('献立タブ MealsTab の出せない回と他の枝の見分け', () 
     };
 
     const insufficient = renderTab({ outcome: 'insufficientStockItems' }, record);
-    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(soleContentButton());
     const wentToPantryOnInsufficient = wentToPantry;
     const requestedOnInsufficient = requested;
     insufficient.unmount();
 
     renderTab({ outcome: 'none' }, record);
-    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(soleContentButton());
 
     expect(wentToPantryOnInsufficient).toBe(true);
     expect(requestedOnInsufficient).toBe(false);
@@ -527,9 +562,9 @@ describe('献立タブ MealsTab の出せない回と他の枝の見分け', () 
       },
     );
 
-    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(contentButtons()).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(soleContentButton());
 
     expect(requested).toBe(true);
     expect(wentToPantry).toBe(false);
@@ -539,7 +574,7 @@ describe('献立タブ MealsTab の出せない回と他の枝の見分け', () 
     // 規則14: 読み込み中は操作を1つも出さない（B-49b のまま）。
     renderTab({ outcome: 'loading' });
 
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(contentButtons()).toHaveLength(0);
   });
 });
 
@@ -587,7 +622,7 @@ describe('献立タブ MealsTab の献立詳細への導線', () => {
     // 求めた提案に差し替わると、開いている詳細がどの提案のものか読めなくなる。
     renderTab(suggested(entry()), { mealDetail: <p>詳細の中身</p> });
 
-    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(contentButtons()).toHaveLength(0);
   });
 
   it('詳細を出している間は、一覧の注意表示も出さない', () => {
@@ -640,7 +675,7 @@ describe('献立タブ MealsTab の接続が切れている間', () => {
       { offline: true, onGoToPantry: () => wentToPantry.push('pantry') },
     );
 
-    fireEvent.click(screen.getByRole('button'));
+    fireEvent.click(soleContentButton());
 
     // 規則6: タブを移すのは遷移である（D-7）。
     expect(wentToPantry).toHaveLength(1);
@@ -655,5 +690,65 @@ describe('献立タブ MealsTab の接続が切れている間', () => {
 
     // 7章 行1: 理由は門の帯が示すので、二重に案内しない。
     expect(screen.queryAllByRole('status')).toHaveLength(onlineStatusCount);
+  });
+});
+
+/**
+ * 見出しの行（B-60 設計 6章 規則12〜13）。
+ *
+ * **題 `今日の献立` と歯車の名前 `設定` は原本から取った文言であり、仮ではない**（ADR-074 決定1）。
+ * そのため名前で引く。歯車は**結末によらず**置かれる — どのタブからもログアウトに届くためである。
+ */
+describe('献立タブ MealsTab の見出しの行', () => {
+  it.each<[string, Parameters<typeof MealsTab>[0]['suggestion']]>([
+    ['読み込み中', { outcome: 'loading' }],
+    ['取れなかった', { outcome: 'failed' }],
+    ['まだ提案が無い（S-8）', { outcome: 'none' }],
+    ['在庫が足りない（S-4）', { outcome: 'insufficientStockItems' }],
+    ['上限に達した（S-7）', { outcome: 'generationLimitReached' }],
+    ['提案あり', suggested(entry())],
+  ])('詳細を出していない回は、どの結末でも見出しの行に歯車を置く（%s）', (_label, suggestion) => {
+    // B-60 規則12: 取れなかった回にも置く — どのタブからもログアウトに届く。
+    renderTab(suggestion);
+
+    expect(headerSettingsButtons()).toHaveLength(1);
+  });
+
+  it('見出しは「今日の献立」の1つだけである', () => {
+    // B-60 規則13 / 2章: 1つの一覧に `h1` は1つ。カードの名称は `h1` にしない。
+    renderTab(suggested(entry({ mealId: 'meal-1' }), entry({ mealId: 'meal-2' })));
+
+    const headings = screen.getAllByRole('heading', { level: 1 });
+    expect(headings.map((heading) => heading.textContent)).toEqual(['今日の献立']);
+  });
+
+  it('歯車を押すと、設定を開く求めが届く', () => {
+    // B-60 規則12 / ADR-066: 設定を開いているかは門が持ち、画面は押下を口で渡すだけである。
+    const openedSettings: string[] = [];
+    renderTab(suggested(entry()), { onOpenSettings: () => openedSettings.push('settings') });
+
+    fireEvent.click(screen.getByRole('button', { name: '設定' }));
+
+    expect(openedSettings).toEqual(['settings']);
+  });
+
+  it('見出しの行は、カードより前にある', () => {
+    // B-60 規則12（原本: 見出しは状態の外、一覧の先頭）。
+    renderTab(suggested(entry()));
+
+    const heading = screen.getByRole('heading', { level: 1, name: '今日の献立' });
+    const gear = screen.getByRole('button', { name: '設定' });
+    const firstCard = cardAt(screen.getAllByRole('listitem'), 0);
+
+    expect(precedes(heading, firstCard)).toBe(true);
+    expect(precedes(gear, firstCard)).toBe(true);
+  });
+
+  it('詳細を出している間は、見出しの行を出さない', () => {
+    // B-60 規則12 / 2章: 献立詳細に歯車を置かない（原本に無い）。
+    renderTab(suggested(entry()), { mealDetail: <p>詳細の中身</p> });
+
+    expect(headerSettingsButtons()).toHaveLength(0);
+    expect(screen.queryAllByRole('heading', { level: 1, name: '今日の献立' })).toHaveLength(0);
   });
 });

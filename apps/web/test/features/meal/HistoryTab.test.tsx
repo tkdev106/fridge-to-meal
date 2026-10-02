@@ -13,8 +13,9 @@
  * **`vi.fn()` で呼び出しを検めない**（`docs/testing.md` 2章）。行から届いた識別子は、
  * テストが渡した関数が配列に積んだものを観る。
  *
- * **設定への入口**（B-56c）は「`aria-pressed` を持たず、`listitem` の中にも無い `button`」で
- * 引く（名札は仮なので見ない。B-56c 設計 10章 前提4）。
+ * **設定への入口は見出しの行の歯車である**（B-60 設計 6章 規則12〜13）。題 `履歴` と歯車の名前
+ * `設定` は原本から取った文言で仮ではない（ADR-074 決定1）ので、**名前で引く**。B-56c の
+ * 「⚙ 設定」（名札が仮で、役割と置き場で引いていた）は B-60 で見出しの歯車に置き換わった。
  */
 
 import { describe, expect, it } from 'vitest';
@@ -60,30 +61,14 @@ function columnToggles(): readonly HTMLElement[] {
   return screen.queryAllByRole('button').filter((button) => button.hasAttribute('aria-pressed'));
 }
 
-/** `aria-pressed` を持たない操作（行の開く操作など）。 */
+/** `aria-pressed` を持たない操作（行の開く操作と見出しの歯車）。 */
 function otherButtons(): readonly HTMLElement[] {
   return screen.queryAllByRole('button').filter((button) => !button.hasAttribute('aria-pressed'));
 }
 
-/**
- * 設定への入口として数えるもの。**`aria-pressed` を持たず（列の切り替えではない）、`listitem` の中にも
- * 無い（行の開く操作ではない）** `button` である（B-56c 規則4）。
- */
-function settingsEntries(): readonly HTMLElement[] {
-  return screen
-    .queryAllByRole('button')
-    .filter((button) => !button.hasAttribute('aria-pressed') && button.closest('li') === null);
-}
-
-/** 設定への入口。**先に1つだけであることを確かめる。** */
-function settingsEntry(): HTMLElement {
-  const entries = settingsEntries();
-  expect(entries).toHaveLength(1);
-
-  const [entry] = entries;
-  if (entry === undefined) throw new Error('設定への入口が無い');
-
-  return entry;
+/** 見出しの行の歯車（B-60 規則13）。名前 `設定` で引く。 */
+function headerSettingsButtons(): readonly HTMLElement[] {
+  return screen.queryAllByRole('button', { name: '設定' });
 }
 
 /** `before` が文書順で `after` より前にあるか（jsdom はレイアウトを持たない。B-56c 規則3）。 */
@@ -284,21 +269,14 @@ describe('履歴タブ HistoryTab', () => {
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
 
-  it('取れなかった回に置く操作は設定への入口1つだけで、取り直す操作を置かない', () => {
+  it('取れなかった回に置く操作は歯車1つだけで、取り直す操作を置かない', () => {
     // B-54b 規則7: 再試行の手段を置かず、自動でも取り直さない。
-    // B-56c 規則2 / 設計 7章 行2: ただし設定への入口は出す — 取れなかった回にログアウトへ
-    // 届かなくなってはならない。置く1つがその入口であることを、押して届く求めで観る。
-    const openedSettings: string[] = [];
-    renderTab({ outcome: 'failed' }, { onOpenSettings: () => openedSettings.push('settings') });
+    // B-60 規則12: ただし見出しの歯車は置く — 取れなかった回にもログアウトへ届かなくなっては
+    // ならない（B-56c 規則2 の趣旨）。置く1つがその歯車であることを名前で観る。
+    renderTab({ outcome: 'failed' });
 
-    const buttons = otherButtons();
-    expect(buttons).toHaveLength(1);
-
-    const [entry] = buttons;
-    if (entry === undefined) throw new Error('操作が無い');
-    fireEvent.click(entry);
-
-    expect(openedSettings).toHaveLength(1);
+    expect(otherButtons()).toEqual(headerSettingsButtons());
+    expect(headerSettingsButtons()).toHaveLength(1);
   });
 
   it('選んでいる列が0件なら、行を出さずに案内を出す', () => {
@@ -357,93 +335,69 @@ describe('履歴タブ HistoryTab', () => {
     expect(screen.queryByText(NIKUJAGA)).toBeNull();
   });
 
-  // --- 設定への入口と設定の口（B-56c 規則1〜5・8） ---
+  // --- 見出しの行（B-60 規則12〜13。B-56c の「⚙ 設定」を置き換えた） ---
 
-  it('行が出ている回に、設定への入口を1つ置く', () => {
-    // B-56c 規則2 / `docs/screen-design.md` 2.1・7章: 入口は履歴タブの右上にある。
+  it.each<[string, HistoryTabState]>([
+    ['読み込み中', { outcome: 'loading' }],
+    ['取れなかった', { outcome: 'failed' }],
+    ['取れた', bothColumns],
+  ])('詳細を出していない回は、3つの状態のどれでも歯車を置く（%s）', (_label, meals) => {
+    // B-60 規則12: 取れなかった回にも置く — どのタブからもログアウトに届く。
+    renderTab(meals);
+
+    expect(headerSettingsButtons()).toHaveLength(1);
+  });
+
+  it('見出しは「履歴」である', () => {
+    // B-60 規則13（原本 `index.dc.html`）。1つの一覧に `h1` は1つ。
     renderTab(bothColumns);
 
-    expect(settingsEntries()).toHaveLength(1);
+    const headings = screen.getAllByRole('heading', { level: 1 });
+    expect(headings.map((heading) => heading.textContent)).toEqual(['履歴']);
   });
 
-  it('読み込み中にも、設定への入口を置く', () => {
-    // B-56c 規則2: 一覧を出す3つの状態すべてで出す。
-    renderTab({ outcome: 'loading' });
-
-    const buttons = screen.getAllByRole('button');
-    expect(buttons).toHaveLength(1);
-    expect(buttons[0]?.hasAttribute('aria-pressed')).toBe(false);
-  });
-
-  it('選んでいる列が0件でも、設定への入口を置く', () => {
-    // B-56c 規則2: 0件の列を含む。
-    renderTab(loaded({ seen: [], cooked: [summaryOf('meal-c', STIR_FRY)] }));
-
-    expect(settingsEntries()).toHaveLength(1);
-  });
-
-  it('入口を押すと、設定を開く求めが届く', () => {
-    // B-56c 規則1 / `docs/screen-design.md` 2.1: 設定を開いているかは門が持つ。
+  it('歯車を押すと、設定を開く求めが届く', () => {
+    // B-60 規則12 / ADR-066: 設定を開いているかは門が持ち、画面は押下を口で渡すだけである。
     const openedSettings: string[] = [];
     renderTab(bothColumns, { onOpenSettings: () => openedSettings.push('settings') });
 
-    fireEvent.click(settingsEntry());
+    fireEvent.click(screen.getByRole('button', { name: '設定' }));
 
-    expect(openedSettings).toHaveLength(1);
+    expect(openedSettings).toEqual(['settings']);
   });
 
-  it('入口を押しても、設定が渡されなければ一覧のままである', () => {
-    // B-56c 規則1: `HistoryTab` は設定を開いているかをローカルに持たない。
-    renderTab(bothColumns, { onOpenSettings: () => {} });
-
-    fireEvent.click(settingsEntry());
-
-    expect(screen.queryByText(NIKUJAGA)).not.toBeNull();
-  });
-
-  it('入口は、列の切り替えと行より前にある', () => {
-    // B-56c 規則3 / `docs/screen-design.md` 7章: 見出しの行の右端に置く。
+  it('見出しの行は、列の切り替えと行より前にある', () => {
+    // B-60 規則12（原本: 見出しは一覧の先頭）。B-56c 規則3「入口は列の切り替えと行より前」の置き換え。
     renderTab(bothColumns);
 
-    const entry = settingsEntry();
+    const heading = screen.getByRole('heading', { level: 1, name: '履歴' });
+    const gear = screen.getByRole('button', { name: '設定' });
     const [firstToggle] = columnToggles();
     if (firstToggle === undefined) throw new Error('列の切り替えが無い');
 
-    expect(precedes(entry, firstToggle)).toBe(true);
-    expect(precedes(entry, rowAt(0))).toBe(true);
+    for (const headerPart of [heading, gear]) {
+      expect(precedes(headerPart, firstToggle)).toBe(true);
+      expect(precedes(headerPart, rowAt(0))).toBe(true);
+    }
   });
 
-  it('取れなかった回も、入口は案内より前にある', () => {
-    // B-56c 規則3 / 設計 7章 行2
-    renderTab({ outcome: 'failed' });
-
-    const entry = settingsEntry();
-    const [notice] = screen.getAllByRole('status');
-    if (notice === undefined) throw new Error('案内が無い');
-
-    expect(precedes(entry, notice)).toBe(true);
-  });
-
-  it('入口の名札は記号だけでなく文字を含む', () => {
-    // B-56c 規則4 / NFR-16: 記号だけの名札は読み上げに乗らない。文言は仮なので、
-    // 文字（`\p{L}`）が1つ以上あることだけを見る。
+  it('行と列の切り替えの外にある操作は、歯車の1つだけである', () => {
+    // B-60 規則12・13: 履歴の「⚙ 設定」は撤去し、入口は見出しの歯車1つに畳む。
     renderTab(bothColumns);
 
-    const entry = settingsEntry();
-
-    expect(screen.getAllByRole('button', { name: /\p{L}/u })).toContain(entry);
-  });
-
-  it('入口は押された状態を持たない', () => {
-    // B-56c 規則4: 列の切り替えと区別する。
-    renderTab(bothColumns);
-
-    // 行の外の操作は、列の切り替え2つと入口1つの3つ。押された状態を持つのは切り替えの2つだけ。
-    const outsideRows = screen
+    const outsideRowsAndToggles = screen
       .getAllByRole('button')
-      .filter((button) => button.closest('li') === null);
+      .filter((button) => button.closest('li') === null && !button.hasAttribute('aria-pressed'));
 
-    expect(outsideRows).toHaveLength(3);
-    expect(outsideRows.filter((button) => button.hasAttribute('aria-pressed'))).toHaveLength(2);
+    expect(outsideRowsAndToggles).toEqual(headerSettingsButtons());
+    expect(outsideRowsAndToggles).toHaveLength(1);
+  });
+
+  it('詳細を出している間は、見出しの行を出さない', () => {
+    // B-60 規則12 / 2章: 献立詳細に歯車を置かない（原本に無い）。
+    renderTab(bothColumns, { mealDetail: <p>目印の詳細</p> });
+
+    expect(headerSettingsButtons()).toHaveLength(0);
+    expect(screen.queryAllByRole('heading', { level: 1, name: '履歴' })).toHaveLength(0);
   });
 });

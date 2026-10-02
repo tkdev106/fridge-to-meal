@@ -1,0 +1,59 @@
+/*
+ * 見出しの行（原本 `docs/design/src/MealScreen.dc.html` / `PantryScreen.dc.html` /
+ * `index.dc.html` 12 / 設計 B-60 6章 規則4・12・13・16 / 10章 前提）。
+ *
+ * **見た目の値はここにだけ置く**（ADR-055 決定1・2）。`ScreenHeader.tsx` は class 名しか書かない。
+ * 色・文字の大きさはトークン（`src/global.css` の `:root`）から `var(--…)` で引き、新しい色を
+ * 作らない。トークンに無い寸法（余白・行の高さ・字間）は原本の値を直に書く。
+ *
+ * **幅 1024px 以上を PC とする**（B-60 規則1。値の正は `docs/screen-design.md` 2.1）。切り替えは
+ * メディアクエリだけで行う（同 規則2）。
+ */
+
+/* 行。題と歯車を両端に置く。余白は SP `16px 16px 24px`（原本の在庫・履歴。設計 10章 前提）。 */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 16px 16px 24px;
+}
+
+/* 題（原本の `h1`）。 */
+.title {
+  margin: 0;
+  font-size: var(--font-size-20);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+}
+
+/*
+ * 歯車。押せる大きさは 48px（規則13 / NFR-16）。アイコン 24px の外側の余白ぶん右へ寄せ、
+ * 見た目の右端を題の行の内側に揃える（原本 `margin-right: -12px`）。
+ * 素の button の枠と地はここで消す。
+ */
+.settings {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-right: -12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+/* PC（幅 1024px 以上）。余白は `40px 0 32px`（設計 10章 前提）、歯車は出さない（規則4）。 */
+@media (min-width: 1024px) {
+  .header {
+    padding: 40px 0 32px;
+  }
+
+  .settings {
+    display: none;
+  }
+}

@@ -170,7 +170,8 @@ export function App({
    *
    * **門が持つ** — 開いている献立（`openMeal`）と同じ置き方であり、理由も ADR-066 と同じである。
    * **設定はタブの外の4つ目の行き先であり**（B-60 設計 6章 規則7）、器（`TabbedScreen`）が
-   * 選んでいたタブの中身の代わりに描く。閉じるのは設定画面の「閉じる」、**タブを押した回**
+   * 選んでいたタブの中身の代わりに描く。**開く入口は、SP では3つのタブの見出しの歯車、PC では
+   * サイドナビの下端の「設定」である**（B-60 規則4・12）。閉じるのは設定画面の「閉じる」、**タブを押した回**
    * （B-60 規則8。B-56c 規則9「タブを移っても閉じない」はここで置き換わった）、サインイン済みで
    * なくなった回（B-56c 規則10）である。開閉で `selectedTab` も `openMeal` も変えない
    * （B-60 規則9）。開いても閉じても何も取りに行かない（B-56c 規則11）。
@@ -697,6 +698,7 @@ export function App({
             // 決める（先行 `PantryTab` の一覧 ⇄ 登録）。
             mealDetail={openMeal?.from === 'meals' ? openMealDetail : null}
             offline={offline}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         }
         pantry={
@@ -708,6 +710,7 @@ export function App({
             onUpdate={updateAndReload}
             ingredientNames={ingredientNames}
             offline={offline}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         }
         history={

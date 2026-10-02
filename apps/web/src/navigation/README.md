@@ -14,6 +14,8 @@
 | `Tabs.ts` | タブの識別子（`TabId`）・並び（`TAB_ORDER`）・既定（`DEFAULT_TAB`）。**文言を持たない** |
 | `TabbedScreen.tsx` | 帯（SP の下タブ・PC のサイドナビ。ロゴ・タブ3つ・帯の「設定」）と、選んだタブの中身または設定の出し分け。**日本語のラベルとタブのアイコンの対応はここだけ** |
 | `TabbedScreen.module.css` | SP / PC の並びと、選んでいる / いないタブの見た目（`.tab` / `.tabSelected`）。**見た目の値はここだけ** |
+| `ScreenHeader.tsx` | 見出しの行（`h1` の題と、その後ろの歯車 `aria-label="設定"`）。献立・在庫（一覧）・履歴の3つの一覧の先頭に置かれる（B-60 設計 6章 規則12〜14） |
+| `ScreenHeader.module.css` | 見出しの行の見た目。余白は SP `16px 16px 24px`・PC `40px 0 32px`、歯車の押せる大きさは 48px で、**PC では歯車を `display: none` にする**（PC の入口はサイドナビの下端の「設定」） |
 
 ## ここで守ること
 
@@ -41,6 +43,10 @@
   選ばず（中身の欄は `tabpanel` にせず、`aria-controls` も付けない）、帯の「設定」が
   `aria-current="page"` を持つ。**開いているかを持つのは門**であり、タブが押されたら門が設定を
   閉じてそのタブを出す。開閉で選んでいるタブも開いている献立も変えない
+- **`ScreenHeader` は `features/` から import してよい唯一の `navigation/` の部品である**（B-60 規則14。
+  `icons/` と同じ「どの画面からも引く部品」）。器（`TabbedScreen`）と `Tabs.ts` は門だけが引く。
+  逆向きは無い — **`navigation/` は `features/` を import しない**。`h1` には題の文字だけを入れ、
+  歯車は文書順でその後ろに置く。設定を開いているかは持たず、押下を口で渡すだけである（ADR-066）
 - **選んだタブの中身だけを描く。** 残る2つは `hidden` で隠すのでもなく、木に置かない
 - **見た目の値は `TabbedScreen.module.css` にだけ置く**（B-41 設計 6章 規則6 / ADR-055 決定1）。
   `.tsx` に太さも色も直に書かず、各タブに `.tab`、選んでいるタブにはそれに加えて `.tabSelected`

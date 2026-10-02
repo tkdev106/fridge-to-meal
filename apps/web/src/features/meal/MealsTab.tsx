@@ -22,6 +22,10 @@ import type { MealCardIngredient } from './MealCards.js';
 import { mealCardsOf } from './MealCards.js';
 import type { LatestSuggestionOutcome } from '../../server/SuggestionRequests.js';
 import type { SuggestMealsOutput } from '@fridge-to-meal/contract';
+import { ScreenHeader } from '../../navigation/ScreenHeader.js';
+
+/** 見出しの行の題（原本 `MealScreen.dc.html`。ADR-074 決定1 — 仮ではない）。 */
+const HEADING = '今日の献立';
 
 /** 読み込み中の案内（**暫定**）。`docs/screen-design.md` は S-5 しか決めていない。 */
 const LOADING_NOTICE = '献立を読み込んでいます。';
@@ -184,6 +188,8 @@ export type MealsTabProps = {
   mealDetail: ReactNode | null;
   /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
   offline?: boolean;
+  /** 見出しの行の歯車が押された（B-60 設計 6章 規則12）。設定を開いているかは門が持つ。 */
+  onOpenSettings: () => void;
 };
 
 /**
@@ -318,6 +324,7 @@ export function MealsTab({
   onOpenMeal,
   mealDetail,
   offline = false,
+  onOpenSettings,
 }: MealsTabProps) {
   // 出し分けだけを行い、計算を持たない（先行 `PantryList`）。
   //
@@ -329,28 +336,40 @@ export function MealsTab({
   // 読める（FR-30）。**一覧と並べず入れ替える**（先行 `PantryTab`）。
   if (mealDetail !== null) return <div>{mealDetail}</div>;
 
-  if (suggestion.outcome === 'loading') return <p>{LOADING_NOTICE}</p>;
-
-  // **出せない回は、提案の枝から先に分ける**（B-49c / 規則1〜6）。どちらも 200 で届く結末で
-  // あり、失敗（S-6）にも「まだ提案が無い」（S-8）にも畳まない — 畳むと、利用者が次に何を
-  // できるか（在庫を足す／待つ／求め直す）が画面から読み取れなくなる。
-  if (suggestion.outcome === 'insufficientStockItems') {
-    return <InsufficientStockItemsNotice onGoToPantry={onGoToPantry} />;
-  }
-  if (suggestion.outcome === 'generationLimitReached') return <GenerationLimitReachedNotice />;
-
-  // **送っている間も、失敗した回も、渡された提案のカードを消さない**（S-5 / S-6 / D-6）。
-  // 門が `suggestion` を差し替えるまでは、そのまま描き続ける。
+  // **詳細を出していないすべての結末で、先頭に見出しの行を置く**（B-60 設計 6章 規則12）。
+  // 取れなかった回にも置く — どのタブからもログアウトに届く。結末の出し分けは下の
+  // `suggestionOutcome` のまま変えず、見出しの行で包むだけである。
   return (
-    <div>
-      <SuggestionBody suggestion={suggestion} today={today} onOpenMeal={onOpenMeal} />
-      <RequestNewMealsControl
-        pantryChanged={suggestion.outcome === 'suggested' && suggestion.pantryChanged}
-        requesting={requestingNewMeals}
-        failed={newMealsFailed}
-        offline={offline}
-        onRequestNewMeals={onRequestNewMeals}
-      />
-    </div>
+    <>
+      <ScreenHeader title={HEADING} onOpenSettings={onOpenSettings} />
+      {suggestionOutcome()}
+    </>
   );
+
+  function suggestionOutcome() {
+    if (suggestion.outcome === 'loading') return <p>{LOADING_NOTICE}</p>;
+
+    // **出せない回は、提案の枝から先に分ける**（B-49c / 規則1〜6）。どちらも 200 で届く結末で
+    // あり、失敗（S-6）にも「まだ提案が無い」（S-8）にも畳まない — 畳むと、利用者が次に何を
+    // できるか（在庫を足す／待つ／求め直す）が画面から読み取れなくなる。
+    if (suggestion.outcome === 'insufficientStockItems') {
+      return <InsufficientStockItemsNotice onGoToPantry={onGoToPantry} />;
+    }
+    if (suggestion.outcome === 'generationLimitReached') return <GenerationLimitReachedNotice />;
+
+    // **送っている間も、失敗した回も、渡された提案のカードを消さない**（S-5 / S-6 / D-6）。
+    // 門が `suggestion` を差し替えるまでは、そのまま描き続ける。
+    return (
+      <div>
+        <SuggestionBody suggestion={suggestion} today={today} onOpenMeal={onOpenMeal} />
+        <RequestNewMealsControl
+          pantryChanged={suggestion.outcome === 'suggested' && suggestion.pantryChanged}
+          requesting={requestingNewMeals}
+          failed={newMealsFailed}
+          offline={offline}
+          onRequestNewMeals={onRequestNewMeals}
+        />
+      </div>
+    );
+  }
 }
