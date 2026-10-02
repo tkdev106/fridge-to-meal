@@ -6,8 +6,10 @@
  * 純粋関数のテストが既に押さえている。ここで確かめるのは**受け取った結末のどれを描くか**と、
  * **1枚のカードに何が載るか**だけである。
  *
- * **仮の文言を期待値に書かない**（ADR-052 結果2）。文言は `docs/screen-design.md` 論点3 で
- * 未確定であり、留めると文言を変えただけで赤くなる。観察は次の3つで行う。
+ * **`docs/design/` から取った文言は期待値に書く** — デザインが決まり（ADR-074）、
+ * `docs/screen-design.md` 論点3 は閉じたので仮ではない（見出し・凡例・件数・再利用の札・
+ * 注意表示。B-61）。**それ以外の文言（デザインに無いもの・B-62 の持ち分）は仮であり、
+ * 期待値に書かない**（ADR-052 結果2）— 留めると文言を変えただけで赤くなる。その観察は次の3つで行う。
  *
  * - **役割** … カードは `listitem`、再利用の印は `note`、注意表示は `complementary`
  * - **こちらが渡したデータ** … 献立の名称と、賄える材料の名称
@@ -148,7 +150,8 @@ describe('献立タブ MealsTab', () => {
   });
 
   it('再利用のカードにだけ印を置く', () => {
-    // 両方に付けると印が背景になって消える（FR-35 / D-3）。**印の文言は見ない** — 仮である。
+    // 両方に付けると印が背景になって消える（FR-35 / D-3）。印の文言は別のケースが見る
+    // （B-61 規則8。デザインから取った文言である）。ここで見るのは置くカードだけである。
     renderTab(
       suggested(
         entry({ mealId: 'meal-1', origin: 'reused', title: '生姜焼き' }),
@@ -601,5 +604,308 @@ describe('献立タブ MealsTab の献立詳細への導線', () => {
     renderTab({ outcome: 'insufficientStockItems' }, { mealDetail: <p>詳細の中身</p> });
 
     expect(screen.queryByText('詳細の中身')).not.toBeNull();
+  });
+});
+
+/**
+ * 一覧の見た目のうち、文言と並びで観察できるもの（B-61 / ADR-074 / `docs/design/`）。
+ *
+ * ここに書く文言（`今日の献立` / `太字の材料は今日が期限です` / `材料4件・不足なし` /
+ * `前に見た献立` / 注意表示）は**デザインから取ったもので、仮ではない**（ADR-074 /
+ * `docs/screen-design.md` 論点3）。読み上げの文字 `今日が期限` は凡例の文から取った
+ * （設計 10章 前提）。**見た目の値（太さ・余白・列の数）は見ない**（ADR-055 決定3）。
+ */
+const HEADING = '今日の献立';
+const LEGEND = '太字の材料は今日が期限です';
+const EXPIRING_TODAY_TEXT = '今日が期限';
+const CAUTION_TEXT = 'AI による提案です。分量・加熱時間等はご自身でご確認ください';
+
+/** カードの無い6つの結末（見出しは出し、凡例は出さない）。 */
+const cardlessStates: readonly [string, Parameters<typeof MealsTab>[0]['suggestion']][] = [
+  ['読み込み中', { outcome: 'loading' }],
+  ['取れなかった回', { outcome: 'failed' }],
+  ['まだ提案が無い回', { outcome: 'none' }],
+  ['在庫が足りない回', { outcome: 'insufficientStockItems' }],
+  ['上限に達した回', { outcome: 'generationLimitReached' }],
+  ['提案の1件が0件で届いた回', suggested()],
+];
+
+/** `before` が文書の並びで `after` より前にあるか。 */
+function precedes(before: Node, after: Node): boolean {
+  return (before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+}
+
+describe('献立タブ MealsTab の見出し', () => {
+  it('提案が出ている回、見出し「今日の献立」を水準2で1つ出す', () => {
+    // 規則1・2: 画面の見出しは h2 が先行（`SettingsScreen` / `StockItemForm`）。
+    renderTab(suggested(entry()));
+
+    expect(screen.getAllByRole('heading', { level: 2, name: HEADING })).toHaveLength(1);
+  });
+
+  it.each(cardlessStates)('%sにも、見出し「今日の献立」を1つ出す', (_label, state) => {
+    // 規則1: 見出しは結末に依らない（原本 `MealScreen` の header は state に依らない）。
+    renderTab(state);
+
+    expect(screen.getAllByRole('heading', { level: 2, name: HEADING })).toHaveLength(1);
+  });
+
+  it('詳細を出している間は、見出し「今日の献立」を出さない', () => {
+    // 規則1: 詳細が自分の見出しを持つ。
+    renderTab(suggested(entry()), { mealDetail: <p>詳細の中身</p> });
+
+    expect(screen.queryAllByRole('heading', { name: HEADING })).toHaveLength(0);
+  });
+
+  it('カードの献立の名称を、水準3の見出しで出す', () => {
+    // 規則2: 原本 `MealCard` も h3。画面の見出し（h2）の下に入る。
+    renderTab(suggested(entry({ title: '豚こま肉と白菜の生姜焼き' })));
+
+    const card = cardAt(screen.getAllByRole('listitem'), 0);
+    expect(
+      within(card).getAllByRole('heading', { level: 3, name: '豚こま肉と白菜の生姜焼き' }),
+    ).toHaveLength(1);
+  });
+});
+
+describe('献立タブ MealsTab の凡例', () => {
+  it('カードがあれば、期限が今日の材料が無くても凡例を1つ出す', () => {
+    // 規則3: 原本は `hasCards` だけで出す。期限が今日の材料の有無では出し分けない（D-4 の追記）。
+    renderTab(
+      suggested(
+        entry({
+          coverage: {
+            covered: [{ name: '白菜', kind: 'main', amount: null, expiryDate: '2026-09-25' }],
+            missing: [],
+          },
+        }),
+      ),
+    );
+
+    expect(screen.getAllByText(LEGEND)).toHaveLength(1);
+  });
+
+  it.each(cardlessStates)('%sは、凡例を出さない', (_label, state) => {
+    // 規則3: カードが1枚以上あるときだけ出す。
+    renderTab(state);
+
+    expect(screen.queryAllByText(LEGEND)).toHaveLength(0);
+  });
+
+  it('凡例は見出しの後、最初のカードより前に置く', () => {
+    // 規則3: 見出しの下に1つ（原本 `MealScreen`）。
+    renderTab(suggested(entry({ mealId: 'meal-1' }), entry({ mealId: 'meal-2' })));
+
+    const heading = screen.getByRole('heading', { level: 2, name: HEADING });
+    const legend = screen.getByText(LEGEND);
+    const firstCard = cardAt(screen.getAllByRole('listitem'), 0);
+    expect(precedes(heading, legend)).toBe(true);
+    expect(precedes(legend, firstCard)).toBe(true);
+  });
+
+  it('詳細を出している間は、凡例を出さない', () => {
+    // 規則1・3: 一覧と詳細は入れ替わりである（B-53）。
+    renderTab(suggested(entry()), { mealDetail: <p>詳細の中身</p> });
+
+    expect(screen.queryAllByText(LEGEND)).toHaveLength(0);
+  });
+});
+
+describe('献立タブ MealsTab のカードの件数と使う在庫', () => {
+  it('不足の無いカードに「材料4件・不足なし」と出す', () => {
+    // 規則4 / D-4 / C-16: 区切りは中黒。数えるのは主材料だけ（数え方は `MealCards.ts`）。
+    renderTab(
+      suggested(
+        entry({
+          coverage: {
+            covered: [
+              { name: '豚こま肉', kind: 'main', amount: null, expiryDate: null },
+              { name: '白菜', kind: 'main', amount: null, expiryDate: null },
+              { name: 'にんじん', kind: 'main', amount: null, expiryDate: null },
+              { name: '卵', kind: 'main', amount: null, expiryDate: null },
+            ],
+            missing: [],
+          },
+        }),
+      ),
+    );
+
+    const card = cardAt(screen.getAllByRole('listitem'), 0);
+    expect(within(card).queryByText('材料4件・不足なし')).not.toBeNull();
+  });
+
+  it('不足のあるカードに「材料3件・不足1件」と出す', () => {
+    // 規則4 / D-4。
+    renderTab(
+      suggested(
+        entry({
+          coverage: {
+            covered: [
+              { name: '豚こま肉', kind: 'main', amount: null, expiryDate: null },
+              { name: '白菜', kind: 'main', amount: null, expiryDate: null },
+            ],
+            missing: [{ name: 'しょうが', kind: 'main', amount: '1かけ' }],
+          },
+        }),
+      ),
+    );
+
+    const card = cardAt(screen.getAllByRole('listitem'), 0);
+    expect(within(card).queryByText('材料3件・不足1件')).not.toBeNull();
+  });
+
+  it('使う在庫の欄に「使う:」の見出しを出さない', () => {
+    // 規則5 / D-4 の追記: 名称だけを並べる（原本 `MealCard`）。
+    renderTab(
+      suggested(
+        entry({
+          coverage: {
+            covered: [{ name: '豚こま肉', kind: 'main', amount: null, expiryDate: null }],
+            missing: [],
+          },
+        }),
+      ),
+    );
+
+    const card = cardAt(screen.getAllByRole('listitem'), 0);
+    expect(within(card).queryByText('使う:', { exact: false })).toBeNull();
+  });
+
+  it('期限が今日の材料にだけ、読み上げの文字「今日が期限」を1つ添える', () => {
+    // 規則6 / NFR-17: 太字は色ではないが読み上げに届かない。翌日以降の材料には添えない。
+    renderTab(
+      suggested(
+        entry({
+          coverage: {
+            covered: [
+              { name: '豚こま肉', kind: 'main', amount: null, expiryDate: TODAY },
+              { name: '白菜', kind: 'main', amount: null, expiryDate: '2026-09-21' },
+            ],
+            missing: [],
+          },
+        }),
+      ),
+    );
+
+    const card = cardAt(screen.getAllByRole('listitem'), 0);
+    expect(within(card).getAllByText(EXPIRING_TODAY_TEXT)).toHaveLength(1);
+  });
+
+  it('読み上げの文字は、期限が今日の材料の名称の直後に、名称とは別の要素として並ぶ', () => {
+    // 規則6: 名称の要素の文字は名称だけのまま（完全一致で引ける）。並びは `mealCardsOf` の順（規則14）。
+    renderTab(
+      suggested(
+        entry({
+          coverage: {
+            covered: [
+              { name: '豚こま肉', kind: 'main', amount: null, expiryDate: TODAY },
+              { name: '白菜', kind: 'main', amount: null, expiryDate: '2026-09-21' },
+            ],
+            missing: [],
+          },
+        }),
+      ),
+    );
+
+    const card = cardAt(screen.getAllByRole('listitem'), 0);
+    const pork = within(card).getByText('豚こま肉');
+    const expiringToday = within(card).getByText(EXPIRING_TODAY_TEXT);
+    const napaCabbage = within(card).getByText('白菜');
+    expect(precedes(pork, expiringToday)).toBe(true);
+    expect(precedes(expiringToday, napaCabbage)).toBe(true);
+  });
+
+  it('読み上げの文字を、読み上げから隠された要素の中に置かない', () => {
+    // 規則6: 見た目には出さないが読み上げには届く。`aria-hidden` で隠すと手当ての意味が無い。
+    renderTab(
+      suggested(
+        entry({
+          coverage: {
+            covered: [{ name: '豚こま肉', kind: 'main', amount: null, expiryDate: TODAY }],
+            missing: [],
+          },
+        }),
+      ),
+    );
+
+    const expiringToday = within(cardAt(screen.getAllByRole('listitem'), 0)).getByText(
+      EXPIRING_TODAY_TEXT,
+    );
+    expect(expiringToday.closest('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('期限が今日の材料があっても、生成のカードに note を置かない', () => {
+    // 規則6: 読み上げの文字に `role="note"` を付けない — 再利用の札の `note` と数が混ざる。
+    renderTab(
+      suggested(
+        entry({
+          origin: 'generated',
+          coverage: {
+            covered: [{ name: '豚こま肉', kind: 'main', amount: null, expiryDate: TODAY }],
+            missing: [],
+          },
+        }),
+      ),
+    );
+
+    const card = cardAt(screen.getAllByRole('listitem'), 0);
+    expect(within(card).queryAllByRole('note')).toHaveLength(0);
+  });
+
+  it('使う在庫が3件あっても、一覧の項目はカードの枚数だけである', () => {
+    // 規則7: 使う在庫を `ul` / `li` にしない（カードを `listitem` で数える読み手と混ざる）。
+    renderTab(
+      suggested(
+        entry({
+          coverage: {
+            covered: [
+              { name: '豚こま肉', kind: 'main', amount: null, expiryDate: TODAY },
+              { name: '白菜', kind: 'main', amount: null, expiryDate: '2026-09-21' },
+              { name: 'にんじん', kind: 'main', amount: null, expiryDate: null },
+            ],
+            missing: [],
+          },
+        }),
+      ),
+    );
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+});
+
+describe('献立タブ MealsTab の再利用の札', () => {
+  it('再利用の札の文言は「前に見た献立」である', () => {
+    // 規則8 / FR-35 / D-3。
+    renderTab(suggested(entry({ origin: 'reused' })));
+
+    const card = cardAt(screen.getAllByRole('listitem'), 0);
+    expect(within(card).getByRole('note').textContent).toBe('前に見た献立');
+  });
+
+  it('再利用の札は、献立の名称より前に置く', () => {
+    // 規則8: 名称の上に出す（原本 `MealCard`）。
+    renderTab(suggested(entry({ origin: 'reused', title: '生姜焼き' })));
+
+    const card = cardAt(screen.getAllByRole('listitem'), 0);
+    const note = within(card).getByRole('note');
+    const title = within(card).getByRole('heading', { level: 3, name: '生姜焼き' });
+    expect(precedes(note, title)).toBe(true);
+  });
+});
+
+describe('献立タブ MealsTab の注意表示', () => {
+  it('注意表示の文言を、原本 `AiNotice` のとおりに出す', () => {
+    // 規則11 / FR-20 / D-5。
+    renderTab(suggested(entry()));
+
+    const notice = screen.getByRole('complementary');
+    expect(within(notice).queryByText(CAUTION_TEXT)).not.toBeNull();
+  });
+
+  it('注意表示は「新しい献立を求める」操作より後ろに置く', () => {
+    // 規則11 / D-5「画面末尾に1回」: カード → 操作の面 → 注意表示の順（原本 `MealScreen`）。
+    renderTab(suggested(entry()));
+
+    expect(precedes(requestControl(), screen.getByRole('complementary'))).toBe(true);
   });
 });

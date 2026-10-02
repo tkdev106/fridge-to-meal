@@ -1,13 +1,17 @@
 /**
  * 献立タブ（B-49a）。`docs/screen-design.md` 第3章に当たる。**中身が入った。**
  *
- * ここは `MealCards.ts` を読むだけの薄い層である。件数の数え方も「使う:」の並びも印の有無も
- * 持たない（先行 `PantryList.tsx`）— 判断は純粋関数に置くほうが速く、仮の文言にも jsdom にも
+ * ここは `MealCards.ts` を読むだけの薄い層である。件数の数え方も使う在庫の並びも印の有無も
+ * 持たない（先行 `PantryList.tsx`）— 判断は純粋関数に置くほうが速く、文言にも jsdom にも
  * 依存しない。**出し分けそのもの**（結末のどれを描くか・注意表示を何回出すか）は切り出せない
  * ので、`apps/web/test/features/meal/MealsTab.test.tsx` が描いて確かめる（ADR-052）。
  *
- * 反対に、**日本語はここにしか置かない**（先行 `PantryList.tsx`）。**文言はすべて仮である**
- * （同書 冒頭・論点3）。
+ * 反対に、**日本語はここにしか置かない**（先行 `PantryList.tsx`）。**一覧の見出し・凡例・カード・
+ * 注意表示の文言はデザインから取った**（B-61 / ADR-074。原本 `docs/design/src/MealScreen.dc.html`・
+ * `MealCard.dc.html`・`AiNotice.dc.html`）。**それ以外（読み込み中・出せない回・「新しい献立を
+ * 求める」まわり）は仮のままである** — 後者は B-62 の持ち分である。
+ *
+ * **見た目の値は `MealsTab.module.css` にだけ置き**（ADR-055 決定1）、ここには class 名しか書かない。
  *
  * **出せない回（S-4 / S-7）も、それぞれ別の枝として描く**（B-49c）。どちらも 200 で届く
  * 結末であり（ADR-062 決定2）、失敗（S-6）にも「まだ提案が無い」（S-8）にも畳まない。
@@ -18,8 +22,10 @@
  */
 
 import type { ReactNode } from 'react';
-import type { MealCardIngredient } from './MealCards.js';
+import type { MealCard, MealCardIngredient } from './MealCards.js';
 import { mealCardsOf } from './MealCards.js';
+import { Icon } from '../../icons/Icon.js';
+import styles from './MealsTab.module.css';
 import type { LatestSuggestionOutcome } from '../../server/SuggestionRequests.js';
 import type { SuggestMealsOutput } from '@fridge-to-meal/contract';
 
@@ -53,21 +59,34 @@ const NO_SUGGESTION_YET_NOTICE = 'まだ献立の提案がありません。';
  */
 const EMPTY_SUGGESTION_NOTICE = LOAD_FAILURE_NOTICE;
 
-/** 再利用の印（FR-35 / D-3。**文言と形は未確定**である）。 */
+/** 画面の見出し（原本 `MealScreen`）。**結末に依らず出す**（B-61 規則1）。 */
+const HEADING = '今日の献立';
+
+/**
+ * 凡例（D-4 の追記 / 原本 `MealScreen`）。**カードが1枚以上あるときだけ出す** — カードの中に
+ * 期限が今日の材料があるかどうかでは出し分けない（原本は `hasCards` だけで出す。B-61 規則3）。
+ */
+const LEGEND = '太字の材料は今日が期限です';
+
+/** 再利用の印（FR-35 / D-3。文言は原本 `MealCard`）。 */
 const REUSED_MARK = '前に見た献立';
 
 /**
- * 注意表示（FR-20）。**FR-20 が例示した字面をそのまま採っただけで、確定ではない。**
- * 同条が求めているのは「これに**相当する**注意表示」であり、文言は他と同じく仮である
- * （`docs/screen-design.md` 冒頭・論点3）。
+ * 注意表示（FR-20 / D-5）。文言は原本 `AiNotice` のとおりである（ADR-074）。FR-20 が求めて
+ * いるのは「これに**相当する**注意表示」であり、デザインがその字面を決めた。
  */
-const CAUTION = 'AIによる提案です。分量・加熱時間はご自身で確認してください。';
-
-/** 期限が今日の在庫に添える印（D-4）。**色だけに頼らない**（NFR-17）。 */
-const TODAY_MARK = '今日';
+const CAUTION = 'AI による提案です。分量・加熱時間等はご自身でご確認ください';
 
 /**
- * 献立詳細を開く操作の文言（B-53。**仮**である）。
+ * 期限が今日の材料に添える、**読み上げにだけ届く**文字（D-4 の追記 / NFR-17）。
+ *
+ * 見た目の手がかりは太字であり（色ではない）、**太字は読み上げに届かない。** 原本には無い
+ * 文字なので、凡例の文から取った（B-61 設計 10章 前提）。
+ */
+const EXPIRING_TODAY_TEXT = '今日が期限';
+
+/**
+ * 献立詳細を開く操作の文言（B-53。文言は原本 `MealCard`）。
  *
  * **カード全体を押せるようにしない** — 行そのものを掴む先行（在庫のスワイプ削除）があり、
  * 後で行に操作を足したときに当たり判定が重なる（設計 10章）。
@@ -113,26 +132,42 @@ const GO_TO_PANTRY_LABEL = '在庫を登録する';
  */
 const GENERATION_LIMIT_REACHED_NOTICE = '今日はこれ以上、新しい献立を求められません。';
 
-/** 不足の件数の言い回し（D-4）。**件数はどちらも主材料で数える**（C-16）。 */
+/**
+ * 不足の件数の言い回し（D-4 / 原本 `MealCard`）。区切りは中黒。**件数はどちらも主材料で
+ * 数える**（C-16）。
+ */
 function coverageText(ingredientCount: number, missingCount: number): string {
   const missing = missingCount === 0 ? '不足なし' : `不足${missingCount}件`;
 
-  return `材料${ingredientCount}件 · ${missing}`;
+  return `材料${ingredientCount}件・${missing}`;
 }
 
-/** 「使う:」の欄（FR-18 の結果を見せる。D-4）。**並べ替えは `MealCards.ts` の持ち分。** */
+/**
+ * 使う在庫の欄（FR-18 の結果を見せる。D-4 の追記）。**見出しを置かず名称だけを並べ**、期限が
+ * 今日のものは太字にする。**並べ替えは `MealCards.ts` の持ち分。**
+ *
+ * **`ul` / `li` にしない** — カードを `listitem` で数える読み手と混ざる（B-61 規則7）。
+ */
 function UsedIngredients({ ingredients }: { ingredients: readonly MealCardIngredient[] }) {
   if (ingredients.length === 0) return null;
 
   return (
-    <p>
-      <span>使う:</span>
+    <p className={styles.usedIngredients}>
       {ingredients.map((ingredient) => (
-        // 名称と印を別の要素に分けておく。**印を名称に混ぜると、利用者が読む単位と
-        // 画面が持つ単位がずれる**（読み上げも名称で止まれなくなる）。
-        <span key={ingredient.name}>
+        // 名称と読み上げの文字を別の要素に分けておく。**文字を名称に混ぜると、利用者が読む
+        // 単位と画面が持つ単位がずれる**（読み上げも名称で止まれなくなる）。
+        <span
+          key={ingredient.name}
+          className={
+            ingredient.expiringToday ? styles.usedIngredientExpiringToday : styles.usedIngredient
+          }
+        >
           <span>{ingredient.name}</span>
-          {ingredient.expiringToday && <span>（{TODAY_MARK}）</span>}
+          {/* 見た目には出さず、読み上げにだけ届ける（NFR-17）。`aria-hidden` / `display:none`
+              では読み上げからも消える。`note` にしない — 再利用の札の `note` と数が混ざる。 */}
+          {ingredient.expiringToday && (
+            <span className={styles.visuallyHidden}>{EXPIRING_TODAY_TEXT}</span>
+          )}
         </span>
       ))}
     </p>
@@ -156,7 +191,7 @@ export type MealsTabState =
 export type MealsTabProps = {
   suggestion: MealsTabState;
   /**
-   * 「使う:」の印を決める基準日（`YYYY-MM-DD`）。**呼び出し側が渡す。**
+   * 使う在庫のうち期限が今日のもの（太字）を決める基準日（`YYYY-MM-DD`）。**呼び出し側が渡す。**
    * ここで `new Date()` を読むと、現在時刻が本体に埋まる（`docs/testing.md` 5章）。
    */
   today: string;
@@ -185,51 +220,75 @@ export type MealsTabProps = {
 };
 
 /**
- * 提案の中身（一覧と注意表示）だけを描く。**結末のどれを描くかの分岐はここに置かない**
- * （下の `MealsTab` が既に済ませている）。
+ * 提案の中身（カードの一覧、または描くものが無い旨）だけを描く。**結末のどれを描くかの分岐は
+ * ここに置かない**（下の `MealsTab` が既に済ませている）。
+ *
+ * **注意表示はここに置かない** — 置き場は「新しい献立を求める」の面の後ろである（B-61 規則11）。
  */
 function SuggestionBody({
   suggestion,
-  today,
+  cards,
   onOpenMeal,
 }: {
   suggestion: MealsTabState;
-  today: string;
+  cards: readonly MealCard[];
   onOpenMeal: (mealId: string) => void;
 }) {
   if (suggestion.outcome === 'loading') return null;
   if (suggestion.outcome === 'failed') return <p>{LOAD_FAILURE_NOTICE}</p>;
   if (suggestion.outcome !== 'suggested') return <p>{NO_SUGGESTION_YET_NOTICE}</p>;
-
-  const cards = mealCardsOf(suggestion.suggestion.entries, today);
   if (cards.length === 0) return <p>{EMPTY_SUGGESTION_NOTICE}</p>;
 
   // **件数が1〜3件で変わることを隠さない**（D-1）。空きをプレースホルダで埋めると
   // 「壊れている」と読まれる。カードを詰めて並べるだけにする。
+  //
+  // `role="list"` を明示するのは、`list-style: none` で一覧の役割を落とす読み手（Safari）が
+  // あるためである（B-61 規則13）。
   return (
-    <div>
-      <ul>
-        {cards.map((card) => (
-          <li key={card.mealId}>
-            <h2>{card.title}</h2>
-            {/* 再利用にだけ印を置く（FR-35 / D-3）。`note` は本文に添える補助であり、
-                読み上げにも印として届く。**色は1つも使わない**（NFR-17 の構え）。 */}
-            {card.reused && <span role="note">{REUSED_MARK}</span>}
-            <p>{coverageText(card.ingredientCount, card.missingCount)}</p>
-            <UsedIngredients ingredients={card.usedIngredients} />
-            {/* 手順と材料の内訳は詳細の持ち分である（FR-19 / B-53）。**カードの中に置く** —
-                カード全体を押せるようにすると、行の操作を足した日に当たり判定が重なる。 */}
-            <button type="button" onClick={() => onOpenMeal(card.mealId)}>
+    <ul role="list" className={styles.cards}>
+      {cards.map((card) => (
+        <li key={card.mealId} className={styles.card}>
+          {/* 再利用にだけ印を置き、名称の上に出す（FR-35 / D-3 / 原本 `MealCard`）。`note` は
+              本文に添える補助であり、読み上げにも印として届く。 */}
+          {card.reused && (
+            <span role="note" className={styles.reusedMark}>
+              {REUSED_MARK}
+            </span>
+          )}
+          {/* 画面の見出し（h2）の下に入る（B-61 規則2 / 原本 `MealCard`）。 */}
+          <h3 className={styles.title}>{card.title}</h3>
+          <p className={styles.coverage}>{coverageText(card.ingredientCount, card.missingCount)}</p>
+          <UsedIngredients ingredients={card.usedIngredients} />
+          {/* 手順と材料の内訳は詳細の持ち分である（FR-19 / B-53）。**カードの中に置く** —
+              カード全体を押せるようにすると、行の操作を足した日に当たり判定が重なる。 */}
+          <div className={styles.openMeal}>
+            <button
+              type="button"
+              className={styles.openMealButton}
+              onClick={() => onOpenMeal(card.mealId)}
+            >
               {OPEN_MEAL_LABEL}
             </button>
-          </li>
-        ))}
-      </ul>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
-      {/* 一覧では末尾に1回だけ（FR-20 / D-5）。カードごとに出すと読まれなくなる。
-          詳細画面（B-53）では必ず出す。 */}
-      <aside>{CAUTION}</aside>
-    </div>
+/**
+ * 注意表示（FR-20 / D-5 / 原本 `AiNotice`）。一覧では**末尾に1回だけ**出す — カードごとに出すと
+ * 読まれなくなる。詳細画面（B-53）では詳細の側が必ず出す。情報のアイコンは飾りである
+ * （`aria-hidden` は `Icon` が持つ）。
+ */
+function CautionNotice() {
+  return (
+    <aside className={styles.caution}>
+      <span className={styles.cautionIcon}>
+        <Icon name="info" size={20} />
+      </span>
+      <span>{CAUTION}</span>
+    </aside>
   );
 }
 
@@ -323,6 +382,40 @@ export function MealsTab({
   // 読める（FR-30）。**一覧と並べず入れ替える**（先行 `PantryTab`）。
   if (mealDetail !== null) return <div>{mealDetail}</div>;
 
+  const cards =
+    suggestion.outcome === 'suggested' ? mealCardsOf(suggestion.suggestion.entries, today) : [];
+
+  // **見出しは結末に依らず1つ出し、各枝の中身はその下に置く**（B-61 規則1 / 原本 `MealScreen`）。
+  // 凡例はカードが1枚以上あるときだけである（規則3）。
+  return (
+    <div className={styles.screen}>
+      <header className={styles.header}>
+        <h2 className={styles.heading}>{HEADING}</h2>
+        {cards.length > 0 && <p className={styles.legend}>{LEGEND}</p>}
+      </header>
+      <MealsTabBody
+        suggestion={suggestion}
+        cards={cards}
+        onRequestNewMeals={onRequestNewMeals}
+        requestingNewMeals={requestingNewMeals}
+        newMealsFailed={newMealsFailed}
+        onGoToPantry={onGoToPantry}
+        onOpenMeal={onOpenMeal}
+      />
+    </div>
+  );
+}
+
+/** 見出しの下に置く、結末ごとの中身。 */
+function MealsTabBody({
+  suggestion,
+  cards,
+  onRequestNewMeals,
+  requestingNewMeals,
+  newMealsFailed,
+  onGoToPantry,
+  onOpenMeal,
+}: Omit<MealsTabProps, 'today' | 'mealDetail'> & { cards: readonly MealCard[] }) {
   if (suggestion.outcome === 'loading') return <p>{LOADING_NOTICE}</p>;
 
   // **出せない回は、提案の枝から先に分ける**（B-49c / 規則1〜6）。どちらも 200 で届く結末で
@@ -335,15 +428,25 @@ export function MealsTab({
 
   // **送っている間も、失敗した回も、渡された提案のカードを消さない**（S-5 / S-6 / D-6）。
   // 門が `suggestion` を差し替えるまでは、そのまま描き続ける。
+  //
+  // 並びは**カード → 「新しい献立を求める」の面 → 注意表示**（B-61 規則11 / 原本 `MealScreen` /
+  // D-5「画面末尾に1回」）。注意表示はカードが1枚以上の提案のときだけ出す。
   return (
-    <div>
-      <SuggestionBody suggestion={suggestion} today={today} onOpenMeal={onOpenMeal} />
-      <RequestNewMealsControl
-        pantryChanged={suggestion.outcome === 'suggested' && suggestion.pantryChanged}
-        requesting={requestingNewMeals}
-        failed={newMealsFailed}
-        onRequestNewMeals={onRequestNewMeals}
-      />
-    </div>
+    <>
+      <SuggestionBody suggestion={suggestion} cards={cards} onOpenMeal={onOpenMeal} />
+      <div className={styles.request}>
+        <RequestNewMealsControl
+          pantryChanged={suggestion.outcome === 'suggested' && suggestion.pantryChanged}
+          requesting={requestingNewMeals}
+          failed={newMealsFailed}
+          onRequestNewMeals={onRequestNewMeals}
+        />
+      </div>
+      {cards.length > 0 && (
+        <div className={styles.cautionArea}>
+          <CautionNotice />
+        </div>
+      )}
+    </>
   );
 }
