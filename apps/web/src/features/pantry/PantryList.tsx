@@ -13,14 +13,22 @@
  * **受け取るのは読み込みの結末である**（B-22 設計 5章 / 規則2）。在庫品の列そのものではなく、
  * 「読み込み中／取れた／取れなかった」の3値を受け取り、出し分けだけを行う。取りに行くのは
  * `apps/web/src/server/` の継ぎ目で、それを呼ぶのは `App.tsx` である。
+ *
+ * **削除は確認を挟む**（B-69 / FR-06 / `docs/screen-design.md` 論点4 #1）。なぞると行の `削除` が
+ * 現れ、行末の `…` を開くと `編集` / `削除` が出る。どちらの `削除` も同じ確認
+ * （`StockItemDeleteConfirmation`）を開き、**消すのは確認の `削除` を押したときだけである。**
+ * どの出来事でどの状態へ移るかは `RowOperations.ts` が持ち、ここはその状態を1つ持って配線する。
  */
 
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { StockItemDto } from '@fridge-to-meal/contract';
 import type { DeleteFailureNotice } from './DeleteFailureNotice.js';
 import { deleteFailureNoticeOf } from './DeleteFailureNotice.js';
 import type { ExpirySection, ListedStockItem } from './PantrySections.js';
 import { pantrySectionsOf } from './PantrySections.js';
+import type { RowOperationEvent, RowOperations } from './RowOperations.js';
+import { IDLE, nextRowOperations, opensEditOnTap } from './RowOperations.js';
+import { StockItemDeleteConfirmation } from './StockItemDeleteConfirmation.js';
 import type { SwipePoint } from './SwipeGesture.js';
 import { isDeleteSwipe, isTap } from './SwipeGesture.js';
 import type { DeleteStockItem, StockItemsOutcome } from '../../server/StockItemRequests.js';
@@ -87,28 +95,53 @@ function remainingDaysText(remainingDays: number | null): string {
 }
 
 /**
- * 一覧の1行。**なぞって消し、タップで編集を開く**（FR-06 / FR-05 / `docs/screen-design.md`
- * 5章 と 2章 `pantry --> edit`。どちらも確認は出さない）。
+ * 押し始めが行の中の操作（`…`・開いた中身の2つ・現れた `削除`）の上か（B-69 設計 規則7）。
+ * そうなら行の動きとして読まない — 押した操作だけが効く。
+ */
+function startsOnOperation(target: EventTarget): boolean {
+  return target instanceof Element && target.closest('button') !== null;
+}
+
+/** 行に出ているもの（B-69 設計 規則2・3）。出るのは1度に1つだけである。 */
+type RowShowing = 'nothing' | 'revealed' | 'operationsOpen';
+
+/**
+ * 一覧の1行。**なぞると `削除` が現れ、タップで編集を開き、行末の `…` から `編集` / `削除` に
+ * 届く**（FR-06 / FR-05 / B-69 設計 規則1・3・4 / `docs/screen-design.md` 5章 と 2章
+ * `pantry --> edit`）。**なぞっただけでは消えない** — 消すのは確認の `削除` である（規則1）。
  *
- * 押した点と離した点の2つだけを覚え、**削除と読むか・タップと読むかの判断は
+ * 押した点と離した点の2つだけを覚え、**スワイプと読むか・タップと読むかの判断は
  * `SwipeGesture.ts` が持つ**（規則7 / B-55 設計 規則15）。**2つの閾値の間には隙間があり**
- * （8px と 64px）、どちらにも当たらない中途半端な動きでは何も起こさない — 取り消しの無い
- * 削除と編集の画面が同時に起きないことは、**距離の取り方だけで**保たれている。
+ * （8px と 64px）、どちらにも当たらない中途半端な動きでは何も起こさない。
+ *
+ * **`…` はどの幅でも置く**（B-69 規則3）。キーボードと読み上げから編集・削除に届く経路は
+ * これであり、なぞる・タップはポインタにしかできない。開いた中身は DOM で `…` の直後に置き、
+ * Tab で届く。`role="menu"` は使わない — 矢印キーの移動を約束することになる。
  *
  * ポインタのイベントは触れる相手を問わない（指・マウス・ペン）ので、ジェスチャの依存を
  * 足さずに済む（`docs/workflow.md` 3章）。
  */
 function StockItemRow({
   row,
-  onSwipe,
+  showing,
+  onEvent,
   onTap,
+  onEdit,
+  registerToggle,
+  focusToggle,
 }: {
   row: ListedStockItem;
-  onSwipe: (id: string) => void;
+  showing: RowShowing;
+  onEvent: (event: RowOperationEvent) => void;
   onTap: (stockItem: StockItemDto) => void;
+  onEdit: (stockItem: StockItemDto) => void;
+  registerToggle: (id: string, toggle: HTMLButtonElement | null) => void;
+  focusToggle: (id: string) => void;
 }) {
   // 覚えるだけで描き直す必要が無いので state にしない。
   const pressedPoint = useRef<SwipePoint | null>(null);
+  const operationsId = useId();
+  const { stockItem } = row;
 
   return (
     <li
@@ -116,6 +149,13 @@ function StockItemRow({
       // 送りとして browser に取られ、離上が届かないことがある。
       style={{ touchAction: 'pan-y' }}
       onPointerDown={(event) => {
+        // 押し始めが行の中の操作の上なら、捕捉もせず覚えもしない（B-69 規則7）。行が捕捉すると、
+        // ブラウザによっては中のボタンの click の行き先が行に変わる（B-69 設計 10章）。
+        if (startsOnOperation(event.target)) {
+          pressedPoint.current = null;
+          return;
+        }
+
         pressedPoint.current = { x: event.clientX, y: event.clientY };
         // 行の外で指を離しても離上がこの行に届くようにする。届かないと、押した点が
         // 残ったまま次の操作と混ざる。
@@ -129,24 +169,79 @@ function StockItemRow({
 
         const endPoint = { x: event.clientX, y: event.clientY };
 
-        // 削除とタップは**どちらか一方しか成り立たない**（B-55 設計 規則15）。先に見るほうを
+        // スワイプとタップは**どちらか一方しか成り立たない**（B-55 設計 規則15）。先に見るほうを
         // 決めているのは読みやすさのためだけで、順序に意味を持たせていない。
         if (isDeleteSwipe(startPoint, endPoint)) {
-          onSwipe(row.stockItem.id);
+          onEvent({ kind: 'swiped', stockItemId: stockItem.id });
           return;
         }
 
-        if (isTap(startPoint, endPoint)) onTap(row.stockItem);
+        if (isTap(startPoint, endPoint)) onTap(stockItem);
       }}
       // 送りに取られた・指が外れたなどで離上が来ない回は、押した点を捨てる。
       onPointerCancel={() => {
         pressedPoint.current = null;
       }}
     >
-      <span>{row.stockItem.name}</span>
-      {row.stockItem.amount !== null && <span>{row.stockItem.amount}</span>}
+      <span>{stockItem.name}</span>
+      {stockItem.amount !== null && <span>{stockItem.amount}</span>}
       {/* 期限の表現は色に頼らず、必ずテキストを出す（NFR-17）。 */}
       <span>{remainingDaysText(row.remainingDays)}</span>
+      <button
+        ref={(toggle) => {
+          registerToggle(stockItem.id, toggle);
+        }}
+        type="button"
+        aria-label="操作"
+        aria-expanded={showing === 'operationsOpen'}
+        aria-controls={operationsId}
+        onClick={() => {
+          onEvent({ kind: 'operationsToggled', stockItemId: stockItem.id });
+        }}
+      >
+        …
+      </button>
+      {showing === 'operationsOpen' && (
+        <div
+          id={operationsId}
+          // 開いた中身を Esc で閉じたら、焦点はその行の `…` に戻す（B-69 規則13 / NFR-16）。
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return;
+
+            event.preventDefault();
+            onEvent({ kind: 'dismissed' });
+            focusToggle(stockItem.id);
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              onEvent({ kind: 'dismissed' });
+              onEdit(stockItem);
+            }}
+          >
+            編集
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onEvent({ kind: 'deleteChosen', stockItem });
+            }}
+          >
+            削除
+          </button>
+        </div>
+      )}
+      {showing === 'revealed' && (
+        <button
+          type="button"
+          onClick={() => {
+            onEvent({ kind: 'deleteChosen', stockItem });
+          }}
+        >
+          削除
+        </button>
+      )}
     </li>
   );
 }
@@ -169,7 +264,8 @@ export type PantryListProps = {
    * **開くかどうかを決めるのは呼び出し側**（`PantryTab`）であり、この画面は編集の画面を知らない。
    *
    * **触っただけでは消えない**（規則15 / FR-06）— タップと削除のスワイプは閾値で分かれており、
-   * 片方が起きた回にもう片方は起きない。
+   * 片方が起きた回にもう片方は起きない。行末の `…` の `編集` もここへ渡す（B-69 規則6）。
+   * **何かが出ているときのタップは渡さない**（B-69 規則4）。
    */
   onEdit: (stockItem: StockItemDto) => void;
   /**
@@ -182,8 +278,21 @@ export type PantryListProps = {
 
 export function PantryList({ stockItems, today, onDelete, onEdit }: PantryListProps) {
   const [notice, setNotice] = useState<DeleteFailureNotice | null>(null);
-  // 送っている間は次のスワイプを受け取らない。描き直す必要が無いので state にしない。
+  const [rowOperations, setRowOperations] = useState<RowOperations>(IDLE);
+  // 送っている間は次の削除を送らない。描き直す必要が無いので state にしない。
   const deleting = useRef(false);
+  // 行ごとの `…`。確認を閉じたときに焦点を戻す先である（B-69 規則13）。行が木から外れれば
+  // 消えるので、消えた行へは戻さない。
+  const toggles = useRef(new Map<string, HTMLButtonElement>());
+
+  function registerToggle(id: string, toggle: HTMLButtonElement | null) {
+    if (toggle === null) toggles.current.delete(id);
+    else toggles.current.set(id, toggle);
+  }
+
+  function focusToggle(id: string) {
+    toggles.current.get(id)?.focus();
+  }
 
   function deleteRow(id: string) {
     // 二重に送っても2度目は 404 になり、それを「すでに消えている」と読む（ADR-050）ので
@@ -212,8 +321,33 @@ export function PantryList({ stockItems, today, onDelete, onEdit }: PantryListPr
 
   const sections = pantrySectionsOf(stockItems.stockItems, today);
 
-  // 在庫品が0件なら帯を1つも出さない（規則11）。
+  // 在庫品が0件なら帯を1つも出さない（規則11）。行の操作も描かない（B-69 規則16）。
   if (sections.length === 0) return <p>{EMPTY_NOTICE}</p>;
+
+  // 状態が指す行が取り直しで消えていれば、何も出ていないものとして扱う（B-69 規則15）。
+  // **確認だけは別である** — 開いた時点の在庫品を抱えて出し続ける（規則12）。
+  const current: RowOperations =
+    (rowOperations.kind === 'revealed' || rowOperations.kind === 'operationsOpen') &&
+    !stockItems.stockItems.some((listed) => listed.id === rowOperations.stockItemId)
+      ? IDLE
+      : rowOperations;
+
+  function dispatch(event: RowOperationEvent) {
+    setRowOperations(nextRowOperations(current, event));
+  }
+
+  function showingOf(id: string): RowShowing {
+    if (current.kind === 'revealed' && current.stockItemId === id) return 'revealed';
+    if (current.kind === 'operationsOpen' && current.stockItemId === id) return 'operationsOpen';
+
+    return 'nothing';
+  }
+
+  function tapRow(stockItem: StockItemDto) {
+    // 何かが出ているときのタップはそれを閉じるだけで、編集を開かない（B-69 規則4）。
+    if (opensEditOnTap(current)) onEdit(stockItem);
+    dispatch({ kind: 'tapped' });
+  }
 
   return (
     <div>
@@ -224,11 +358,37 @@ export function PantryList({ stockItems, today, onDelete, onEdit }: PantryListPr
           <h2>{SECTION_HEADINGS[section.section]}</h2>
           <ul>
             {section.stockItems.map((row) => (
-              <StockItemRow key={row.stockItem.id} row={row} onSwipe={deleteRow} onTap={onEdit} />
+              <StockItemRow
+                key={row.stockItem.id}
+                row={row}
+                showing={showingOf(row.stockItem.id)}
+                onEvent={dispatch}
+                onTap={tapRow}
+                onEdit={onEdit}
+                registerToggle={registerToggle}
+                focusToggle={focusToggle}
+              />
             ))}
           </ul>
         </section>
       ))}
+
+      {current.kind === 'confirming' && (
+        <StockItemDeleteConfirmation
+          stockItem={current.stockItem}
+          onCancel={() => {
+            dispatch({ kind: 'dismissed' });
+            // 焦点はその行の `…` に戻す。行がもう無ければ戻さない（B-69 規則13）。
+            focusToggle(current.stockItem.id);
+          }}
+          onConfirm={() => {
+            // 確認を閉じてから、**抱えている在庫品の識別子で**送る（B-69 規則11・12）。一覧から
+            // 消えていれば `delete.notFound` になり、消えたと読む（ADR-050）。
+            dispatch({ kind: 'confirmed' });
+            deleteRow(current.stockItem.id);
+          }}
+        />
+      )}
     </div>
   );
 }
