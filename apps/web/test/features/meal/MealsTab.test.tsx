@@ -8,20 +8,32 @@
  *
  * **`docs/design/` から取った文言は期待値に書く** — デザインが決まり（ADR-074）、
  * `docs/screen-design.md` 論点3 は閉じたので仮ではない（見出し・凡例・件数・再利用の札・
- * 注意表示。B-61）。**それ以外の文言（デザインに無いもの・B-62 の持ち分）は仮であり、
- * 期待値に書かない**（ADR-052 結果2）— 留めると文言を変えただけで赤くなる。その観察は次の3つで行う。
+ * 注意表示は B-61、「新しい献立を見る」の面・生成中・失敗の帯・S-4 / S-7 は B-62）。
+ * **それ以外の文言（デザインに無いもの — 読み込み中・取れなかった回・読み上げにだけ届く文字）は
+ * 仮であり、期待値に書かない**（ADR-052 結果2）— 留めると文言を変えただけで赤くなる。
+ * その観察は次の3つで行う。
  *
  * - **役割** … カードは `listitem`、再利用の印は `note`、注意表示は `complementary`
  * - **こちらが渡したデータ** … 献立の名称と、賄える材料の名称
  * - **件数** … カードがいくつ出るか
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ShowLatestSuggestionOutput, SuggestionEntryOutput } from '@fridge-to-meal/contract';
-import { fireEvent, render, screen, within } from '../../support/dom/renderComponent.js';
+import { act, fireEvent, render, screen, within } from '../../support/dom/renderComponent.js';
 import { MealsTab } from '../../../src/features/meal/MealsTab.js';
 
 const TODAY = '2026-09-20';
+
+/** 生成を求めた時刻（ミリ秒の epoch。B-62）。経過秒数は、これと渡した時計の差から出る。 */
+const T = 1_790_000_000_000;
+
+/** 「新しい献立を見る」の面の文言（B-62 / 原本 `RequestBlock`・案内の帯）。 */
+const REQUEST_BUTTON_NAME = '新しい献立を見る';
+const WAITING_HINT = '時間がかかる場合があります';
+const PANTRY_CHANGED_HINT = '冷蔵庫の食材が変わりました';
+const THINKING = '考えています…';
+const REQUEST_FAILED_BAND = '献立をつくれませんでした。もう一度お試しください';
 
 function entry(overrides: Partial<SuggestionEntryOutput> = {}): SuggestionEntryOutput {
   return {
@@ -52,27 +64,38 @@ function suggested(
 type RenderTabOverrides = Partial<Omit<Parameters<typeof MealsTab>[0], 'suggestion' | 'today'>>;
 
 /**
- * 「新しい献立を求める」操作まわりの3つの props は**既定値を持たせておく**（B-49b）。
+ * 「新しい献立を求める」操作まわりの props は**既定値を持たせておく**（B-49b / B-62）。
  * 表示の分岐だけを見る既存の観点が、新しい props を意識せずに済むようにする。
+ *
+ * **既定は送っていない（`newMealsRequestedAt` が `null`）**。時計の既定は `() => 0` で、
+ * 送っていない回は読まれても描くものに効かない。
  */
-function renderTab(
+function tabElement(
   suggestion: Parameters<typeof MealsTab>[0]['suggestion'],
   overrides: RenderTabOverrides = {},
 ) {
-  return render(
+  return (
     <MealsTab
       suggestion={suggestion}
       today={TODAY}
       onRequestNewMeals={overrides.onRequestNewMeals ?? (() => {})}
-      requestingNewMeals={overrides.requestingNewMeals ?? false}
+      newMealsRequestedAt={overrides.newMealsRequestedAt ?? null}
+      now={overrides.now ?? (() => 0)}
       newMealsFailed={overrides.newMealsFailed ?? false}
       onGoToPantry={overrides.onGoToPantry ?? (() => {})}
       onOpenMeal={overrides.onOpenMeal ?? (() => {})}
       mealDetail={overrides.mealDetail ?? null}
       offline={overrides.offline ?? false}
       onOpenSettings={overrides.onOpenSettings ?? (() => {})}
-    />,
+    />
   );
+}
+
+function renderTab(
+  suggestion: Parameters<typeof MealsTab>[0]['suggestion'],
+  overrides: RenderTabOverrides = {},
+) {
+  return render(tabElement(suggestion, overrides));
 }
 
 /** 並びを位置で見るための取り出し。件数は呼ぶ側が先に確かめている。 */
@@ -255,11 +278,11 @@ describe('献立タブ MealsTab', () => {
  * 「新しい献立を求める」操作（B-49b / FR-36 / NFR-04 / S-5 / S-6 / ADR-065 決定4）。
  *
  * 役割の割り当ては検分で決めた（設計8章の一部として `/tdd` が引き継いだもの）。
- * - 押す前からの待ち時間の案内（NFR-04）… `role="note"`。送信中かどうかによらず常に出す
- * - `pantryChanged` の手がかり（規則9）… これも `role="note"`。真のときだけ1つ増える
+ * - 待ち時間の案内（NFR-04）… `role="note"`。**待機中だけ出す**（B-62 規則1。生成中は出さない）
+ * - `pantryChanged` の手がかり（規則9）… これも `role="note"`。真で、生成中でないときだけ出る
  * - 送信中の案内（S-5）と失敗の案内（S-6）… どちらも `role="status"`。同時には出ない
  *
- * **仮の文言を期待値に固定しない**（ADR-052 結果2）。観察は役割と、渡したデータ（献立の名称）で行う。
+ * 文言は原本 `RequestBlock` / 案内の帯から取ったもので、期待値に書いてよい（B-62 / ADR-074）。
  */
 describe('献立タブ MealsTab の「新しい献立を求める」操作', () => {
   it('提案が出ている回、末尾に「新しい献立を求める」操作を1つ出す', () => {
@@ -287,19 +310,8 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
     expect(contentButtons()).toHaveLength(0);
   });
 
-  it('押す前から待ち時間の案内を出し、送信中も出したままにする', () => {
-    // カードなし・pantryChanged なしの結末（'none'）で観る — カードの中の再利用の印も
-    // `note` であるため、そちらと混ざらない結末を選ぶ（検分の指示）。
-    const before = renderTab({ outcome: 'none' }, { requestingNewMeals: false });
-    expect(screen.getAllByRole('note')).toHaveLength(1);
-    before.unmount();
-
-    renderTab({ outcome: 'none' }, { requestingNewMeals: true });
-    expect(screen.getAllByRole('note')).toHaveLength(1);
-  });
-
   it('送信中は操作が押せない', () => {
-    renderTab(suggested(entry()), { requestingNewMeals: true });
+    renderTab(suggested(entry()), { newMealsRequestedAt: T, now: () => T });
 
     // `@testing-library/jest-dom` は入れない（依存の追加は止まる条件。`CLAUDE.md`）ので、
     // 素の `disabled` プロパティで見る。
@@ -307,7 +319,7 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
   });
 
   it('送信中でも、渡された提案のカードはそのまま描かれ続ける', () => {
-    renderTab(suggested(entry({ title: '肉じゃが' })), { requestingNewMeals: true });
+    renderTab(suggested(entry({ title: '肉じゃが' })), { newMealsRequestedAt: T, now: () => T });
 
     expect(screen.queryByText('肉じゃが')).not.toBeNull();
   });
@@ -319,10 +331,13 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
   });
 
-  it('失敗したときは、失敗の案内を出す', () => {
+  it('失敗した回は案内の帯「献立をつくれませんでした。もう一度お試しください」を status として出す', () => {
+    // 規則9 / S-6 / NFR-07: 文言は原本の「案内の帯」。添える `!` は別のケースが見る。
     renderTab({ outcome: 'none' }, { newMealsFailed: true });
 
-    expect(screen.getAllByRole('status')).toHaveLength(1);
+    const statuses = screen.getAllByRole('status');
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]?.textContent).toContain(REQUEST_FAILED_BAND);
   });
 
   it('失敗していないときは、失敗の案内を出さない', () => {
@@ -332,9 +347,12 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
   });
 
   it('送信中は、失敗ではなく送信中の案内を出す', () => {
-    renderTab({ outcome: 'none' }, { requestingNewMeals: true, newMealsFailed: false });
+    // 規則6・9: status は「送信中か失敗のどちらか1つ」。両方が真でも送信中を先に見る。
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T, newMealsFailed: true });
 
-    expect(screen.getAllByRole('status')).toHaveLength(1);
+    const statuses = screen.getAllByRole('status');
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0]?.textContent).toBe('考えています…');
   });
 
   it('操作を押すと、渡された口が呼ばれる', () => {
@@ -351,19 +369,247 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
     expect(called).toBe(true);
   });
 
-  it('在庫が変わっている回だけ、操作へ誘う手がかりを1つ増やす', () => {
-    // カードの中の再利用の印も `note` であるため、混ざらないよう `origin: 'generated'` にする
-    // （検分の指示）。
+  it('在庫が変わっている回だけ、「冷蔵庫の食材が変わりました」を手がかりとして出す', () => {
+    // 規則2 / D-8: 手がかりは `note`。カードの中の再利用の印も `note` であるため、
+    // 混ざらないよう `origin: 'generated'` にする（検分の指示）。
     const unchanged = suggested(entry({ origin: 'generated' }));
 
     const unchangedRendered = renderTab(unchanged);
-    const unchangedNoteCount = screen.getAllByRole('note').length;
+    const unchangedHints = screen
+      .queryAllByRole('note')
+      .filter((note) => note.textContent === PANTRY_CHANGED_HINT);
     unchangedRendered.unmount();
 
     renderTab({ ...unchanged, pantryChanged: true });
-    const changedNoteCount = screen.getAllByRole('note').length;
+    const changedHints = screen
+      .getAllByRole('note')
+      .filter((note) => note.textContent === PANTRY_CHANGED_HINT);
 
-    expect(changedNoteCount).toBe(unchangedNoteCount + 1);
+    expect(unchangedHints).toHaveLength(0);
+    expect(changedHints).toHaveLength(1);
+  });
+});
+
+/**
+ * 「新しい献立を見る」の面の待機中・生成中・手がかり・失敗の帯（B-62 設計 6章 規則1〜6・9 /
+ * 7章 / NFR-04 / NFR-07 / NFR-17 / S-5 / S-6 / D-6・D-8）。
+ *
+ * 文言は原本 `RequestBlock` と「案内の帯」から取ったもので、期待値に書く（ADR-074）。
+ * **秒数は実時間を待たない** — 時計は書き換えられる値で渡し、1秒ごとの間隔は偽のタイマーで進める
+ * （`docs/testing.md` 5章）。
+ */
+describe('献立タブ MealsTab の「新しい献立を見る」の面', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('待機中は「新しい献立を見る」の操作を出す', () => {
+    // 規則1 / FR-36: ボタンの文言は原本 `RequestBlock`。
+    renderTab({ outcome: 'none' });
+
+    expect(screen.getByRole('button', { name: REQUEST_BUTTON_NAME })).not.toBeNull();
+  });
+
+  it('待機中は「時間がかかる場合があります」を手がかりとして出す', () => {
+    // 規則1 / NFR-04 / D-2 の追記: 押す前から待ち時間を伝える。
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: null });
+
+    const notes = screen.getAllByRole('note');
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.textContent).toBe(WAITING_HINT);
+  });
+
+  it('生成中は「時間がかかる場合があります」を出さない', () => {
+    // 規則1: 生成中は代わりに `考えています…` と経過秒数を出す（原本 pending）。
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T });
+
+    expect(screen.queryByText(WAITING_HINT)).toBeNull();
+  });
+
+  it('生成中は「考えています…」を出す', () => {
+    // 規則1 / S-5。
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T });
+
+    expect(screen.getByText(THINKING)).not.toBeNull();
+  });
+
+  it('生成を求めた直後は「0秒」を出す', () => {
+    // 規則4: 押した直後は `0秒`。
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T });
+
+    expect(screen.getByText('0秒')).not.toBeNull();
+  });
+
+  it('経過秒数は渡された開始時刻と時計から出す', () => {
+    // 規則4・12: 起点は門が持つ開始時刻。本体は時計を自分で読まない。
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T + 18_500 });
+
+    expect(screen.getByText('18秒')).not.toBeNull();
+  });
+
+  it('生成中は1秒たつごとに秒数が進む', () => {
+    // 規則5: 送信中だけ 1000ms ごとに時計を読み直して描き直す。
+    vi.useFakeTimers();
+    let clock = T;
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => clock });
+
+    clock = T + 1_000;
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+
+    expect(screen.getByText('1秒')).not.toBeNull();
+  });
+
+  it('描き直すたびに時計を読み直すので、間隔の遅れが秒数に溜まらない', () => {
+    // 規則5: 間隔の回数を数えるのではなく、描き直すたびに `now()` を読む。
+    vi.useFakeTimers();
+    let clock = T;
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => clock });
+
+    clock = T + 5_000;
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+
+    expect(screen.getByText('5秒')).not.toBeNull();
+  });
+
+  it('生成が終わると、時間がたっても秒数を出さない', () => {
+    // 規則5: 送信が終わったら止める。
+    vi.useFakeTimers();
+    let clock = T;
+    const { rerender } = renderTab(
+      { outcome: 'none' },
+      { newMealsRequestedAt: T, now: () => clock },
+    );
+
+    rerender(tabElement({ outcome: 'none' }, { newMealsRequestedAt: null, now: () => clock }));
+    clock = T + 3_000;
+    act(() => {
+      vi.advanceTimersByTime(3_000);
+    });
+
+    expect(screen.queryByText(/秒$/)).toBeNull();
+    expect(screen.queryByText(THINKING)).toBeNull();
+  });
+
+  it('生成中の status は「考えています…」だけで、秒数を含まない', () => {
+    // 規則6 / NFR-04: 秒数を status に入れると毎秒読み上げで割り込む。
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T + 18_000 });
+
+    expect(screen.getByRole('status').textContent).toBe(THINKING);
+  });
+
+  it('経過秒数は読み上げから隠さない', () => {
+    // 規則6: status の外に置くが、たどれば読める。
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T + 18_000 });
+
+    expect(screen.getByText('18秒').closest('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('生成中は在庫が変わっていても「冷蔵庫の食材が変わりました」を出さない', () => {
+    // 規則2: 原本 `changed && !pending`。
+    renderTab(
+      { ...suggested(entry({ origin: 'generated' })), pantryChanged: true },
+      { newMealsRequestedAt: T, now: () => T },
+    );
+
+    expect(screen.queryByText(PANTRY_CHANGED_HINT)).toBeNull();
+  });
+
+  it('失敗の帯に添える ! は読み上げに出さない', () => {
+    // 規則9 / NFR-17: 先行 `SignInForm` の記号。ARIA の約束を見る手段がほかに無いため DOM を辿る。
+    renderTab({ outcome: 'none' }, { newMealsFailed: true });
+
+    const mark = within(screen.getByRole('status')).getByText('!');
+    expect(mark.closest('[aria-hidden="true"]')).not.toBeNull();
+  });
+
+  it('失敗の帯は最後のカードより後ろ、「新しい献立を見る」より前に置く', () => {
+    // 規則9 / 10章 前提2: 押したボタンの近く（面の直前）に置く。
+    renderTab(suggested(entry({ mealId: 'meal-1' }), entry({ mealId: 'meal-2' })), {
+      newMealsFailed: true,
+    });
+
+    const lastCard = cardAt(screen.getAllByRole('listitem'), 1);
+    const band = screen.getByRole('status');
+    const button = screen.getByRole('button', { name: REQUEST_BUTTON_NAME });
+    expect(precedes(lastCard, band)).toBe(true);
+    expect(precedes(band, button)).toBe(true);
+  });
+
+  it('失敗した回も「新しい献立を見る」は押せる', () => {
+    // 規則9 / S-6: 再試行は同じボタンで行う。
+    renderTab(suggested(entry()), { newMealsFailed: true });
+
+    const button = screen.getByRole('button', { name: REQUEST_BUTTON_NAME }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+  });
+
+  it('取れなかった回の面にも「新しい献立を見る」と「時間がかかる場合があります」を出す', () => {
+    // 規則17: `failed` の後ろの面は規則1〜11の見た目。
+    renderTab({ outcome: 'failed' });
+
+    expect(screen.getByRole('button', { name: REQUEST_BUTTON_NAME })).not.toBeNull();
+    expect(screen.getByText(WAITING_HINT)).not.toBeNull();
+  });
+});
+
+/**
+ * まだ提案が無い・在庫が足りない・上限に達した回の、原本どおりの文言（B-62 設計 6章 規則13〜15 /
+ * S-4 / S-7 / S-8 / D-7 / D-9 / 原本 `MealScreen` の state=first / short / limit）。
+ */
+describe('献立タブ MealsTab の原本どおりの結末', () => {
+  it('まだ提案が無い回は、旧文言の断りを出さない', () => {
+    // 規則13: S-8 は文言を出さず、面だけを置く。見出しの行（B-60 が要素を足す）には依存しない。
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: null });
+
+    expect(screen.queryByText('まだ献立の提案がありません。')).toBeNull();
+    const notes = screen.getAllByRole('note');
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.textContent).toBe(WAITING_HINT);
+  });
+
+  it('まだ提案が無い回に押して生成中になると、「考えています…」と「0秒」を出す', () => {
+    // 規則13: 同じ位置で規則1・6を満たす。
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T });
+
+    expect(screen.getByText(THINKING)).not.toBeNull();
+    expect(screen.getByText('0秒')).not.toBeNull();
+  });
+
+  it('在庫が足りない回は、主文「冷蔵庫にあるものを」「2つ以上登録してください」を案内の中に出す', () => {
+    // 規則14 / D-7: 主文は2つの塊。案内（status）は今どおり1つ。
+    renderTab({ outcome: 'insufficientStockItems' });
+
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    const status = screen.getByRole('status');
+    expect(within(status).getByText('冷蔵庫にあるものを')).not.toBeNull();
+    expect(within(status).getByText('2つ以上登録してください')).not.toBeNull();
+  });
+
+  it('在庫が足りない回は、補足「献立は冷蔵庫の食材から考えます」を主文と同じ案内の中に出す', () => {
+    // 規則14: 主文と補足を合わせて status 1つにする。
+    renderTab({ outcome: 'insufficientStockItems' });
+
+    expect(
+      within(screen.getByRole('status')).getByText('献立は冷蔵庫の食材から考えます'),
+    ).not.toBeNull();
+  });
+
+  it('在庫が足りない回の操作の名前は「食材を登録する」である', () => {
+    // 規則14 / D-7: 押すと今どおり在庫タブへ送る（別のケースが見る）。
+    renderTab({ outcome: 'insufficientStockItems' });
+
+    expect(screen.getByRole('button', { name: '食材を登録する' })).not.toBeNull();
+  });
+
+  it('上限に達した回は「今日の新しい献立は以上です」を案内として出す', () => {
+    // 規則15 / D-9: 操作は無い。残り回数も解ける時刻も言わない。
+    renderTab({ outcome: 'generationLimitReached' });
+
+    expect(screen.getByRole('status').textContent).toBe('今日の新しい献立は以上です');
   });
 });
 
@@ -374,7 +620,8 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
  * 検分で決めた — **S-4 / S-7 の案内は `status`**（この2つは利用者が「新しい献立を求める」を
  * 押した結果としてしか届かないため、B-49b の割り当てに揃える）。
  *
- * **仮の文言を期待値に書かない**（ADR-052 結果2）。観察は操作の有無・件数・押した先の口で行う。
+ * ここでの観察は操作の有無・件数・押した先の口で行う。原本の文言（B-62）は
+ * 「原本どおりの結末」の describe が見る。
  */
 describe('献立タブ MealsTab の在庫が足りない回（S-4）', () => {
   it('在庫が足りない回は、在庫タブへ送る操作を1つだけ出す', () => {
