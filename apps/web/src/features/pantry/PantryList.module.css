@@ -191,7 +191,7 @@
   pointer-events: none;
 }
 
-.toggle:focus-visible,
+.toggle:focus,
 .toggle[aria-expanded='true'] {
   opacity: 1;
   pointer-events: auto;
