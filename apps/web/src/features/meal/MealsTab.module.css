@@ -1,6 +1,6 @@
 /*
- * 献立タブの一覧（原本 `docs/design/src/MealScreen.dc.html`・`MealCard.dc.html`・
- * `AiNotice.dc.html` / 設計 B-61 6章）。
+ * 献立タブの一覧と「新しい献立を見る」の面・結末（原本 `docs/design/src/MealScreen.dc.html`・
+ * `MealCard.dc.html`・`AiNotice.dc.html`・`RequestBlock.dc.html` / 設計 B-61 6章・B-62 6章）。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1・2）。`MealsTab.tsx` は class 名しか書かない。
  * 色・文字の大きさ・太さはトークン（`src/global.css` の `:root`）から `var(--…)` で引き、
@@ -465,7 +465,7 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  /* 原本 PC には下タブが無い（設計 B-62 10章 前提3。B-60 が器を決めたら合わせ直す）。 */
+  /* 原本 PC には下タブが無い（設計 B-62 10章 前提3。PC はサイドナビで、B-60 / ADR-076 と食い違わない）。 */
   .screenCentered {
     min-height: 100dvh;
   }
