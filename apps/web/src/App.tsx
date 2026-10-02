@@ -30,6 +30,8 @@ import type { TabId } from './navigation/Tabs.js';
 import { DEFAULT_TAB } from './navigation/Tabs.js';
 import { TabbedScreen } from './navigation/TabbedScreen.js';
 import type { Session, SessionState } from './session/Session.js';
+import type { Connectivity, ConnectivityState } from './connectivity/Connectivity.js';
+import { OfflineBanner } from './connectivity/OfflineBanner.js';
 import type {
   DeleteStockItem,
   ListStockItems,
@@ -101,6 +103,8 @@ export type AppProps = {
   listMeals: ListMeals;
   /** 世帯のデータを消す口（B-56f）。組み立てるのはやはり `main.tsx` だけである。 */
   deleteHouseholdData: DeleteHouseholdData;
+  /** 接続状態の継ぎ目（B-70 設計 5章）。**必須**であり、組み立てるのは `main.tsx` だけである。 */
+  connectivity: Connectivity;
 };
 
 /** 開いている献立と、その出どころのタブ（B-54b 設計 規則9。門の内部の形で export しない）。 */
@@ -119,6 +123,7 @@ export function App({
   addCookingRecord,
   listMeals,
   deleteHouseholdData,
+  connectivity,
 }: AppProps) {
   // 購読を始めた時点の状態は subscribe が1度目に渡す（`Session.ts` 規則5）ので、
   // ここで先に決めない。最初の描画は購読が始まるまでの一瞬だけ 'unknown' でよい。
@@ -197,6 +202,13 @@ export function App({
 
   // 購読は1本。`session` が同じなら張り替えず、外れるとき戻り値で解除する（規則2）。
   useEffect(() => session.subscribe(setState), [session]);
+
+  // 接続状態も門が持つ（B-70 設計 規則3 / ADR-066）。購読は1本で、`connectivity` が同じなら
+  // 張り替えない。**購読が渡すまでの初期値は `online`** — 一瞬の描画で操作を止めない。
+  // セッションとは別に持つので、サインアウトしても捨てない。
+  const [connectivityState, setConnectivityState] = useState<ConnectivityState>('online');
+  useEffect(() => connectivity.subscribe(setConnectivityState), [connectivity]);
+  const offline = connectivityState === 'offline';
 
   // 取りに行くのは**サインイン済みのときだけ1度**（B-22 設計 規則10）。サインアウトしている間は
   // 叩いても 401 が返るだけで、往復を1つ無駄にする。
@@ -493,7 +505,8 @@ export function App({
    * **断られても詳細を閉じない** — 案内を読む前に画面が変わる。
    */
   const handleAddCookingRecord = () => {
-    if (openMeal === null || recordingCooking) return;
+    // **接続が切れている間は何もしない**（B-70 規則8）— 見た目の `disabled` と門の二重である。
+    if (openMeal === null || recordingCooking || offline) return;
 
     setRecordingCooking(true);
     setRecordFailureNotice(null);
@@ -549,7 +562,8 @@ export function App({
    * なる（FR-28）。在庫が足りない・上限に達した・失敗の回は生成が起きず、献立は増えない。
    */
   const handleRequestNewMeals = () => {
-    if (requestingNewMeals) return;
+    // **接続が切れている間は何もしない**（B-70 規則7）— 見た目の `disabled` と門の二重である。
+    if (requestingNewMeals || offline) return;
 
     setRequestingNewMeals(true);
     setNewMealsFailed(false);
@@ -586,6 +600,8 @@ export function App({
   if (state === 'signedOut') {
     return (
       <main>
+        {/* 帯はログインの画面にも出す（B-70 規則5）。ログインの操作は止めない（設計 10章 前提2）。 */}
+        {offline && <OfflineBanner />}
         <SignInForm
           onSignIn={(email, password) => session.signIn(email, password)}
           onSignUp={(email, password) => session.signUp(email, password)}
@@ -627,11 +643,14 @@ export function App({
         recording={recordingCooking}
         recordFailureNotice={recordFailureNotice}
         recorded={cookingRecorded}
+        offline={offline}
       />
     );
 
   return (
     <main>
+      {/* 帯は `<main>` の最初の子で、器より前に出す（B-70 規則4）。 */}
+      {offline && <OfflineBanner />}
       <TabbedScreen
         // 選んでいるタブは門が持つ（ADR-066 決定2）。器へは値と、押されたことを受ける口を
         // 渡すだけで、**運ばれてくるのは `TabId` だけ**である（同 決定3）。
@@ -655,6 +674,7 @@ export function App({
             // **詳細を組むのは門である**（設計 規則17）。器は渡されたものを描くかどうかだけを
             // 決める（先行 `PantryTab` の一覧 ⇄ 登録）。
             mealDetail={openMeal?.from === 'meals' ? openMealDetail : null}
+            offline={offline}
           />
         }
         pantry={
@@ -665,6 +685,7 @@ export function App({
             onRegister={registerAndReload}
             onUpdate={updateAndReload}
             ingredientNames={ingredientNames}
+            offline={offline}
           />
         }
         history={
@@ -680,6 +701,7 @@ export function App({
                   onSignOut={() => session.signOut()}
                   onClose={() => setSettingsOpen(false)}
                   onDeleteHouseholdData={deleteHouseholdDataAndSignOut}
+                  offline={offline}
                 />
               ) : null
             }

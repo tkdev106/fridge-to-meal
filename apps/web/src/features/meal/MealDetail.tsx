@@ -100,6 +100,8 @@ export type MealDetailProps = {
   recordFailureNotice: CookingRecordFailureNotice | null;
   /** 直前の記録が通ったか（規則11・12。**開き直した回には出ない**）。 */
   recorded: boolean;
+  /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
+  offline?: boolean;
 };
 
 /** 材料1行。**印は `note`** で、名称と分量とは別の要素に置く（先行 `UsedIngredients`）。 */
@@ -161,6 +163,7 @@ export function MealDetail({
   recording,
   recordFailureNotice,
   recorded,
+  offline = false,
 }: MealDetailProps) {
   const shown = meal.outcome === 'shown' ? meal.meal : null;
 
@@ -192,7 +195,8 @@ export function MealDetail({
           {recordFailureNotice !== null && (
             <p role="status">{RECORD_FAILURE_NOTICES[recordFailureNotice]}</p>
           )}
-          <button type="button" onClick={onAddCookingRecord} disabled={recording}>
+          {/* **接続が切れている間は押せない**（B-70 規則8）。上の「閉じる」は止めない（規則6）。 */}
+          <button type="button" onClick={onAddCookingRecord} disabled={recording || offline}>
             {COOKED_LABEL}
           </button>
         </>

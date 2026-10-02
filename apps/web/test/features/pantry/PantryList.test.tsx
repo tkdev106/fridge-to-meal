@@ -13,9 +13,17 @@
 
 import { describe, expect, it } from 'vitest';
 import type { StockItemDto } from '@fridge-to-meal/contract';
-import { fireEvent, render, screen, waitFor, within } from '../../support/dom/renderComponent.js';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '../../support/dom/renderComponent.js';
 import { installPointerCapture } from '../../support/dom/pointerCapture.js';
 import { PantryList } from '../../../src/features/pantry/PantryList.js';
+import type { DeleteStockItem } from '../../../src/server/StockItemRequests.js';
 
 const TODAY = '2026-09-20';
 
@@ -251,5 +259,102 @@ describe('在庫一覧 PantryList の行のタップ', () => {
     // 規則15: どちらにも当たらない動きでは**何も起こさない**（8px 以上 64px 未満）。
     expect(edits).toEqual([]);
     expect(deletedIds).toEqual([]);
+  });
+});
+
+/**
+ * 接続が切れている間のスワイプ（B-70 設計 6章 規則6・11・14 / 7章 行1 / FR-41 / FR-06）。
+ *
+ * **スワイプ削除は `disabled` を持たないので、削除と読めた動きを捨てる**（規則11）。削除の口を
+ * 呼ばず、断りの案内も出さず、行は残る。タップで編集を開くことは止めない（規則6）。
+ *
+ * 届いたものも届かなかったことも、**テストが持つ配列の中身**で見る（`docs/testing.md` 2章）。
+ */
+describe('在庫一覧 PantryList の接続が切れている間', () => {
+  /** `offline` を後から切り替えるために、描き直しの口を返す。 */
+  function renderTwoRowsWith(edits: StockItemDto[], onDelete: DeleteStockItem, offline: boolean) {
+    const rendered = render(
+      <PantryList
+        today={TODAY}
+        onDelete={onDelete}
+        onEdit={recordingEdit(edits)}
+        stockItems={{ outcome: 'loaded', stockItems: twoRows }}
+        offline={offline}
+      />,
+    );
+
+    return {
+      setOffline: (next: boolean) => {
+        rendered.rerender(
+          <PantryList
+            today={TODAY}
+            onDelete={onDelete}
+            onEdit={recordingEdit(edits)}
+            stockItems={{ outcome: 'loaded', stockItems: twoRows }}
+            offline={next}
+          />,
+        );
+      },
+    };
+  }
+
+  /** 削除の口へ届いた識別子を**配列に残し**、結末は「失敗」を返す（案内が出る結末）。 */
+  function recordingFailedDelete(deletedIds: string[]) {
+    return (id: string) => {
+      deletedIds.push(id);
+
+      return Promise.resolve({ outcome: 'failed' } as const);
+    };
+  }
+
+  it('接続が切れている間は、削除と読める長さまでなぞっても削除の口へ何も届かない', () => {
+    const deletedIds: string[] = [];
+    renderTwoRowsWith([], recordingDelete(deletedIds), true);
+
+    pressAndRelease({ x: 100, y: 0 });
+
+    // 規則11 / FR-41: 削除は書き込みを伴う操作である。
+    expect(deletedIds).toEqual([]);
+  });
+
+  it('接続が切れている間になぞっても、行は残る', () => {
+    renderTwoRowsWith([], recordingDelete([]), true);
+
+    pressAndRelease({ x: 100, y: 0 });
+
+    // 規則11: 行は残る。
+    expect(screen.queryByText('白菜')).not.toBeNull();
+  });
+
+  it('接続が切れている間になぞっても、断りの案内を出さない', async () => {
+    // 結末を「失敗」にしておく — 削除の口が呼ばれれば案内が出るので、出ないことに意味がある。
+    renderTwoRowsWith([], recordingFailedDelete([]), true);
+
+    pressAndRelease({ x: 100, y: 0 });
+    await act(async () => {});
+
+    // 規則11 / 7章 行1: 理由は門の帯が示すので、二重に案内しない。
+    expect(screen.queryAllByRole('paragraph')).toHaveLength(0);
+  });
+
+  it('接続が切れていても、行をタップするとその在庫品が編集の口へ届く', () => {
+    const edits: StockItemDto[] = [];
+    renderTwoRowsWith(edits, recordingDelete([]), true);
+
+    pressAndRelease({ x: 0, y: 0 });
+
+    // 規則6・11: 編集の画面を開くのは遷移である。
+    expect(edits).toEqual([twoRows[1]]);
+  });
+
+  it('接続が戻ると、なぞった行の識別子が削除の口へ届く', () => {
+    const deletedIds: string[] = [];
+    const { setOffline } = renderTwoRowsWith([], recordingDelete(deletedIds), true);
+
+    setOffline(false);
+    pressAndRelease({ x: 100, y: 0 });
+
+    // 規則14: 戻れば止めた操作は元に戻る。
+    expect(deletedIds).toEqual(['2']);
   });
 });

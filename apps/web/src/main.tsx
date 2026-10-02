@@ -4,6 +4,7 @@ import { App } from './App.js';
 import type { Session } from './session/Session.js';
 import { sessionConfigOf } from './session/SessionConfig.js';
 import { SessionImpl } from './session/SessionImpl.js';
+import { ConnectivityImpl } from './connectivity/ConnectivityImpl.js';
 import { apiBaseUrlOf } from './server/ApiBaseUrl.js';
 import type { StockItemRequestsDeps } from './server/StockItemRequests.js';
 import {
@@ -63,6 +64,9 @@ const requestMealList = listMeals(stockItemRequests);
 // `HouseholdDataRequestsDeps` も同じ3項目なので、そのまま渡せる。
 const requestHouseholdDataDeletion = deleteHouseholdData(stockItemRequests);
 
+// 接続状態の継ぎ目を `new` するのもここだけ（B-70 設計 4章）。窓は構造型で渡す（設計 5章）。
+const connectivity = new ConnectivityImpl(window);
+
 const container = document.getElementById('root');
 if (!container) throw new Error('#root が見つからない');
 
@@ -81,6 +85,7 @@ createRoot(container).render(
       addCookingRecord={sendCookingRecord}
       listMeals={requestMealList}
       deleteHouseholdData={requestHouseholdDataDeletion}
+      connectivity={connectivity}
     />
   </StrictMode>,
 );
