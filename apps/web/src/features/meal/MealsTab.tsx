@@ -28,6 +28,7 @@ import { Icon } from '../../icons/Icon.js';
 import styles from './MealsTab.module.css';
 import type { LatestSuggestionOutcome } from '../../server/SuggestionRequests.js';
 import type { SuggestMealsOutput } from '@fridge-to-meal/contract';
+import { ScreenHeader } from '../../navigation/ScreenHeader.js';
 
 /** 読み込み中の案内（**暫定**）。`docs/screen-design.md` は S-5 しか決めていない。 */
 const LOADING_NOTICE = '献立を読み込んでいます。';
@@ -221,6 +222,8 @@ export type MealsTabProps = {
   mealDetail: ReactNode | null;
   /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
   offline?: boolean;
+  /** 見出しの行の歯車が押された（B-60 設計 6章 規則12）。設定を開いているかは門が持つ。 */
+  onOpenSettings: () => void;
 };
 
 /**
@@ -265,7 +268,7 @@ function SuggestionBody({
               {REUSED_MARK}
             </span>
           )}
-          {/* 画面の見出し（h2）の下に入る（B-61 規則2 / 原本 `MealCard`）。 */}
+          {/* 画面の見出し（h1。B-60）の下に入る（B-61 規則2 / 原本 `MealCard`）。 */}
           <h3 className={styles.title}>{card.title}</h3>
           <p className={styles.coverage}>{coverageText(card.ingredientCount, card.missingCount)}</p>
           <UsedIngredients ingredients={card.usedIngredients} />
@@ -381,6 +384,7 @@ export function MealsTab({
   onOpenMeal,
   mealDetail,
   offline = false,
+  onOpenSettings,
 }: MealsTabProps) {
   // 出し分けだけを行い、計算を持たない（先行 `PantryList`）。
   //
@@ -396,14 +400,15 @@ export function MealsTab({
     suggestion.outcome === 'suggested' ? mealCardsOf(suggestion.suggestion.entries, today) : [];
 
   // **見出しは結末に依らず1つ出し、各枝の中身はその下に置く**（B-61 規則1 / 原本 `MealScreen`）。
-  // 凡例はカードが1枚以上あるときだけである（規則3）。
+  // 凡例はカードが1枚以上あるときだけである（規則3）。見出しの行は3つのタブで共通の部品で、
+  // 右に設定の歯車を持つ（B-60 設計 6章 規則12・13）。取れなかった回にも置く — どのタブからも
+  // ログアウトに届く。
   return (
     <div className={styles.screen}>
       <div className={styles.content}>
-        <header className={styles.header}>
-          <h2 className={styles.heading}>{HEADING}</h2>
+        <ScreenHeader title={HEADING} onOpenSettings={onOpenSettings}>
           {cards.length > 0 && <p className={styles.legend}>{LEGEND}</p>}
-        </header>
+        </ScreenHeader>
         <MealsTabBody
           suggestion={suggestion}
           cards={cards}
@@ -429,7 +434,9 @@ function MealsTabBody({
   onGoToPantry,
   onOpenMeal,
   offline = false,
-}: Omit<MealsTabProps, 'today' | 'mealDetail'> & { cards: readonly MealCard[] }) {
+}: Omit<MealsTabProps, 'today' | 'mealDetail' | 'onOpenSettings'> & {
+  cards: readonly MealCard[];
+}) {
   if (suggestion.outcome === 'loading') return <p>{LOADING_NOTICE}</p>;
 
   // **出せない回は、提案の枝から先に分ける**（B-49c / 規則1〜6）。どちらも 200 で届く結末で

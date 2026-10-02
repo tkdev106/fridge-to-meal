@@ -38,6 +38,10 @@ import type {
   RegisterStockItem,
   UpdateStockItem,
 } from '../../server/StockItemRequests.js';
+import { ScreenHeader } from '../../navigation/ScreenHeader.js';
+
+/** 見出しの行の題（原本 `PantryScreen.dc.html`。ADR-074 決定1 — 仮ではない）。 */
+const HEADING = '冷蔵庫';
 
 /**
  * 登録を開く操作の名札。**仮の文言である**（`docs/screen-design.md` 論点3 / 規則15）—
@@ -72,6 +76,8 @@ export type PantryTabProps = {
   ingredientNames: IngredientNamesState;
   /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
   offline?: boolean;
+  /** 見出しの行の歯車が押された（B-60 設計 6章 規則12）。設定を開いているかは門が持つ。 */
+  onOpenSettings: () => void;
 };
 
 export function PantryTab({
@@ -82,6 +88,7 @@ export function PantryTab({
   onUpdate,
   ingredientNames,
   offline = false,
+  onOpenSettings,
 }: PantryTabProps): JSX.Element {
   // `offline`（B-70）はこの画面では読まず、書き込みを持つ3つの画面へ素通しする。
   // 開いた直後は一覧である（規則2 / 要件 第7章）。
@@ -121,10 +128,15 @@ export function PantryTab({
     );
   }
 
+  // 一覧の枝の先頭に見出しの行を置く（B-60 設計 6章 規則12）。**登録・編集の画面には置かない**
+  // （原本に無い）。一覧が取れなかった回にも置く — どのタブからもログアウトに届く。
+  //
   // 登録を開く操作は一覧より前に置く（規則3。`docs/screen-design.md` 5章の見出しの行の右端）。
   // **一覧が取れなかった回も置いたままにする** — 取得の断りは登録に及ばない（7章）。
   return (
     <>
+      <ScreenHeader title={HEADING} onOpenSettings={onOpenSettings} />
+
       <button type="button" onClick={() => setRegistering(true)}>
         {OPEN_REGISTER_LABEL}
       </button>
