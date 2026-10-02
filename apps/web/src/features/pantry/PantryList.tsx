@@ -116,7 +116,7 @@ type RowShowing = 'nothing' | 'revealed' | 'operationsOpen';
  *
  * **`…` はどの幅でも置く**（B-69 規則3）。キーボードと読み上げから編集・削除に届く経路は
  * これであり、なぞる・タップはポインタにしかできない。開いた中身は DOM で `…` の直後に置き、
- * Tab で届く。`role="menu"` は使わない — 矢印キーの移動を約束することになる。
+ * Tab で届く。矢印キーの移動を約束する役割は使わず、開閉ボタンの形にする。
  *
  * ポインタのイベントは触れる相手を問わない（指・マウス・ペン）ので、ジェスチャの依存を
  * 足さずに済む（`docs/workflow.md` 3章）。
@@ -197,6 +197,13 @@ function StockItemRow({
         aria-controls={operationsId}
         onClick={() => {
           onEvent({ kind: 'operationsToggled', stockItemId: stockItem.id });
+        }}
+        // 開いた直後は焦点が `…` に残る。ここでの Esc も開いた中身を閉じる（開閉ボタンの形）。
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || showing !== 'operationsOpen') return;
+
+          event.preventDefault();
+          onEvent({ kind: 'dismissed' });
         }}
       >
         …
