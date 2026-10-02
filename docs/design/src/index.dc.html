@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html><head>
+<!-- 原本の <style> のうち書体の @font-face（Google Fonts の Inter / Zen Kaku Gothic New）を除いた残り -->
+<style>body{margin:0;background:#E6E2DA;-webkit-font-smoothing:antialiased}a{color:#1F1E1B}a:hover{color:#55524C}@keyframes ftm-indet{0%{transform:translateX(-100%)}100%{transform:translateX(320%)}}</style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="454324e4-e105-47d0-a9fd-5258ea492e1d"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+
+
+</helmet>
+<section id="intro" style="padding:80px 80px 0;color:#1F1E1B;font-family:var(--ftm-font, 'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif)">
+  <div style="font-family:'Inter', sans-serif;font-weight:500;font-size:14px;letter-spacing:0.24em">fridge to meal</div>
+  <h1 style="margin:16px 0 0;font-size:26px;font-weight:500;line-height:1.4;letter-spacing:0.02em">画面デザイン</h1>
+  <p style="margin:8px 0 0;font-size:14px;line-height:1.6;color:#55524C">スマホ 390 / PC 1440。★ は両方、その他はスマホ。末尾に部品の一覧</p>
+</section>
+
+<section id="must" data-screen-label="必須の画面" style="padding:96px 80px 0;display:flex;flex-direction:column;gap:120px;width:max-content;color:#1F1E1B;font-family:var(--ftm-font, 'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif)">
+  <div id="s1" style="display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;align-items:baseline;gap:16px"><h2 style="margin:0;font-size:20px;font-weight:500">★1 献立タブ</h2><span style="font-size:14px;color:#55524C">提案あり（再利用2件）</span></div>
+    <div style="display:flex;gap:64px;align-items:flex-start">
+      <figure id="1-sp" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">1-SP</span>スマホ 390</figcaption><dc-import name="MealScreen" state="reuse" hint-size="390px,844px"></dc-import></figure>
+      <figure id="1-pc" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">1-PC</span>PC 1440</figcaption><dc-import name="MealScreen" state="reuse" desktop="{{ true }}" hint-size="1440px,900px"></dc-import></figure>
+    </div>
+  </div>
+  <div id="s2" style="display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;align-items:baseline;gap:16px"><h2 style="margin:0;font-size:20px;font-weight:500">★2 献立タブ</h2><span style="font-size:14px;color:#55524C">提案あり（生成3件）・開いた後に在庫が変わった</span></div>
+    <div style="display:flex;gap:64px;align-items:flex-start">
+      <figure id="2-sp" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">2-SP</span>スマホ 390</figcaption><dc-import name="MealScreen" state="generated" hint-size="390px,844px"></dc-import></figure>
+      <figure id="2-pc" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">2-PC</span>PC 1440</figcaption><dc-import name="MealScreen" state="generated" desktop="{{ true }}" hint-size="1440px,900px"></dc-import></figure>
+    </div>
+  </div>
+  <div id="s3" style="display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;align-items:baseline;gap:16px"><h2 style="margin:0;font-size:20px;font-weight:500">★3 献立タブ</h2><span style="font-size:14px;color:#55524C">生成中（前の提案を 0.4 で残す・上部に進行線）</span></div>
+    <div style="display:flex;gap:64px;align-items:flex-start">
+      <figure id="3-sp" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">3-SP</span>スマホ 390</figcaption><dc-import name="MealScreen" state="pending" hint-size="390px,844px"></dc-import></figure>
+      <figure id="3-pc" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">3-PC</span>PC 1440</figcaption><dc-import name="MealScreen" state="pending" desktop="{{ true }}" hint-size="1440px,900px"></dc-import></figure>
+    </div>
+  </div>
+  <div id="s7" style="display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;align-items:baseline;gap:16px"><h2 style="margin:0;font-size:20px;font-weight:500">★7 献立詳細</h2><span style="font-size:14px;color:#55524C">不足が1件ある</span></div>
+    <div style="display:flex;gap:64px;align-items:flex-start">
+      <figure id="7-sp" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">7-SP</span>スマホ 390</figcaption><dc-import name="MealDetail" hint-size="390px,844px"></dc-import></figure>
+      <figure id="7-pc" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">7-PC</span>PC 1440</figcaption><dc-import name="MealDetail" desktop="{{ true }}" hint-size="1440px,900px"></dc-import></figure>
+    </div>
+  </div>
+  <div id="s9" style="display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;align-items:baseline;gap:16px"><h2 style="margin:0;font-size:20px;font-weight:500">★9 在庫タブ</h2><span style="font-size:14px;color:#55524C">一覧。PC は「豚こま肉」の行の操作を開いた状態</span></div>
+    <div style="display:flex;gap:64px;align-items:flex-start">
+      <figure id="9-sp" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">9-SP</span>スマホ 390</figcaption><dc-import name="PantryScreen" hint-size="390px,844px"></dc-import></figure>
+      <figure id="9-pc" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">9-PC</span>PC 1440</figcaption><dc-import name="PantryScreen" overlay="menu" desktop="{{ true }}" hint-size="1440px,900px"></dc-import></figure>
+    </div>
+  </div>
+  <div id="s10" style="display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;align-items:baseline;gap:16px"><h2 style="margin:0;font-size:20px;font-weight:500">★10 食材の登録</h2><span style="font-size:14px;color:#55524C">入力中（食材名の補完が出ている）</span></div>
+    <div style="display:flex;gap:64px;align-items:flex-start">
+      <figure id="10-sp" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">10-SP</span>スマホ 390</figcaption><dc-import name="PantryScreen" overlay="add" hint-size="390px,844px"></dc-import></figure>
+      <figure id="10-pc" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">10-PC</span>PC 1440・右から出るパネル</figcaption><dc-import name="PantryScreen" overlay="add" desktop="{{ true }}" hint-size="1440px,900px"></dc-import></figure>
+    </div>
+  </div>
+</section>
+
+<section id="others" data-screen-label="その他の画面" style="padding:160px 80px 0;display:flex;flex-direction:column;gap:48px;width:max-content;color:#1F1E1B;font-family:var(--ftm-font, 'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif)">
+  <h2 style="margin:0;font-size:20px;font-weight:500">その他の画面</h2>
+  <div style="display:grid;grid-template-columns:repeat(4, 390px);gap:72px 48px;align-items:start">
+    <figure id="4-sp" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">4</span>献立タブ・在庫が足りない</figcaption><dc-import name="MealScreen" state="short" hint-size="390px,844px"></dc-import></figure>
+    <figure id="5-sp" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">5</span>献立タブ・1日の上限に達した</figcaption><dc-import name="MealScreen" state="limit" hint-size="390px,844px"></dc-import></figure>
+    <figure id="6-sp" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">6</span>献立タブ・まだ提案が無い</figcaption><dc-import name="MealScreen" state="first" hint-size="390px,844px"></dc-import></figure>
+    <figure id="8-sp" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">8</span>献立詳細・作った記録がある</figcaption><dc-import name="MealDetail" cooked="{{ true }}" hint-size="390px,844px"></dc-import></figure>
+    <figure id="11-sp" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">11</span>在庫の編集</figcaption><dc-import name="PantryScreen" overlay="edit" hint-size="390px,844px"></dc-import></figure>
+
+    <figure id="12-sp" style="margin:0;display:flex;flex-direction:column;gap:12px">
+      <figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">12</span>履歴タブ</figcaption>
+      <div style="box-sizing:border-box;width:390px;min-height:844px;display:flex;flex-direction:column;background:#FAF9F6;font-size:16px;line-height:1.75;letter-spacing:0.02em">
+        <main style="flex:1;padding:0 0 24px">
+          <header style="min-height:48px;display:flex;align-items:center;justify-content:space-between;padding:16px 16px 24px">
+            <h1 style="margin:0;font-size:20px;font-weight:500;line-height:1.45">履歴</h1>
+            <button type="button" aria-label="設定" style="width:48px;height:48px;margin-right:-12px;display:flex;align-items:center;justify-content:center;padding:0;border:0;background:none;color:#1F1E1B;cursor:pointer" style-focus="outline:2px solid #1F1E1B;outline-offset:2px"><dc-import name="Icon" icon="settings" size="24" hint-size="24px,24px"></dc-import></button>
+          </header>
+          <div style="padding:0 16px">
+            <div style="box-sizing:border-box;height:40px;display:grid;grid-template-columns:1fr 1fr;border:1px solid #8C877F">
+              <button type="button" style="border:0;border-radius:0;background:#1F1E1B;color:#FAF9F6;font-family:inherit;font-size:14px;font-weight:500;letter-spacing:0.02em;cursor:pointer">以前見た献立</button>
+              <button type="button" style="border:0;border-radius:0;background:transparent;color:#1F1E1B;font-family:inherit;font-size:14px;letter-spacing:0.02em;cursor:pointer">つくった献立</button>
+            </div>
+          </div>
+          <div style="margin-top:16px">
+            <sc-for list="{{ hist }}" as="h" hint-placeholder-count="6">
+              <div style="box-sizing:border-box;height:56px;display:grid;grid-template-columns:minmax(0, 1fr) auto;column-gap:16px;align-items:center;padding:0 16px;border-bottom:1px solid #E3DED6;cursor:pointer" style-hover="background:#FFFFFF">
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ h.n }}</span>
+                <span style="font-size:14px;line-height:1.6;color:#55524C;font-variant-numeric:tabular-nums">{{ h.c }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </main>
+        <dc-import name="TabBar" active="history" hint-size="390px,64px"></dc-import>
+      </div>
+    </figure>
+
+    <sc-for list="{{ settingsVariants }}" as="v" hint-placeholder-count="2">
+      <figure id="{{ v.id }}" style="margin:0;display:flex;flex-direction:column;gap:12px">
+        <figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">{{ v.badge }}</span>{{ v.cap }}</figcaption>
+        <div style="box-sizing:border-box;width:390px;min-height:844px;display:flex;flex-direction:column;background:#FAF9F6;font-size:16px;line-height:1.75;letter-spacing:0.02em">
+          <main style="flex:1;padding:0 0 24px">
+            <header style="min-height:48px;display:flex;align-items:center;gap:4px;padding:24px 16px 24px 4px">
+              <button type="button" aria-label="戻る" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;padding:0;border:0;background:none;color:#1F1E1B;cursor:pointer"><dc-import name="Icon" icon="back" size="24" hint-size="24px,24px"></dc-import></button>
+              <h1 style="margin:0;font-size:20px;font-weight:500;line-height:1.45">設定</h1>
+            </header>
+            <div style="height:32px;display:flex;align-items:center;padding:0 16px;background:#ECE7DF;font-size:12px;line-height:1.5;letter-spacing:0.12em">アカウント</div>
+            <div style="box-sizing:border-box;height:56px;display:flex;align-items:center;padding:0 16px;border-bottom:1px solid #E3DED6;cursor:pointer" style-hover="background:#FFFFFF">ログアウト</div>
+            <div style="margin-top:24px;height:32px;display:flex;align-items:center;padding:0 16px;background:#ECE7DF;font-size:12px;line-height:1.5;letter-spacing:0.12em">データ</div>
+            <div style="padding:24px 16px">
+              <sc-if value="{{ v.idle }}" hint-placeholder-val="{{ true }}">
+                <button type="button" style="width:100%;height:48px;border:1px solid #A33A26;border-radius:0;background:transparent;color:#A33A26;font-family:inherit;font-size:16px;letter-spacing:0.02em;cursor:pointer">アカウントとデータを削除</button>
+              </sc-if>
+              <sc-if value="{{ v.confirm }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;gap:24px">
+                  <p style="margin:0;font-size:16px;font-weight:500;line-height:1.75;text-wrap:pretty">アカウントと、冷蔵庫の食材・履歴をすべて削除しますか</p>
+                  <div style="display:flex;flex-direction:column;gap:12px">
+                    <button type="button" style="width:100%;height:48px;border:0;border-radius:0;background:#A33A26;color:#FAF9F6;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em;cursor:pointer">削除する</button>
+                    <button type="button" style="width:100%;height:48px;border:1px solid #1F1E1B;border-radius:0;background:transparent;color:#1F1E1B;font-family:inherit;font-size:16px;letter-spacing:0.02em;cursor:pointer">やめる</button>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </main>
+          <dc-import name="TabBar" active="none" hint-size="390px,64px"></dc-import>
+        </div>
+      </figure>
+    </sc-for>
+
+    <figure id="14-sp" style="margin:0;display:flex;flex-direction:column;gap:12px">
+      <figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">14</span>ログイン</figcaption>
+      <div style="box-sizing:border-box;width:390px;min-height:844px;display:flex;flex-direction:column;padding:24px 16px 48px;background:#FAF9F6;font-size:16px;line-height:1.75;letter-spacing:0.02em">
+        <div style="height:48px;display:flex;align-items:center;font-family:'Inter', sans-serif;font-weight:500;font-size:14px;letter-spacing:0.16em">fridge to meal</div>
+        <div style="flex:1"></div>
+        <h1 style="margin:0;font-size:20px;font-weight:500;line-height:1.45">ログイン</h1>
+        <div style="margin-top:32px;display:flex;flex-direction:column;gap:24px">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font-size:12px;line-height:1.5;letter-spacing:0.12em;color:#55524C">メールアドレス</span>
+            <div style="box-sizing:border-box;height:48px;display:flex;align-items:center;padding:0 16px;background:#FFFFFF;border:1px solid #8C877F">sato@example.com</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <span style="font-size:12px;line-height:1.5;letter-spacing:0.12em;color:#55524C">パスワード</span>
+            <div style="box-sizing:border-box;height:48px;display:flex;align-items:center;padding:0 16px;background:#FFFFFF;border:1px solid #8C877F;letter-spacing:0.2em">••••••••••</div>
+          </div>
+        </div>
+        <button type="button" style="margin-top:40px;width:100%;height:56px;border:0;border-radius:0;background:#1F1E1B;color:#FAF9F6;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em;cursor:pointer" style-active="background:#55524C">ログイン</button>
+      </div>
+    </figure>
+  </div>
+
+  <div id="s9b" style="margin-top:48px;display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;align-items:baseline;gap:16px"><h2 style="margin:0;font-size:20px;font-weight:500">9b 在庫の削除の確認</h2><span style="font-size:14px;color:#55524C">最初の焦点は「やめる」</span></div>
+    <div style="display:flex;gap:64px;align-items:flex-start">
+      <figure id="9b-sp" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">9b-SP</span>下から出る面</figcaption><dc-import name="PantryScreen" overlay="confirm" hint-size="390px,844px"></dc-import></figure>
+      <figure id="9b-pc" style="margin:0;display:flex;flex-direction:column;gap:12px"><figcaption style="display:flex;align-items:center;gap:12px;font-size:14px;color:#55524C"><span style="padding:2px 8px;background:#1F1E1B;color:#FAF9F6;font-family:'Inter', sans-serif;font-size:12px;letter-spacing:0.12em">9b-PC</span>中央のダイアログ</figcaption><dc-import name="PantryScreen" overlay="confirm" desktop="{{ true }}" hint-size="1440px,900px"></dc-import></figure>
+    </div>
+  </div>
+</section>
+
+<section id="parts" data-screen-label="部品の一覧" style="padding:160px 80px 120px;display:flex;flex-direction:column;gap:48px;width:max-content;color:#1F1E1B;font-size:16px;line-height:1.75;letter-spacing:0.02em;font-family:var(--ftm-font, 'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif)">
+  <h2 style="margin:0;font-size:20px;font-weight:500">部品の一覧</h2>
+  <div style="display:grid;grid-template-columns:repeat(4, 422px);gap:32px;align-items:start">
+
+    <div style="grid-column:span 2;box-sizing:border-box;padding:32px;background:#FAF9F6;display:flex;flex-direction:column;gap:24px">
+      <h3 style="margin:0;font-size:12px;font-weight:400;letter-spacing:0.12em;color:#55524C">献立カード</h3>
+      <div style="display:flex;gap:24px;align-items:stretch">
+        <div style="width:358px;display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#6E6A63">再利用</span><dc-import name="MealCard" meal="{{ mA }}" reuse="{{ true }}" hint-size="358px,200px"></dc-import></div>
+        <div style="width:358px;display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#6E6A63">生成（印なし）</span><dc-import name="MealCard" meal="{{ mC }}" hint-size="358px,170px"></dc-import></div>
+      </div>
+    </div>
+
+    <div style="box-sizing:border-box;padding:32px;background:#FAF9F6;display:flex;flex-direction:column;gap:24px">
+      <h3 style="margin:0;font-size:12px;font-weight:400;letter-spacing:0.12em;color:#55524C">再利用の印</h3>
+      <div style="align-self:flex-start;height:24px;display:flex;align-items:center;padding:0 8px;background:#E2EBD0;color:#4A6236;font-size:12px;line-height:1.5;letter-spacing:0.12em">前に見た献立</div>
+      <p style="margin:0;font-size:14px;line-height:1.6;color:#55524C">再利用の献立にだけ付ける</p>
+    </div>
+
+    <div style="box-sizing:border-box;padding:32px;background:#FAF9F6;display:flex;flex-direction:column;gap:24px">
+      <h3 style="margin:0;font-size:12px;font-weight:400;letter-spacing:0.12em;color:#55524C">注意表示</h3>
+      <dc-import name="AiNotice" hint-size="358px,72px"></dc-import>
+    </div>
+
+    <div style="grid-column:span 4;box-sizing:border-box;padding:32px;background:#FAF9F6;display:flex;flex-direction:column;gap:24px">
+      <h3 style="margin:0;font-size:12px;font-weight:400;letter-spacing:0.12em;color:#55524C">「新しい献立を見る」の面</h3>
+      <div style="display:flex;gap:24px;align-items:flex-start">
+        <div style="width:358px;display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#6E6A63">通常</span><dc-import name="RequestBlock" hint-size="358px,120px"></dc-import></div>
+        <div style="width:358px;display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#6E6A63">冷蔵庫の食材が変わった</span><dc-import name="RequestBlock" changed="{{ true }}" hint-size="358px,150px"></dc-import></div>
+        <div style="width:358px;display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#6E6A63">つくっている</span><dc-import name="RequestBlock" pending="{{ true }}" hint-size="358px,120px"></dc-import></div>
+      </div>
+      <div style="width:1080px;display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#6E6A63">PC（カード群の下に横長）</span><dc-import name="RequestBlock" desktop="{{ true }}" changed="{{ true }}" hint-size="1080px,90px"></dc-import></div>
+    </div>
+
+    <div style="grid-column:span 2;box-sizing:border-box;padding:32px;background:#FAF9F6;display:flex;flex-direction:column;gap:24px">
+      <h3 style="margin:0;font-size:12px;font-weight:400;letter-spacing:0.12em;color:#55524C">ボタン</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px 24px">
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#6E6A63">Primary</span><button type="button" style="height:56px;border:0;border-radius:0;background:#1F1E1B;color:#FAF9F6;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em">作った</button></div>
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#6E6A63">Primary・押している間</span><button type="button" style="height:56px;border:0;border-radius:0;background:#55524C;color:#FAF9F6;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em">作った</button></div>
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#6E6A63">Primary・無効</span><button type="button" style="height:56px;border:0;border-radius:0;background:#E3DED6;color:#6E6A63;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em">作った</button></div>
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#6E6A63">Primary・フォーカス</span><button type="button" style="height:56px;border:0;border-radius:0;background:#1F1E1B;color:#FAF9F6;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em;outline:2px solid #1F1E1B;outline-offset:2px">作った</button></div>
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#6E6A63">Secondary</span><button type="button" style="height:48px;border:1px solid #1F1E1B;border-radius:0;background:transparent;color:#1F1E1B;font-family:inherit;font-size:16px;letter-spacing:0.02em">保存して閉じる</button></div>
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#6E6A63">Text link</span><div style="height:48px;display:flex;align-items:center"><span style="font-size:14px;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px">作り方を見る</span></div></div>
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#6E6A63">Destructive</span><button type="button" style="height:48px;border:1px solid #A33A26;border-radius:0;background:transparent;color:#A33A26;font-family:inherit;font-size:16px;letter-spacing:0.02em">アカウントとデータを削除</button></div>
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#6E6A63">Destructive・確認の段</span><button type="button" style="height:48px;border:0;border-radius:0;background:#A33A26;color:#FAF9F6;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em">削除</button></div>
+      </div>
+    </div>
+
+    <div style="grid-column:span 2;box-sizing:border-box;padding:32px;background:#FAF9F6;display:flex;flex-direction:column;gap:24px">
+      <h3 style="margin:0;font-size:12px;font-weight:400;letter-spacing:0.12em;color:#55524C">入力欄</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:1.5;letter-spacing:0.12em;color:#55524C">分量</span><div style="box-sizing:border-box;height:48px;display:flex;align-items:center;padding:0 16px;background:#FFFFFF;border:1px solid #8C877F;color:#6E6A63">例: 300g</div><span style="font-size:12px;color:#6E6A63">通常</span></div>
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:1.5;letter-spacing:0.12em;color:#55524C">分量</span><div style="box-sizing:border-box;height:48px;display:flex;align-items:center;padding:0 15px;background:#FFFFFF;border:2px solid #1F1E1B;font-variant-numeric:tabular-nums"><span>300g</span><span style="width:1px;height:22px;margin-left:1px;background:#1F1E1B"></span></div><span style="font-size:12px;color:#6E6A63">フォーカス</span></div>
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:1.5;letter-spacing:0.12em;color:#55524C">食材名</span><div style="box-sizing:border-box;height:48px;display:flex;align-items:center;padding:0 16px;background:#FFFFFF;border:1px solid #A33A26"></div><span style="display:flex;gap:8px;font-size:14px;line-height:1.6;color:#A33A26"><span style="font-family:'Inter', sans-serif;font-weight:500">!</span>食材名を入れてください</span></div>
+        <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;line-height:1.5;letter-spacing:0.12em;color:#55524C">食材名</span>
+          <div>
+            <div style="box-sizing:border-box;height:48px;display:flex;align-items:center;padding:0 15px;background:#FFFFFF;border:2px solid #1F1E1B"><span>こま</span><span style="width:1px;height:22px;margin-left:1px;background:#1F1E1B"></span></div>
+            <div style="background:#FFFFFF;border:1px solid #E3DED6;border-top:0">
+              <div style="height:48px;display:flex;align-items:center;padding:0 16px;background:#FAF9F6">小松菜</div>
+              <div style="height:48px;display:flex;align-items:center;padding:0 16px">豚こま肉</div>
+            </div>
+          </div>
+          <span style="font-size:12px;color:#6E6A63">補完つき</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="grid-column:span 2;box-sizing:border-box;padding:32px;background:#FAF9F6;display:flex;flex-direction:column;gap:24px">
+      <h3 style="margin:0;font-size:12px;font-weight:400;letter-spacing:0.12em;color:#55524C">在庫の帯と行</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start">
+        <div style="display:flex;flex-direction:column;gap:24px">
+          <div>
+            <div style="height:32px;display:flex;align-items:center;gap:8px;padding:0 16px;background:#F7E3DC;color:#A33A26;font-size:12px;letter-spacing:0.12em"><span style="font-family:'Inter', sans-serif;font-weight:500;letter-spacing:0">!</span>今日まで</div>
+            <div style="box-sizing:border-box;height:56px;display:grid;grid-template-columns:minmax(0, 1fr) 64px 56px;column-gap:8px;align-items:center;padding:0 16px;border-bottom:1px solid #E3DED6"><span>豚こま肉</span><span style="font-size:14px;color:#55524C;text-align:right;font-variant-numeric:tabular-nums">300g</span><span style="font-size:14px;color:#A33A26;text-align:right">今日</span></div>
+          </div>
+          <div>
+            <div style="height:32px;display:flex;align-items:center;padding:0 16px;background:#F5EBD8;color:#8A5A12;font-size:12px;letter-spacing:0.12em">期限が近い</div>
+            <div style="box-sizing:border-box;height:56px;display:grid;grid-template-columns:minmax(0, 1fr) 64px 56px;column-gap:8px;align-items:center;padding:0 16px;border-bottom:1px solid #E3DED6"><span>白菜</span><span style="font-size:14px;color:#55524C;text-align:right;font-variant-numeric:tabular-nums">1/4個</span><span style="font-size:14px;color:#8A5A12;text-align:right;font-variant-numeric:tabular-nums">あと2日</span></div>
+          </div>
+          <div>
+            <div style="height:32px;display:flex;align-items:center;padding:0 16px;background:#ECE7DF;color:#1F1E1B;font-size:12px;letter-spacing:0.12em">その他</div>
+            <div style="box-sizing:border-box;height:56px;display:grid;grid-template-columns:minmax(0, 1fr) 64px 56px;column-gap:8px;align-items:center;padding:0 16px;border-bottom:1px solid #E3DED6"><span>乾燥わかめ</span><span style="font-size:14px;color:#55524C;text-align:right;font-variant-numeric:tabular-nums">1袋</span><span style="font-size:14px;color:#6E6A63;text-align:right">－</span></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:24px">
+          <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:12px;color:#6E6A63">スマホ・横スワイプ中</span>
+            <div style="position:relative;height:56px;overflow:hidden;background:#A33A26">
+              <div style="position:absolute;top:0;right:0;bottom:0;width:96px;display:flex;align-items:center;justify-content:center;color:#FAF9F6;font-size:14px">削除</div>
+              <div style="position:absolute;inset:0;box-sizing:border-box;transform:translateX(-96px);display:grid;grid-template-columns:minmax(0, 1fr) 64px 56px;column-gap:8px;align-items:center;padding:0 16px;background:#FAF9F6;border-bottom:1px solid #E3DED6"><span>卵</span><span style="font-size:14px;color:#55524C;text-align:right;font-variant-numeric:tabular-nums">6個</span><span style="font-size:14px;color:#8A5A12;text-align:right;font-variant-numeric:tabular-nums">あと3日</span></div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;padding-bottom:88px"><span style="font-size:12px;color:#6E6A63">PC・行末の操作を開いた</span>
+            <div style="position:relative;box-sizing:border-box;height:56px;display:grid;grid-template-columns:minmax(0, 1fr) 56px 48px;column-gap:8px;align-items:center;padding:0 0 0 16px;background:#FFFFFF;border-bottom:1px solid #E3DED6">
+              <span>にんじん</span><span style="font-size:14px;color:#55524C;text-align:right;font-variant-numeric:tabular-nums">2本</span>
+              <span style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;background:#ECE7DF;color:#55524C"><dc-import name="Icon" icon="more" size="24" hint-size="24px,24px"></dc-import></span>
+              <div style="position:absolute;top:100%;right:0;z-index:3;width:160px;margin-top:-1px;display:flex;flex-direction:column;background:#FFFFFF;border:1px solid #E3DED6">
+                <div style="height:44px;display:flex;align-items:center;padding:0 16px">編集</div>
+                <div style="height:44px;display:flex;align-items:center;padding:0 16px;color:#A33A26">削除</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="box-sizing:border-box;padding:32px;background:#FAF9F6;display:flex;flex-direction:column;gap:24px">
+      <h3 style="margin:0;font-size:12px;font-weight:400;letter-spacing:0.12em;color:#55524C">切り替え</h3>
+      <div style="box-sizing:border-box;height:40px;display:grid;grid-template-columns:1fr 1fr;border:1px solid #8C877F">
+        <span style="display:flex;align-items:center;justify-content:center;background:#1F1E1B;color:#FAF9F6;font-size:14px;font-weight:500">以前見た献立</span>
+        <span style="display:flex;align-items:center;justify-content:center;font-size:14px">つくった献立</span>
+      </div>
+    </div>
+
+    <div style="box-sizing:border-box;padding:32px;background:#FAF9F6;display:flex;flex-direction:column;gap:16px">
+      <h3 style="margin:0 0 8px;font-size:12px;font-weight:400;letter-spacing:0.12em;color:#55524C">案内の帯</h3>
+      <div style="padding:12px 16px;background:#1F1E1B;color:#FAF9F6;font-size:14px;line-height:1.6">オフラインです</div>
+      <div style="display:flex;gap:8px;padding:12px 16px;background:#F7E3DC;color:#A33A26;font-size:14px;line-height:1.6"><span style="font-family:'Inter', sans-serif;font-weight:500">!</span><span>献立をつくれませんでした。もう一度お試しください</span></div>
+      <div style="padding:12px 16px;background:#ECE7DF;color:#1F1E1B;font-size:14px;line-height:1.6">今日の新しい献立は以上です</div>
+    </div>
+
+    <div style="grid-column:span 2;box-sizing:border-box;padding:32px;background:#FAF9F6;display:flex;flex-direction:column;gap:24px">
+      <h3 style="margin:0;font-size:12px;font-weight:400;letter-spacing:0.12em;color:#55524C">下タブ（スマホ）</h3>
+      <div style="width:390px;display:flex;flex-direction:column;gap:16px">
+        <dc-import name="TabBar" active="meal" hint-size="390px,64px"></dc-import>
+        <dc-import name="TabBar" active="pantry" hint-size="390px,64px"></dc-import>
+      </div>
+    </div>
+
+    <div style="box-sizing:border-box;padding:32px;background:#FAF9F6;display:flex;flex-direction:column;gap:24px">
+      <h3 style="margin:0;font-size:12px;font-weight:400;letter-spacing:0.12em;color:#55524C">サイドナビ（PC）</h3>
+      <dc-import name="SideNav" active="meal" min-height="{{ 480 }}" hint-size="240px,480px"></dc-import>
+    </div>
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;jpFont&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Zen Kaku Gothic New&quot;,&quot;Noto Sans JP&quot;],&quot;default&quot;:&quot;Zen Kaku Gothic New&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;書体&quot;},&quot;cardLink&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;献立カード&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() { this.applyVars(); }
+  componentDidUpdate() { this.applyVars(); }
+  applyVars() {
+    const r = document.documentElement.style;
+    const jp = this.props.jpFont ?? 'Zen Kaku Gothic New';
+    r.setProperty('--ftm-font', `'Inter', '${jp}', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif`);
+    r.setProperty('--ftm-card-link', (this.props.cardLink ?? true) ? 'block' : 'none');
+  }
+  renderVals() {
+    return {
+      mA: { name: '豚こま肉と白菜の生姜焼き', meta: '材料4件・不足なし', uses: [{ n: '豚こま肉', today: true }, { n: '白菜' }, { n: '玉ねぎ' }] },
+      mC: { name: 'にんじんと玉ねぎの味噌汁', meta: '材料3件・不足1件', uses: [{ n: 'にんじん' }, { n: '玉ねぎ' }] },
+      hist: [
+        ['豚こま肉と白菜の生姜焼き', '材料4件'], ['小松菜と卵の炒めもの', '材料3件'], ['にんじんと玉ねぎの味噌汁', '材料3件'],
+        ['鶏むね肉のねぎ塩焼き', '材料5件'], ['白菜と豚肉の重ね蒸し', '材料4件'], ['卵とわかめのスープ', '材料3件']
+      ].map(([n, c]) => ({ n, c })),
+      settingsVariants: [
+        { id: '13-sp', badge: '13', cap: '設定', idle: true, confirm: false },
+        { id: '13b-sp', badge: '13b', cap: '設定・削除の確認を開いた', idle: false, confirm: true }
+      ]
+    };
+  }
+}
+</script>
+
+
+</body></html>

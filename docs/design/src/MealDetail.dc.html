@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&amp;family=Zen+Kaku+Gothic+New:wght@400;500&amp;display=swap" rel="stylesheet"></helmet>
+<div style="position:relative;box-sizing:border-box;display:flex;flex-direction:{{ L.dir }};width:{{ L.w }};min-height:{{ L.h }};background:#FAF9F6;color:#1F1E1B;font-size:16px;line-height:1.75;letter-spacing:0.02em;font-family:var(--ftm-font, 'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif)">
+  <sc-if value="{{ pc }}" hint-placeholder-val="{{ false }}"><dc-import name="SideNav" active="meal" hint-size="240px,900px"></dc-import></sc-if>
+  <main style="flex:1;min-width:0;padding:{{ L.pad }}">
+    <div style="max-width:{{ L.max }}">
+      <button type="button" aria-label="戻る" style="width:48px;height:48px;margin-left:-12px;display:flex;align-items:center;justify-content:center;padding:0;border:0;background:none;color:#1F1E1B;cursor:pointer" style-focus="outline:2px solid #1F1E1B;outline-offset:2px"><dc-import name="Icon" icon="back" size="24" hint-size="24px,24px"></dc-import></button>
+      <h1 style="margin:8px 0 0;font-size:26px;font-weight:500;line-height:1.4;letter-spacing:0.02em;text-wrap:balance">豚こま肉と白菜の生姜焼き</h1>
+      <div style="margin-top:32px;display:grid;grid-template-columns:{{ L.cols }};column-gap:{{ L.gap }};row-gap:40px;align-items:start">
+        <section style="position:{{ L.sticky }};top:40px">
+          <div style="display:flex;align-items:baseline;justify-content:space-between">
+            <h2 style="margin:0;font-size:12px;font-weight:400;line-height:1.5;letter-spacing:0.12em;color:#55524C">材料</h2>
+            <span style="font-size:14px;line-height:1.6;color:#55524C;font-variant-numeric:tabular-nums">2人分</span>
+          </div>
+          <div style="margin-top:8px">
+            <sc-for list="{{ mains }}" as="m" hint-placeholder-count="4">
+              <div style="min-height:44px;display:grid;grid-template-columns:24px minmax(0, 1fr) auto 36px;column-gap:12px;align-items:center">
+                <span style="display:flex;align-items:center">
+                  <sc-if value="{{ m.ok }}" hint-placeholder-val="{{ true }}"><span style="display:flex;color:#4A6236"><dc-import name="Icon" icon="check" size="20" hint-size="20px,20px"></dc-import></span></sc-if>
+                  <sc-if value="{{ m.short }}" hint-placeholder-val="{{ false }}"><span style="display:flex;color:#A33A26"><dc-import name="Icon" icon="x" size="20" hint-size="20px,20px"></dc-import></span></sc-if>
+                </span>
+                <span>{{ m.n }}</span>
+                <span style="font-size:14px;line-height:1.6;color:#55524C;text-align:right;font-variant-numeric:tabular-nums">{{ m.q }}</span>
+                <span style="font-size:14px;line-height:1.6;color:#A33A26;text-align:right">{{ m.tag }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="height:1px;margin:16px 0;background:#E3DED6"></div>
+          <sc-for list="{{ seasonings }}" as="m" hint-placeholder-count="2">
+            <div style="min-height:44px;display:grid;grid-template-columns:24px minmax(0, 1fr) auto 36px;column-gap:12px;align-items:center">
+              <span></span>
+              <span>{{ m.n }}</span>
+              <span style="font-size:14px;line-height:1.6;color:#55524C;text-align:right;font-variant-numeric:tabular-nums">{{ m.q }}</span>
+              <span></span>
+            </div>
+          </sc-for>
+        </section>
+        <div>
+          <section>
+            <h2 style="margin:0;font-size:12px;font-weight:400;line-height:1.5;letter-spacing:0.12em;color:#55524C">手順</h2>
+            <ol style="list-style:none;margin:16px 0 0;padding:0;display:flex;flex-direction:column;gap:16px">
+              <sc-for list="{{ steps }}" as="s" hint-placeholder-count="4">
+                <li style="display:grid;grid-template-columns:24px minmax(0, 1fr);column-gap:12px">
+                  <span style="font-family:'Inter', sans-serif;color:#55524C;font-variant-numeric:tabular-nums">{{ s.no }}</span>
+                  <span style="text-wrap:pretty">{{ s.t }}</span>
+                </li>
+              </sc-for>
+            </ol>
+          </section>
+          <div style="margin-top:40px">
+            <dc-import name="AiNotice" hint-size="100%,72px"></dc-import>
+          </div>
+          <div style="margin-top:32px;max-width:360px;display:flex;flex-direction:column;gap:12px">
+            <sc-if value="{{ cooked }}" hint-placeholder-val="{{ false }}">
+              <p style="margin:0;display:flex;align-items:center;gap:8px;font-size:14px;line-height:1.6;color:#4A6236"><dc-import name="Icon" icon="check" size="20" hint-size="20px,20px"></dc-import>作ったことがあります</p>
+            </sc-if>
+            <button type="button" style="width:100%;height:56px;border:0;border-radius:0;background:#1F1E1B;color:#FAF9F6;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em;cursor:pointer" style-active="background:#55524C" style-focus="outline:2px solid #1F1E1B;outline-offset:2px">作った</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+  <sc-if value="{{ sp }}" hint-placeholder-val="{{ true }}"><dc-import name="TabBar" active="meal" hint-size="390px,64px"></dc-import></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:844},&quot;desktop&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;cooked&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const pc = !!this.props.desktop;
+    const mains = [
+      { n: '豚こま肉', q: '300g', ok: true }, { n: '白菜', q: '1/4個', ok: true },
+      { n: '玉ねぎ', q: '1個', ok: true }, { n: 'しょうが', q: '1かけ', ok: false }
+    ].map(m => ({ ...m, short: !m.ok, tag: m.ok ? '' : '不足' }));
+    const seasonings = [{ n: '醤油', q: '大さじ2' }, { n: 'みりん', q: '大さじ2' }];
+    const steps = ['白菜を一口大、玉ねぎを薄切りにする', '醤油・みりん・すりおろしたしょうがを合わせる', '豚こま肉を炒め、色が変わったら野菜を加える', '合わせ調味料を回し入れて絡める'].map((t, i) => ({ no: i + 1, t }));
+    return {
+      sp: !pc, pc, mains, seasonings, steps, cooked: !!this.props.cooked,
+      L: pc
+        ? { dir: 'row', w: '1440px', h: '900px', pad: '40px 48px 64px', max: '960px', cols: '360px minmax(0, 1fr)', gap: '64px', sticky: 'sticky' }
+        : { dir: 'column', w: '390px', h: '844px', pad: '8px 16px 32px', max: 'none', cols: 'minmax(0, 1fr)', gap: '0', sticky: 'static' }
+    };
+  }
+}
+</script>
+</body>
+</html>

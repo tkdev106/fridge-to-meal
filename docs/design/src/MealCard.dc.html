@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&amp;family=Zen+Kaku+Gothic+New:wght@400;500&amp;display=swap" rel="stylesheet"></helmet>
+<article style="box-sizing:border-box;height:100%;display:flex;flex-direction:column;padding:16px;background:#FFFFFF;border:1px solid #E3DED6;color:#1F1E1B;cursor:pointer;font-family:var(--ftm-font, 'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif)" style-hover="border-color:#8C877F">
+  <sc-if value="{{ reuse }}" hint-placeholder-val="{{ false }}">
+    <div style="align-self:flex-start;height:24px;display:flex;align-items:center;padding:0 8px;margin-bottom:12px;background:#E2EBD0;color:#4A6236;font-size:12px;line-height:1.5;letter-spacing:0.12em">前に見た献立</div>
+  </sc-if>
+  <h3 style="margin:0;font-size:18px;font-weight:500;line-height:1.5;letter-spacing:0.01em;text-wrap:pretty">{{ meal.name }}</h3>
+  <p style="margin:4px 0 0;font-size:14px;line-height:1.6;letter-spacing:0.02em;color:#55524C;font-variant-numeric:tabular-nums">{{ meal.meta }}</p>
+  <div style="margin-top:12px;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:12px;row-gap:4px;font-size:14px;line-height:1.6;letter-spacing:0.02em">
+    <sc-for list="{{ meal.uses }}" as="u" hint-placeholder-count="3">
+      <span style="font-weight:{{ u.w }}">{{ u.n }}</span>
+    </sc-for>
+  </div>
+  <div style="margin-top:auto;padding-top:16px;display:var(--ftm-card-link, block)">
+    <span style="font-size:14px;line-height:1.6;letter-spacing:0.02em;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px">作り方を見る</span>
+  </div>
+</article>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:358,&quot;height&quot;:200},&quot;meal&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;{name:string, meta:string, uses:{n:string, today?:boolean}[]}&quot;},&quot;reuse&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const meal = this.props.meal ?? { name: '豚こま肉と白菜の生姜焼き', meta: '材料4件・不足なし', uses: [{ n: '豚こま肉', today: true }, { n: '白菜' }, { n: '玉ねぎ' }] };
+    return { meal: { ...meal, uses: (meal.uses || []).map(u => ({ n: u.n, w: u.today ? 500 : 400 })) }, reuse: !!this.props.reuse };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&amp;family=Zen+Kaku+Gothic+New:wght@400;500&amp;display=swap" rel="stylesheet"></helmet>
+<sc-if value="{{ sp }}" hint-placeholder-val="{{ true }}">
+  <section style="box-sizing:border-box;display:flex;flex-direction:column;gap:8px;padding:16px;background:#FFFFFF;border:1px solid #E3DED6;color:#1F1E1B;font-family:var(--ftm-font, 'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif)">
+    <sc-if value="{{ changed }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:8px;font-size:14px;line-height:1.6;letter-spacing:0.02em;color:#4A6236"><span style="flex:none;width:8px;height:8px;border-radius:50%;background:#4A6236"></span>冷蔵庫の食材が変わりました</div>
+    </sc-if>
+    <sc-if value="{{ idle }}" hint-placeholder-val="{{ true }}">
+      <button type="button" style="width:100%;height:56px;border:0;border-radius:0;background:#1F1E1B;color:#FAF9F6;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em;cursor:pointer" style-active="background:#55524C" style-focus="outline:2px solid #1F1E1B;outline-offset:2px">新しい献立を見る</button>
+      <p style="margin:0;font-size:14px;line-height:1.6;letter-spacing:0.02em;color:#55524C">時間がかかる場合があります</p>
+    </sc-if>
+    <sc-if value="{{ pending }}" hint-placeholder-val="{{ false }}">
+      <button type="button" disabled="{{ true }}" style="width:100%;height:56px;border:0;border-radius:0;background:#E3DED6;color:#6E6A63;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em;cursor:default">新しい献立を見る</button>
+      <p style="margin:0;display:flex;gap:8px;font-size:14px;line-height:1.6;letter-spacing:0.02em;color:#55524C"><span>考えています…</span><span style="font-variant-numeric:tabular-nums">{{ secs }}秒</span></p>
+    </sc-if>
+  </section>
+</sc-if>
+<sc-if value="{{ pc }}" hint-placeholder-val="{{ false }}">
+  <section style="box-sizing:border-box;display:flex;align-items:center;gap:24px;padding:16px;background:#FFFFFF;border:1px solid #E3DED6;color:#1F1E1B;font-family:var(--ftm-font, 'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif)">
+    <sc-if value="{{ idle }}" hint-placeholder-val="{{ true }}">
+      <button type="button" style="flex:none;width:360px;height:56px;border:0;border-radius:0;background:#1F1E1B;color:#FAF9F6;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em;cursor:pointer" style-active="background:#55524C" style-focus="outline:2px solid #1F1E1B;outline-offset:2px">新しい献立を見る</button>
+    </sc-if>
+    <sc-if value="{{ pending }}" hint-placeholder-val="{{ false }}">
+      <button type="button" disabled="{{ true }}" style="flex:none;width:360px;height:56px;border:0;border-radius:0;background:#E3DED6;color:#6E6A63;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em;cursor:default">新しい献立を見る</button>
+    </sc-if>
+    <div style="display:flex;flex-direction:column;gap:4px;font-size:14px;line-height:1.6;letter-spacing:0.02em">
+      <sc-if value="{{ changed }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:8px;color:#4A6236"><span style="flex:none;width:8px;height:8px;border-radius:50%;background:#4A6236"></span>冷蔵庫の食材が変わりました</div>
+      </sc-if>
+      <sc-if value="{{ idle }}" hint-placeholder-val="{{ true }}"><p style="margin:0;color:#55524C">時間がかかる場合があります</p></sc-if>
+      <sc-if value="{{ pending }}" hint-placeholder-val="{{ false }}"><p style="margin:0;display:flex;gap:8px;color:#55524C"><span>考えています…</span><span style="font-variant-numeric:tabular-nums">{{ secs }}秒</span></p></sc-if>
+    </div>
+  </section>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:358,&quot;height&quot;:140},&quot;desktop&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;changed&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;pending&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;seconds&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:18,&quot;tsType&quot;:&quot;number&quot;}}">
+class Component extends DCLogic {
+  state = { secs: null };
+  componentDidMount() { this.sync(); }
+  componentDidUpdate() { this.sync(); }
+  componentWillUnmount() { clearInterval(this.t); this.t = null; }
+  sync() {
+    if (this.props.pending && !this.t) {
+      this.t = setInterval(() => this.setState(s => {
+        const cur = s.secs ?? Number(this.props.seconds ?? 18);
+        return { secs: cur >= 48 ? 8 : cur + 1 };
+      }), 1000);
+    } else if (!this.props.pending && this.t) { clearInterval(this.t); this.t = null; }
+  }
+  renderVals() {
+    const pending = !!this.props.pending, pc = !!this.props.desktop;
+    return { sp: !pc, pc, pending, idle: !pending, changed: !!this.props.changed && !pending, secs: this.state.secs ?? Number(this.props.seconds ?? 18) };
+  }
+}
+</script>
+</body>
+</html>
