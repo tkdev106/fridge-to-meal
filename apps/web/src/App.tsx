@@ -198,8 +198,11 @@ export function App({
   // 在庫の登録・更新・削除では履歴は変わらない。
   const [mealListReloadCount, setMealListReloadCount] = useState(0);
 
-  // 「新しい献立を求める」（B-49b / FR-36）を送っている間か（S-5）。
-  const [requestingNewMeals, setRequestingNewMeals] = useState(false);
+  // 「新しい献立を求める」（B-49b / FR-36）を求めた時刻（ミリ秒）。`null` なら送っていない（S-5）。
+  // **送信中かどうかはこの値だけで決まる**（B-62 設計 10章 前提1。真偽と時刻の2つを持たない）。
+  // 経過秒数の起点を門が持つのは、器が選んでいないタブを木から外すためである — 献立タブを
+  // 離れて戻っても秒数が0に戻らない（B-62 規則12 / D-6 / NFR-04）。
+  const [newMealsRequestedAt, setNewMealsRequestedAt] = useState<number | null>(null);
   // 直前の要求が失敗したか（S-6）。押し直した時点で消す（規則: 同時に出さない）。
   const [newMealsFailed, setNewMealsFailed] = useState(false);
 
@@ -551,7 +554,7 @@ export function App({
   /**
    * 「新しい献立を求める」操作の配線（B-49b / FR-36）。
    *
-   * **押している間は2度目の要求を出さない** — `requestingNewMeals` が真なら何もしない。
+   * **押している間は2度目の要求を出さない** — `newMealsRequestedAt` が `null` でなければ何もしない。
    * 1度の求めで生成が2回走ると、**1日10回の枠（NFR-C2）が利用者の意図の倍で減る。**
    * **押した時点で前回の失敗の案内を消す**（役割の割り当て。送信中と失敗は同時に出ない）。
    *
@@ -566,13 +569,14 @@ export function App({
    */
   const handleRequestNewMeals = () => {
     // **接続が切れている間は何もしない**（B-70 規則7）— 見た目の `disabled` と門の二重である。
-    if (requestingNewMeals || offline) return;
+    if (newMealsRequestedAt !== null || offline) return;
 
-    setRequestingNewMeals(true);
+    // 時計を読むのは門だけである（`docs/testing.md` 5章。先行 `todayOf(new Date())`）。
+    setNewMealsRequestedAt(Date.now());
     setNewMealsFailed(false);
 
     void requestNewMeals().then((outcome) => {
-      setRequestingNewMeals(false);
+      setNewMealsRequestedAt(null);
 
       if (outcome.outcome === 'suggested') {
         setSuggestion({
@@ -684,7 +688,9 @@ export function App({
             suggestion={suggestion}
             today={todayOf(new Date())}
             onRequestNewMeals={handleRequestNewMeals}
-            requestingNewMeals={requestingNewMeals}
+            newMealsRequestedAt={newMealsRequestedAt}
+            // 経過秒数を読むための時計（B-62 規則4・5）。画面は自分で時計を読まない。
+            now={Date.now}
             newMealsFailed={newMealsFailed}
             // **在庫タブへ送る**（`docs/screen-design.md` D-7 / B-49c 規則9 / ADR-066 決定2）。
             // 門がするのは `'pantry'` にすることだけで、**「在庫が足りないから在庫タブへ」

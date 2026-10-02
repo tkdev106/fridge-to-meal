@@ -24,7 +24,7 @@
  * 設計 規則13）。
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MealSummaryOutput, StockItemDto } from '@fridge-to-meal/contract';
 import { act, fireEvent, render, screen, waitFor, within } from './support/dom/renderComponent.js';
 import { installPointerCapture } from './support/dom/pointerCapture.js';
@@ -765,6 +765,10 @@ describe('門 App が食材名を取りに行く条件', () => {
  * ことだけを見る。**献立タブは起動時に開いている**（ADR-064）ので、タブを開く操作は要らない。
  */
 describe('門 App の「新しい献立を求める」操作の配線', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   const OLD_MEAL = '肉じゃが';
   const NEW_MEAL = '新しいご飯';
 
@@ -896,9 +900,8 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
     await screen.findByText(OLD_MEAL);
     fireEvent.click(requestNewMealsOperation());
 
-    await waitFor(() => {
-      expect(screen.getAllByRole('status')).toHaveLength(1);
-    });
+    // B-62 規則9: 失敗の帯の文言は原本の「案内の帯」から取ったもので、待つ条件に使ってよい。
+    await screen.findByText('献立をつくれませんでした。もう一度お試しください', { exact: false });
     expect(screen.queryByText(OLD_MEAL)).not.toBeNull();
   });
 
@@ -976,6 +979,29 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
     // 同時には出ない（押した時点で失敗の案内を消す）。2回目を押した直後は送信中の案内
     // 1つだけになり、前回の失敗の案内と積み重ならない。
     expect(screen.getAllByRole('status')).toHaveLength(1);
+
+    await settleSuggestions(suggestions);
+  });
+
+  it('生成中に在庫タブへ移って戻っても、経過秒数は押した時刻から数える', async () => {
+    // B-62 規則12 / D-6 / NFR-04: 器は選んでいないタブを木から外すので、起点は門が持つ。
+    // 偽にするのは `Date` だけで、`findBy` の待ちは実のタイマーで回す（実時間は待たない）。
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(1_790_000_000_000);
+    const { suggestions } = renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      { requestNewMeals: [{ heldUntilSettled: newSuggestion('meal-new', NEW_MEAL) }] },
+    );
+
+    await findSoleContentOperation();
+    fireEvent.click(requestNewMealsOperation());
+    openPantry();
+    await screen.findByText(carrot.name);
+    vi.setSystemTime(1_790_000_007_000);
+    fireEvent.click(mealsTab());
+
+    expect(screen.getByText('7秒')).not.toBeNull();
 
     await settleSuggestions(suggestions);
   });
@@ -1074,9 +1100,8 @@ describe('門 App のタブの結線', () => {
    * S-4（在庫が足りない）の画面まで進める。**経路は「新しい献立を求める」の結末**である
    * （保存済みの読み取りにこの結末は無い。ADR-065 決定3）。
    *
-   * 待つ条件は**手がかり（`note`）が1つも無くなること**である — S-8 の枝は
-   * 「新しい献立を求める」の面を持つので `note` を伴い、S-4 の枝はその操作ごと出さない
-   * （D-7）。**仮の文言では待たない**（設計 規則7・11）。
+   * 待つ条件は**S-4 の主文が出ること**である（B-62 規則14）。文言は原本 `MealScreen` の
+   * state=short から取ったもので、仮ではない（ADR-074）。
    */
   async function renderAtInsufficientStockItems() {
     const app = renderApp(
@@ -1086,9 +1111,7 @@ describe('門 App のタブの結線', () => {
     );
 
     fireEvent.click(await findSoleContentOperation());
-    await waitFor(() => {
-      expect(screen.queryAllByRole('note')).toHaveLength(0);
-    });
+    await screen.findByText('冷蔵庫にあるものを');
 
     return app;
   }
@@ -2176,9 +2199,8 @@ describe('門 App の履歴タブ', () => {
 
     await screen.findByText(SUGGESTED);
     fireEvent.click(contentOperations().at(-1) as HTMLElement);
-    await waitFor(() => {
-      expect(screen.getAllByRole('status')).toHaveLength(1);
-    });
+    // B-62 規則9: 失敗の帯の文言（原本の「案内の帯」）で待つ。
+    await screen.findByText('献立をつくれませんでした。もう一度お試しください', { exact: false });
 
     openHistory();
 
