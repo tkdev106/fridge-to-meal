@@ -13,7 +13,7 @@
 
 import { useState } from 'react';
 
-/** 操作の名札。仮の文言である（`docs/screen-design.md` 論点3）。 */
+/** 操作の名札（原本 `docs/design/src/index.dc.html` 13。ADR-074 決定1 — デザインが正）。 */
 const SIGN_OUT_LABEL = 'ログアウト';
 
 export type SignOutButtonProps = {
@@ -24,9 +24,11 @@ export type SignOutButtonProps = {
    * サインアウトすると、失敗の案内を出す相手が居なくなる。
    */
   disabled?: boolean;
+  /** 置き場（設定画面）の見た目（B-67 規則13）。省略時は class を当てない。 */
+  className?: string | undefined;
 };
 
-export function SignOutButton({ onSignOut, disabled = false }: SignOutButtonProps) {
+export function SignOutButton({ onSignOut, disabled = false, className }: SignOutButtonProps) {
   const [sending, setSending] = useState(false);
 
   async function signOut() {
@@ -41,7 +43,7 @@ export function SignOutButton({ onSignOut, disabled = false }: SignOutButtonProp
   }
 
   return (
-    <button type="button" disabled={sending || disabled} onClick={signOut}>
+    <button type="button" className={className} disabled={sending || disabled} onClick={signOut}>
       {SIGN_OUT_LABEL}
     </button>
   );

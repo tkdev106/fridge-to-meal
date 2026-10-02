@@ -1,0 +1,108 @@
+/*
+ * 履歴タブ（原本 `docs/design/src/index.dc.html` 12 / 設計 B-67 6章 規則3〜10）。
+ *
+ * **見た目の値はここにだけ置く**（ADR-055 決定1・2）。`HistoryTab.tsx` は class 名しか書かない。
+ * 色・文字の大きさ・太さはトークン（`src/global.css` の `:root`）から `var(--…)` で引き、
+ * ここで新しい色を作らない。トークンに無い寸法（余白・高さ）は原本の値を直に書く。
+ *
+ * PC（幅 1024px 以上）の組み替えはここに無い — デザインが 12 を SP でしか描いていない（設計 2章）。
+ */
+
+/*
+ * 画面の欄（原本 `main` の `0 0 24px`）。**横の余白は持たない**（規則3）— 行が区切り線を幅いっぱいに
+ * 引くため。横 16px は見出しの行・切り替え・案内の置き場がそれぞれ持つ。
+ */
+.screen {
+  padding: 0 0 24px;
+}
+
+/* 見出しの行・切り替え・案内の置き場（規則3・9）。 */
+.inset {
+  padding: 0 16px;
+}
+
+/* 案内（読み込み中・取れなかった・0件。規則9）。文言はデザインに無いので本文の地のまま。 */
+.notice {
+  margin: 0;
+  padding: 0 16px;
+}
+
+/*
+ * 切り替え（規則4）。外側は高さ 40px・枠 1px の2等分の格子。
+ */
+.toggles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 40px;
+  border: 1px solid var(--color-border-strong);
+}
+
+/* 選んでいない側。素の button の枠と地はここで消す（規則2）。 */
+.toggle {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--font-size-14);
+  font-weight: var(--font-weight-regular);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+/*
+ * 選んでいる側（規則4）。**`aria-pressed` と同じ真偽1つから当てる**（設計 10章 前提5）。
+ * 色の差のほかに太さの差が残る（NFR-17）。
+ */
+.toggleSelected {
+  background: var(--color-text);
+  color: var(--color-background);
+  font-weight: var(--font-weight-medium);
+}
+
+/* 行の一覧。切り替えとの間 16px（規則5）。`role="list"` は `.tsx` が明示する（規則8）。 */
+.rows {
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * 1行（規則6・7）。押下の受け口は行全体を覆う button 1つ。高さ 56px・下辺に区切り線。
+ * 名称は左で1行に収めて省略記号で切り、件数は右寄せ。
+ */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 16px;
+  align-items: center;
+  width: 100%;
+  height: 56px;
+  padding: 0 16px;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  background: none;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--color-surface);
+}
+
+/* 名称。DOM の文字は切らず、見た目だけ省略記号で切る（規則6）。 */
+.title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 主材料の件数（規則6）。 */
+.count {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-14);
+  line-height: 1.6;
+  font-variant-numeric: tabular-nums;
+}

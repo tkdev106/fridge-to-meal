@@ -399,3 +399,88 @@ describe('下タブの器 TabbedScreen', () => {
     expect(navigationFollowsSettings).toBe(true);
   });
 });
+
+/**
+ * 帯を止める口 `disabled`（B-60b 設計 6章 規則1・6・7）。**器は削除の意味を知らない** —
+ * 真偽1つを受け取り、帯の3つのタブと帯の「設定」を効かなくするだけである。
+ *
+ * **止めたことは `disabled` と口に届いた控えで観る**（`vi.fn()` を使わない。`docs/testing.md` 2章）。
+ */
+describe('下タブの器 TabbedScreen の帯を止める口', () => {
+  it('帯を止めると、3つのタブがどれも押せない', () => {
+    renderTabbedScreen({ disabled: true });
+
+    // B-60b 規則1: 送っている間は帯の3つのタブを `disabled` にする。
+    const disabledStates = screen
+      .getAllByRole('tab')
+      .map((tab) => (tab as HTMLButtonElement).disabled);
+
+    expect(disabledStates).toEqual([true, true, true]);
+  });
+
+  it('帯を止めると、帯の「設定」も押せない', () => {
+    renderTabbedScreen({ disabled: true });
+
+    // B-60b 規則1: 帯の「設定」も同じく止める。
+    expect((navigationSettings() as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('帯を止めている間にタブを押しても、識別子は口に届かない', () => {
+    const record = selectedTabRecord();
+    renderTabbedScreen({
+      selectedTab: 'meals',
+      disabled: true,
+      onSelectTab: (tab) => {
+        record.latest = tab;
+      },
+    });
+
+    fireEvent.click(tabFor('pantry'));
+
+    // B-60b 規則1: 押しても選んでいるタブは変わらない（門に求めが届かない）。
+    expect(record.latest).toBeNull();
+  });
+
+  it('帯を止めている間に帯の「設定」を押しても、設定を開く求めは口に届かない', () => {
+    const openRequests: string[] = [];
+    renderTabbedScreen({
+      disabled: true,
+      onOpenSettings: () => openRequests.push('settings'),
+    });
+
+    fireEvent.click(navigationSettings());
+
+    // B-60b 規則1: 帯の「設定」も押しても届かない。
+    expect(openRequests).toEqual([]);
+  });
+
+  it('帯を止めても、渡した中身の操作は止めない', () => {
+    renderTabbedScreen({
+      disabled: true,
+      settings: <button type="button">{contents.settings}</button>,
+    });
+
+    // B-60b 規則6: 止めるのは帯だけ。中身の操作を効かなくするのは中身の持ち分である。
+    const content = screen.getByRole('button', { name: contents.settings });
+
+    expect((content as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('帯を止めても、選んでいるタブは選ばれていると読める', () => {
+    renderTabbedScreen({ selectedTab: 'pantry', disabled: true });
+
+    // B-60b 規則7: 止めても選択の手がかり（`aria-selected`）は変えない。
+    const selectedTabs = screen
+      .getAllByRole('tab')
+      .filter((tab) => tab.getAttribute('aria-selected') === 'true');
+
+    expect(selectedTabs).toEqual([tabFor('pantry')]);
+  });
+
+  it('設定を描いたまま帯を止めても、帯の「設定」は今いる場所だと読める', () => {
+    renderTabbedScreen({ disabled: true, settings: <p>{contents.settings}</p> });
+
+    // B-60b 規則7 / B-60 規則7: 止めても `aria-current="page"` のまま。
+    expect(navigationSettings().getAttribute('aria-current')).toBe('page');
+  });
+});
