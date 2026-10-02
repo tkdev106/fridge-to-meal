@@ -120,6 +120,28 @@ function cookedIndicator(): string {
   return added;
 }
 
+/** 読み上げに渡る文字（漢字・ひらがな・カタカナのどれか）。**文言そのものは留めない**（論点3）。 */
+const JAPANESE_TEXT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+
+/** `node` が `other` より前に在るか（文書の並びで）。 */
+function precedes(node: Node, other: Node): boolean {
+  return (node.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+}
+
+/**
+ * `text` を含む要素のうち最も内側のもの。`querySelectorAll` は文書の並びで返すので、
+ * 含むもののうち最後に現れるものが最も内側である。
+ */
+function innermostElementContaining(text: string): Element {
+  const found = Array.from(document.body.querySelectorAll('*')).filter((element) =>
+    (element.textContent ?? '').includes(text),
+  );
+  const innermost = found[found.length - 1];
+  expect(innermost, `「${text}」を含む要素が無い`).toBeDefined();
+
+  return innermost as Element;
+}
+
 /** `text` に `part` が何回現れるか。 */
 function occurrencesOf(text: string, part: string): number {
   return text.split(part).length - 1;
@@ -160,10 +182,13 @@ describe('献立詳細 MealDetail', () => {
     expect(closed).toBe(true);
   });
 
-  it('献立の名称を見出しとして出す', () => {
+  it('献立の名称を第1階層の見出しとして出す', () => {
+    // B-63 規則2: 画面の主題は献立の名称であり、材料と手順はその下の階層である。
     renderDetail({ outcome: 'shown', meal: meal({ title: 'にんじんと卵の炒めもの' }) });
 
-    expect(screen.getByRole('heading', { name: 'にんじんと卵の炒めもの' })).not.toBeNull();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'にんじんと卵の炒めもの' }),
+    ).not.toBeNull();
   });
 
   it('材料の名称と分量を、主材料が先・調味料が後の並びで出す', () => {
@@ -219,8 +244,9 @@ describe('献立詳細 MealDetail', () => {
     expect(coveredMark).not.toBe(missingMark);
   });
 
-  it('不足の印を、記号と文字の両方で出す', () => {
-    // NFR-17: 記号だけでも文字だけでもない。**文言そのものは留めない**（論点3）。
+  it('不足の印を文字で出す', () => {
+    // NFR-17 / B-63 規則5: 記号はアイコン（飾り）に移り、読み上げに渡るのは文字である。
+    // **文言そのものは留めない**（論点3）。
     renderDetail({
       outcome: 'shown',
       meal: meal({
@@ -232,8 +258,7 @@ describe('献立詳細 MealDetail', () => {
     const mark = within(screen.getAllByRole('listitem')[0] as HTMLElement).getByRole('note')
       .textContent as string;
 
-    expect(mark).toMatch(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u);
-    expect(mark).toMatch(/[^\p{L}\p{N}\s]/u);
+    expect(mark).toMatch(JAPANESE_TEXT);
   });
 
   it('調味料には印を出さない', () => {
@@ -442,6 +467,128 @@ describe('献立詳細 MealDetail', () => {
       );
 
       expect(occurrencesOf(text, indicator)).toBe(1);
+    });
+  });
+
+  describe('見た目の構造（B-63）', () => {
+    it('閉じる操作は「戻る」という名前で引ける', () => {
+      // B-63 規則3・5: アイコンは飾りであり、意味は `aria-label` が運ぶ。
+      let closed = false;
+      renderDetail({ outcome: 'shown', meal: meal() }, { onClose: () => (closed = true) });
+
+      fireEvent.click(screen.getByRole('button', { name: '戻る' }));
+
+      expect(closed).toBe(true);
+    });
+
+    it('閉じる操作は見える文字を持たず、名前だけを持つ', () => {
+      // B-63 規則3・5: 見えるのはアイコンだけで、名前は読み上げにだけ渡す。
+      renderDetail({ outcome: 'shown', meal: meal() });
+
+      expect(screen.getByRole('button', { name: '戻る' }).textContent).toBe('');
+    });
+
+    it('材料と手順の見出しを第2階層で2つ出す', () => {
+      // B-63 規則2: 献立の名称（第1階層）の下に材料と手順が並ぶ。
+      renderDetail({ outcome: 'shown', meal: meal() });
+
+      expect(screen.getAllByRole('heading', { level: 2 })).toHaveLength(2);
+    });
+
+    it('材料の見出しは手順の見出しより前に出る', () => {
+      // B-63 規則2: 1つ目の見出しが材料の一覧の上、2つ目がその下（手順の側）に在る。
+      renderDetail({ outcome: 'shown', meal: meal() });
+
+      const [ingredientsHeading, stepsHeading] = screen.getAllByRole('heading', { level: 2 });
+      const ingredientsList = screen.getAllByRole('list')[0] as HTMLElement;
+      // 見出しが1つしか無いと、並びを比べる相手が無いまま型の誤りで落ちる。
+      expect(stepsHeading, '第2階層の見出しが2つ無い').toBeDefined();
+
+      expect(precedes(ingredientsHeading as HTMLElement, ingredientsList)).toBe(true);
+      expect(precedes(ingredientsList, stepsHeading as HTMLElement)).toBe(true);
+    });
+
+    it('賄える材料の印も読み上げに渡る文字を持つ', () => {
+      // NFR-17 / B-63 規則5: チェックのアイコンは飾りであり、それだけでは読み上げに何も渡らない。
+      renderDetail({
+        outcome: 'shown',
+        meal: meal({
+          ingredients: [main('豚こま肉', '300g')],
+          coverage: { covered: [{ ...main('豚こま肉', '300g'), expiryDate: null }], missing: [] },
+        }),
+      });
+
+      const mark = within(screen.getAllByRole('listitem')[0] as HTMLElement).getByRole('note')
+        .textContent as string;
+
+      expect(mark).toMatch(JAPANESE_TEXT);
+    });
+
+    it('主材料と調味料を別の一覧に分けて出す', () => {
+      // B-63 規則6 / C-16: 調味料は区切りの下に印なしで並ぶ。
+      renderDetail({
+        outcome: 'shown',
+        meal: meal({
+          ingredients: [seasoning('醤油', '大さじ2'), main('豚こま肉', '300g')],
+          coverage: { covered: [{ ...main('豚こま肉', '300g'), expiryDate: null }], missing: [] },
+        }),
+      });
+
+      const [mainList, seasoningList] = screen.getAllByRole('list');
+
+      expect(within(mainList as HTMLElement).queryByText('豚こま肉')).not.toBeNull();
+      expect(within(mainList as HTMLElement).queryByText('醤油')).toBeNull();
+      expect(within(seasoningList as HTMLElement).queryByText('醤油')).not.toBeNull();
+    });
+
+    it('主材料と調味料の両方があるとき、2つの一覧の間に区切り線を1つ出す', () => {
+      // B-63 規則6: 区切りは `<hr>`（役割 `separator`）で、主材料の一覧と調味料の一覧の間に在る。
+      renderDetail({
+        outcome: 'shown',
+        meal: meal({
+          ingredients: [seasoning('醤油', '大さじ2'), main('豚こま肉', '300g')],
+          coverage: { covered: [{ ...main('豚こま肉', '300g'), expiryDate: null }], missing: [] },
+        }),
+      });
+
+      const separators = screen.queryAllByRole('separator');
+      expect(separators).toHaveLength(1);
+
+      const [mainList, seasoningList] = screen.getAllByRole('list');
+      const separator = separators[0] as HTMLElement;
+
+      expect(precedes(mainList as HTMLElement, separator)).toBe(true);
+      expect(precedes(separator, seasoningList as HTMLElement)).toBe(true);
+    });
+
+    it('調味料が無い献立には区切り線を出さない', () => {
+      // B-63 規則6: 区切る相手が無い。
+      renderDetail({ outcome: 'shown', meal: meal({ ingredients: [main('豚こま肉', '300g')] }) });
+
+      expect(screen.queryAllByRole('separator')).toHaveLength(0);
+    });
+
+    it('記録済みの表示を記録の操作より前に出す', () => {
+      // B-63 規則10: 置き場は記録の操作の上（原本）。
+      const indicator = cookedIndicator();
+
+      renderDetail({ outcome: 'shown', meal: meal({ cooked: true }) });
+
+      expect(precedes(innermostElementContaining(indicator), cookedControl() as HTMLElement)).toBe(
+        true,
+      );
+    });
+
+    it('記録が通った案内は、記録済みの表示と記録の操作の間に出す', () => {
+      // B-63 規則10: 案内（`status`）は記録済みの表示と操作の間に置く。
+      const indicator = cookedIndicator();
+
+      renderDetail({ outcome: 'shown', meal: meal({ cooked: false }) }, { recorded: true });
+
+      const notice = screen.getByRole('status');
+
+      expect(precedes(innermostElementContaining(indicator), notice)).toBe(true);
+      expect(precedes(notice, cookedControl() as HTMLElement)).toBe(true);
     });
   });
 });
