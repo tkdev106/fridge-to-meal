@@ -3,7 +3,9 @@
  * 履歴タブの**表示の分岐**（B-54b 2周目 / `docs/testing.md` 4.1 / ADR-052。先行
  * `MealsTab.test.tsx`）。
  *
- * **仮の文言を期待値に書かない**（`docs/screen-design.md` 論点3）。観察は次の4つで行う。
+ * **暫定の文言を期待値に書かない**（`docs/screen-design.md` 論点3）。読み込み中・取れなかった・0件の
+ * 案内はデザインに無い暫定の文言なので字面を見ない。切り替えの名前と `材料N件` は `docs/design/` から
+ * 取った文言で仮ではない（ADR-074 決定1）ので、末尾の節（B-67）で字面を確かめる。観察は次の4つで行う。
  *
  * - **役割** … 行は `listitem`、案内は `status`、列の切り替えは `aria-pressed` を持つ `button`
  * - **こちらが渡したデータ** … 献立の名称と主材料の件数
@@ -203,7 +205,7 @@ describe('履歴タブ HistoryTab', () => {
 
   it('行に、献立の名称と主材料の件数を出す', () => {
     // B-54b 規則4 / ADR-068 決定4: 1行に出すのは名称と主材料の件数だけ。
-    // 件数の文言（「材料N件」）は仮なので、数字が読めることだけを見る。
+    // ここでは数字が読めることだけを見る。字面（「材料N件」）は末尾の節（B-67）が見る。
     renderTab(loaded({ seen: [summaryOf('meal-a', NIKUJAGA, 7)], cooked: [] }));
 
     const row = rowAt(0);
@@ -399,5 +401,48 @@ describe('履歴タブ HistoryTab', () => {
 
     expect(headerSettingsButtons()).toHaveLength(0);
     expect(screen.queryAllByRole('heading', { level: 1, name: '履歴' })).toHaveLength(0);
+  });
+
+  // --- デザイン 12 の文言と構造（B-67）。切り替えと件数の文言は原本から取ったもので仮ではない
+  //     （ADR-074 決定1 / B-67 規則9）ので、字面で引く。 ---
+
+  it('列の切り替えは「以前見た献立」「つくった献立」の2つで、この順に並ぶ', () => {
+    // B-67 規則4・9 / 原本 12: 左が以前見た、右がつくった。
+    renderTab(bothColumns);
+
+    expect(columnToggles().map((toggle) => toggle.textContent)).toEqual([
+      '以前見た献立',
+      'つくった献立',
+    ]);
+  });
+
+  it('開いた直後に押された状態で読めるのは「以前見た献立」の切り替えである', () => {
+    // B-67 規則4 / B-54b 規則5 / NFR-17: 選んでいるかは `aria-pressed` で読める。
+    renderTab(bothColumns);
+
+    expect(pressedToggle()).toBe(screen.getByRole('button', { name: '以前見た献立' }));
+  });
+
+  it('行の主材料の件数を「材料N件」と出す', () => {
+    // B-67 規則6・9 / ADR-068 決定4: 件数の文言は原本 12 の字面。
+    renderTab(loaded({ seen: [summaryOf('meal-a', NIKUJAGA, 7)], cooked: [] }));
+
+    expect(within(rowAt(0)).queryByText('材料7件')).not.toBeNull();
+  });
+
+  it('行はひとつの一覧の項目として読める', () => {
+    // B-67 規則8: `list-style: none` にしても一覧の役割を保つ（先行 `MealsTab` の `.cards`）。
+    renderTab(
+      loaded({
+        seen: [summaryOf('meal-a', NIKUJAGA), summaryOf('meal-b', GINGER_PORK)],
+        cooked: [],
+      }),
+    );
+
+    const lists = screen.getAllByRole('list');
+    expect(lists).toHaveLength(1);
+    const [list] = lists;
+    if (list === undefined) throw new Error('一覧が無い');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2);
   });
 });

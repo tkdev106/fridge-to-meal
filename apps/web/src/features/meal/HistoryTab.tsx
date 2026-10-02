@@ -26,7 +26,9 @@
  *
  * 名称での検索（FR-33）はまだ置かない。
  *
- * **文言は仮である**（`docs/screen-design.md` 冒頭・論点3）。
+ * **見た目はデザイン 12 に揃えた**（B-67。値は `HistoryTab.module.css`）。題・切り替え・件数の
+ * 文言はデザインが正である（ADR-074 決定1）。読み込み中・取れなかった・0件の案内はデザインに
+ * 無いので暫定のまま。
  */
 
 import { useState } from 'react';
@@ -34,6 +36,7 @@ import type { JSX, ReactNode } from 'react';
 import type { MealSummaryOutput } from '@fridge-to-meal/contract';
 import type { MealListOutcome } from '../../server/MealRequests.js';
 import { ScreenHeader } from '../../navigation/ScreenHeader.js';
+import styles from './HistoryTab.module.css';
 
 /** 門から渡される履歴の状態（設計 5章）。取りに行くまでは「読み込み中」である。 */
 export type HistoryTabState = { readonly outcome: 'loading' } | MealListOutcome;
@@ -53,7 +56,7 @@ type Column = 'seen' | 'cooked';
 /** 開いた直後の列（設計 規則5。ワイヤーの左を採った — 設計 10章 前提3）。 */
 const INITIAL_COLUMN: Column = 'seen';
 
-/** 列の切り替えの文言（**仮**。ワイヤーの字面）。並びも切り替えの左右の順である。 */
+/** 列の切り替えの文言（原本 `index.dc.html` 12。ADR-074 決定1 — デザインが正）。並びも切り替えの左右の順である。 */
 const COLUMN_LABELS: readonly { readonly column: Column; readonly label: string }[] = [
   { column: 'seen', label: '以前見た献立' },
   { column: 'cooked', label: 'つくった献立' },
@@ -85,8 +88,8 @@ function ingredientCountText(ingredientCount: number): string {
 
 /**
  * 列の切り替え（設計 規則5 / NFR-17）。**`role="tab"` にしない** — 下タブの `tablist` と
- * 入れ子になる（設計 10章 前提2）。選んでいる側は文字だけでなく `aria-pressed` で読め、
- * **色は1つも足さない**。
+ * 入れ子になる（設計 10章 前提2）。選んでいる側は `aria-pressed` で読め、見た目（地・文字色・
+ * 太さ）は**同じ真偽1つ**から class を当てる（B-67 規則4 / 10章 前提5）。
  */
 function ColumnToggles({
   selected,
@@ -96,17 +99,23 @@ function ColumnToggles({
   onSelect: (column: Column) => void;
 }) {
   return (
-    <div>
-      {COLUMN_LABELS.map(({ column, label }) => (
-        <button
-          key={column}
-          type="button"
-          aria-pressed={column === selected}
-          onClick={() => onSelect(column)}
-        >
-          {label}
-        </button>
-      ))}
+    <div className={styles.inset}>
+      <div className={styles.toggles}>
+        {COLUMN_LABELS.map(({ column, label }) => {
+          const pressed = column === selected;
+          return (
+            <button
+              key={column}
+              type="button"
+              className={pressed ? `${styles.toggle} ${styles.toggleSelected}` : styles.toggle}
+              aria-pressed={pressed}
+              onClick={() => onSelect(column)}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -123,13 +132,15 @@ function MealRows({
   onOpenMeal: (mealId: string) => void;
 }) {
   return (
-    <ul>
+    // `role="list"` を明示するのは、`list-style: none` で一覧の役割を落とす読み手（Safari）が
+    // あるため（B-67 規則8 / 先行 `MealsTab` の `.cards`）。
+    <ul role="list" className={styles.rows}>
       {meals.map((meal) => (
         // 識別子で鍵を取る — 名称が同じ別の献立を畳まない（設計 規則3）。
         <li key={meal.mealId}>
-          <button type="button" onClick={() => onOpenMeal(meal.mealId)}>
-            <span>{meal.title}</span>
-            <span>{ingredientCountText(meal.ingredientCount)}</span>
+          <button type="button" className={styles.row} onClick={() => onOpenMeal(meal.mealId)}>
+            <span className={styles.title}>{meal.title}</span>
+            <span className={styles.count}>{ingredientCountText(meal.ingredientCount)}</span>
           </button>
         </li>
       ))}
@@ -152,17 +163,31 @@ export function HistoryTab({
   if (mealDetail !== null) return <div>{mealDetail}</div>;
 
   return (
-    <div>
+    <div className={styles.screen}>
       {/* 見出しの行は列の切り替え・案内・行より前（B-60 規則12。原本: 見出しは一覧の先頭）。 */}
-      <ScreenHeader title={HEADING} onOpenSettings={onOpenSettings} />
+      <div className={styles.inset}>
+        <ScreenHeader title={HEADING} onOpenSettings={onOpenSettings} />
+      </div>
       {historyBody()}
     </div>
   );
 
   function historyBody(): JSX.Element {
     // 読み込み中と取れなかった回は、切り替えを出さない — 切り替えた先にも見せるものが無い。
-    if (meals.outcome === 'loading') return <p role="status">{LOADING_NOTICE}</p>;
-    if (meals.outcome === 'failed') return <p role="status">{LOAD_FAILURE_NOTICE}</p>;
+    if (meals.outcome === 'loading') {
+      return (
+        <p role="status" className={styles.notice}>
+          {LOADING_NOTICE}
+        </p>
+      );
+    }
+    if (meals.outcome === 'failed') {
+      return (
+        <p role="status" className={styles.notice}>
+          {LOAD_FAILURE_NOTICE}
+        </p>
+      );
+    }
 
     const rows = meals.meals[selectedColumn];
 
@@ -170,7 +195,9 @@ export function HistoryTab({
       <>
         <ColumnToggles selected={selectedColumn} onSelect={setSelectedColumn} />
         {rows.length === 0 ? (
-          <p role="status">{EMPTY_COLUMN_NOTICES[selectedColumn]}</p>
+          <p role="status" className={styles.notice}>
+            {EMPTY_COLUMN_NOTICES[selectedColumn]}
+          </p>
         ) : (
           <MealRows meals={rows} onOpenMeal={onOpenMeal} />
         )}
