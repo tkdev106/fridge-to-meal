@@ -41,9 +41,16 @@
 }
 
 /*
- * 歯車。押せる大きさは 48px（規則13 / NFR-16）。アイコン 24px の外側の余白ぶん右へ寄せ、
- * 見た目の右端を題の行の内側に揃える（原本 `margin-right: -12px`）。
- * 素の button の枠と地はここで消す。
+ * 右の操作の並び（画面の操作と歯車）。アイコン 24px の外側の余白ぶん右へ寄せ、見た目の右端を
+ * 題の行の内側に揃える（原本 `margin-right: -12px`）。
+ */
+.operations {
+  display: flex;
+  margin-right: -12px;
+}
+
+/*
+ * 歯車。押せる大きさは 48px（規則13 / NFR-16）。素の button の枠と地はここで消す。
  */
 .settings {
   display: flex;
@@ -51,7 +58,6 @@
   justify-content: center;
   width: 48px;
   height: 48px;
-  margin-right: -12px;
   padding: 0;
   border: 0;
   background: none;
@@ -67,5 +73,10 @@
 
   .settings {
     display: none;
+  }
+
+  /* PC では右端の歯車が無いので、画面の操作をそのまま右端に揃える（原本 `L.plusMr: 0`）。 */
+  .operations {
+    margin-right: 0;
   }
 }

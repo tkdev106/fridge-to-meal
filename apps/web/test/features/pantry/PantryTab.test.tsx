@@ -9,7 +9,8 @@
  *
  * **文言は ADR-074 で確定した**（`docs/design/`。B-65）。それでもこのファイルの観点は文言に
  * 頼らずに書いたまま残す — 「＋」「戻る」も保存の名札も見出しも、留めると**文言を変えただけで
- * 赤くなる**。観察は次の3つで行う（例外は末尾の B-65 の観点で、編集の画面の残日数の文字を見る）。
+ * 赤くなる**。観察は次の3つで行う（例外は末尾の B-60・B-64・B-65 の観点で、見出し `冷蔵庫`・歯車の名前 `設定`・
+ * 登録を開く操作の名前 `食材を追加`・編集の画面の残日数の文字を見る）。
  *
  * - **一覧が出ている** … **テストが渡した在庫品の名称**を `queryByText` で引く。**編集が絡む観点では
  *   名称で観られない**（B-55）— 編集の画面は対象の在庫品の名称を出すため（B-55 設計 規則1）、
@@ -170,9 +171,10 @@ describe('在庫タブの中身 PantryTab', () => {
   it('登録を開く操作を押すと、登録の入力の欄が出る', () => {
     render(pantryTab());
 
-    fireEvent.click(operationAt(0));
+    fireEvent.click(screen.getByRole('button', { name: '食材を追加' }));
 
-    // 規則3 / FR-01: 一覧の側に登録を開く操作を1つ置く。**記号も名札も見ない**（規則15）。
+    // 規則3 / FR-01: 一覧の側に登録を開く操作を1つ置く。名前はデザインが正である
+    // （B-64 設計 規則2 / ADR-074 結果1）。
     expect(screen.queryAllByRole('textbox').length).toBeGreaterThan(0);
   });
 
@@ -857,6 +859,77 @@ describe('在庫タブの中身と編集', () => {
 });
 
 /**
+ * 一覧の見出しの行（B-64 設計 6章 規則1・2 / ADR-074 / デザイン ★9）。
+ *
+ * **見出し `冷蔵庫` と操作の名前 `食材を追加` はデザインが正である**（ADR-074 結果1）ので、
+ * ここでは期待値に置く。**見た目（アイコン・余白・class 名）は見ない**（ADR-055 結果1）。
+ */
+
+/** 一覧の見出し `冷蔵庫`（`h1`）をすべて引く。 */
+function pantryHeadings(): readonly HTMLElement[] {
+  return screen.queryAllByRole('heading', { level: 1, name: '冷蔵庫' });
+}
+
+describe('在庫タブの見出しの行', () => {
+  it.each([
+    ['読み込み中', { outcome: 'loading' } as const],
+    ['取れなかった', { outcome: 'failed' } as const],
+    ['0件', loaded()],
+    ['在庫品あり', loaded(carrot)],
+  ])('一覧の結末が%sでも、見出し `冷蔵庫` を1つ出す', (_label, stockItems) => {
+    render(pantryTab({ stockItems }));
+
+    // B-64 規則1 / ADR-074: 見出しは一覧の結末に関わらず出す（登録を開く操作を置く B-39 規則3 と同じ構え）。
+    expect(pantryHeadings()).toHaveLength(1);
+  });
+
+  it('登録の画面を開くと、見出し `冷蔵庫` は描かれなくなる', () => {
+    render(pantryTab({ stockItems: loaded(carrot) }));
+
+    fireEvent.click(operationAt(0));
+
+    // B-64 規則1 / B-39 規則1: 登録の画面は一覧と入れ替わる。見出しも一覧の側のものである。
+    expect(screen.queryByRole('heading', { name: '冷蔵庫' })).toBeNull();
+  });
+
+  it('編集の画面を開くと、見出し `冷蔵庫` は描かれなくなる', () => {
+    render(pantryTab({ stockItems: loaded(carrot) }));
+
+    tapRowAt(0, 1);
+
+    // B-64 規則1 / B-55 規則16: 編集の画面も一覧と入れ替わる。
+    expect(screen.queryByRole('heading', { name: '冷蔵庫' })).toBeNull();
+  });
+
+  it('登録を開く操作の名前は `食材を追加` である', () => {
+    render(pantryTab({ stockItems: loaded(carrot) }));
+
+    // B-64 規則2 / NFR-16: アイコンだけのボタンでも名前で読める。名前は `aria-label` の文だけで、
+    // 記号を混ぜない（完全一致）。
+    expect(screen.queryAllByRole('button', { name: '食材を追加' })).toHaveLength(1);
+  });
+
+  it('`食材を追加` は見出し `冷蔵庫` の後ろ、行の操作より前に並ぶ', () => {
+    render(pantryTab({ stockItems: loaded(carrot, chineseCabbage) }));
+
+    // B-64 規則2: 見出しの行の右に置く。文書順で h1 → `食材を追加` → 1行目の `…`。
+    const headings = pantryHeadings();
+    const opens = screen.queryAllByRole('button', { name: '食材を追加' });
+    expect([headings.length, opens.length]).toEqual([1, 1]);
+
+    const [heading] = headings;
+    const [open] = opens;
+    const firstToggle = screen.getAllByRole('button', { name: '操作' })[0];
+    if (heading === undefined || open === undefined || firstToggle === undefined) {
+      throw new Error('見出し・登録を開く操作・行の操作のどれかが無い');
+    }
+
+    expect([precedes(heading, open), precedes(open, firstToggle)]).toEqual([true, true]);
+    expect(operationAt(0)).toBe(open);
+  });
+});
+
+/**
  * 見出しの行（B-60 設計 6章 規則12〜13）。
  *
  * **題 `冷蔵庫` と歯車の名前 `設定` は原本から取った文言であり、仮ではない**（ADR-074 決定1）。
@@ -892,8 +965,9 @@ describe('在庫タブの中身の見出しの行', () => {
     expect(openedSettings).toEqual(['settings']);
   });
 
-  it('見出しの行は、在庫の一覧と登録を開く操作より前にある', () => {
-    // B-60 規則12（原本: 見出しは一覧の先頭）。
+  it('見出しの行は在庫の一覧より前にあり、その中は見出し・登録を開く操作・歯車の順である', () => {
+    // B-60 規則12（原本: 見出しは一覧の先頭）。B-64 規則2 で登録を開く操作が見出しの行に入り、
+    // 原本 `PantryScreen` の並び（`+` の右に歯車）に揃えた。
     render(pantryTab());
 
     const heading = screen.getByRole('heading', { level: 1, name: '冷蔵庫' });
@@ -902,8 +976,8 @@ describe('在庫タブの中身の見出しの行', () => {
     const [firstRow] = screen.getAllByRole('listitem');
     if (firstRow === undefined) throw new Error('行が無い');
 
+    expect([precedes(heading, openRegister), precedes(openRegister, gear)]).toEqual([true, true]);
     for (const headerPart of [heading, gear]) {
-      expect(precedes(headerPart, openRegister)).toBe(true);
       expect(precedes(headerPart, firstRow)).toBe(true);
     }
   });

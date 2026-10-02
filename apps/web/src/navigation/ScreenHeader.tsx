@@ -24,24 +24,37 @@ export type ScreenHeaderProps = {
    * 置く — `header` は入れ子にできないので、画面の側で別の `header` を作らせない。
    */
   children?: ReactNode;
+  /**
+   * 題の右、歯車より前に置く画面の操作（在庫の `+` など。B-64 規則2）。原本 `PantryScreen` は
+   * `+` と歯車を1つの並びに置いている。
+   */
+  actions?: ReactNode;
 };
 
 /** 歯車の名前（原本の `aria-label`。ADR-074 決定1 — 文言の正は `docs/design/`）。 */
 const SETTINGS_LABEL = '設定';
 
-export function ScreenHeader({ title, onOpenSettings, children }: ScreenHeaderProps): JSX.Element {
+export function ScreenHeader({
+  title,
+  onOpenSettings,
+  children,
+  actions,
+}: ScreenHeaderProps): JSX.Element {
   return (
     <header className={styles.header}>
       <div className={styles.row}>
         <h1 className={styles.title}>{title}</h1>
-        <button
-          type="button"
-          className={styles.settings}
-          aria-label={SETTINGS_LABEL}
-          onClick={onOpenSettings}
-        >
-          <Icon name="settings" />
-        </button>
+        <div className={styles.operations}>
+          {actions}
+          <button
+            type="button"
+            className={styles.settings}
+            aria-label={SETTINGS_LABEL}
+            onClick={onOpenSettings}
+          >
+            <Icon name="settings" />
+          </button>
+        </div>
       </div>
       {children}
     </header>

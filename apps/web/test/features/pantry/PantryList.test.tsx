@@ -5,10 +5,13 @@
  * `PantrySections.ts` と `RemainingDays.ts` の計算は、それぞれの純粋関数のテストが既に
  * 押さえている。ここで確かめるのは**受け取った3値のどれを描くか**だけである（B-22 設計 5章）。
  *
- * **仮の文言を期待値に書かない。** 見出しも案内も `docs/screen-design.md` 論点3 で未確定であり
- * （`PantryList.tsx` の doc がそう断っている）、文字列で留めると**文言を変えただけで赤くなる。**
- * 代わりに、**利用者から見える構造**（行が出るか、帯がいくつか、どの順か）と、
+ * **仮の文言を期待値に書かない。** 読み込み中・取れなかった・0件・消せなかったの案内は
+ * `docs/screen-design.md` 論点3 で未確定のままであり、文字列で留めると**文言を変えただけで
+ * 赤くなる。** 代わりに、**利用者から見える構造**（行が出るか、帯がいくつか、どの順か）と、
  * **こちらが渡したデータ**（在庫品の名称）で観察する。
+ *
+ * **帯の見出し（`今日まで` / `期限が近い` / `その他`）と残日数の文（`今日` / `あと N日` / `－`）は
+ * デザインが正になった**（ADR-074 結果1 / B-64 設計 規則3〜5）。B-64 の suite はこれらを期待値に置く。
  */
 
 import { describe, expect, it } from 'vitest';
@@ -74,11 +77,9 @@ describe('在庫一覧 PantryList', () => {
 
     // 並びはサーバが決めた順のまま（FR-04 / B-22 設計 規則3）。
     //
-    // **当てるのはテストが渡した名称と分量だけである。** 行には残日数の言い換え（`今日` /
-    // `あと2日` / `－`）も出ているが、それは画面が持つ**仮の文言**であり（`PantryList.tsx` の
-    // `remainingDaysText` / `NO_REMAINING_DAYS_MARK`、`docs/screen-design.md` 論点3）、
-    // 期待値に留めると**文言を変えただけで赤くなる**（ADR-052 結果2 / `docs/testing.md` 4.1）。
-    // 残日数の言い換えそのものは `RemainingDays.ts` の純粋関数テストの持ち分である。
+    // **当てるのはテストが渡した名称と分量だけである。** 残日数の文（`今日` / `あと2日` / `－`）は
+    // デザインが正になった（ADR-074 結果1 / B-64 設計 規則5）が、この観点の本題は並びであり、
+    // 文の確かめは下の B-64 の suite の持ち分である。
     const rows = screen.getAllByRole('listitem');
     expect(rows).toHaveLength(3);
     expect(within(rowAt(rows, 0)).queryByText('豚こま肉')).not.toBeNull();
@@ -107,7 +108,8 @@ describe('在庫一覧 PantryList', () => {
 
     // 3件が3つの帯へ1件ずつ入る（FR-12 / B-11 設計 規則6）。**どう振り分けるかは
     // `PantrySections.ts` の持ち分**で、ここで確かめるのは「帯の数だけ見出しが出ること」である。
-    // **見出しの文言は見ない** — 仮である（`docs/screen-design.md` 論点3）。
+    // 見出しの文言はデザインが正になった（B-64 設計 規則3）が、文言の確かめは下の B-64 の
+    // suite の持ち分であり、ここでは数だけを見る。
     expect(screen.getAllByRole('heading')).toHaveLength(3);
   });
 
@@ -948,5 +950,213 @@ describe('在庫一覧 PantryList の接続が切れている間', () => {
 
     // 規則14: 戻れば止めた操作は元に戻る。
     expect(deletedIds).toEqual(['2']);
+  });
+});
+
+/**
+ * 帯と行の見せ方（B-64 設計 6章 規則3〜6 / FR-12 / FR-13 / NFR-17 / ADR-074）。
+ *
+ * **帯の見出しと残日数の文はデザインが正である**（ADR-074 結果1）ので、ここでは期待値に置く。
+ * **見た目（色・寸法・class 名）は見ない**（ADR-055 結果1 — class 名は vitest では何でも通る）。
+ */
+
+/** 3つの帯へ1件ずつ入る標本（基準日 2026-09-20：今日・2日後・期限なし）。 */
+const oneRowPerSection = [
+  stockItem({ id: '1', name: '豚こま肉', expiryDate: '2026-09-20' }),
+  stockItem({ id: '2', name: '白菜', expiryDate: '2026-09-22' }),
+  stockItem({ id: '3', name: 'にんじん' }),
+];
+
+function renderRows(stockItems: readonly StockItemDto[]) {
+  render(
+    <PantryList
+      today={TODAY}
+      onDelete={neverDelete}
+      onEdit={neverEdit}
+      stockItems={{ outcome: 'loaded', stockItems }}
+    />,
+  );
+}
+
+/** 要素の文字の中に `mark` が何回現れるか。 */
+function countOf(element: HTMLElement, mark: string): number {
+  return Array.from(element.textContent ?? '').filter((character) => character === mark).length;
+}
+
+/** 1件だけ渡したときの、その1行。**1行であることを先に確かめる。** */
+function soleRow(): HTMLElement {
+  const found = screen.getAllByRole('listitem');
+  expect(found).toHaveLength(1);
+
+  return rowAt(found, 0);
+}
+
+/** `a` が文書順で `b` より前にあるか。 */
+function precedes(a: Node, b: Node): boolean {
+  return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+}
+
+describe('在庫一覧 PantryList の帯と行の見せ方', () => {
+  it('3つの帯の見出しは、上から `今日まで`・`期限が近い`・`その他` である', () => {
+    renderRows(oneRowPerSection);
+
+    // B-64 規則3 / FR-12: 見出しの文そのものが警告になっている（NFR-17）。名前は完全一致で引く —
+    // `!` が名前に入っていれば当たらない。
+    const expected = ['今日まで', '期限が近い', 'その他'].map((name) =>
+      screen.queryByRole('heading', { level: 2, name }),
+    );
+    expect(screen.getAllByRole('heading', { level: 2 })).toEqual(expected);
+  });
+
+  it('`!` を添えるのは `今日まで` の帯の見出しだけである', () => {
+    renderRows(oneRowPerSection);
+
+    // B-64 規則3 / NFR-17: 色だけで分けないために記号を添える。添えるのは最も急ぐ帯だけである。
+    expect(
+      screen.getAllByRole('heading', { level: 2 }).map((heading) => countOf(heading, '!')),
+    ).toEqual([1, 0, 0]);
+  });
+
+  it('行には名称・分量・残日数がこの順に並び、行の操作が最後に来る', () => {
+    renderRows([
+      stockItem({ id: '1', name: '豚こま肉', amount: '300g', expiryDate: '2026-09-22' }),
+    ]);
+
+    // B-64 規則4 / FR-04: 行は名称・分量・残日数・`…` の順（原本 rowCols）。
+    const row = soleRow();
+    const ordered = [
+      within(row).getByText('豚こま肉'),
+      within(row).getByText('300g'),
+      within(row).getByText('あと2日'),
+      within(row).getByRole('button', { name: '操作' }),
+    ];
+    expect(
+      ordered.slice(1).map((element, index) => precedes(ordered[index] as Node, element)),
+    ).toEqual([true, true, true]);
+  });
+
+  it('分量の無い行には、`null` も `－` も文字として出さない', () => {
+    renderRows([stockItem({ id: '1', name: '白菜', amount: null, expiryDate: '2026-09-22' })]);
+
+    // B-64 規則4 / FR-13: `－` は期限なしの印であり、分量には使わない。
+    const text = soleRow().textContent ?? '';
+    expect([text.includes('null'), text.includes('－')]).toEqual([false, false]);
+  });
+
+  it('期限の無い行は、残日数を `－` で示す', () => {
+    renderRows([stockItem({ id: '1', name: 'にんじん', amount: '2本' })]);
+
+    // B-64 規則5 / FR-13: 期限が未設定の行は `－`。
+    expect(countOf(soleRow(), '－')).toBe(1);
+  });
+
+  it('分量も期限も無い行では、`－` を1つだけ出す', () => {
+    renderRows([stockItem({ id: '1', name: 'にんじん' })]);
+
+    // B-64 規則4・5: 分量の欄は空のまま置き、`－` は残日数の欄にだけ出す。
+    expect(countOf(soleRow(), '－')).toBe(1);
+  });
+
+  it('期限が今日の行は、残日数を `今日` と文で示す', () => {
+    renderRows([stockItem({ id: '1', name: '豚こま肉', expiryDate: TODAY })]);
+
+    // B-64 規則5 / NFR-17: 色は文に添えるだけで、文は必ず出す。
+    expect(within(soleRow()).queryAllByText('今日')).toHaveLength(1);
+  });
+
+  it('期限が近い行は、残日数を `あと N日` と文で示す', () => {
+    renderRows([stockItem({ id: '1', name: '白菜', expiryDate: '2026-09-22' })]);
+
+    // B-64 規則5 / NFR-17。
+    expect(within(soleRow()).queryAllByText('あと2日')).toHaveLength(1);
+  });
+
+  it('行の操作の名前は `操作` である', () => {
+    renderRows(twoRows);
+
+    // B-64 規則6 / 論点4 #2: アイコンに替えても名前は変えない。
+    expect(
+      allToggles().filter((toggle) => toggle.getAttribute('aria-label') === '操作'),
+    ).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: '操作' })).toEqual(allToggles());
+  });
+});
+
+/**
+ * 確認を出している間の一覧（B-64 設計 6章 規則9 / 論点4 #1）。
+ *
+ * **`inert` は属性の有無で観る**（設計 10章 — jsdom は焦点を止める振る舞いまでは持たない）。
+ * ARIA の役割でも文でも見えない約束なので、`closest('[inert]')` の1行だけ DOM を辿る
+ * （先例 `SignInForm.test.tsx` の `closest('[aria-hidden="true"]')`）。
+ *
+ * 引くときは `hidden: true` を付ける — 読み上げの木から外れているかどうかはこの観点の本題ではなく、
+ * 外れていても要素そのものは引けなければならない。
+ */
+
+/** 要素が `inert` の中にあるか。 */
+function insideInert(element: HTMLElement): boolean {
+  return element.closest('[inert]') !== null;
+}
+
+/** 帯の見出しと行をすべて。 */
+function listParts(): readonly HTMLElement[] {
+  return [
+    ...screen.getAllByRole('heading', { level: 2, hidden: true }),
+    ...screen.getAllByRole('listitem', { hidden: true }),
+  ];
+}
+
+describe('在庫一覧 PantryList の確認を出している間', () => {
+  it('確認を出していない間は、一覧を `inert` にしない', () => {
+    renderOperableRows();
+
+    // B-64 規則9: 何も出ていない一覧は操作できる。
+    expect(listParts().map(insideInert)).toEqual([false, false, false]);
+  });
+
+  it('確認を出している間は、帯の見出しも行も `inert` の中にある', () => {
+    renderOperableRows();
+
+    openConfirmationBySwipe();
+
+    // B-64 規則9 / 論点4 #1: 焦点を確認の中に閉じ込める。
+    expect(listParts().map(insideInert)).toEqual([true, true, true]);
+  });
+
+  it('確認を出している間も、確認そのものは `inert` の外にある', () => {
+    renderOperableRows();
+
+    openConfirmationBySwipe();
+
+    // B-64 規則9: 確認（暗幕と `role="dialog"`）は包みの外に置く。
+    expect(insideInert(screen.getByRole('dialog'))).toBe(false);
+  });
+
+  it('確認をやめると、一覧の `inert` は外れる', () => {
+    renderOperableRows();
+
+    openConfirmationBySwipe();
+    pressOperation(cancelConfirmation());
+
+    // B-64 規則9: 閉じたら `inert` を外す。
+    expect(listParts().map(insideInert)).toEqual([false, false, false]);
+  });
+
+  it('消せなかった案内も、次の確認を出している間は `inert` の中にある', async () => {
+    renderOperableRows({ remove: [{ outcome: 'failed' }] });
+
+    openConfirmationBySwipe();
+    pressOperation(confirmDeletion());
+    await waitFor(() => {
+      expect(screen.queryAllByRole('paragraph')).toHaveLength(1);
+    });
+    openConfirmationBySwipe();
+
+    // B-64 規則9: 包むのは帯・行・削除の断りの案内である。案内は確認の文でない段落で引く。
+    const dialog = screen.getByRole('dialog');
+    const notices = screen
+      .getAllByRole('paragraph', { hidden: true })
+      .filter((paragraph) => !dialog.contains(paragraph));
+    expect(notices.map(insideInert)).toEqual([true]);
   });
 });
