@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&amp;family=Zen+Kaku+Gothic+New:wght@400;500&amp;display=swap" rel="stylesheet"></helmet>
+<div style="box-sizing:border-box;min-height:{{ L.h }};display:flex;flex-direction:column;padding:{{ L.pad }};color:#1F1E1B;font-size:16px;line-height:1.75;letter-spacing:0.02em;font-family:var(--ftm-font, 'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif)">
+  <sc-if value="{{ sp }}" hint-placeholder-val="{{ true }}">
+    <header style="min-height:48px;margin:16px 0 0 -12px;display:flex;align-items:center;gap:4px">
+      <button type="button" aria-label="戻る" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;padding:0;border:0;background:none;color:#1F1E1B;cursor:pointer"><dc-import name="Icon" icon="back" size="24" hint-size="24px,24px"></dc-import></button>
+      <sc-if value="{{ add }}" hint-placeholder-val="{{ true }}"><h1 style="margin:0;font-size:20px;font-weight:500;line-height:1.45">食材を登録</h1></sc-if>
+      <sc-if value="{{ edit }}" hint-placeholder-val="{{ false }}"><h1 style="margin:0;font-size:20px;font-weight:500;line-height:1.45">食材を編集</h1></sc-if>
+    </header>
+  </sc-if>
+  <sc-if value="{{ pc }}" hint-placeholder-val="{{ false }}">
+    <header style="min-height:48px;display:flex;align-items:center;justify-content:space-between">
+      <sc-if value="{{ add }}" hint-placeholder-val="{{ true }}"><h1 style="margin:0;font-size:20px;font-weight:500;line-height:1.45">食材を登録</h1></sc-if>
+      <sc-if value="{{ edit }}" hint-placeholder-val="{{ false }}"><h1 style="margin:0;font-size:20px;font-weight:500;line-height:1.45">食材を編集</h1></sc-if>
+      <button type="button" style="height:48px;margin-right:-8px;padding:0 8px;border:0;background:none;color:#1F1E1B;font-family:inherit;font-size:14px;letter-spacing:0.02em;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px;cursor:pointer">閉じる</button>
+    </header>
+  </sc-if>
+  <div style="margin-top:32px;display:flex;flex-direction:column;gap:24px">
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <span style="font-size:12px;line-height:1.5;letter-spacing:0.12em;color:#55524C">食材名</span>
+      <sc-if value="{{ add }}" hint-placeholder-val="{{ true }}">
+        <div style="position:relative">
+          <div style="box-sizing:border-box;height:48px;display:flex;align-items:center;padding:0 15px;background:#FFFFFF;border:2px solid #1F1E1B">
+            <span>こま</span><span style="width:1px;height:22px;margin-left:1px;background:#1F1E1B"></span>
+          </div>
+          <div style="position:absolute;top:100%;left:0;right:0;z-index:2;background:#FFFFFF;border:1px solid #E3DED6;border-top:0">
+            <sc-for list="{{ sugg }}" as="s" hint-placeholder-count="3">
+              <div style="height:48px;display:flex;align-items:center;padding:0 16px;cursor:pointer;background:{{ s.bg }}" style-hover="background:#FAF9F6">{{ s.n }}</div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ edit }}" hint-placeholder-val="{{ false }}">
+        <div style="height:48px;display:flex;align-items:center">白菜</div>
+      </sc-if>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <span style="display:flex;gap:8px;font-size:12px;line-height:1.5;letter-spacing:0.12em;color:#55524C"><span>分量</span><span style="color:#6E6A63">任意</span></span>
+      <div style="box-sizing:border-box;height:48px;display:flex;align-items:center;padding:0 16px;background:#FFFFFF;border:1px solid #8C877F;font-variant-numeric:tabular-nums">
+        <sc-if value="{{ add }}" hint-placeholder-val="{{ true }}"><span style="color:#6E6A63">例: 300g</span></sc-if>
+        <sc-if value="{{ edit }}" hint-placeholder-val="{{ false }}"><span>1/4個</span></sc-if>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <span style="display:flex;gap:8px;font-size:12px;line-height:1.5;letter-spacing:0.12em;color:#55524C"><span>期限</span><span style="color:#6E6A63">任意</span></span>
+      <div style="box-sizing:border-box;height:48px;display:flex;align-items:center;padding:0 16px;background:#FFFFFF;border:1px solid #8C877F;font-variant-numeric:tabular-nums">
+        <sc-if value="{{ add }}" hint-placeholder-val="{{ true }}"><span style="color:#6E6A63">日付を選ぶ</span></sc-if>
+        <sc-if value="{{ edit }}" hint-placeholder-val="{{ false }}"><span>10月3日（土）</span><span style="margin-left:auto;font-size:14px;color:#8A5A12">あと2日</span></sc-if>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:auto;padding:40px 0 24px;display:flex;flex-direction:column;gap:12px">
+    <sc-if value="{{ add }}" hint-placeholder-val="{{ true }}">
+      <button type="button" style="width:100%;max-width:360px;height:56px;border:0;border-radius:0;background:#1F1E1B;color:#FAF9F6;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em;cursor:pointer" style-active="background:#55524C">保存してもう1件</button>
+      <button type="button" style="width:100%;max-width:360px;height:48px;border:1px solid #1F1E1B;border-radius:0;background:transparent;color:#1F1E1B;font-family:inherit;font-size:16px;letter-spacing:0.02em;cursor:pointer" style-active="background:#ECE7DF">保存して閉じる</button>
+    </sc-if>
+    <sc-if value="{{ edit }}" hint-placeholder-val="{{ false }}">
+      <button type="button" style="width:100%;max-width:360px;height:56px;border:0;border-radius:0;background:#1F1E1B;color:#FAF9F6;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em;cursor:pointer" style-active="background:#55524C">保存</button>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:780},&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;add&quot;,&quot;edit&quot;],&quot;default&quot;:&quot;add&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;desktop&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const pc = !!this.props.desktop;
+    const edit = (this.props.mode ?? 'add') === 'edit';
+    return {
+      sp: !pc, pc, add: !edit, edit,
+      sugg: ['小松菜', '豚こま肉', '牛こま肉'].map((n, i) => ({ n, bg: i === 0 ? '#FAF9F6' : '#FFFFFF' })),
+      L: pc ? { h: '900px', pad: '40px 40px 0' } : { h: '756px', pad: '8px 16px 0' }
+    };
+  }
+}
+</script>
+</body>
+</html>

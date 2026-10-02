@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&amp;family=Zen+Kaku+Gothic+New:wght@400;500&amp;display=swap" rel="stylesheet"></helmet>
+<div style="position:relative;box-sizing:border-box;display:flex;flex-direction:{{ L.dir }};width:{{ L.w }};min-height:{{ L.h }};background:#FAF9F6;color:#1F1E1B;font-size:16px;line-height:1.75;letter-spacing:0.02em;font-family:var(--ftm-font, 'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif)">
+  <sc-if value="{{ pc }}" hint-placeholder-val="{{ false }}"><dc-import name="SideNav" active="pantry" hint-size="240px,900px"></dc-import></sc-if>
+  <main style="position:relative;flex:1;min-width:0;display:flex;flex-direction:column;padding:{{ L.pad }}">
+    <sc-if value="{{ showList }}" hint-placeholder-val="{{ true }}">
+      <div style="width:100%;max-width:{{ L.max }}">
+        <header style="min-height:48px;display:flex;align-items:center;justify-content:space-between;padding:{{ L.head }}">
+          <h1 style="margin:0;font-size:20px;font-weight:500;line-height:1.45;letter-spacing:0.02em">冷蔵庫</h1>
+          <div style="display:flex;margin-right:{{ L.plusMr }}"><button type="button" aria-label="食材を追加" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;padding:0;border:0;background:none;color:#1F1E1B;cursor:pointer" style-focus="outline:2px solid #1F1E1B;outline-offset:2px"><dc-import name="Icon" icon="plus" size="24" hint-size="24px,24px"></dc-import></button><sc-if value="{{ sp }}" hint-placeholder-val="{{ true }}"><button type="button" aria-label="設定" style="width:48px;height:48px;margin-right:0;display:flex;align-items:center;justify-content:center;padding:0;border:0;background:none;color:#1F1E1B;cursor:pointer" style-focus="outline:2px solid #1F1E1B;outline-offset:2px"><dc-import name="Icon" icon="settings" size="24" hint-size="24px,24px"></dc-import></button></sc-if></div>
+        </header>
+        <div style="display:flex;flex-direction:column;gap:24px">
+          <sc-for list="{{ bands }}" as="b" hint-placeholder-count="3">
+            <section>
+              <div style="height:32px;display:flex;align-items:center;gap:8px;padding:0 16px;background:{{ b.bg }};color:{{ b.fg }};font-size:12px;line-height:1.5;letter-spacing:0.12em">
+                <sc-if value="{{ b.alert }}" hint-placeholder-val="{{ false }}"><span style="font-family:'Inter', sans-serif;font-weight:500;letter-spacing:0">!</span></sc-if>
+                <span>{{ b.label }}</span>
+              </div>
+              <sc-for list="{{ b.items }}" as="it" hint-placeholder-count="2">
+                <div style="position:relative;box-sizing:border-box;height:56px;display:grid;grid-template-columns:{{ L.rowCols }};column-gap:12px;align-items:center;padding:{{ L.rowPad }};background:{{ it.bg }};border-bottom:1px solid #E3DED6;cursor:pointer" style-hover="background:#FFFFFF">
+                  <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ it.n }}</span>
+                  <span style="font-size:14px;line-height:1.6;color:#55524C;text-align:right;font-variant-numeric:tabular-nums">{{ it.q }}</span>
+                  <span style="font-size:14px;line-height:1.6;color:{{ it.dc }};text-align:right;font-variant-numeric:tabular-nums">{{ it.d }}</span>
+                  <sc-if value="{{ pc }}" hint-placeholder-val="{{ false }}">
+                    <button type="button" aria-label="操作" style="width:48px;height:48px;display:flex;align-items:center;justify-content:center;padding:0;border:0;background:{{ it.moreBg }};color:#55524C;cursor:pointer" style-hover="background:#ECE7DF"><dc-import name="Icon" icon="more" size="24" hint-size="24px,24px"></dc-import></button>
+                  </sc-if>
+                  <sc-if value="{{ it.open }}" hint-placeholder-val="{{ false }}">
+                    <div style="position:absolute;top:100%;right:0;z-index:3;width:160px;margin-top:-1px;display:flex;flex-direction:column;background:#FFFFFF;border:1px solid #E3DED6">
+                      <button type="button" style="height:44px;padding:0 16px;border:0;background:none;text-align:left;color:#1F1E1B;font-family:inherit;font-size:16px;letter-spacing:0.02em;cursor:pointer" style-hover="background:#FAF9F6">編集</button>
+                      <button type="button" style="height:44px;padding:0 16px;border:0;background:none;text-align:left;color:#A33A26;font-family:inherit;font-size:16px;letter-spacing:0.02em;cursor:pointer" style-hover="background:#F7E3DC">削除</button>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </section>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ formSP }}" hint-placeholder-val="{{ false }}">
+      <dc-import name="IngredientForm" mode="{{ formMode }}" hint-size="390px,756px"></dc-import>
+    </sc-if>
+  </main>
+  <sc-if value="{{ sp }}" hint-placeholder-val="{{ true }}"><dc-import name="TabBar" active="pantry" hint-size="390px,64px"></dc-import></sc-if>
+  <sc-if value="{{ panel }}" hint-placeholder-val="{{ false }}">
+    <aside style="position:absolute;top:0;right:0;bottom:0;z-index:5;width:440px;background:#FFFFFF;border-left:1px solid #E3DED6">
+      <dc-import name="IngredientForm" mode="{{ formMode }}" desktop="{{ true }}" hint-size="440px,900px"></dc-import>
+    </aside>
+  </sc-if>
+  <sc-if value="{{ confirm }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:10;background:rgba(31,30,27,0.4)"></div>
+  </sc-if>
+  <sc-if value="{{ confirmSP }}" hint-placeholder-val="{{ false }}">
+    <div role="dialog" style="position:absolute;left:0;right:0;bottom:0;z-index:11;display:flex;flex-direction:column;gap:24px;padding:32px 16px 24px;background:#FFFFFF;border-top:1px solid #E3DED6">
+      <p style="margin:0;font-size:16px;font-weight:500;line-height:1.75;font-variant-numeric:tabular-nums">豚こま肉 300g を削除しますか</p>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <button type="button" style="width:100%;height:48px;border:0;border-radius:0;background:#A33A26;color:#FAF9F6;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em;cursor:pointer">削除</button>
+        <button type="button" style="width:100%;height:48px;border:1px solid #1F1E1B;border-radius:0;background:transparent;color:#1F1E1B;font-family:inherit;font-size:16px;letter-spacing:0.02em;cursor:pointer">やめる</button>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ confirmPC }}" hint-placeholder-val="{{ false }}">
+    <div role="dialog" style="position:absolute;top:50%;left:50%;z-index:11;box-sizing:border-box;width:400px;transform:translate(-50%, -50%);display:flex;flex-direction:column;gap:32px;padding:32px 24px 24px;background:#FFFFFF;border:1px solid #E3DED6">
+      <p style="margin:0;font-size:16px;font-weight:500;line-height:1.75;font-variant-numeric:tabular-nums">豚こま肉 300g を削除しますか</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <button type="button" style="height:48px;border:1px solid #1F1E1B;border-radius:0;background:transparent;color:#1F1E1B;font-family:inherit;font-size:16px;letter-spacing:0.02em;cursor:pointer">やめる</button>
+        <button type="button" style="height:48px;border:0;border-radius:0;background:#A33A26;color:#FAF9F6;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em;cursor:pointer">削除</button>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:844},&quot;desktop&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;overlay&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;none&quot;,&quot;menu&quot;,&quot;confirm&quot;,&quot;add&quot;,&quot;edit&quot;],&quot;default&quot;:&quot;none&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const pc = !!this.props.desktop, sp = !pc;
+    const ov = this.props.overlay ?? 'none';
+    const raw = [
+      { label: '今日まで', alert: true, bg: '#F7E3DC', fg: '#A33A26', dc: '#A33A26', items: [['豚こま肉', '300g', '今日'], ['小松菜', '1束', '今日']] },
+      { label: '期限が近い', alert: false, bg: '#F5EBD8', fg: '#8A5A12', dc: '#8A5A12', items: [['白菜', '1/4個', 'あと2日'], ['卵', '6個', 'あと3日']] },
+      { label: 'その他', alert: false, bg: '#ECE7DF', fg: '#1F1E1B', dc: '#55524C', items: [['にんじん', '2本', 'あと12日'], ['玉ねぎ', '3個', 'あと20日'], ['乾燥わかめ', '1袋', '－']] }
+    ];
+    const menuOpen = pc && ov === 'menu';
+    const bands = raw.map((b, bi) => ({
+      ...b,
+      items: b.items.map(([n, q, d], ii) => {
+        const open = menuOpen && bi === 0 && ii === 0;
+        return { n, q, d, dc: d === '－' ? '#6E6A63' : b.dc, open, bg: open ? '#FFFFFF' : '#FAF9F6', moreBg: open ? '#ECE7DF' : 'transparent' };
+      })
+    }));
+    const isForm = ov === 'add' || ov === 'edit';
+    return {
+      sp, pc, bands,
+      showList: !(sp && isForm), formSP: sp && isForm, panel: pc && isForm, formMode: ov === 'edit' ? 'edit' : 'add',
+      confirm: ov === 'confirm', confirmSP: sp && ov === 'confirm', confirmPC: pc && ov === 'confirm',
+      L: pc
+        ? { dir: 'row', w: '1440px', h: '900px', pad: '0 48px 64px', max: '720px', head: '40px 0 32px', plusMr: '0', rowCols: 'minmax(0, 1fr) 72px 72px 48px', rowPad: '0 0 0 16px' }
+        : { dir: 'column', w: '390px', h: '844px', pad: '0 0 24px', max: 'none', head: '16px 16px 24px', plusMr: '-12px', rowCols: 'minmax(0, 1fr) 72px 72px', rowPad: '0 16px' }
+    };
+  }
+}
+</script>
+</body>
+</html>

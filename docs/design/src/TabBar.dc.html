@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&amp;family=Zen+Kaku+Gothic+New:wght@400;500&amp;display=swap" rel="stylesheet"></helmet>
+<nav style="box-sizing:border-box;height:64px;display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));background:#FAF9F6;border-top:1px solid #E3DED6;color:#1F1E1B;font-family:var(--ftm-font, 'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif)">
+  <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+    <div style="position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer">
+      <sc-if value="{{ t.active }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;top:-1px;left:16px;right:16px;height:2px;background:#1F1E1B"></div></sc-if>
+      <dc-import name="Icon" icon="{{ t.icon }}" size="24" hint-size="24px,24px"></dc-import>
+      <span style="font-size:12px;line-height:1.5;letter-spacing:0.12em;font-weight:{{ t.w }}">{{ t.label }}</span>
+    </div>
+  </sc-for>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:64},&quot;active&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;meal&quot;,&quot;pantry&quot;,&quot;history&quot;],&quot;default&quot;:&quot;meal&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const a = this.props.active ?? 'meal';
+    const tabs = [['meal', '献立'], ['pantry', '冷蔵庫'], ['history', '履歴']].map(([k, label]) => ({ label, icon: k, active: a === k, w: a === k ? 500 : 400 }));
+    return { tabs };
+  }
+}
+</script>
+</body>
+</html>

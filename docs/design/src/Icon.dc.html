@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<sc-if value="{{ is.meal }}" hint-placeholder-val="{{ false }}"><svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" style="display:block;flex:none;fill:none;stroke:currentColor;stroke-width:{{ sw }};stroke-linecap:round;stroke-linejoin:round"><path d="M4 11h16a8 8 0 0 1-16 0Z"></path><path d="M9 21.5h6"></path><path d="M10 4v3"></path><path d="M14 4v3"></path></svg></sc-if>
+<sc-if value="{{ is.pantry }}" hint-placeholder-val="{{ false }}"><svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" style="display:block;flex:none;fill:none;stroke:currentColor;stroke-width:{{ sw }};stroke-linecap:round;stroke-linejoin:round"><path d="M5.5 2.5h13v19h-13Z"></path><path d="M5.5 10h13"></path><path d="M9 5.5v1.5"></path><path d="M9 13v3"></path></svg></sc-if>
+<sc-if value="{{ is.history }}" hint-placeholder-val="{{ false }}"><svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" style="display:block;flex:none;fill:none;stroke:currentColor;stroke-width:{{ sw }};stroke-linecap:round;stroke-linejoin:round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.5 2"></path></svg></sc-if>
+<sc-if value="{{ is.plus }}" hint-placeholder-val="{{ false }}"><svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" style="display:block;flex:none;fill:none;stroke:currentColor;stroke-width:{{ sw }};stroke-linecap:round;stroke-linejoin:round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg></sc-if>
+<sc-if value="{{ is.back }}" hint-placeholder-val="{{ false }}"><svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" style="display:block;flex:none;fill:none;stroke:currentColor;stroke-width:{{ sw }};stroke-linecap:round;stroke-linejoin:round"><path d="M19 12H5"></path><path d="m11 18-6-6 6-6"></path></svg></sc-if>
+<sc-if value="{{ is.settings }}" hint-placeholder-val="{{ false }}"><svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" style="display:block;flex:none;fill:none;stroke:currentColor;stroke-width:{{ sw }};stroke-linecap:round;stroke-linejoin:round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg></sc-if>
+<sc-if value="{{ is.more }}" hint-placeholder-val="{{ false }}"><svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" style="display:block;flex:none;fill:currentColor;stroke:none"><circle cx="5" cy="12" r="1.5"></circle><circle cx="12" cy="12" r="1.5"></circle><circle cx="19" cy="12" r="1.5"></circle></svg></sc-if>
+<sc-if value="{{ is.info }}" hint-placeholder-val="{{ false }}"><svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" style="display:block;flex:none;fill:none;stroke:currentColor;stroke-width:{{ sw }};stroke-linecap:round;stroke-linejoin:round"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5.5"></path><path d="M12 7.5h.01"></path></svg></sc-if>
+<sc-if value="{{ is.check }}" hint-placeholder-val="{{ false }}"><svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" style="display:block;flex:none;fill:none;stroke:currentColor;stroke-width:{{ sw }};stroke-linecap:round;stroke-linejoin:round"><path d="M20 6 9 17l-5-5"></path></svg></sc-if>
+<sc-if value="{{ is.x }}" hint-placeholder-val="{{ false }}"><svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" style="display:block;flex:none;fill:none;stroke:currentColor;stroke-width:{{ sw }};stroke-linecap:round;stroke-linejoin:round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></sc-if>
+<sc-if value="{{ is.alert }}" hint-placeholder-val="{{ false }}"><svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" style="display:block;flex:none;fill:none;stroke:currentColor;stroke-width:{{ sw }};stroke-linecap:round;stroke-linejoin:round"><path d="M12 5v9"></path><path d="M12 19h.01"></path></svg></sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:24,&quot;height&quot;:24},&quot;icon&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;meal&quot;,&quot;pantry&quot;,&quot;history&quot;,&quot;plus&quot;,&quot;back&quot;,&quot;settings&quot;,&quot;more&quot;,&quot;info&quot;,&quot;check&quot;,&quot;x&quot;,&quot;alert&quot;],&quot;default&quot;:&quot;plus&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;size&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:24,&quot;tsType&quot;:&quot;number&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const n = this.props.icon ?? 'plus';
+    const size = Number(this.props.size ?? 24);
+    const is = {};
+    ['meal','pantry','history','plus','back','settings','more','info','check','x','alert'].forEach(k => { is[k] = n === k; });
+    return { is, size, sw: (1.5 * 24 / size).toFixed(2) };
+  }
+}
+</script>
+</body>
+</html>
