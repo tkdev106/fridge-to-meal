@@ -85,20 +85,22 @@ function pendingRegister(registrations: RegisterStockItemInput[]): {
 function renderForm(
   onRegister: RegisterStockItem,
   ingredientNames: IngredientNamesState = { outcome: 'loading' },
+  offline = false,
 ) {
   return render(
     <StockItemForm
       onRegister={onRegister}
       onClose={ignoreClose}
       ingredientNames={ingredientNames}
+      offline={offline}
     />,
   );
 }
 
 /**
  * 欄を役割と文書順で引く。3欄のうち `textbox` になるのは分量だけである — 食材名は補完の
- * `list` を持つため役割が `combobox` になり（B-50c）、期限は `type="date"` なのでどちらの
- * 役割にも入らない。
+ * 欄として `role="combobox"` を明示しているため役割が `combobox` になり（B-50c / B-66 設計
+ * 規則13）、期限は `type="date"` なのでどちらの役割にも入らない。
  *
  * **`instanceof HTMLInputElement` で絞らない** — 役割で引いている以上、入力の欄であることは
  * 問い合わせの側が保証している。**DOM の形を辿らない**（ADR-052 結果3。先行
@@ -112,8 +114,8 @@ function textboxAt(index: number): HTMLElement {
 }
 
 /**
- * 食材名の欄。**補完が付いた欄は `combobox` である**（B-50c）— `list` を持つ入力の役割は
- * ARIA in HTML がそう定めており、**補完が0件の回も欄はこの役割のままである**（設計 規則4）。
+ * 食材名の欄。**補完が付いた欄は `combobox` である**（B-50c）— `role="combobox"` を明示して
+ * いるため（B-66 設計 規則13）、**補完が0件の回も欄はこの役割のままである**（B-66 設計 10章）。
  */
 function ingredientNameField(): HTMLElement {
   return screen.getByRole('combobox');
@@ -501,40 +503,52 @@ describe('登録の画面 StockItemForm の3欄と案内', () => {
 });
 
 /**
- * 補完に出ている名称を引く（B-50c 設計 5章）。**`<datalist>` の中身は画面に描かれないため、
- * `hidden: true` で引く** — 役割（`option`）で引く点は他の観点と変わらず、DOM の形は辿らない。
+ * 欄の直下の一覧に出ている名称を引く（B-66 設計 6章 規則13）。行は `option` の役割で引き、
+ * 名称は行の文字で読む — DOM の形は辿らない。**行が無ければ引く側が例外で落ちる**ので、
+ * 一覧が出ないことは `completionListbox()` が `null` であることで見る。
  */
 function completionOptions(): readonly string[] {
-  return screen
-    .queryAllByRole('option', { hidden: true })
-    .map((option) => option.getAttribute('value') ?? '');
+  return screen.getAllByRole('option').map((option) => option.textContent ?? '');
+}
+
+/** 一覧が木に無いこと。**隠しているだけでも見つける**ために `hidden: true` で引く。 */
+function completionListbox(): HTMLElement | null {
+  return screen.queryByRole('listbox', { hidden: true });
 }
 
 describe('登録の画面 StockItemForm の食材名の補完', () => {
-  it('取れた名称が食材名の欄の補完に出る', () => {
-    // FR-02: その世帯の在庫品と献立の材料から集めた名称を補完に出す（ADR-063）。
+  it('取れた名称のうち打った文字に合うものが、食材名の欄の一覧に出る', () => {
+    // FR-02 / B-66 設計 規則1・4: その世帯の在庫品と献立の材料から集めた名称のうち、
+    // 打ちかけの文字を含むものを欄の直下に出す（ADR-063）。
     renderForm(recordingRegister([], { outcome: 'registered' }), {
       outcome: 'loaded',
       ingredientNames: ['にんじん', '豚こま肉'],
     });
 
-    expect(completionOptions()).toEqual(['にんじん', '豚こま肉']);
+    fireEvent.change(ingredientNameField(), { target: { value: 'こま' } });
+
+    expect(completionOptions()).toEqual(['豚こま肉']);
   });
 
   it('名称の並びを変えない', () => {
-    // 並び（コード単位の昇順）を決めるのはサーバである（ADR-063 決定4 / 設計 規則5）。
+    // 並び（コード単位の昇順）を決めるのはサーバである（ADR-063 決定4 / B-66 設計 規則3）。
     renderForm(recordingRegister([], { outcome: 'registered' }), {
       outcome: 'loaded',
-      ingredientNames: ['豚こま肉', 'にんじん'],
+      ingredientNames: ['豚こま肉', '牛こま肉'],
     });
 
-    expect(completionOptions()).toEqual(['豚こま肉', 'にんじん']);
+    fireEvent.change(ingredientNameField(), { target: { value: 'こま' } });
+
+    expect(completionOptions()).toEqual(['豚こま肉', '牛こま肉']);
   });
 
-  it('名称が取れなかった回は補完が1つも出ない', () => {
+  it('名称が取れなかった回は、打っても一覧が出ない', () => {
+    // FR-03 / B-66 設計 規則12 / 7章: 取れなかった回は空の列であり、一覧が出ないだけである。
     renderForm(recordingRegister([], { outcome: 'registered' }), { outcome: 'failed' });
 
-    expect(completionOptions()).toEqual([]);
+    fireEvent.change(ingredientNameField(), { target: { value: 'に' } });
+
+    expect(completionListbox()).toBeNull();
   });
 
   it('名称が取れなかった回も、打った名前をそのまま登録できる', () => {
@@ -560,6 +574,49 @@ describe('登録の画面 StockItemForm の食材名の補完', () => {
     fireEvent.click(saveAndStay());
 
     expect(registrations).toEqual([{ name: 'ゴーヤ', amount: null, expiryDate: null }]);
+  });
+
+  it('一覧が出ている間に選ばずに保存しても、打った名前がそのまま届く', () => {
+    // FR-03 / B-66 設計 規則11: 部品が値を書き換えるのは選んだときだけである。
+    const registrations: RegisterStockItemInput[] = [];
+    renderForm(recordingRegister(registrations, { outcome: 'registered' }), {
+      outcome: 'loaded',
+      ingredientNames: ['にんじん'],
+    });
+
+    fireEvent.change(ingredientNameField(), { target: { value: 'にん' } });
+    fireEvent.click(saveAndStay());
+
+    expect(registrations).toEqual([{ name: 'にん', amount: null, expiryDate: null }]);
+  });
+
+  it('一覧から選んだ名称が登録の口へ届く', () => {
+    // FR-02 / B-66 設計 規則7: 選んだ名称がそのまま欄に入り、保存で届く。
+    const registrations: RegisterStockItemInput[] = [];
+    renderForm(recordingRegister(registrations, { outcome: 'registered' }), {
+      outcome: 'loaded',
+      ingredientNames: ['豚こま肉'],
+    });
+
+    fireEvent.change(ingredientNameField(), { target: { value: 'こま' } });
+    fireEvent.keyDown(ingredientNameField(), { key: 'ArrowDown' });
+    fireEvent.keyDown(ingredientNameField(), { key: 'Enter' });
+    fireEvent.click(saveAndStay());
+
+    expect(registrations).toEqual([{ name: '豚こま肉', amount: null, expiryDate: null }]);
+  });
+
+  it('接続が切れていても、打てば一覧が出る', () => {
+    // B-66 設計 規則15 / B-70: 止めるのは書き込みだけで、補完は書き込みではない。
+    renderForm(
+      recordingRegister([], { outcome: 'registered' }),
+      { outcome: 'loaded', ingredientNames: ['豚こま肉'] },
+      true,
+    );
+
+    fireEvent.change(ingredientNameField(), { target: { value: 'こま' } });
+
+    expect(completionOptions()).toEqual(['豚こま肉']);
   });
 });
 
