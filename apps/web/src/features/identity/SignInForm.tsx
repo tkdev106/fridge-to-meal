@@ -4,10 +4,14 @@
  *
  * ここは `SignInFormValues.ts` を読むだけの薄い層である。資格情報を作れるかの判断を持たない
  * — **描いて確かめられるようになった今も**（ADR-052）、判断は純粋関数に置くほうが速く、
- * 仮の文言にも jsdom にも依存しない。
+ * 文言にも jsdom にも依存しない。
  *
- * 反対に、**日本語はここにしか置かない。** 文言も配色も未確定であり（`docs/screen-design.md` 論点3）、
- * 以下の日本語は仮のものである。
+ * 反対に、**日本語はここにしか置かない。** 文言と見た目の正は ADR-074 で `docs/design/` に移った
+ * （原本 14-sp。`docs/screen-design.md` 論点3 の「未確定」はここで解けた）。見出し・欄・操作の
+ * 名札とロゴは原本の文言であり、案内と「送っています…」は原本に無いため B-35 の文面を据え置く。
+ *
+ * **見た目の値は `SignInForm.module.css` にだけ置き、ここには class 名しか書かない**（ADR-055 決定1・2 /
+ * B-68 設計 6章 規則11）。
  *
  * サインインとサインアップの実行は引数で受け取る。画面が見るのは `Session.ts` の結末の型だけで、
  * `@supabase/*` は import しない（ADR-046 決定3 / 規則3）。
@@ -18,8 +22,12 @@ import { useState } from 'react';
 import type { SignInOutcome, SignUpOutcome } from '../../session/Session.js';
 import type { SignInFormValues } from './SignInFormValues.js';
 import { EMPTY_SIGN_IN_FORM, credentialsOf } from './SignInFormValues.js';
+import styles from './SignInForm.module.css';
 
-/** 画面の見出し。仮の文言である。 */
+/** 画面の上に出すロゴ（B-68 設計 6章 規則2）。見出しにも段落にもしない文字1つ。 */
+const LOGO = 'fridge to meal';
+
+/** 画面の見出し（同 規則3）。 */
 const HEADING = 'ログイン';
 
 /** 欄の見出し。2欄とも必須なので「（任意）」は付けない（規則4）。 */
@@ -54,6 +62,26 @@ const NOTICES: Record<Notice, string> = {
   confirmationRequired:
     '確認のメールを送りました。メールの中のリンクを開いてから、同じメールアドレスとパスワードでログインしてください。',
 };
+
+/**
+ * 断りの案内に添える記号（B-68 設計 6章 規則9）。**色だけで分けない**ための手がかりであり
+ * （NFR-17 の構え）、読み上げには出さない。
+ */
+const REJECTED_MARK = '!';
+
+/** 断りの案内か。記号と配色はこれだけで決まる（同 規則9）。 */
+const isRejection = (notice: Notice): boolean => notice !== 'confirmationRequired';
+
+/**
+ * class を在るものだけ空白で繋ぐ。`noUncheckedIndexedAccess` のもとで `styles.x` は
+ * `string | undefined` であり、そのまま連結すると `"undefined"` が混ざる（先行 `TabbedScreen.tsx`）。
+ */
+const classOf = (...names: readonly (string | undefined)[]): string =>
+  names.filter((name): name is string => name !== undefined).join(' ');
+
+/** 案内の帯に当てる class。断りの帯と控えめな帯を分ける（同 規則9 / NFR-16）。 */
+const noticeClassOf = (notice: Notice): string =>
+  classOf(styles.notice, isRejection(notice) ? styles.noticeRejected : styles.noticeQuiet);
 
 export type SignInFormProps = {
   /** サインインの実行。失敗は reject ではなく結末の値で返る（`Session.ts` 規則7）。 */
@@ -113,43 +141,70 @@ export function SignInForm({ onSignIn, onSignUp }: SignInFormProps) {
   }
 
   return (
-    // `noValidate` で、ブラウザの書式の検めを submit に挟ませない（規則5）。挟むと、ログインだけが
-    // 書式で止まり「アカウントを作る」は止まらないという食い違いが出る。断るのは Supabase Auth の側。
-    <form onSubmit={signIn} noValidate>
-      <h2>{HEADING}</h2>
+    // 根の中に「ロゴ → フォーム」の順で置き、フォームは下寄せにする（B-68 設計 6章 規則1）。
+    <div className={classOf(styles.screen)}>
+      <div className={classOf(styles.logo)}>{LOGO}</div>
 
-      <label>
-        {FIELD_LABELS.email}
-        {/* `type="email"` はブラウザの補助であって画面の判断ではない（設計 10章）。書式の検めは
-            置かず、断るのは Supabase Auth の側（規則5）。 */}
-        <input
-          type="email"
-          autoComplete="email"
-          value={values.email}
-          onChange={changeField('email')}
-        />
-      </label>
+      {/* `noValidate` で、ブラウザの書式の検めを submit に挟ませない（規則5）。挟むと、ログインだけが
+          書式で止まり「アカウントを作る」は止まらないという食い違いが出る。断るのは Supabase Auth の側。 */}
+      <form onSubmit={signIn} noValidate className={classOf(styles.form)}>
+        {/* 門の signedOut 枝でこの画面だけが描かれ、上位の見出しが無いので h1 にする（B-68 規則3）。 */}
+        <h1 className={classOf(styles.heading)}>{HEADING}</h1>
 
-      <label>
-        {FIELD_LABELS.password}
-        <input
-          type="password"
-          autoComplete="current-password"
-          value={values.password}
-          onChange={changeField('password')}
-        />
-      </label>
+        <div className={classOf(styles.fields)}>
+          {/* `<label>` が欄を包む形は変えない — 欄の名札が保たれる（B-68 規則4）。 */}
+          <label className={classOf(styles.field)}>
+            <span className={classOf(styles.fieldLabel)}>{FIELD_LABELS.email}</span>
+            {/* `type="email"` はブラウザの補助であって画面の判断ではない（設計 10章）。書式の検めは
+                置かず、断るのは Supabase Auth の側（規則5）。 */}
+            <input
+              type="email"
+              autoComplete="email"
+              value={values.email}
+              onChange={changeField('email')}
+              className={classOf(styles.input)}
+            />
+          </label>
 
-      {notice !== null && <p>{NOTICES[notice]}</p>}
+          <label className={classOf(styles.field)}>
+            <span className={classOf(styles.fieldLabel)}>{FIELD_LABELS.password}</span>
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={values.password}
+              onChange={changeField('password')}
+              className={classOf(styles.input, styles.passwordInput)}
+            />
+          </label>
+        </div>
 
-      {/* 操作は2つ（規則7）。ログインが submit で、アカウントを作るは submit にしない —
-          Enter で送ったときに意図せずアカウントができないようにする。 */}
-      <button type="submit" disabled={disabled}>
-        {sending ? SENDING_LABEL : SIGN_IN_LABEL}
-      </button>
-      <button type="button" disabled={disabled} onClick={signUp}>
-        {sending ? SENDING_LABEL : SIGN_UP_LABEL}
-      </button>
-    </form>
+        {notice !== null && (
+          <p className={noticeClassOf(notice)}>
+            {/* 断りの帯にだけ記号を添え、読み上げでは文を変えない（B-68 規則9 / NFR-17）。 */}
+            {isRejection(notice) && (
+              <span aria-hidden="true" className={classOf(styles.noticeMark)}>
+                {REJECTED_MARK}
+              </span>
+            )}
+            {NOTICES[notice]}
+          </p>
+        )}
+
+        {/* 操作は2つ（規則7）。ログインが submit で、アカウントを作るは submit にしない —
+            Enter で送ったときに意図せずアカウントができないようにする。主と副は別の class
+            （B-68 規則6・7）。 */}
+        <button type="submit" disabled={disabled} className={classOf(styles.primary)}>
+          {sending ? SENDING_LABEL : SIGN_IN_LABEL}
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={signUp}
+          className={classOf(styles.secondary)}
+        >
+          {sending ? SENDING_LABEL : SIGN_UP_LABEL}
+        </button>
+      </form>
+    </div>
   );
 }
