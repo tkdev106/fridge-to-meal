@@ -7,13 +7,18 @@
  * ここで新しい色を作らない。余白・字間・行の高さなどトークンの無い値は原本の数をそのまま書く
  * （先行 `navigation/TabbedScreen.module.css`）。
  *
- * **この周は狭い幅（原本 SP）の1列だけを置く。** 広い幅の3列・最大幅 1080px と、カード全体を
- * 押せる見た目（`cursor` と hover の枠）は B-61 の2周目で足す（設計 6章 規則9・10・12）。
+ * 狭い幅（原本 SP）は1列・最大幅なし、広い幅（原本 PC）は3列・最大幅 1080px（設計 6章 規則12）。
+ * 切り替えはこのファイルの末尾の1か所にだけ書く。
  */
 
-/* 画面の中身の欄（原本 SP の `main` の余白）。 */
+/* 画面の欄（原本 SP の `main` の余白）。 */
 .screen {
   padding: 0 16px 24px;
+}
+
+/* 中身の欄（原本 `main` の内側の `div`）。最大幅は広い幅でだけ付ける。 */
+.content {
+  width: 100%;
 }
 
 /* 見出しの行と凡例（原本 SP の `header`）。 */
@@ -62,8 +67,12 @@
   list-style: none;
 }
 
-/* カード1枚（原本 `MealCard` の `article`）。 */
+/*
+ * カード1枚（原本 `MealCard` の `article`）。**カード全体が押せる**（設計 B-61 規則9・10）ので
+ * 指の形と hover の枠を出す — 見た目だけで、焦点はカードに当てない（止まり先は中のボタン）。
+ */
 .card {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -71,6 +80,11 @@
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   color: var(--color-text);
+  cursor: pointer;
+}
+
+.card:hover {
+  border-color: var(--color-border-strong);
 }
 
 /* 再利用の札（FR-35 / D-3）。名称の上に、左に寄せて置く。 */
@@ -204,4 +218,29 @@
   flex: none;
   padding-top: 1px;
   color: var(--color-text);
+}
+
+/*
+ * 広い幅（原本 PC）。カード3列・中身の最大幅 1080px・原本 PC の余白（設計 B-61 規則12）。
+ *
+ * **切り替え幅 1024px は仮である。B-60 が決めた値に置き換える**（サイドナビ 240px が入ると
+ * この幅では3列が狭くなる）。CSS 変数はメディアクエリに使えないのでトークンにできず、
+ * ここ1か所にだけ書く。
+ */
+@media (min-width: 1024px) {
+  .screen {
+    padding: 0 48px 64px;
+  }
+
+  .content {
+    max-width: 1080px;
+  }
+
+  .header {
+    padding: 40px 0 32px;
+  }
+
+  .cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }

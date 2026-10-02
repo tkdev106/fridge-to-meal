@@ -88,8 +88,10 @@ const EXPIRING_TODAY_TEXT = '今日が期限';
 /**
  * 献立詳細を開く操作の文言（B-53。文言は原本 `MealCard`）。
  *
- * **カード全体を押せるようにしない** — 行そのものを掴む先行（在庫のスワイプ削除）があり、
- * 後で行に操作を足したときに当たり判定が重なる（設計 10章）。
+ * **押下はカード全体で受ける**（B-61 規則9 / 原本 `cardLink`）。このボタンは押下を自分で
+ * 処理せず、**操作としての名前と焦点の担い手**として残る（規則10）— 読み上げ・キーボードに
+ * 現れる操作はカード1枚につきこれ1つである。Enter / Space はブラウザがボタンの click に
+ * 変え、それがカードへ伝わって開く。
  */
 const OPEN_MEAL_LABEL = '作り方を見る';
 
@@ -247,7 +249,13 @@ function SuggestionBody({
   return (
     <ul role="list" className={styles.cards}>
       {cards.map((card) => (
-        <li key={card.mealId} className={styles.card}>
+        // **押下の受け口はカード（`li`）の1か所だけ**（B-61 規則9・10）。札・名称・件数・余白の
+        // どこを押しても、中のボタンを押しても、ここで1回だけ開く — ボタンにも `onClick` を
+        // 置くと、ボタンの押下が伝わった先で2回目が走る。
+        //
+        // **`li` に `role` / `tabIndex` / `aria-*` を付けない。** 付けると焦点の止まり先がボタンと
+        // 2つになり、操作が入れ子になる（NFR-16）。キーボードと読み上げはボタンが担う。
+        <li key={card.mealId} className={styles.card} onClick={() => onOpenMeal(card.mealId)}>
           {/* 再利用にだけ印を置き、名称の上に出す（FR-35 / D-3 / 原本 `MealCard`）。`note` は
               本文に添える補助であり、読み上げにも印として届く。 */}
           {card.reused && (
@@ -259,14 +267,10 @@ function SuggestionBody({
           <h3 className={styles.title}>{card.title}</h3>
           <p className={styles.coverage}>{coverageText(card.ingredientCount, card.missingCount)}</p>
           <UsedIngredients ingredients={card.usedIngredients} />
-          {/* 手順と材料の内訳は詳細の持ち分である（FR-19 / B-53）。**カードの中に置く** —
-              カード全体を押せるようにすると、行の操作を足した日に当たり判定が重なる。 */}
+          {/* 手順と材料の内訳は詳細の持ち分である（FR-19 / B-53）。ボタンは**自分で開かない** —
+              押下はカード（`li`）へ伝わってそこで開く（B-61 規則9・10）。 */}
           <div className={styles.openMeal}>
-            <button
-              type="button"
-              className={styles.openMealButton}
-              onClick={() => onOpenMeal(card.mealId)}
-            >
+            <button type="button" className={styles.openMealButton}>
               {OPEN_MEAL_LABEL}
             </button>
           </div>
@@ -389,19 +393,21 @@ export function MealsTab({
   // 凡例はカードが1枚以上あるときだけである（規則3）。
   return (
     <div className={styles.screen}>
-      <header className={styles.header}>
-        <h2 className={styles.heading}>{HEADING}</h2>
-        {cards.length > 0 && <p className={styles.legend}>{LEGEND}</p>}
-      </header>
-      <MealsTabBody
-        suggestion={suggestion}
-        cards={cards}
-        onRequestNewMeals={onRequestNewMeals}
-        requestingNewMeals={requestingNewMeals}
-        newMealsFailed={newMealsFailed}
-        onGoToPantry={onGoToPantry}
-        onOpenMeal={onOpenMeal}
-      />
+      <div className={styles.content}>
+        <header className={styles.header}>
+          <h2 className={styles.heading}>{HEADING}</h2>
+          {cards.length > 0 && <p className={styles.legend}>{LEGEND}</p>}
+        </header>
+        <MealsTabBody
+          suggestion={suggestion}
+          cards={cards}
+          onRequestNewMeals={onRequestNewMeals}
+          requestingNewMeals={requestingNewMeals}
+          newMealsFailed={newMealsFailed}
+          onGoToPantry={onGoToPantry}
+          onOpenMeal={onOpenMeal}
+        />
+      </div>
     </div>
   );
 }

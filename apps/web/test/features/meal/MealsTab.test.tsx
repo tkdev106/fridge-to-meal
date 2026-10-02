@@ -552,17 +552,21 @@ describe('献立タブ MealsTab の出せない回と他の枝の見分け', () 
  * 渡された詳細を描くか、カードの一覧を描くかだけを決める（先行 `PantryTab`）。
  */
 describe('献立タブ MealsTab の献立詳細への導線', () => {
-  it('カード1枚ごとに、詳細を開く操作を1つ置く', () => {
-    // **カード全体を押せるようにしない**（設計 10章）— 後で行の操作を足したときに
-    // 当たり判定が重なる。
+  it('カード1枚ごとに、押せる操作は詳細を開く1つだけで、カードそのものは操作として現れない', () => {
+    // B-61 規則10: 押下はカード全体で受けるが、読み上げとキーボードに現れる操作は
+    // `作り方を見る` のボタン1つだけ。カードに `role="button"` を付けると焦点の止まり先が
+    // 2つになり、入れ子の操作になる（NFR-16）。
     renderTab(suggested(entry({ mealId: 'meal-1' }), entry({ mealId: 'meal-2' })));
 
     const cards = screen.getAllByRole('listitem');
+    expect(cards).toHaveLength(2);
     expect(within(cardAt(cards, 0)).getAllByRole('button')).toHaveLength(1);
     expect(within(cardAt(cards, 1)).getAllByRole('button')).toHaveLength(1);
   });
 
-  it('開く操作を押すと、そのカードの献立の識別子が届く', () => {
+  it('開く操作を押しても、そのカードの献立の識別子は1回だけ届く', () => {
+    // B-61 規則9: 押下はカードで受けてボタンからは泡立ちで届く。ボタンとカードの両方で
+    // 呼んで二重にしない — 完全一致で見るので、2回届けば赤になる。
     const opened: string[] = [];
     renderTab(suggested(entry({ mealId: 'meal-1' }), entry({ mealId: 'meal-2' })), {
       onOpenMeal: (mealId) => opened.push(mealId),
@@ -604,6 +608,50 @@ describe('献立タブ MealsTab の献立詳細への導線', () => {
     renderTab({ outcome: 'insufficientStockItems' }, { mealDetail: <p>詳細の中身</p> });
 
     expect(screen.queryByText('詳細の中身')).not.toBeNull();
+  });
+});
+
+/**
+ * カード全体を押せること（B-61 規則9・10 / 画面設計 2.3）。
+ *
+ * カードのどこを押しても、そのカードの献立で詳細を開く。ただし操作として読み上げ・
+ * キーボードに現れるのはカードの中のボタン1つだけで、カードそのものは焦点を取らない。
+ */
+describe('献立タブ MealsTab のカード全体を押せること', () => {
+  it('カードの余白を押すと、そのカードの献立の識別子が1回だけ届く', () => {
+    // B-61 規則9: ボタン以外（余白）を押しても開く。
+    const opened: string[] = [];
+    renderTab(suggested(entry({ mealId: 'meal-1' }), entry({ mealId: 'meal-2' })), {
+      onOpenMeal: (mealId) => opened.push(mealId),
+    });
+
+    const cards = screen.getAllByRole('listitem');
+    fireEvent.click(cardAt(cards, 1));
+
+    expect(opened).toEqual(['meal-2']);
+  });
+
+  it('カードの名称を押すと、そのカードの献立の識別子が1回だけ届く', () => {
+    // B-61 規則9: 名称を含め、カードのどこを押しても開く。
+    const opened: string[] = [];
+    renderTab(suggested(entry({ mealId: 'meal-1' }), entry({ mealId: 'meal-2' })), {
+      onOpenMeal: (mealId) => opened.push(mealId),
+    });
+
+    const cards = screen.getAllByRole('listitem');
+    fireEvent.click(within(cardAt(cards, 1)).getByRole('heading', { level: 3 }));
+
+    expect(opened).toEqual(['meal-2']);
+  });
+
+  it('カードそのものには焦点が当たらない', () => {
+    // B-61 規則10: カードに `tabIndex` を付けない。焦点の止まり先はボタン1つだけ（NFR-16）。
+    renderTab(suggested(entry({ mealId: 'meal-1' }), entry({ mealId: 'meal-2' })));
+
+    const card = cardAt(screen.getAllByRole('listitem'), 1);
+    card.focus();
+
+    expect(document.activeElement).not.toBe(card);
   });
 });
 
