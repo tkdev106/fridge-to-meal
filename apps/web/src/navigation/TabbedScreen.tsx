@@ -27,17 +27,42 @@
 import type { JSX, ReactNode } from 'react';
 import type { TabId } from './Tabs.js';
 import { TAB_ORDER } from './Tabs.js';
-import { tabStyleOf } from './TabAppearance.js';
+import type { IconName } from '../icons/Icon.js';
+import { Icon } from '../icons/Icon.js';
+import styles from './TabbedScreen.module.css';
 
 /**
- * タブの帯に出す文言。**すべて仮である**（`docs/screen-design.md` 冒頭・論点3）。
- * ワイヤーの絵文字（🍽 🧊 🕘）は紙の上の区別であり、ここに記号を出す決定ではない。
+ * タブの帯に出す文言。**原本 `TabBar` のラベルに揃える**（ADR-074 決定1。`docs/design/` が
+ * 文言の正）。在庫タブの識別子は `pantry` のまま変えず、**出す文字だけ** `冷蔵庫` にする。
  */
 const TAB_LABELS: Record<TabId, string> = {
   meals: '献立',
-  pantry: '在庫',
+  pantry: '冷蔵庫',
   history: '履歴',
 };
+
+/**
+ * タブに添えるアイコン（原本 `TabBar`）。**飾りであって名前ではない** — タブの名前は
+ * ラベルの文字だけが持つ（設計 B-59 6章 規則5）。
+ */
+const TAB_ICONS: Record<TabId, IconName> = {
+  meals: 'meal',
+  pantry: 'pantry',
+  history: 'history',
+};
+
+/**
+ * タブ1つに当てる class。**見た目は「選ばれているか」だけで決まる**（B-41 設計 6章 規則7 /
+ * ADR-055 決定1）— `TabId` を受け取らないのは、タブごとに見た目を変える分岐を作らせないため。
+ * 値はすべて `TabbedScreen.module.css` にあり、ここには class 名しか書かない。
+ *
+ * `noUncheckedIndexedAccess` のもとで `styles.x` は `string | undefined` であり、
+ * そのまま連結すると `"undefined"` が class に混ざる。**在るものだけを空白で繋ぐ。**
+ */
+const tabClassOf = (selected: boolean): string =>
+  [styles.tab, selected ? styles.tabSelected : undefined]
+    .filter((name): name is string => name !== undefined)
+    .join(' ');
 
 /** 中身の欄と、それを説明するタブを結ぶための id。読み上げが対応を辿れるようにする。 */
 const PANEL_ID = 'tab-panel';
@@ -76,18 +101,24 @@ export function TabbedScreen({
   const contents: Record<TabId, ReactNode> = { meals, pantry, history };
 
   // **帯は中身より後ろに置く**（同 規則4 / NFR-14）。親指の届く画面の下端に帯を出すための
-  // 文書順であり、**先に描いて CSS で下端に固定する形へ変えたくなったら、実装ではなく
-  // 設計の規則4 を先に直す。**
+  // 文書順である。**下端への固定は CSS が担い（設計 B-59 6章 規則10）、文書順は変えない** —
+  // 読み上げと Tab キーの順は中身 → 帯のまま残る。
   //
   // **選んだタブの中身だけを描く**（同 規則6）。残る2つは `hidden` で隠すのでもなく、
   // そもそも木に置かない — 隠して置くと、出ていない画面が効果を走らせ続ける。
   return (
     <>
-      <div role="tabpanel" id={PANEL_ID} aria-labelledby={tabElementId(selectedTab)}>
+      <div
+        role="tabpanel"
+        id={PANEL_ID}
+        aria-labelledby={tabElementId(selectedTab)}
+        // 下端に固定した帯に、中身の末尾が隠れないための余白（同 規則10）。
+        className={styles.panel}
+      >
         {contents[selectedTab]}
       </div>
 
-      <div role="tablist">
+      <div role="tablist" className={styles.bar}>
         {TAB_ORDER.map((tab) => (
           <button
             key={tab}
@@ -100,15 +131,16 @@ export function TabbedScreen({
             aria-selected={tab === selectedTab}
             aria-controls={PANEL_ID}
             // **色に依らない見た目の手がかりを上乗せする**（B-41 設計 6章 規則5・6）。
-            // `aria-selected` の置き換えではない。**値は `TabAppearance.ts` にだけ置き、
-            // ここに数値も色も書かない** — 戻り値を丸ごと当てる。
-            style={tabStyleOf(tab === selectedTab)}
+            // `aria-selected` の置き換えではない。**値は `TabbedScreen.module.css` にだけ置き、
+            // ここに数値も色も書かない**（ADR-055 決定1・2）。
+            className={tabClassOf(tab === selectedTab)}
             // **`tabIndex` を振り分けない。** 選んでいないタブを `-1` にするのは矢印キーで
             // 移れる実装と対になる作法であり、その鍵の扱いをまだ持たない今は、素の button の
             // ままにして Tab キーで3つとも辿れるようにしておく。
             onClick={() => onSelectTab(tab)}
           >
-            {TAB_LABELS[tab]}
+            <Icon name={TAB_ICONS[tab]} />
+            <span className={styles.label}>{TAB_LABELS[tab]}</span>
           </button>
         ))}
       </div>

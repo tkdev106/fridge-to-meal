@@ -1,0 +1,100 @@
+/*
+ * 下タブの帯（原本 `docs/design/src/TabBar.dc.html` / 設計 B-59 6章 規則6〜10）。
+ *
+ * **見た目の値はここにだけ置く**（ADR-055 決定1・2。B-41 設計 6章 規則6 を引き継ぐ）。
+ * `TabbedScreen.tsx` は class 名しか書かない。色・文字の大きさはトークン（`src/global.css` の
+ * `:root`）から `var(--…)` で引き、ここで新しい色を作らない。
+ *
+ * **見た目は「選ばれているか」だけで決まる**（B-41 設計 6章 規則7）。各タブは `.tab`、
+ * 選んでいるタブはそれに加えて `.tabSelected` で、タブの識別子ごとの class は置かない。
+ *
+ * **NFR-16（コントラスト比 4.5:1 以上）について。** 選んでいる / いないの区別に色を使わない
+ * （規則3）。文字色も地も選択で変えず、線の印は文字色そのもの（`--color-text`）なので、
+ * この帯は地と文字の1組（`#1F1E1B` / `#FAF9F6`）のほかに新しいコントラスト比を作らない。
+ * 色を足す周は WCAG 2.1 AA（4.5:1）を確かめてから足し、**そのときも規則1（太さ）・規則2
+ * （上辺の線）の手がかりを消さない** — 色以外の手がかりが残っていることが NFR-17 の構えの側の
+ * 担保である。比の実測は単体テストに入れない（jsdom はレイアウトも配色の合成も持たない）。
+ */
+
+/*
+ * 中身の欄。帯は下端に固定して重ねて描くので、**中身の末尾が帯に隠れないよう、帯の高さぶん
+ * （下端の安全域を含む）の余白を下に取る**（規則10 / NFR-14）。
+ */
+.panel {
+  padding-bottom: calc(var(--tab-bar-height) + env(safe-area-inset-bottom, 0px));
+}
+
+/*
+ * 帯。**親指の届く画面の下端に固定する**（NFR-14。`docs/screen-design.md` 2.1）。
+ * 文書順は「中身 → 帯」のままで、固定は見た目だけの話である（`navigation/README.md`）。
+ * 幅で SP と PC を切り替えるのは B-60 であり、この周はどの幅でも下端に置く。
+ *
+ * 高さは原本の 64px に、下端の安全域（`index.html` が `viewport-fit=cover`）を足して伸ばす —
+ * 足さないと iPhone のホームインジケータが帯に重なる。
+ */
+.bar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  height: calc(var(--tab-bar-height) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-background);
+  color: var(--color-text);
+}
+
+/*
+ * タブ1つ。アイコンとラベルを縦に間 4px で並べる（原本 `TabBar`）。
+ * 素の button の枠と地はここで消す — リセットでは全体を消さない（設計 B-59 6章 規則3）。
+ */
+.tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  /* 規則3: 選択で文字色も地も変えない。どちらの側も帯の文字色のまま。 */
+  color: inherit;
+  /*
+   * 規則1: 選んでいないタブの太さも**明示する**。片方を既定任せにすると、既定の太さが
+   * 変わった回に選択の差だけが黙って消える。
+   */
+  font-weight: var(--font-weight-regular);
+  cursor: pointer;
+}
+
+/*
+ * 規則2・4: 選んでいるタブの印は**上辺の線**（帯の中身に近い側）。左右 16px 内側に 2px で引き、
+ * 帯の上の境界（1px）に重ねる。**疑似要素を絶対配置で重ねるので、線の有無で帯の高さも
+ * 中身の位置も動かない**（規則4 / NFR-14 — 動くと、タブを移るたびに押す位置がずれる）。
+ * 線の色は新しい色ではなく文字色そのもの（規則3 / NFR-16）。
+ */
+.tabSelected::before {
+  position: absolute;
+  top: -1px;
+  right: 16px;
+  left: 16px;
+  height: 2px;
+  background: var(--color-text);
+  content: '';
+}
+
+/* 規則1: 選んでいるタブの文字は太い（400 に対して 500）。 */
+.tabSelected {
+  font-weight: var(--font-weight-medium);
+}
+
+/* ラベルの文字（原本 `TabBar`）。太さはタブの側から継ぐ。 */
+.label {
+  font-size: var(--font-size-12);
+  line-height: 1.5;
+  letter-spacing: 0.12em;
+}
