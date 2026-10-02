@@ -114,6 +114,12 @@ export type TabbedScreenProps = {
   settings: ReactNode | null;
   /** サイドナビの「設定」が押された */
   onOpenSettings: () => void;
+  /**
+   * 帯の操作（3つのタブと帯の「設定」）を効かなくするか。省略は false（B-60b 規則6）。
+   * 帯全体を一時的に止める口であり、タブごとの出し分けは持たない。止めている間も選択の
+   * 手がかり（`aria-selected` / `aria-current` / class）は変えない（同 規則7）。
+   */
+  disabled?: boolean;
 };
 
 export function TabbedScreen({
@@ -124,6 +130,7 @@ export function TabbedScreen({
   onSelectTab,
   settings,
   onOpenSettings,
+  disabled = false,
 }: TabbedScreenProps): JSX.Element {
   // 受け取った3つを識別子で引けるようにするだけ。**器は中身が何かを知らない。**
   const contents: Record<TabId, ReactNode> = { meals, pantry, history };
@@ -187,6 +194,9 @@ export function TabbedScreen({
                 // `aria-selected` の置き換えではない。**値は `TabbedScreen.module.css` にだけ置き、
                 // ここに数値も色も書かない**（ADR-055 決定1・2）。
                 className={tabClassOf(selected)}
+                // **門が帯を止めている間は押せない**（B-60b 規則1）— 世帯のデータの削除を送って
+                // いる間に設定を離れると、失敗の案内を見ないまま残る。
+                disabled={disabled}
                 // **`tabIndex` を振り分けない。** 選んでいないタブを `-1` にするのは矢印キーで
                 // 移れる実装と対になる作法であり、その鍵の扱いをまだ持たない今は、素の button の
                 // ままにして Tab キーで3つとも辿れるようにしておく。
@@ -211,6 +221,7 @@ export function TabbedScreen({
           type="button"
           aria-current={settingsOpen ? 'page' : undefined}
           className={settingsClassOf(settingsOpen)}
+          disabled={disabled}
           onClick={onOpenSettings}
         >
           <Icon name="settings" />
