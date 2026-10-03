@@ -208,8 +208,8 @@ export function App({
 
   // 「新しい献立を求める」（B-49b / FR-36）を求めた時刻（ミリ秒）。`null` なら送っていない（S-5）。
   // **送信中かどうかはこの値だけで決まる**（B-62 設計 10章 前提1。真偽と時刻の2つを持たない）。
-  // 経過秒数の起点を門が持つのは、器が選んでいないタブを木から外すためである — 献立タブを
-  // 離れて戻っても秒数が0に戻らない（B-62 規則12 / D-6 / NFR-04）。
+  // 門が持つのは、器が選んでいないタブを木から外すためである — 献立タブを離れて戻っても
+  // 生成中のまま見える（B-62 規則12 / D-6 / NFR-04）。時刻は送信中かどうかの判定にだけ使う。
   const [newMealsRequestedAt, setNewMealsRequestedAt] = useState<number | null>(null);
   // 直前の要求が失敗したか（S-6）。押し直した時点で消す（規則: 同時に出さない）。
   const [newMealsFailed, setNewMealsFailed] = useState(false);
@@ -521,7 +521,7 @@ export function App({
    * **通っても献立を取り直さない**（規則11）— `MealOutput` は記録で変わらず、**在庫も
    * 減らない**（C-8。在庫の口を1つも呼ばないことで型から読める）。
    * **通った回は履歴だけを取り直す**（B-54b 規則12・13）— 記録で献立は「以前見た」から
-   * 「つくった」へ移る。在庫と提案は取り直さず、詳細も閉じない。
+   * 「作った」へ移る。在庫と提案は取り直さず、詳細も閉じない。
    * **断られても詳細を閉じない** — 案内を読む前に画面が変わる。
    */
   const handleAddCookingRecord = () => {
@@ -707,8 +707,6 @@ export function App({
             today={todayOf(new Date())}
             onRequestNewMeals={handleRequestNewMeals}
             newMealsRequestedAt={newMealsRequestedAt}
-            // 経過秒数を読むための時計（B-62 規則4・5）。画面は自分で時計を読まない。
-            now={Date.now}
             newMealsFailed={newMealsFailed}
             // **在庫タブへ送る**（`docs/screen-design.md` D-7 / B-49c 規則9 / ADR-066 決定2）。
             // 門がするのは `'pantry'` にすることだけで、**「在庫が足りないから在庫タブへ」

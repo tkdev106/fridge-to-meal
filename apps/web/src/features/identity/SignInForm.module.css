@@ -138,6 +138,12 @@
   cursor: pointer;
 }
 
+/* 文字色の地。焦点の輪郭は地の色で内側に引く（`global.css` の `--focus-outline-inverse`）。 */
+.primary:focus-visible {
+  outline: var(--focus-outline-inverse);
+  outline-offset: var(--focus-outline-offset-inverse);
+}
+
 .primary:active:not(:disabled) {
   background: var(--color-text-secondary);
 }
