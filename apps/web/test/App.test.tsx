@@ -3928,7 +3928,12 @@ describe('門 App の端末の戻る', () => {
   /** 献立詳細に出る名称（カード・行の名称と見分ける）。 */
   const DETAIL = '詳細の献立';
 
-  const mealA: MealSummaryOutput = { mealId: 'meal-a', title: NIKUJAGA, ingredientCount: 2 };
+  const mealA: SeenMealSummaryOutput = {
+    mealId: 'meal-a',
+    title: NIKUJAGA,
+    ingredientCount: 2,
+    generatedAt: '2026-09-20T09:00:00.000Z',
+  };
 
   /** 献立タブにカード1枚・履歴に1行・開けば詳細が出る門を、継ぎ目つきで描く。 */
   function renderAppWithBack(
