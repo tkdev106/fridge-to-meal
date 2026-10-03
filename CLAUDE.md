@@ -161,7 +161,8 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 
 | # | 未決の内容 |
 | --- | --- |
-| Supabase 無料プランの一時停止対応 | 1週間アクセスがないと停止する |
+| ~~Supabase 無料プランの一時停止対応~~ | **決定済み（2026-10-03 にユーザーが決定）。GitHub Actions の定期実行で1日1回 DB を読む**（ADR-078。`.github/workflows/keep-supabase-active.yml`） |
+| ~~LLM プロバイダ~~ | **決定済み（2026-10-03 にユーザーが決定）。Gemini の `gemini-3.5-flash-lite`、最初は無料枠**（ADR-079。ADR-019 を置き換え） |
 | ~~起動時に開く画面~~ | **決定済み（2026-09-24 にユーザーが決定）。「献立」にする**（ADR-064）。反映は B-49 |
 
 ---
@@ -228,7 +229,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 
 実装上の必須事項:
 
-- **Supabase の Postgres には `authenticated` ロールで繋ぐ。`service_role` キーと、表の所有者ロールの接続文字列を使わない。** どちらも RLS を迂回してしまい、Supabase を選んだ理由（世帯分離の安全網）が消える。**この禁止はアプリの実行経路のものである** — 本番への移行の適用だけは、CI が Secret `SUPABASE_DB_URL` の所有者 `postgres` で流す（ADR-077 決定3・5）。
+- **Supabase の Postgres には `authenticated` ロールで繋ぐ。`service_role` キーと、表の所有者ロールの接続文字列を使わない。** どちらも RLS を迂回してしまい、Supabase を選んだ理由（世帯分離の安全網）が消える。**この禁止はアプリの実行経路のものである** — 本番への移行の適用だけは、CI が Secret `SUPABASE_DB_URL` の所有者 `postgres` で流す（ADR-077 決定3・5）。一時停止を防ぐ1日1回の読み取り（`read only`）も同じ Secret を使う（ADR-078 結果1）。
 - **1リクエスト1トランザクションとし、その中で `set local role` と `set local request.jwt.claims` を張る。`local` を落とさない。** 接続プーラは接続を貸し回すため、セッションに残した設定は他人のリクエストに漏れる。**クレームを張り忘れた問い合わせは0行になる**（他世帯が見えるのではない）。実装は `shared/infrastructure/db/HouseholdTransaction.ts`（B-17 で pantry から移った。ADR-059）。
 - **受け取った JWT はサーバ側で検証してからクレームに張る。** PostgREST を通らなくなったため、署名と有効期限の検証はアプリの責務である。検証せずに `sub` を張ることは、任意の世帯になりすませることと同じ（ADR-029 の結果2）。実装は `contexts/identity/infrastructure/HouseholdAuthenticatorImpl.ts`。**検証は JWKS（ES256）で行う** — 実環境が非対称鍵で署名していることを確かめた（ADR-043 / B-07f、実装は B-07g）。**鍵が引けないことと設定が空であることを `IdentityRuleViolation` に包まない** — 包むと api 層の写像が 401 を返し、サーバ側の不備を利用者のアクセストークンのせいにする。**`issuer` / `audience` は省略できない** — hono は空文字を「照合しない」と読むため、空を通すと照合が消えたことに気づけない。
 - **Workers から Postgres へは Hyperdrive 経由で繋ぐ。直接 TCP で繋がない。** 到達はできるが、**TLS を要求すると接続のやり直しが繰り返され、1リクエストあたりの外向き接続数の上限に当たって落ちる**（B-07f で実測）。NFR-08 は例外を認めていないため、TLS を捨てる選択肢は無い（ADR-042）。**`prepare: false` と `fetch_types: false` をドライバに与える。**
@@ -253,6 +254,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 .github/workflows/ci.yml   PR と main への push で pnpm verify と pnpm test:db を別ジョブで回す
 .github/workflows/cleanup-assigned-branches.yml  web セッションが残す claude/* の枝を毎日掃除する
 .github/workflows/migrate-production.yml  main に入った移行を本番の Supabase へ流す（ADR-077。本番に書き込む唯一の workflow）
+.github/workflows/keep-supabase-active.yml  本番の Supabase を1日1回読み、無料プランの一時停止を防ぐ（ADR-078。読み取りだけ）
 apps/web/                  React + Vite（PWA）— API のクライアント
   src/session/             セッションの継ぎ目。**ここは画面ではない**（ADR-046 決定3）。@supabase/* を import してよい唯一の場所
   src/navigation/          下タブの器（B-38）。**ここも画面ではない継ぎ目**で、3コンテキストの画面を並べる
@@ -375,7 +377,7 @@ SUPABASE_ANON_KEY=...     # 同上
 （`apps/api/drizzle.config.ts` が読む）。生成はスキーマの差分だけで行われ DB に繋がないため、
 **空でも通る。** アプリの実行経路はここを読まない。
 
-**`service_role` キーと、表の所有者ロールの接続文字列を使わない**（どちらも RLS を迂回する。鍵の3分類は上の表）。**アプリの実行経路の規則であり**、移行の適用だけは CI が所有者の接続文字列を Secret から使う（ADR-077 決定5）。**接続に使うロールは、表を持たない非所有者のログインロールを別に作る** — 実 Supabase の `postgres` は表の所有者であり、`authenticator` は PostgREST が使っているため、どちらも使わない（B-07f で確認）。
+**`service_role` キーと、表の所有者ロールの接続文字列を使わない**（どちらも RLS を迂回する。鍵の3分類は上の表）。**アプリの実行経路の規則であり**、移行の適用と一時停止を防ぐ読み取りだけは CI が所有者の接続文字列を Secret から使う（ADR-077 決定5 / ADR-078 結果1）。**接続に使うロールは、表を持たない非所有者のログインロールを別に作る** — 実 Supabase の `postgres` は表の所有者であり、`authenticator` は PostgREST が使っているため、どちらも使わない（B-07f で確認）。
 
 **ローカル Postgres の接続先は秘密でない**ため `.dev.vars` に置かず、`docker-compose.yml` と CI、
 `apps/api/package.json` の `dev` スクリプトから渡す（`apps/api/test/support/db/ConnectionStrings.ts` が
