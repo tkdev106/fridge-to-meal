@@ -6,7 +6,7 @@
  * 色・文字の大きさ・太さはトークン（`src/global.css` の `:root`）から `var(--…)` で引き、ここで
  * 新しい色を作らない。トークンに無い寸法（余白・行の高さ・列の幅）は原本の値を直に書く。
  *
- * **PC の2列（材料 360px・sticky ／ 手順）はここに無い**（B-63b。切り替える幅は B-60 で決めた 1024px。`docs/screen-design.md` 2.1 / ADR-076）。
+ * **PC の2列（材料 360px・留まる ／ 手順）は末尾のメディアクエリ1つにある**（B-63b。原本の `desktop` の枝）。
  */
 
 /*
@@ -268,4 +268,53 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
   border: 0;
+}
+
+/*
+ * 2列の包み（B-63b）。SP では何も組まず、子は縦に積まれる（間の余白は各欄の `margin-top`）。
+ * 右の列は手順・注意表示・記録の操作の並びを文書順のまま抱える。
+ */
+.columns,
+.mainColumn {
+  min-width: 0;
+}
+
+/*
+ * PC（幅 1024px 以上。B-63b / 原本 `MealDetail.dc.html` の `desktop` の枝）。
+ * 切り替える幅は B-60 が決めた値の写しであり（`docs/screen-design.md` 2.1 / ADR-076）、JS で幅を
+ * 読まない。**ここで動かすのは配置と余白だけ**で、文書順・色・文字は SP と同じである。
+ */
+@media (min-width: 1024px) {
+  /*
+   * 余白 40px 48px 64px と、**余白の内側の**最大幅 960px（原本 `pad` / `max`）。全要素が
+   * `border-box` なので（`global.css`）、最大幅には左右の余白 48px × 2 を足す。左に寄せる。
+   */
+  .detail {
+    max-width: calc(960px + 48px * 2);
+    padding: 40px 48px 64px;
+  }
+
+  /* 材料 360px ／ 手順の2列、列の間 64px（原本 `cols` / `gap`）。名称との間 32px は包みが持つ。 */
+  .columns {
+    display: grid;
+    grid-template-columns: 360px minmax(0, 1fr);
+    column-gap: 64px;
+    align-items: start;
+    margin-top: 32px;
+  }
+
+  /*
+   * 材料はスクロールしても留まる（原本 `sticky` / `top: 40px`）。留まる相手は文書のスクロール
+   * であり、詳細を包む側に `overflow` を足すと効かなくなる。
+   */
+  .ingredientsSection {
+    position: sticky;
+    top: 40px;
+    margin-top: 0;
+  }
+
+  /* 列の上端を揃える。 */
+  .stepsSection {
+    margin-top: 0;
+  }
 }
