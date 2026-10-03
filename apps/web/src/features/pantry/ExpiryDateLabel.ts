@@ -33,7 +33,8 @@ export function expiryDateLabelOf(expiryDate: string): string {
 
 /** 残日数を `今日` / `あとN日` / `N日過ぎ` にする */
 export function remainingDaysLabelOf(remainingDays: number): string {
-  // 一覧と同じ語（FR-11 / FR-12）。超過は負の数の絶対値で言う。
+  // 一覧（`PantryList.tsx`）と編集の画面が共有する（FR-11 / FR-12 / B-64c）。超過は負の数の絶対値で言う。
+  // 期限なしの印 `－` は一覧にしか出ないので、ここでは扱わない。
   if (remainingDays === 0) return '今日';
 
   return remainingDays > 0 ? `あと${remainingDays}日` : `${-remainingDays}日過ぎ`;
