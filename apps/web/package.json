@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --build && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "@fridge-to-meal/contract": "workspace:*",
@@ -21,6 +22,7 @@
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "vite": "^8.2.2",
-    "vite-plugin-pwa": "^1.3.0"
+    "vite-plugin-pwa": "^1.3.0",
+    "wrangler": "^4.129.1"
   }
 }
