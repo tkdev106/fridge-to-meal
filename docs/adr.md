@@ -1792,7 +1792,7 @@ flowchart TD
 
   決めることが4つある。**(a) 配信先。** **(b) web と api の origin の関係** — ADR-048 は別 origin ＋ CORS の明示の一覧とし、「配信先が決まった周にその origin を一覧へ足す」とした。**(c) web の設定3つ（`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` / `VITE_API_BASE_URL`）の置き場** — どれもビルドの時点でバンドルに入り、秘密ではない（ADR-046 決定4）。**(d) 未完成の機能の扱い** — `docs/workflow.md` 1章は feature flag を置かない理由を「本番の配信先が無いこと」に置き、見直す時期を「本番へ配信する日」としている。
 - **決定** — 5つ。
-  1. **web は Cloudflare Workers の静的アセットとして配信する。** スクリプトを持たない Worker `fridge-to-meal-web` を置き、設定は `apps/web/wrangler.toml` に書く。`dist/` をそのまま返し、知らない道には `index.html` を返す（`not_found_handling = "single-page-application"`）。本番の origin は `https://fridge-to-meal-web.tkdev106.workers.dev` である。
+  1. **web は Cloudflare Workers の静的アセットとして配信する。** スクリプトを持たない Worker `fridge-to-meal` を置き、設定は `apps/web/wrangler.toml` に書く。`dist/` をそのまま返し、知らない道には `index.html` を返す（`not_found_handling = "single-page-application"`）。本番の origin は `https://fridge-to-meal.tkdev106.workers.dev` である。
   2. **web と api は別の Worker・別の origin のままとする**（ADR-048 決定1 を保つ）。api の CORS の許可一覧（`apps/api/src/main.ts` の `ALLOWED_WEB_ORIGINS`）に本番の web の origin を1つ足す。経路の接頭辞は足さない（ADR-048 決定4）。
   3. **デプロイは api と同じく Workers Builds で `main` から自動で行う。** Cloudflare の側で web 用の Worker を同じリポジトリに繋ぎ、ビルドのコマンドは `pnpm run build`、デプロイのコマンドは `pnpm --filter @fridge-to-meal/web run deploy`（`wrangler deploy`）とする。`wrangler` を `apps/web` の devDependencies に api と同じ版で置く。
   4. **web の設定3つは Workers Builds の「ビルド変数」に置く。** Worker の実行時の変数（`[vars]`）ではない — Vite はビルドの時点で値をバンドルに埋め込み、実行時の変数は読まない。値は `VITE_API_BASE_URL` が api の origin、残り2つが Supabase の URL と anon key で、どれもリポジトリには書かない（`apps/web/.env.local` と同じく環境ごとの値である）。

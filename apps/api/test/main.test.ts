@@ -1209,7 +1209,7 @@ describe('composition root main', () => {
     const webOrigin = 'http://localhost:5173';
     const loopbackWebOrigin = 'http://127.0.0.1:5173';
     /** 本番の web の origin（ADR-082。`apps/web/wrangler.toml` の Worker の名前で決まる）。 */
-    const productionWebOrigin = 'https://fridge-to-meal-web.tkdev106.workers.dev';
+    const productionWebOrigin = 'https://fridge-to-meal.tkdev106.workers.dev';
     /** 許可の一覧に無い要求元。架空の値である（B-09 設計書 11章と同じ流儀）。 */
     const unknownOrigin = 'https://akunin.example';
 
@@ -1280,7 +1280,7 @@ describe('composition root main', () => {
       });
 
       expect(response.headers.get('Access-Control-Allow-Origin')).toBe(
-        'https://fridge-to-meal-web.tkdev106.workers.dev',
+        'https://fridge-to-meal.tkdev106.workers.dev',
       );
     });
 
@@ -1292,7 +1292,7 @@ describe('composition root main', () => {
 
       expect(response.status).toBe(204);
       expect(response.headers.get('Access-Control-Allow-Origin')).toBe(
-        'https://fridge-to-meal-web.tkdev106.workers.dev',
+        'https://fridge-to-meal.tkdev106.workers.dev',
       );
     });
 

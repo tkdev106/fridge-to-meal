@@ -221,7 +221,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | --- | --- | --- |
 | フロントエンド | React 19 + Vite 8（SPA・PWA） | ADR-014。Next.js は**採用しない** — サーバアクション類が ADR-003 と衝突するため |
 | サーバサイド | Hono on Cloudflare Workers | ADR-015。ドメイン層とユースケース層はここに置かれる |
-| 配信 | **web と api は別の Worker。** api は `fridge-to-meal-api`、web は静的アセットだけの `fridge-to-meal-web`（`apps/web/wrangler.toml`）。**どちらも Workers Builds が `main` から自動でデプロイする**。web の `VITE_*` の3つは Workers Builds のビルド変数に置く | ADR-082 |
+| 配信 | **web と api は別の Worker。** api は `fridge-to-meal-api`、web は静的アセットだけの `fridge-to-meal`（`apps/web/wrangler.toml`）。**どちらも Workers Builds が `main` から自動でデプロイする**。web の `VITE_*` の3つは Workers Builds のビルド変数に置く | ADR-082 |
 | DB・認証 | Supabase（Postgres + Auth）。**DB アクセスは Drizzle**（`drizzle-orm` + `postgres`）。**サーバの DB アクセスに supabase-js は使わない** — この禁止は `apps/api` の問い合わせに限る（ADR-029 決定1 は「認証と Postgres そのものは Supabase のまま使う」と続けている） | ADR-029（ADR-020 を置き換え） |
 | web のログイン | **`@supabase/supabase-js` を `apps/web` に置き、メールとパスワードでサインインする。** セッションは継ぎ目1つの背後に閉じ、**画面はライブラリの型を見ない。** **継ぎ目は `apps/web/src/session/` に置かれた**（B-34）。**画面（`features/identity/`）と結線（`main.tsx`）も置かれた**（B-35）。サインインの失敗の種別は分けておらず、画面の断りの文言は原因を断定しない。**サインアップの断りだけは種別に分ける**（B-73） | ADR-046 / ADR-081 |
 | Workers → Postgres の経路 | **Cloudflare Hyperdrive 経由。** origin は Supabase の直接接続（`db.<ref>.supabase.co:5432`）。Supavisor は使わない。**問い合わせキャッシュは切る** | ADR-042 / ADR-044 |

@@ -314,7 +314,7 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
  * （`vite.config.ts` の `server.port`）で、`127.0.0.1` で開く人が居るため同じ開発サーバを2つの名で挙げている。
  */
 const ALLOWED_WEB_ORIGINS = [
-  'https://fridge-to-meal-web.tkdev106.workers.dev',
+  'https://fridge-to-meal.tkdev106.workers.dev',
   'http://localhost:5173',
   'http://127.0.0.1:5173',
 ];
