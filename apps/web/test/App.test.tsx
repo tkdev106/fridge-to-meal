@@ -25,7 +25,11 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { MealSummaryOutput, StockItemDto } from '@fridge-to-meal/contract';
+import type {
+  CookedMealSummaryOutput,
+  SeenMealSummaryOutput,
+  StockItemDto,
+} from '@fridge-to-meal/contract';
 import { act, fireEvent, render, screen, waitFor, within } from './support/dom/renderComponent.js';
 import { installPointerCapture } from './support/dom/pointerCapture.js';
 import { pressOperation } from './support/dom/pressOperation.js';
@@ -1756,17 +1760,25 @@ describe('門 App の履歴タブ', () => {
   /** 取り直していないことを観るための、提案の2件目の台本に置く名称。 */
   const ANOTHER_SUGGESTED = '別の提案の献立';
 
-  function summaryOf(mealId: string, title: string): MealSummaryOutput {
-    return { mealId, title, ingredientCount: 2 };
+  /** 以前見た献立1件。**日時はどれも同じ日に置く** — 日の見出しはここの本題でない（ADR-083 決定2）。 */
+  function seenOf(mealId: string, title: string): SeenMealSummaryOutput {
+    return { mealId, title, ingredientCount: 2, generatedAt: '2026-10-03T03:00:00.000Z' };
   }
 
-  const mealA = summaryOf('meal-a', NIKUJAGA);
-  const mealB = summaryOf('meal-b', GINGER_PORK);
-  const mealC = summaryOf('meal-c', STIR_FRY);
+  /** 作った献立1件。日時の置き方は `seenOf` と同じ。 */
+  function cookedOf(mealId: string, title: string): CookedMealSummaryOutput {
+    return { mealId, title, ingredientCount: 2, cookedAt: '2026-10-03T03:30:00.000Z' };
+  }
+
+  const mealA = seenOf('meal-a', NIKUJAGA);
+  const mealB = seenOf('meal-b', GINGER_PORK);
+  const mealC = cookedOf('meal-c', STIR_FRY);
+  /** 記録が通って「作った」へ移った献立 A（ADR-068 決定3）。 */
+  const cookedMealA = cookedOf('meal-a', NIKUJAGA);
 
   function listed(
-    seen: readonly MealSummaryOutput[],
-    cooked: readonly MealSummaryOutput[] = [],
+    seen: readonly SeenMealSummaryOutput[],
+    cooked: readonly CookedMealSummaryOutput[] = [],
   ): MealListOutcome {
     return { outcome: 'loaded', meals: { seen: [...seen], cooked: [...cooked] } };
   }
@@ -1866,6 +1878,11 @@ describe('門 App の履歴タブ', () => {
     if (toggle === undefined) throw new Error('押されていない切り替えが無い');
 
     fireEvent.click(toggle);
+  }
+
+  /** 日の見出し（`aria-expanded` を持つ操作。B-74 設計 規則10）を文書順に。 */
+  function dayHeaders(): readonly HTMLElement[] {
+    return contentOperations().filter((button) => button.hasAttribute('aria-expanded'));
   }
 
   /** 詳細に出ている操作は2つ（閉じる／これを作った）である（B-53）。 */
@@ -2002,7 +2019,7 @@ describe('門 App の履歴タブ', () => {
       {},
       {},
       {
-        list: [listed([mealA]), listed([], [mealA])],
+        list: [listed([mealA]), listed([], [cookedMealA])],
         show: [shownMealOf('meal-a', DETAIL)],
         addCookingRecord: [{ outcome: 'recorded' }],
       },
@@ -2030,7 +2047,7 @@ describe('門 App の履歴タブ', () => {
       {},
       {},
       {
-        list: [listed([mealA]), listed([], [mealA])],
+        list: [listed([mealA]), listed([], [cookedMealA])],
         show: [shownMealOf('meal-a', DETAIL)],
         addCookingRecord: [{ outcome: 'recorded' }],
       },
@@ -2161,7 +2178,7 @@ describe('門 App の履歴タブ', () => {
       { list: [loaded(carrot)] },
       { requestNewMeals: [newSuggestion('meal-n', NEW_MEAL)] },
       {},
-      { list: [listed([mealA]), listed([summaryOf('meal-n', NEW_MEAL), mealA])] },
+      { list: [listed([mealA]), listed([seenOf('meal-n', NEW_MEAL), mealA])] },
     );
 
     await findSoleContentOperation();
@@ -2343,7 +2360,7 @@ describe('門 App の履歴タブ', () => {
       {},
       {},
       {
-        list: [listed([summaryOf('m1', NIKUJAGA)])],
+        list: [listed([seenOf('m1', NIKUJAGA)])],
         show: [shownMealOf('m1', DETAIL)],
       },
     );
@@ -2442,7 +2459,7 @@ describe('門 App の履歴タブ', () => {
       { show: [suggestedOne('m1', SUGGESTED)] },
       {},
       {
-        list: [listed([summaryOf('m2', NIKUJAGA)])],
+        list: [listed([seenOf('m2', NIKUJAGA)])],
         show: [shownMealOf('m1', MEALS_TAB_DETAIL), shownMealOf('m2', DETAIL)],
       },
     );
@@ -2467,7 +2484,7 @@ describe('門 App の履歴タブ', () => {
       { show: [suggestedOne('m1', SUGGESTED)] },
       {},
       {
-        list: [listed([summaryOf('m2', NIKUJAGA)])],
+        list: [listed([seenOf('m2', NIKUJAGA)])],
         show: [shownMealOf('m1', MEALS_TAB_DETAIL), shownMealOf('m2', DETAIL)],
         addCookingRecord: [{ outcome: 'recorded' }],
       },
@@ -2494,7 +2511,7 @@ describe('門 App の履歴タブ', () => {
       {},
       {},
       {
-        list: [listed([summaryOf('m1', NIKUJAGA)])],
+        list: [listed([seenOf('m1', NIKUJAGA)])],
         show: [shownMealOf('m1', DETAIL)],
         addCookingRecord: [{ outcome: 'recorded' }],
       },
@@ -2602,6 +2619,40 @@ describe('門 App の履歴タブ', () => {
     expect(await screen.findByText(NIKUJAGA)).not.toBeNull();
     expect(screen.queryByText(STIR_FRY)).toBeNull();
   });
+
+  it('履歴で日を畳んでから別のタブへ移って戻ると、すべての日が開いている', async () => {
+    // B-74 設計 規則12 / ADR-083 決定4: 開閉は `HistoryTab` が持ち、保存しない。器は選んだタブ
+    // しか描かないので、タブを移ると初めに戻る。日の見出しは日付の字面でなく `aria-expanded` で
+    // 引く — 日付は端末の時刻帯で決まり、ここの本題ではない。
+    const otherDayMealB: SeenMealSummaryOutput = {
+      ...mealB,
+      generatedAt: '2026-10-01T03:00:00.000Z',
+    };
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {
+        list: [listed([mealA, otherDayMealB])],
+      },
+    );
+
+    openHistory();
+    await screen.findByText(NIKUJAGA);
+    const [firstDay] = dayHeaders();
+    if (firstDay === undefined) throw new Error('日の見出しが無い');
+    fireEvent.click(firstDay);
+    expect(firstDay.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(mealsTab());
+    openHistory();
+    await screen.findByText(NIKUJAGA);
+
+    expect(dayHeaders().map((header) => header.getAttribute('aria-expanded'))).toEqual([
+      'true',
+      'true',
+    ]);
+  });
 });
 
 /**
@@ -2612,9 +2663,9 @@ describe('門 App の履歴タブ', () => {
  * ここで観るのは門の結線だけ — 設定を開いているかを門が持つこと、ログアウトへの経路が
  * 設定画面の1つだけであること、である。
  *
- * **仮の文言を期待値に書かない**（設計 10章 前提4）。入口は「`aria-pressed` を持たず、
- * `listitem` の中にも無い `button`」で引き、設定画面の2つの操作は文書順の位置で引く
- * （閉じるが先・ログアウトが後。設計 規則6）。
+ * **仮の文言を期待値に書かない**（設計 10章 前提4）。入口は帯の「設定」と見出しの歯車で、
+ * どちらも原本から取った名前 `設定` で引く（B-60 規則4・12 / ADR-074 決定1）。設定画面の操作は
+ * 文書順の位置で引く（閉じる・ログアウト・アカウントとデータの削除の順。B-56f 規則11）。
  */
 describe('門 App の設定', () => {
   const NIKUJAGA = '肉じゃが';
@@ -2633,17 +2684,23 @@ describe('門 App の設定', () => {
   /** 確認が出ている間の操作は4つ（閉じる／ログアウト／確かめる／やめる）である（B-56f 規則11）。 */
   const CONFIRMING_OPERATION_COUNT = 4;
 
-  function summaryOf(mealId: string, title: string): MealSummaryOutput {
-    return { mealId, title, ingredientCount: 2 };
+  /** 以前見た献立1件。**日時はどれも同じ日に置く** — 日の見出しはここの本題でない（ADR-083 決定2）。 */
+  function seenOf(mealId: string, title: string): SeenMealSummaryOutput {
+    return { mealId, title, ingredientCount: 2, generatedAt: '2026-10-03T03:00:00.000Z' };
   }
 
-  const mealA = summaryOf('meal-a', NIKUJAGA);
-  const mealB = summaryOf('meal-b', GINGER_PORK);
-  const mealC = summaryOf('meal-c', STIR_FRY);
+  /** 作った献立1件。日時の置き方は `seenOf` と同じ。 */
+  function cookedOf(mealId: string, title: string): CookedMealSummaryOutput {
+    return { mealId, title, ingredientCount: 2, cookedAt: '2026-10-03T03:30:00.000Z' };
+  }
+
+  const mealA = seenOf('meal-a', NIKUJAGA);
+  const mealB = seenOf('meal-b', GINGER_PORK);
+  const mealC = cookedOf('meal-c', STIR_FRY);
 
   function listed(
-    seen: readonly MealSummaryOutput[],
-    cooked: readonly MealSummaryOutput[] = [],
+    seen: readonly SeenMealSummaryOutput[],
+    cooked: readonly CookedMealSummaryOutput[] = [],
   ): MealListOutcome {
     return { outcome: 'loaded', meals: { seen: [...seen], cooked: [...cooked] } };
   }
@@ -3420,21 +3477,23 @@ function offlineShownMeal(mealId: string, title: string): MealOutcome {
 }
 
 function offlineListed(
-  seen: readonly MealSummaryOutput[],
-  cooked: readonly MealSummaryOutput[] = [],
+  seen: readonly SeenMealSummaryOutput[],
+  cooked: readonly CookedMealSummaryOutput[] = [],
 ): MealListOutcome {
   return { outcome: 'loaded', meals: { seen: [...seen], cooked: [...cooked] } };
 }
 
-const offlineMealA: MealSummaryOutput = {
+const offlineMealA: SeenMealSummaryOutput = {
   mealId: 'meal-a',
   title: OFFLINE_NIKUJAGA,
   ingredientCount: 2,
+  generatedAt: '2026-10-03T03:00:00.000Z',
 };
-const offlineMealC: MealSummaryOutput = {
+const offlineMealC: CookedMealSummaryOutput = {
   mealId: 'meal-c',
   title: OFFLINE_STIR_FRY,
   ingredientCount: 2,
+  cookedAt: '2026-10-03T03:30:00.000Z',
 };
 
 /** 「新しい献立を求める」操作。**末尾の1つである**（D-4）。 */

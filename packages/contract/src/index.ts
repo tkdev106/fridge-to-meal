@@ -19,6 +19,7 @@ export type {
 } from './pantry.js';
 
 export type {
+  CookedMealSummaryOutput,
   CoveredMealIngredientDto,
   ListMealsOutput,
   MealCoverageDto,
@@ -26,6 +27,7 @@ export type {
   MealIngredientKind,
   MealOutput,
   MealSummaryOutput,
+  SeenMealSummaryOutput,
   ShowLatestSuggestionOutput,
   ShowMealOutput,
   SuggestionEntryOrigin,

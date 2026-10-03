@@ -7,9 +7,8 @@
  * — **描いて確かめられるようになった今も**（ADR-052）、判断は純粋関数に置くほうが速く、
  * 文言にも jsdom にも依存しない。
  *
- * 反対に、**日本語はここにしか置かない。** 文言と見た目の正は ADR-074 で `docs/design/` に移った
- * （原本 14-sp。`docs/screen-design.md` 論点3 の「未確定」はここで解けた）。見出し・欄・操作の
- * 名札とロゴは原本の文言であり、案内と「送っています…」は原本に無いため B-35 の文面を据え置く。
+ * 反対に、**日本語はここにしか置かない。** 文言と見た目の正は `docs/design/` の 14（ADR-074）。
+ * 見出し・欄・操作の名札とロゴはデザインの文言であり、デザインに無い案内は B-35 の文面である。
  *
  * **見た目の値は `SignInForm.module.css` にだけ置き、ここには class 名しか書かない**（ADR-055 決定1・2 /
  * B-68 設計 6章 規則11）。
@@ -41,8 +40,12 @@ const FIELD_LABELS: Record<keyof SignInFormValues, string> = {
 const SIGN_IN_LABEL = 'ログイン';
 const SIGN_UP_LABEL = 'アカウントを作る';
 
-/** 送っている間の名札。受け付けないこと（規則7）を、操作の見た目だけでなく文字でも伝える。 */
-const SENDING_LABEL = '送っています…';
+/**
+ * 送っている間の名札。見える文字は `…` だけにし、読み上げには `SENDING_NAME` を名前として渡す
+ * — `…` だけでは何の操作か読み上げで伝わらない。受け付けないこと（規則7）は `disabled` でも示す。
+ */
+const SENDING_LABEL = '…';
+const SENDING_NAME = '送っています';
 
 /**
  * 画面が出す案内。**断りの1つだけ**になった（B-73 設計 6章 規則16。作成の断りと確認のメールの
@@ -169,7 +172,12 @@ export function SignInForm({
         {/* 操作は2つ（規則7）。ログインが submit で、アカウントを作るは submit にしない —
             作成画面へ移る操作であり、入力の有無では止めない（B-73 設計 6章 規則16）。
             主と副は別の class（B-68 規則6・7）。 */}
-        <button type="submit" disabled={disabled} className={classOf(styles.primary)}>
+        <button
+          type="submit"
+          disabled={disabled}
+          aria-label={sending ? SENDING_NAME : undefined}
+          className={classOf(styles.primary)}
+        >
           {sending ? SENDING_LABEL : SIGN_IN_LABEL}
         </button>
         <button

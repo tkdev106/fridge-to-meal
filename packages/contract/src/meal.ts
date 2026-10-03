@@ -2,8 +2,9 @@
 //
 // ここにあるのは型だけであり、実行時の検証も関数も持たない。
 // 世帯・調理記録・献立の生成日時はどの型にも持たせない（C-9 / NFR-09 / B-48a 規則12）。
-// **例外は献立詳細の出力 `ShowMealOutput` の `cooked`（記録の有無の真偽1つ）だけ**で、
-// 記録の日時と件数はどこにも載せない（ADR-070 決定1・2 / 結果2）。
+// **例外は2つだけ** — 献立詳細の出力 `ShowMealOutput` の `cooked`（記録の有無の真偽1つ。
+// ADR-070 決定1・2）と、献立の一覧の1件が持つその列の日時（`SeenMealSummaryOutput.generatedAt` /
+// `CookedMealSummaryOutput.cookedAt`。ADR-083 決定2）である。記録の件数と全件の日時はどこにも載せない。
 // 由来と種別の union は domain の型を import せず、同じ値をここにも持つ（ADR-003）。
 
 /** 提案の1件の由来（FR-35 / C-4c）。 */
@@ -105,10 +106,11 @@ export type ShowLatestSuggestionOutput =
   | { outcome: 'none' };
 
 /**
- * 献立の一覧の1件（B-54a / FR-28 / FR-29）。識別子・名称・**主材料の件数**だけを持つ。
+ * 献立の一覧の1件に共通する部分（B-54a / FR-28 / FR-29）。識別子・名称・**主材料の件数**を持つ。
+ * 列ごとの日時は `SeenMealSummaryOutput` / `CookedMealSummaryOutput` が足す（ADR-083 決定2）。
  *
- * 世帯・調理記録（日時・件数・有無の真偽）・献立の生成日時・充足・材料と手順の中身を載せない
- * （B-48a 規則12 / NFR-09 / ADR-068 決定4）。
+ * 世帯・調理記録（件数・全件の日時・有無の真偽）・充足・材料と手順の中身を載せない
+ * （B-48a 規則12 / NFR-09）。
  */
 export type MealSummaryOutput = {
   mealId: string;
@@ -120,8 +122,15 @@ export type MealSummaryOutput = {
 /**
  * 世帯の献立の一覧（B-54a / ADR-068）。調理記録の無い献立は `seen`、ある献立は `cooked` に入る。
  * **一覧では、調理記録の有無はどちらの列に入るかでだけ表れる**（ADR-068 決定3。詳細の `ShowMealOutput.cooked` は ADR-070）。
+ * どちらの列もその列の日時の降順で、同時刻は `mealId` の昇順に並ぶ（ADR-083 決定1）。
  */
 export type ListMealsOutput = {
-  seen: MealSummaryOutput[];
-  cooked: MealSummaryOutput[];
+  seen: SeenMealSummaryOutput[];
+  cooked: CookedMealSummaryOutput[];
 };
+
+/** 「以前見た献立」の1件（ADR-083 決定2）。献立の生成日時を UTC の ISO 8601 文字列で持つ。 */
+export type SeenMealSummaryOutput = MealSummaryOutput & { generatedAt: string };
+
+/** 「作った献立」の1件（ADR-083 決定2）。直近の調理記録の日時を UTC の ISO 8601 文字列で持つ。 */
+export type CookedMealSummaryOutput = MealSummaryOutput & { cookedAt: string };

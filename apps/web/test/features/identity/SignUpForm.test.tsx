@@ -223,7 +223,7 @@ describe('アカウント作成の画面 SignUpForm', () => {
     });
 
     fill(typedEmail, typedPassword);
-    // 送っている間は主の操作の名札が `送っています…` に変わるので、押す前に引いておく（規則7）。
+    // 送っている間は主の操作の名札が `…` に変わるので、押す前に引いておく（規則7）。
     const submit = submitOperation();
     const back = backOperation();
     fireEvent.click(submit);
