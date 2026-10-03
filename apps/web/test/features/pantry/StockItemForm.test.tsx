@@ -22,9 +22,11 @@
 
 import { describe, expect, it } from 'vitest';
 import type { RegisterStockItemInput } from '@fridge-to-meal/contract';
-import { fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
+import { act, fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
+import { FixedBackNavigation } from '../../support/backNavigation/FixedBackNavigation.js';
 import { FixedStockItemRequests } from '../../support/server/FixedStockItemRequests.js';
 import type { FixedStockItemRequestsOptions } from '../../support/server/FixedStockItemRequests.js';
+import { BackNavigationProvider } from '../../../src/backNavigation/BackHandler.js';
 import type { IngredientNamesState } from '../../../src/features/pantry/IngredientNameOptions.js';
 import { StockItemForm } from '../../../src/features/pantry/StockItemForm.js';
 import type {
@@ -1067,5 +1069,89 @@ describe('登録の画面 StockItemForm の `閉じる`', () => {
 
     // B-70 / B-65 規則6: 保存せずに閉じるのは遷移で、止めない。登録の口へは何も届かない。
     expect([closed, registrations]).toEqual([['close'], []]);
+  });
+});
+
+/**
+ * 端末の「戻る」（B-74 設計 6章 規則1・2・6 / ADR-083）。
+ *
+ * 継ぎ目は記憶上の `FixedBackNavigation` に差し替え、`pressBack()` で「利用者が戻るを押した」
+ * ことにする。**届いた先は一覧へ戻す口を配列に残して観る**（`docs/testing.md` 2章）。
+ */
+describe('登録の画面 StockItemForm の端末の戻る', () => {
+  function renderFormWithBack(onRegister: RegisterStockItem, closed: string[]) {
+    const backNavigation = new FixedBackNavigation();
+    render(
+      <BackNavigationProvider backNavigation={backNavigation}>
+        <StockItemForm
+          onRegister={onRegister}
+          onClose={() => closed.push('close')}
+          ingredientNames={{ outcome: 'loading' }}
+          offline={false}
+        />
+      </BackNavigationProvider>,
+    );
+
+    return backNavigation;
+  }
+
+  function pressBack(backNavigation: FixedBackNavigation): void {
+    act(() => {
+      backNavigation.pressBack();
+    });
+  }
+
+  it('登録の画面で戻ると、一覧へ戻す口へ届く', () => {
+    const closed: string[] = [];
+    const backNavigation = renderFormWithBack(
+      recordingRegister([], { outcome: 'registered' }),
+      closed,
+    );
+
+    pressBack(backNavigation);
+
+    // 規則1・2: 「戻る」の操作と同じ口で閉じる（パネル → 一覧）。
+    expect(closed).toEqual(['close']);
+  });
+
+  it('登録を送っている間に戻っても、一覧へ戻す口は呼ばれない', async () => {
+    const closed: string[] = [];
+    const registrations: RegisterStockItemInput[] = [];
+    const { register, settle } = pendingRegister(registrations);
+    const backNavigation = renderFormWithBack(register, closed);
+    fillThreeFields();
+    fireEvent.click(saveAndStay());
+    // 前提: 1件は送られ、結末はまだ返っていない（保留のまま）。
+    expect(registrations).toHaveLength(1);
+
+    pressBack(backNavigation);
+
+    // 規則6 / B-39 規則11: 送っている間は戻るを飲み込む。閉じると断りの案内が出ないまま
+    // 入力が捨てられる。
+    expect(closed).toEqual([]);
+
+    settle();
+    await waitFor(() => {
+      expect(screen.queryByDisplayValue('にんじん')).toBeNull();
+    });
+  });
+
+  it('飲み込まれた戻るのあと、送り終えてから戻ると一覧へ戻す口へ届く', async () => {
+    const closed: string[] = [];
+    const registrations: RegisterStockItemInput[] = [];
+    const { register, settle } = pendingRegister(registrations);
+    const backNavigation = renderFormWithBack(register, closed);
+    fillThreeFields();
+    fireEvent.click(saveAndStay());
+    pressBack(backNavigation);
+    settle();
+    await waitFor(() => {
+      expect(screen.queryByDisplayValue('にんじん')).toBeNull();
+    });
+
+    pressBack(backNavigation);
+
+    // 規則6・8: 飲み込んだ回も口は登録したまま残り、次の戻るで閉じる。
+    expect(closed).toEqual(['close']);
   });
 });

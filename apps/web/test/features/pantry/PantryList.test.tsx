@@ -25,9 +25,11 @@ import {
   within,
 } from '../../support/dom/renderComponent.js';
 import { installPointerCapture } from '../../support/dom/pointerCapture.js';
+import { FixedBackNavigation } from '../../support/backNavigation/FixedBackNavigation.js';
 import { pressOperation } from '../../support/dom/pressOperation.js';
 import { FixedStockItemRequests } from '../../support/server/FixedStockItemRequests.js';
 import type { FixedStockItemRequestsOptions } from '../../support/server/FixedStockItemRequests.js';
+import { BackNavigationProvider } from '../../../src/backNavigation/BackHandler.js';
 import { PantryList } from '../../../src/features/pantry/PantryList.js';
 import type { DeleteStockItem } from '../../../src/server/StockItemRequests.js';
 
@@ -1158,5 +1160,108 @@ describe('在庫一覧 PantryList の確認を出している間', () => {
       .getAllByRole('paragraph', { hidden: true })
       .filter((paragraph) => !dialog.contains(paragraph));
     expect(notices.map(insideInert)).toEqual([true]);
+  });
+});
+
+/**
+ * 端末の「戻る」（B-74 設計 6章 規則1・2・3・11 / ADR-083）。
+ *
+ * 継ぎ目は記憶上の `FixedBackNavigation` に差し替え、`pressBack()` で「利用者が戻るを押した」
+ * ことにする。受け取ったかどうかは `pressBack()` の戻り値、閉じたことは画面に何が残るかで観る。
+ * 閉じ方は Esc・やめると同じ口（`dismissed`）なので、焦点の戻し方も同じである（規則1）。
+ */
+describe('在庫一覧 PantryList の端末の戻る', () => {
+  function renderRowsWithBack(offline = false): FixedBackNavigation {
+    const backNavigation = new FixedBackNavigation();
+    render(
+      <BackNavigationProvider backNavigation={backNavigation}>
+        <PantryList
+          today={TODAY}
+          onDelete={recordingDelete([])}
+          onEdit={recordingEdit([])}
+          stockItems={{ outcome: 'loaded', stockItems: twoRows }}
+          offline={offline}
+        />
+      </BackNavigationProvider>,
+    );
+
+    return backNavigation;
+  }
+
+  function pressBack(backNavigation: FixedBackNavigation): boolean {
+    let received = false;
+    act(() => {
+      received = backNavigation.pressBack();
+    });
+
+    return received;
+  }
+
+  it('何も出ていない一覧では、戻るを受け取らない', () => {
+    const backNavigation = renderRowsWithBack();
+
+    // 規則2・5: 行の操作の口は `rowOperations` が何も出ていないときには置かない。
+    expect(pressBack(backNavigation)).toBe(false);
+  });
+
+  it('削除の確認を出している間に戻ると、確認が閉じる', () => {
+    const backNavigation = renderRowsWithBack();
+    openConfirmationBySwipe();
+
+    pressBack(backNavigation);
+
+    // 規則1・2: 確認 → 一覧。
+    expect(screen.queryAllByRole('dialog')).toHaveLength(0);
+  });
+
+  it('`…` から開いた削除の確認を戻るで閉じると、焦点はその行の操作へ戻る', () => {
+    const backNavigation = renderRowsWithBack();
+    openConfirmationByToggle();
+
+    pressBack(backNavigation);
+
+    // 規則1 / B-69 規則13 / NFR-16: やめると同じ口で閉じるので、焦点の戻し方も同じである。
+    expect(document.activeElement).toBe(rowToggle(1));
+  });
+
+  it('開いた `…` は、戻るで閉じる', () => {
+    const backNavigation = renderRowsWithBack();
+    pressOperation(rowToggle(1));
+    const panelId = rowToggle(1).getAttribute('aria-controls');
+
+    pressBack(backNavigation);
+
+    // 規則2: 行の `…` → 一覧。
+    expect(panelId === null ? null : document.getElementById(panelId)).toBeNull();
+  });
+
+  it('開いた `…` を戻るで閉じると、焦点はその行の操作にある', () => {
+    const backNavigation = renderRowsWithBack();
+    pressOperation(rowToggle(1));
+
+    pressBack(backNavigation);
+
+    // 規則1 / B-69 規則13: Esc で閉じたときと同じ。
+    expect(document.activeElement).toBe(rowToggle(1));
+  });
+
+  it('なぞって現れた削除は、戻るで消える', () => {
+    const backNavigation = renderRowsWithBack();
+    swipeRow(1);
+
+    pressBack(backNavigation);
+
+    // 規則2: 現れた `削除` も `rowOperations` が `idle` でない状態の1つである。行に残るのは `…` だけ。
+    expect(rowButtons(1)).toHaveLength(1);
+  });
+
+  it('接続が切れていても、削除の確認は戻るで閉じる', () => {
+    const backNavigation = renderRowsWithBack(true);
+    openConfirmationBySwipe();
+
+    pressBack(backNavigation);
+
+    // 規則11 / FR-41: 閉じるのは書き込みではない。
+    expect(screen.queryAllByRole('dialog')).toHaveLength(0);
   });
 });
