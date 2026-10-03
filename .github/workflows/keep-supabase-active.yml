@@ -1,0 +1,51 @@
+name: Keep Supabase active
+
+# 本番の Supabase（無料プラン）が一時停止しないよう、1日1回 DB を読む（ADR-078）。
+# 無料プランは「直近1週間の利用者による DB への活動」が足りないと止まる。
+# select 1 だけでは活動に数えられるかが公式から読めないので、実在の表を読む。
+#
+# 書き込みはしない。トランザクションを read only にして、表を1つ数えるだけ。
+# 失敗したら GitHub の失敗通知（メール）が届く。それが「止まりかけている」知らせを兼ねる。
+#
+# 止まってしまったら: Supabase のダッシュボードでプロジェクトを開き「Resume project」を押す
+# （止まってから90日まで戻せる）。
+#
+# 必要な Secret は ADR-077 と同じ SUPABASE_DB_URL（Session pooler の接続文字列）。
+
+on:
+  schedule:
+    # 毎日 03:17 UTC（12:17 JST）。毎時0分は GitHub の混雑で遅れやすいのでずらす
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: keep-supabase-active
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  touch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Secret があるか確かめる
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::Secret SUPABASE_DB_URL がありません。Settings → Secrets and variables → Actions に置いてください（ADR-077）"
+            exit 1
+          fi
+
+      # psql は ubuntu-latest のランナーに入っている。件数は出さない（ログに世帯のデータの量を残さない）。
+      - name: 表を1つ読む
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          psql "$SUPABASE_DB_URL" -v ON_ERROR_STOP=1 -q -At \
+            -c 'begin transaction read only;' \
+            -c 'select count(*) from public.stock_items;' \
+            -c 'commit;' > /dev/null
+          echo "読めました"
