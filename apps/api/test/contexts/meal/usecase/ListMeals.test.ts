@@ -152,7 +152,7 @@ describe('献立の一覧 ListMeals', () => {
 
   describe('並び', () => {
     it('以前見た献立は生成日時の新しい順に並ぶ', async () => {
-      // 規則3 / FR-28 / ADR-068 決定2: 挿入順と生成日時の順を違えておく。
+      // FR-28 / ADR-083 決定1: 挿入順と生成日時の順を違えておく。
       const { list } = setUp({
         meals: [
           meal({ id: idA, generatedAt: '2026-09-10T12:00:00Z' }),
@@ -166,45 +166,7 @@ describe('献立の一覧 ListMeals', () => {
       expect(output.seen.map((summary) => summary.mealId)).toEqual([idB, idC, idA]);
     });
 
-    it('作った献立は生成日時の新しい順に並ぶ', async () => {
-      // 規則3 / FR-29 / ADR-068 決定2: 古い順に挿入しておく。
-      const { list } = setUp({
-        meals: [
-          meal({ id: idA, generatedAt: '2026-09-10T12:00:00Z', cookingRecords: [cookingRecord()] }),
-          meal({ id: idB, generatedAt: '2026-09-12T12:00:00Z', cookingRecords: [cookingRecord()] }),
-          meal({ id: idC, generatedAt: '2026-09-14T12:00:00Z', cookingRecords: [cookingRecord()] }),
-        ],
-      });
-
-      const output = await list(ourHousehold);
-
-      expect(output.cooked.map((summary) => summary.mealId)).toEqual([idC, idB, idA]);
-    });
-
-    it('作った献立は調理記録の日時ではなく献立の生成日時で並ぶ', async () => {
-      // 規則3 / ADR-068 決定2 / `docs/screen-design.md` 7章「新しい順（生成日時）」:
-      // 記録の日時で並べると A が先になる入力である。
-      const { list } = setUp({
-        meals: [
-          meal({
-            id: idA,
-            generatedAt: '2026-09-10T12:00:00Z',
-            cookingRecords: [cookingRecord('2026-09-20T10:00:00Z')],
-          }),
-          meal({
-            id: idB,
-            generatedAt: '2026-09-12T12:00:00Z',
-            cookingRecords: [cookingRecord('2026-09-13T10:00:00Z')],
-          }),
-        ],
-      });
-
-      const output = await list(ourHousehold);
-
-      expect(output.cooked.map((summary) => summary.mealId)).toEqual([idB, idA]);
-    });
-
-    it('生成日時が同じ献立は識別子の昇順に並ぶ', async () => {
+    it('以前見た献立で生成日時が同じものは識別子の昇順に並ぶ', async () => {
       // 規則3 / C-12 の最終段: 同じ入力で並びが変わらない。挿入は B → A の順にしておく。
       const { list } = setUp({
         meals: [
@@ -216,6 +178,80 @@ describe('献立の一覧 ListMeals', () => {
       const output = await list(ourHousehold);
 
       expect(output.seen.map((summary) => summary.mealId)).toEqual([idA, idB]);
+    });
+
+    it('作った献立は直近の調理記録の日時の新しい順に並ぶ', async () => {
+      // FR-29 / ADR-083 決定1: 生成日時の順（B > A > C）を記録の日時の順と逆にしておく。
+      const { list } = setUp({
+        meals: [
+          meal({
+            id: idA,
+            generatedAt: '2026-09-12T12:00:00Z',
+            cookingRecords: [cookingRecord('2026-09-22T10:00:00Z')],
+          }),
+          meal({
+            id: idB,
+            generatedAt: '2026-09-14T12:00:00Z',
+            cookingRecords: [cookingRecord('2026-09-21T10:00:00Z')],
+          }),
+          meal({
+            id: idC,
+            generatedAt: '2026-09-10T12:00:00Z',
+            cookingRecords: [cookingRecord('2026-09-23T10:00:00Z')],
+          }),
+        ],
+      });
+
+      const output = await list(ourHousehold);
+
+      expect(output.cooked.map((summary) => summary.mealId)).toEqual([idC, idA, idB]);
+    });
+
+    it('作った献立の並びは最後に足した記録ではなく最も新しい記録の日時で決まる', async () => {
+      // ADR-083 決定1: A の最後の記録（09-11）で並べると B が先になる入力である。
+      const { list } = setUp({
+        meals: [
+          meal({
+            id: idA,
+            generatedAt: '2026-09-10T12:00:00Z',
+            cookingRecords: [
+              cookingRecord('2026-09-25T10:00:00Z'),
+              cookingRecord('2026-09-11T10:00:00Z'),
+            ],
+          }),
+          meal({
+            id: idB,
+            generatedAt: '2026-09-12T12:00:00Z',
+            cookingRecords: [cookingRecord('2026-09-20T10:00:00Z')],
+          }),
+        ],
+      });
+
+      const output = await list(ourHousehold);
+
+      expect(output.cooked.map((summary) => summary.mealId)).toEqual([idA, idB]);
+    });
+
+    it('直近の調理記録の日時が同じ作った献立は識別子の昇順に並ぶ', async () => {
+      // C-12 の最終段 / ADR-083 決定1: 生成日時は B が新しく、挿入も B → A の順にしておく。
+      const { list } = setUp({
+        meals: [
+          meal({
+            id: idB,
+            generatedAt: '2026-09-14T12:00:00Z',
+            cookingRecords: [cookingRecord('2026-09-20T10:00:00Z')],
+          }),
+          meal({
+            id: idA,
+            generatedAt: '2026-09-10T12:00:00Z',
+            cookingRecords: [cookingRecord('2026-09-20T10:00:00Z')],
+          }),
+        ],
+      });
+
+      const output = await list(ourHousehold);
+
+      expect(output.cooked.map((summary) => summary.mealId)).toEqual([idA, idB]);
     });
   });
 
@@ -245,19 +281,63 @@ describe('献立の一覧 ListMeals', () => {
       expect(output.seen[0]?.title).toBe('きんぴらごぼう');
     });
 
-    it('1件に載せるのは識別子・名称・主材料の件数の3つだけである', async () => {
-      // 規則6 / B-48a 規則12 / NFR-09 / ADR-068 決定3・4: 世帯・調理記録・生成日時・充足を載せない。
+    it('以前見た献立の1件には献立の生成日時を UTC の正準形のまま載せる', async () => {
+      // ADR-083 決定2・3: サーバは日時を UTC のまま返し、日付に丸めない。
+      const { list } = setUp({
+        meals: [meal({ id: idA, generatedAt: '2026-09-13T21:34:56.789+09:00' })],
+      });
+
+      const output = await list(ourHousehold);
+
+      expect(output.seen[0]?.generatedAt).toBe('2026-09-13T12:34:56.789Z');
+    });
+
+    it('作った献立の1件には調理記録の日時のうち最も新しいものを載せる', async () => {
+      // ADR-083 決定1・2: 記録の並びの最後を直近と読まない。
       const { list } = setUp({
         meals: [
-          meal({ id: idA, cookingRecords: [] }),
-          meal({ id: idB, cookingRecords: [cookingRecord()] }),
+          meal({
+            id: idA,
+            cookingRecords: [
+              cookingRecord('2026-09-22T10:00:00Z'),
+              cookingRecord('2026-09-25T10:00:00Z'),
+              cookingRecord('2026-09-21T10:00:00Z'),
+            ],
+          }),
         ],
       });
 
       const output = await list(ourHousehold);
 
-      expect(Object.keys(output.seen[0] ?? {})).toEqual(['mealId', 'title', 'ingredientCount']);
-      expect(Object.keys(output.cooked[0] ?? {})).toEqual(['mealId', 'title', 'ingredientCount']);
+      expect(output.cooked[0]?.cookedAt).toBe('2026-09-25T10:00:00.000Z');
+    });
+
+    it('以前見た献立の1件に載せるのは識別子・名称・主材料の件数と生成日時だけである', async () => {
+      // ADR-083 決定2 / B-48a 規則12 / NFR-09: 世帯・調理記録・充足を載せない。
+      const { list } = setUp({ meals: [meal({ id: idA, cookingRecords: [] })] });
+
+      const output = await list(ourHousehold);
+
+      expect(Object.keys(output.seen[0] ?? {}).sort()).toEqual([
+        'generatedAt',
+        'ingredientCount',
+        'mealId',
+        'title',
+      ]);
+    });
+
+    it('作った献立の1件に載せるのは識別子・名称・主材料の件数と直近の調理記録の日時だけである', async () => {
+      // ADR-083 決定2 / B-48a 規則12 / NFR-09: 生成日時・記録の件数・全件の日時を載せない。
+      const { list } = setUp({ meals: [meal({ id: idA, cookingRecords: [cookingRecord()] })] });
+
+      const output = await list(ourHousehold);
+
+      expect(Object.keys(output.cooked[0] ?? {}).sort()).toEqual([
+        'cookedAt',
+        'ingredientCount',
+        'mealId',
+        'title',
+      ]);
     });
   });
 

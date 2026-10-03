@@ -18,9 +18,21 @@ const accessTokenA = 'access-token-a';
 
 /** 献立の一覧。**素通しであること**を見るので、両方の列を空でない形にしておく（規則10）。 */
 const listMealsOutput: ListMealsOutput = {
-  seen: [{ mealId: '22222222-2222-4222-8222-222222222222', title: '肉じゃが', ingredientCount: 3 }],
+  seen: [
+    {
+      mealId: '22222222-2222-4222-8222-222222222222',
+      title: '肉じゃが',
+      ingredientCount: 3,
+      generatedAt: '2026-09-14T03:00:00.000Z',
+    },
+  ],
   cooked: [
-    { mealId: '33333333-3333-4333-8333-333333333333', title: 'きんぴらごぼう', ingredientCount: 2 },
+    {
+      mealId: '33333333-3333-4333-8333-333333333333',
+      title: 'きんぴらごぼう',
+      ingredientCount: 2,
+      cookedAt: '2026-09-20T10:00:00.000Z',
+    },
   ],
 };
 

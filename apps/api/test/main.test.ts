@@ -117,7 +117,14 @@ const mealOutcome: ShowMealOutput = {
  * 経路が別の口に繋がっていたら本体の違いとして現れるように。
  */
 const listMealsOutcome: ListMealsOutput = {
-  seen: [{ mealId: '55555555-5555-4555-8555-555555555555', title: '筑前煮', ingredientCount: 4 }],
+  seen: [
+    {
+      mealId: '55555555-5555-4555-8555-555555555555',
+      title: '筑前煮',
+      ingredientCount: 4,
+      generatedAt: '2026-09-22T12:00:00.000Z',
+    },
+  ],
   cooked: [],
 };
 
