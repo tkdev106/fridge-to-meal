@@ -1,6 +1,6 @@
 # アーキテクチャ決定録（ADR）
 
-> ドラフト v0.44 / 2026-10-03 / ADR-001 〜 ADR-080
+> ドラフト v0.45 / 2026-10-03 / ADR-001 〜 ADR-081
 > **この文書がアーキテクチャ決定の正である。**
 
 決定を変更する場合は、既存の ADR を書き換えず、**新しい ADR を起こして旧 ADR の状態を「置き換え済み」に改める**。
@@ -214,6 +214,7 @@ flowchart TD
 | ADR-078 | Supabase 無料プランの一時停止を、GitHub Actions の定期実行で1日1回 DB を読んで防ぐ | 承認 |
 | ADR-079 | LLM プロバイダを Gemini（`gemini-3.5-flash-lite`）とし、SDK を使わず `fetch` で呼び、モデル名を設定の1か所に置く | 承認 |
 | ADR-080 | 500 `unexpected` に畳む失敗を、種類と最小限の手がかりだけでサーバのログに1行残す | 承認 |
+| ADR-081 | web を api とは別の Worker の静的アセットとして配信し、`main` から Workers Builds で自動で出す | 提案 |
 
 ---
 
@@ -1764,3 +1765,31 @@ flowchart TD
   2. **ログの保持・閲覧は Cloudflare 側の既定に依る。** `wrangler.toml` に `observability` は置かない（リポジトリの側では確かめられない）。見るのは `wrangler tail`。
   3. **自前の `Error` の `message` が今後ログに出る。** 新しい `throw new Error` を書くときは、ADR-045 結果2 の規律（値を載せない）がログに対しても要る。
   4. **`DrizzleQueryError` 以外の外来の例外は `message` を載せる。** ドライバが別の例外で値を入れる場合は、判別の名前を足す。
+
+### ADR-081　web を api とは別の Worker の静的アセットとして配信し、`main` から Workers Builds で自動で出す　`提案`
+
+- **状況** — api は Cloudflare Workers の `fridge-to-meal-api`（`https://fridge-to-meal-api.tkdev106.workers.dev`）で動き、Cloudflare の Workers Builds（Git 連携）が `main` から自動でデプロイしている。**web（`apps/web`）には配信先が無い。** web は `vite build` が出す静的ファイル（SPA・PWA。ADR-014 / ADR-016）で、サーバ側の処理を持たない。2026-10-03 にユーザーが「アカウント作成画面ができたら本番環境にフロントエンドをデプロイしたい」と求めた。
+
+  決めることが4つある。**(a) 配信先。** **(b) web と api の origin の関係** — ADR-048 は別 origin ＋ CORS の明示の一覧とし、「配信先が決まった周にその origin を一覧へ足す」とした。**(c) web の設定3つ（`VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` / `VITE_API_BASE_URL`）の置き場** — どれもビルドの時点でバンドルに入り、秘密ではない（ADR-046 決定4 / ADR-048 決定4）。**(d) 未完成の機能の扱い** — `docs/workflow.md` 1章は feature flag を置かない理由を「本番の配信先が無いこと」に置き、見直す時期を「本番へ配信する日」としている。
+- **決定** — 5つ。
+  1. **web は Cloudflare Workers の静的アセットとして配信する。** スクリプトを持たない Worker `fridge-to-meal-web` を置き、設定は `apps/web/wrangler.toml` に書く。`dist/` をそのまま返し、知らない道には `index.html` を返す（`not_found_handling = "single-page-application"`）。本番の origin は `https://fridge-to-meal-web.tkdev106.workers.dev` である。
+  2. **web と api は別の Worker・別の origin のままとする**（ADR-048 決定1 を保つ）。api の CORS の許可一覧（`apps/api/src/main.ts` の `ALLOWED_WEB_ORIGINS`）に本番の web の origin を1つ足す。経路の接頭辞は足さない（ADR-048 決定4）。
+  3. **デプロイは api と同じく Workers Builds で `main` から自動で行う。** Cloudflare の側で web 用の Worker を同じリポジトリに繋ぎ、ビルドのコマンドは `pnpm run build`、デプロイのコマンドは `pnpm --filter @fridge-to-meal/web run deploy`（`wrangler deploy`）とする。`wrangler` を `apps/web` の devDependencies に api と同じ版で置く。
+  4. **web の設定3つは Workers Builds の「ビルド変数」に置く。** Worker の実行時の変数（`[vars]`）ではない — Vite はビルドの時点で値をバンドルに埋め込み、実行時の変数は読まない。値は `VITE_API_BASE_URL` が api の origin、残り2つが Supabase の URL と anon key で、どれもリポジトリには書かない（`apps/web/.env.local` と同じく環境ごとの値である）。
+  5. **feature flag は引き続き置かない。** `main` に入ったものはそのまま本番の web と api に出る。本番を使うのはユーザー本人だけで、未完成を隠す相手が居ないためである。利用者が増えるときにこの決定を見直す。
+- **比較した案**
+
+  | | 案 | 退ける理由 |
+  | --- | --- | --- |
+  | **A** | **別の Worker の静的アセット ＋ Workers Builds**（採用） | — |
+  | B | Cloudflare Pages | 静的配信としては同じことができるが、Cloudflare は新しい作りに Workers の静的アセットを勧めており、api と設定・ログ・ビルドの置き場が割れる |
+  | C | api の Worker に静的アセットを同居させ、同じ origin で出す | CORS は要らなくなるが、api の経路が根にある（`GET /meals` など）ため SPA の道と食い合い、`/api` の接頭辞を足して全経路とテストを書き換えることになる（ADR-048 決定4 と衝突する）。web と api のデプロイも1つに縛られる |
+  | D | GitHub Actions から `wrangler deploy` | Cloudflare の API トークンを GitHub の Secret に置くことになる。api は Workers Builds で出しており、仕組みが2つに割れる |
+  | E | Cloudflare 以外（Vercel・Netlify など） | アカウントと請求の置き場が増える。得るものが無い |
+- **理由** — **(1) 置き場が1つに揃う。** api と同じアカウント・同じ Git 連携・同じダッシュボードでビルドとログが読める。**(2) 静的アセットの配信は無料で、要求の数に上限が無い**（スクリプトを持たない Worker の静的アセットは呼び出しに数えられない）。NFR のコスト設計に費用を足さない。**(3) ADR-048 の形をそのまま本番に持ち込める。** 開発で通った CORS の設定が、origin を1つ足すだけで本番の設定になる。
+- **結果** — 5つの帰結を引き受ける。
+  1. **Cloudflare と Supabase の側にユーザーの操作が要る。** Workers Builds で web の Worker を作ってリポジトリに繋ぐこと、ビルド変数3つを入れること、Supabase Auth の Site URL と Redirect URLs に本番の web の origin を入れること（確認メールのリンクの戻り先になる）。リポジトリの側からは確かめられない。
+  2. **Worker の名前と origin が CORS の一覧に焼き付く。** 名前を変える・独自ドメインを付けるときは、`apps/web/wrangler.toml` と `ALLOWED_WEB_ORIGINS` と Supabase の Site URL を同じ周で変える。
+  3. **`main` へのマージ1回で api と web が別々にビルドされ、デプロイされる。** 両者の順序を揃える仕組みは無い。web が新しい経路を呼ぶ変更は、api が先に出ても後に出ても壊れない形で入れる（ADR-077 結果3 が移行に求めたのと同じ考え方である）。
+  4. **ビルド変数を入れ忘れたビルドは、配信されたあと起動時に落ちる**（`sessionConfigOf` / `apiBaseUrlOf` が名前を出して `Error` を投げる。ADR-048 結果1）。ビルドは通るので、Workers Builds の画面では気づけない。デプロイの後に本番の web を1度開いて確かめる。
+  5. **`docs/workflow.md` 1章の「見直す時期」はこの ADR で見直した。** feature flag を置かない規則の根拠は「本番の配信先が無いこと」から「本番を使うのがユーザー本人だけであること」に移る。
