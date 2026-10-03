@@ -824,9 +824,9 @@ describe('MealGeneratorImpl', () => {
     });
 
     it.each([
-      { case: '候補の列が空', body: { candidates: [] } },
-      { case: '候補のキーが無い', body: {} },
-    ])('候補が無い応答は mealGenerator.empty で断る（$case）', async ({ body }) => {
+      { case: 'candidates の列が空', body: { candidates: [] } },
+      { case: 'candidates のキーが無い', body: {} },
+    ])('candidates が無い応答は mealGenerator.empty で断る（$case）', async ({ body }) => {
       // B-72 規則12
       await expect(
         generator(FixedFetchGenerateContent.delivering(okDeliveryOf(body))).generate(

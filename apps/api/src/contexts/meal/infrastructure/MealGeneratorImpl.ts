@@ -124,14 +124,14 @@ function requireConfiguredSettings(settings: MealGeneratorSettings): MealGenerat
 }
 
 /**
- * 応答の封筒から本文を取り出す（B-72 規則12）。候補が無い・停止理由が `STOP` でない・本文が
+ * 応答の封筒から本文を取り出す（B-72 規則12）。`candidates` が無い・停止理由が `STOP` でない・本文が
  * 無いなら `mealGenerator.empty` — 応答は届いたが使える献立が無い（ADR-079 決定5）。
  * 思考の部分（`thought: true`）は本文ではない。
  */
 function responseTextOf(body: unknown): string {
   const candidate = firstCandidateOf(body);
   if (candidate === null) {
-    throw new MealRuleViolation('mealGenerator.empty', '生成の応答に候補がありません');
+    throw new MealRuleViolation('mealGenerator.empty', '生成の応答に candidates がありません');
   }
   const finishReason = candidate.finishReason;
   if (finishReason !== COMPLETED_FINISH_REASON) {

@@ -347,7 +347,10 @@ pnpm --filter @fridge-to-meal/web build
 ```
 SUPABASE_URL=...          # 認証（Supabase Auth）用。DB アクセスには使わない
 SUPABASE_ANON_KEY=...     # 同上
+GEMINI_API_KEY=...        # 献立の生成（ADR-079 決定4）。本番は `wrangler secret put GEMINI_API_KEY`
 ```
+
+**モデル名 `GEMINI_MODEL` は秘密ではないので `.dev.vars` に置かず、`apps/api/wrangler.toml` の `[vars]` に1か所だけ置く**（ADR-079 決定4）。
 
 **鍵を3つに分けて扱う（ADR-046 決定4）。混ぜて「クライアントに置かない」と括らない。**
 
