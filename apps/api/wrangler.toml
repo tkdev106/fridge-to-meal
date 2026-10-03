@@ -51,3 +51,10 @@ id = "fefe9ddf248f42388c89824cf08a7445"
 #
 # ⚠ LLM の API キーは .dev.vars（gitignore 済み）と wrangler secret に置く。このファイルは git 管理下
 #   なので、秘密を1つも書かない。クライアントにも絶対に置かない（NFR-10）。
+
+# 献立の生成に使うモデル名（ADR-078 決定4）。モデルを替えるときに変えるのはこの1か所だけで、
+# コードに既定値は無い。無料枠から有料枠へ移るときも、ここではなくキーの側である。
+# API キーは GEMINI_API_KEY という名前で、本番は wrangler secret put で、手元は .dev.vars に置く。
+# ここには書かない（NFR-10）。
+[vars]
+GEMINI_MODEL = "gemini-3.5-flash-lite"

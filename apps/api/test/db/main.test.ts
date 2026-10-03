@@ -16,6 +16,12 @@ import { countHouseholdRows } from '../support/db/HouseholdRows.js';
 import { withTransaction } from '../support/db/WithTransaction.js';
 import { accessTokenOf } from '../support/identity/AccessSigning.js';
 import { FixedFetchJwks } from '../support/identity/FixedFetchJwks.js';
+import {
+  envelopeOf,
+  FixedFetchGenerateContent,
+  mealsTextOf,
+  okDeliveryOf,
+} from '../support/meal/FixedFetchGenerateContent.js';
 
 /**
  * composition root（`main.ts`）の3周目 — ローカル Postgres を通す全経路
@@ -47,6 +53,8 @@ const ownerOfDeletedHousehold = householdIdOf('b9010000-0000-4000-8000-000000000
 const deletingNeighborHousehold = householdIdOf('b9010000-0000-4000-8000-000000000017');
 const rejectedThenRegisterHousehold = householdIdOf('b9010000-0000-4000-8000-000000000008');
 const unsavedIdHousehold = householdIdOf('b9010000-0000-4000-8000-000000000009');
+// B-72: 生成の設定が空の環境。
+const emptyGeminiKeyHousehold = householdIdOf('b72a1000-0001-4000-8000-000000000001');
 
 // B-56a: 世帯のデータを消す。先頭の並び（`b56a1000`）で他のケースと分けてある。
 const deletedDataHousehold = householdIdOf('b56a1000-0001-4000-8000-000000000001');
@@ -73,10 +81,40 @@ const unsavedStockItemId = 'b9990000-0000-4000-8000-0000000000ff';
 const env: Bindings = {
   HYPERDRIVE: { connectionString: APP_CONNECTION_STRING },
   SUPABASE_URL: supabaseUrl,
+  GEMINI_MODEL: 'gemini-3.5-flash-lite',
+  GEMINI_API_KEY: 'never-sent-key',
 };
 
+/**
+ * 生成の応答（B-72）。在庫品（`にんじん` / `たまねぎ`）1件につき献立1件、材料1件・手順2件 —
+ * `seedHouseholdData` が置く行数（`seededRows`）はこの形に依る。外へは出ない（`docs/testing.md` 5章）。
+ */
+const fetchGenerateContent = FixedFetchGenerateContent.delivering(
+  okDeliveryOf(
+    envelopeOf([
+      mealsTextOf([
+        {
+          title: 'にんじんのきんぴら炒め',
+          ingredients: [{ name: 'にんじん', amount: '2本', kind: 'main' }],
+          steps: ['にんじんを細切りにする', 'にんじんを炒めて味を調える'],
+        },
+        {
+          title: 'たまねぎの卵とじ',
+          ingredients: [{ name: 'たまねぎ', amount: '1個', kind: 'main' }],
+          steps: ['たまねぎを薄切りにする', 'たまねぎを煮て卵でとじる'],
+        },
+      ]),
+    ]),
+  ),
+);
+
 /** 全ケースが同じ組み立てを叩く（設計書 8章）。認証器は環境1つにつき1つ（規則4）。 */
-const app = createApp(composeDependencies(env, { fetchJwks: new FixedFetchJwks().fetchJwks }));
+const app = createApp(
+  composeDependencies(env, {
+    fetchJwks: new FixedFetchJwks().fetchJwks,
+    fetchGenerateContent: fetchGenerateContent.fetchGenerateContent,
+  }),
+);
 
 /**
  * 行数を読むための接続（B-56a）。経路の結線とは別に持ち、`authenticator` で繋いで
@@ -191,8 +229,8 @@ async function deleteHouseholdDataRequest(household: HouseholdId) {
 /**
  * 世帯の利用者と9表すべての行を置く下ごしらえ（B-56a / B-56d）。利用者は `auth.users` に
  * 役を切り替える前の `authenticator` で置く（B-56d 設計書 規則11）。行は**既存の経路だけを通す** — 在庫品2件
- * （`にんじん` / `たまねぎ`）を登録し、新しい献立を求め（仮の生成器が在庫品1件につき献立1件、
- * 材料1件・手順2件を返す。ADR-060）、1件目の献立に調理記録を1件足す。本題でないところで
+ * （`にんじん` / `たまねぎ`）を登録し、新しい献立を求め（生成の応答の代役が在庫品1件につき献立1件、
+ * 材料1件・手順2件を返す。B-72）、1件目の献立に調理記録を1件足す。本題でないところで
  * 黙って失敗すると続きの `expect` が別の理由で落ちるので、各段の状態コードを確かめる。
  */
 async function seedHouseholdData(household: HouseholdId): Promise<void> {
@@ -462,6 +500,33 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
 
       expect(response.status).toBe(404);
       await expect(failureBody(response)).resolves.toEqual({ rule: 'update.notFound' });
+    });
+  });
+
+  describe('献立の生成の設定は結線後に読まれる（B-72）', () => {
+    it('GEMINI_API_KEY が空の環境で新しい献立を求めると 500 unexpected になり 502 にならない', async () => {
+      // ADR-078 決定4・5 / ADR-045: 設定の不備は「応答が使えない」（502）に化けさせない。
+      const emptyKeyApp = createApp(
+        composeDependencies(
+          { ...env, GEMINI_API_KEY: '' },
+          {
+            fetchJwks: new FixedFetchJwks().fetchJwks,
+            fetchGenerateContent: FixedFetchGenerateContent.delivering(
+              okDeliveryOf(envelopeOf([mealsTextOf([])])),
+            ).fetchGenerateContent,
+          },
+        ),
+      );
+      await registeredStockItem(emptyGeminiKeyHousehold, { name: 'にんじん' });
+      await registeredStockItem(emptyGeminiKeyHousehold, { name: 'たまねぎ' });
+
+      const response = await emptyKeyApp.request('/suggestions/new-meals', {
+        method: 'POST',
+        headers: bearerHeaders(await accessTokenFor(emptyGeminiKeyHousehold)),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
     });
   });
 

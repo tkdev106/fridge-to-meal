@@ -50,6 +50,8 @@ const neighborHousehold = householdIdOf('22222222-2222-4222-8222-222222222222');
 const env: Bindings = {
   HYPERDRIVE: { connectionString: 'postgres://never-connected.invalid/postgres' },
   SUPABASE_URL: supabaseUrl,
+  GEMINI_MODEL: 'gemini-3.5-flash-lite',
+  GEMINI_API_KEY: 'never-sent-key',
 };
 
 /**
