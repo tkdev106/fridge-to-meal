@@ -1,0 +1,82 @@
+/*
+ * 見出しの行（原本 `docs/design/src/MealScreen.dc.html` / `PantryScreen.dc.html` /
+ * `index.dc.html` 12 / 設計 B-60 6章 規則4・12・13・16 / 10章 前提）。
+ *
+ * **見た目の値はここにだけ置く**（ADR-055 決定1・2）。`ScreenHeader.tsx` は class 名しか書かない。
+ * 色・文字の大きさはトークン（`src/global.css` の `:root`）から `var(--…)` で引き、新しい色を
+ * 作らない。トークンに無い寸法（余白・行の高さ・字間）は原本の値を直に書く。
+ *
+ * **幅 1024px 以上を PC とする**（B-60 規則1。値の正は `docs/screen-design.md` 2.1）。切り替えは
+ * メディアクエリだけで行う（同 規則2）。
+ */
+
+/*
+ * 見出しの行の外枠。余白は SP `16px 0 24px`（原本。設計 10章 前提）。**横の余白は持たない** —
+ * 横の余白は画面の欄の持ち分である（原本の `main`。先行 `features/meal/MealsTab.module.css` の
+ * `.screen`）。持つと、画面の欄の余白と二重になる。
+ */
+.header {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 48px;
+  padding: 16px 0 24px;
+}
+
+/* 題と歯車の1行。両端に置く。 */
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+}
+
+/* 題（原本の `h1`）。 */
+.title {
+  margin: 0;
+  font-size: var(--font-size-20);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+}
+
+/*
+ * 右の操作の並び（画面の操作と歯車）。アイコン 24px の外側の余白ぶん右へ寄せ、見た目の右端を
+ * 題の行の内側に揃える（原本 `margin-right: -12px`）。
+ */
+.operations {
+  display: flex;
+  margin-right: -12px;
+}
+
+/*
+ * 歯車。押せる大きさは 48px（規則13 / NFR-16）。素の button の枠と地はここで消す。
+ */
+.settings {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+/* PC（幅 1024px 以上）。余白は `40px 0 32px`（設計 10章 前提）、歯車は出さない（規則4）。 */
+@media (min-width: 1024px) {
+  .header {
+    padding: 40px 0 32px;
+  }
+
+  .settings {
+    display: none;
+  }
+
+  /* PC では右端の歯車が無いので、画面の操作をそのまま右端に揃える（原本 `L.plusMr: 0`）。 */
+  .operations {
+    margin-right: 0;
+  }
+}

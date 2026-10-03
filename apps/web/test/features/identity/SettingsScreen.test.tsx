@@ -3,8 +3,10 @@
  * 設定画面 `SettingsScreen`（B-56c 設計 6章 規則6・7 / 7章 / B-56f 設計 6章 規則4〜6・8・11・12 /
  * ADR-052 / `docs/testing.md` 4.1）。
  *
- * **仮の文言を期待値に書かない**（`docs/screen-design.md` 論点3 / B-56f 規則12）。操作は
- * `getAllByRole('button')` を**文書順の位置**で引き、**先に件数を確かめる**。
+ * **文言は `docs/design/` から取ったもので仮ではない**（ADR-074 決定1 / B-67 規則22）— 戻る・
+ * ログアウト・アカウントとデータを削除・確認の文・削除する／やめるの2操作は**字面で確かめる**
+ * （B-67）。**削除の失敗の案内だけは暫定**（デザインに無い。B-67 2章）なので字面を見ず、役割
+ * `status` で引く。操作は `getAllByRole('button')` を**文書順の位置**で引き、**先に件数を確かめる**。
  *
  * **`vi.fn()` で呼び出しを検めない**（`docs/testing.md` 2章）。口に届いたことは、テストが
  * 渡した関数が配列に積んだもの（削除は `FixedHouseholdDataRequests` が数えた回数）で観る。
@@ -20,14 +22,14 @@ import { SettingsScreen } from '../../../src/features/identity/SettingsScreen.js
 import type { SettingsScreenProps } from '../../../src/features/identity/SettingsScreen.js';
 
 /**
- * 確認の前に設定画面に出ている操作は3つ（閉じる／ログアウト／アカウントとデータの削除）である
- * （B-56f 規則11）。
+ * 確認の前に設定画面に出ている操作は3つ（戻る／ログアウト／アカウントとデータを削除）である
+ * （B-56f 規則11 / B-67 規則18）。
  */
 const SETTINGS_OPERATION_COUNT = 3;
 
 /**
- * 確認が出ている間の操作は4つ（閉じる／ログアウト／確かめる／やめる）である（B-56f 規則11）—
- * 削除の操作が「確かめる」「やめる」の2つに置き換わる。
+ * 確認が出ている間の操作は4つ（戻る／ログアウト／削除する／やめる）である（B-56f 規則11 /
+ * B-67 規則18）— 削除の操作が「削除する」「やめる」の2つに置き換わる。
  */
 const CONFIRMING_OPERATION_COUNT = 4;
 
@@ -50,6 +52,7 @@ function renderSettings(
       onSignOut={overrides.onSignOut ?? (() => Promise.resolve())}
       onClose={overrides.onClose ?? (() => {})}
       onDeleteHouseholdData={overrides.onDeleteHouseholdData ?? deletion.deleteHouseholdData}
+      offline={overrides.offline ?? false}
     />,
   );
 
@@ -74,12 +77,12 @@ function signOutOperation(): HTMLElement {
   return operationAt(1);
 }
 
-/** 確認の前の3番目の操作（アカウントとデータの削除。B-56f 規則11）。 */
+/** 確認の前の3番目の操作（アカウントとデータを削除。B-56f 規則11）。 */
 function deleteOperation(): HTMLElement {
   return operationAt(2);
 }
 
-/** 確認が出ている間の3番目の操作（確かめる。B-56f 規則11）。 */
+/** 確認が出ている間の3番目の操作（削除する。B-56f 規則11）。 */
 function confirmOperation(): HTMLElement {
   return operationAt(2, CONFIRMING_OPERATION_COUNT);
 }
@@ -94,7 +97,7 @@ async function flush(): Promise<void> {
   await act(async () => {});
 }
 
-/** 削除を押して確かめ、結末を流す。 */
+/** 削除を押して「削除する」を押し、結末を流す。 */
 async function confirmDeletion(): Promise<void> {
   fireEvent.click(deleteOperation());
   fireEvent.click(confirmOperation());
@@ -103,15 +106,15 @@ async function confirmDeletion(): Promise<void> {
 
 describe('設定画面 SettingsScreen', () => {
   it('確認の前に押せる操作は3つで、削除はそのうちの1つだけである', () => {
-    // B-56f 規則11 / `docs/screen-design.md` 8章「1つの操作として置く」: 閉じる・ログアウト・
-    // アカウントとデータの削除。B-56c 規則6「操作は2つだけ」はここで置き換わった。
+    // B-56f 規則11 / `docs/screen-design.md` 8章「1つの操作として置く」: 戻る・ログアウト・
+    // アカウントとデータを削除。B-56c 規則6「操作は2つだけ」はここで置き換わった。
     renderSettings();
 
     expect(screen.getAllByRole('button')).toHaveLength(3);
   });
 
   it('先頭の操作を押すと、閉じる求めが届く', () => {
-    // 規則6: 閉じるが先、ログアウトが後。
+    // 規則6: 戻る（閉じる求め）が先、ログアウトが後。
     const closed: string[] = [];
     const signedOut: string[] = [];
     renderSettings({
@@ -187,7 +190,7 @@ describe('設定画面 SettingsScreen', () => {
     expect(screen.queryAllByRole('alert')).toHaveLength(0);
   });
   it('3番目の操作を押すと確認が出て、押せる操作が4つになる', () => {
-    // B-56f 規則4・11: 削除の操作が「確かめる」「やめる」の2つに置き換わる。
+    // B-56f 規則4・11: 削除の操作が「削除する」「やめる」の2つに置き換わる。
     renderSettings();
 
     fireEvent.click(deleteOperation());
@@ -206,7 +209,7 @@ describe('設定画面 SettingsScreen', () => {
   });
 
   it('3番目の操作を押しても、閉じる求めもサインアウトも届かない', async () => {
-    // B-56f 規則4・11: 削除の操作は閉じるともログアウトとも別の1操作である。
+    // B-56f 規則4・11: 削除の操作は戻るともログアウトとも別の1操作である。
     const closed: string[] = [];
     const signedOut: string[] = [];
     renderSettings({
@@ -225,7 +228,7 @@ describe('設定画面 SettingsScreen', () => {
   });
 
   it('確認で確かめる操作を押すと、削除が1回だけ送られる', async () => {
-    // B-56f 規則4: 送るのは確かめる操作だけである。
+    // B-56f 規則4: 送るのは確認の「削除する」だけである。
     const { deletion } = renderSettings();
 
     await confirmDeletion();
@@ -245,7 +248,7 @@ describe('設定画面 SettingsScreen', () => {
   });
 
   it('確認でやめると、最初の3つの操作に戻る', () => {
-    // B-56f 規則5: 確認を閉じ、閉じる・ログアウト・削除の形に戻す。
+    // B-56f 規則5: 確認を閉じ、戻る・ログアウト・削除の形に戻す。
     renderSettings();
 
     fireEvent.click(deleteOperation());
@@ -256,7 +259,7 @@ describe('設定画面 SettingsScreen', () => {
 
   it('削除を送っている間は、どの操作も押せない', async () => {
     // B-56f 規則6: 二重送信を防ぎ、結末が届く前に画面を離れて失敗の案内を失うことを防ぐ。
-    // 確かめる・やめる・閉じる・ログアウトのすべてが効かない。
+    // 削除する・やめる・戻る・ログアウトのすべてが効かない。
     const { deletion } = renderSettings(
       {},
       { delete: [{ heldUntilSettled: { outcome: 'failed' } }] },
@@ -330,5 +333,205 @@ describe('設定画面 SettingsScreen', () => {
     fireEvent.click(cancelOperation());
 
     expect(screen.queryAllByRole('status')).toHaveLength(0);
+  });
+});
+
+/** `before` が文書順で `after` より前にあるか（jsdom はレイアウトを持たない。B-56c 規則3）。 */
+function precedes(before: Node, after: Node): boolean {
+  return (before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+}
+
+/** 段2の見出し（帯。B-67 規則12 / 10章 前提2）の textContent を文書順に並べる。 */
+function bandHeadingTexts(): readonly (string | null)[] {
+  return screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
+}
+
+/** 帯の見出しを名前で引く。 */
+function bandHeading(name: string): HTMLElement {
+  return screen.getByRole('heading', { level: 2, name });
+}
+
+/** 確認の文（原本 13b。B-67 規則15・16）。 */
+const CONFIRM_SENTENCE = 'アカウントと、冷蔵庫の食材・履歴をすべて削除しますか';
+
+/**
+ * デザイン 13 / 13b の文言と構造（B-67 設計 6章 規則11〜18 / ADR-074 決定1）。
+ *
+ * 文言は原本から取ったもので仮ではないので、**名前（アクセシブルな名前）で引く**。操作の数と
+ * 文書順は B-56f 規則11 のまま変えない（B-67 規則18）ので、位置で引いた操作の名前を観る。
+ */
+describe('設定画面 SettingsScreen のデザイン 13・13b の文言と構造', () => {
+  it('先頭の操作は「戻る」という名前で引ける', () => {
+    // B-67 規則11 / 10章 前提6: 戻るはアイコンで、名前は `aria-label="戻る"` が持つ。
+    renderSettings();
+
+    expect(closeOperation()).toBe(screen.getByRole('button', { name: '戻る' }));
+  });
+
+  it('戻る操作は見える文字を持たない', () => {
+    // B-67 規則11・20: アイコンは飾りで、名前は置き場の `aria-label` が持つ（先行 `MealDetail`）。
+    renderSettings();
+
+    expect(screen.getByRole('button', { name: '戻る' }).textContent).toBe('');
+  });
+
+  it('段1の見出しは「設定」の1つだけである', () => {
+    // B-67 規則11 / 10章 前提3: 題を `h1` に上げる（先行 `ScreenHeader`）。
+    renderSettings();
+
+    const headings = screen.getAllByRole('heading', { level: 1 });
+    expect(headings.map((heading) => heading.textContent)).toEqual(['設定']);
+  });
+
+  it('帯は段2の見出し「アカウント」「データ」で、この順に並ぶ', () => {
+    // B-67 規則12 / 10章 前提2 / 原本 13
+    renderSettings();
+
+    expect(bandHeadingTexts()).toEqual(['アカウント', 'データ']);
+  });
+
+  it('ログアウトの操作は「アカウント」の帯と「データ」の帯の間にある', () => {
+    // B-67 規則13: ログアウトの行は `アカウント` の帯の直下。
+    renderSettings();
+
+    const signOut = signOutOperation();
+    expect(precedes(bandHeading('アカウント'), signOut)).toBe(true);
+    expect(precedes(signOut, bandHeading('データ'))).toBe(true);
+  });
+
+  it('削除の操作は「データ」の帯より後にある', () => {
+    // B-67 規則14: 削除の操作は `データ` の帯の下の置き場に置く。
+    renderSettings();
+
+    expect(precedes(bandHeading('データ'), deleteOperation())).toBe(true);
+  });
+
+  it('2番目の操作は「ログアウト」という名前で引ける', () => {
+    // B-67 規則13 / 原本 13
+    renderSettings();
+
+    expect(signOutOperation()).toBe(screen.getByRole('button', { name: 'ログアウト' }));
+  });
+
+  it('確認の前の3番目の操作は「アカウントとデータを削除」という名前で引ける', () => {
+    // B-67 規則14 / FR-27 / 原本 13
+    renderSettings();
+
+    expect(deleteOperation()).toBe(
+      screen.getByRole('button', { name: 'アカウントとデータを削除' }),
+    );
+  });
+
+  it('削除の操作を押すと、確認の文「アカウントと、冷蔵庫の食材・履歴をすべて削除しますか」が出る', () => {
+    // B-67 規則15・16 / 原本 13b
+    renderSettings();
+
+    fireEvent.click(deleteOperation());
+
+    expect(screen.queryByText(CONFIRM_SENTENCE)).not.toBeNull();
+  });
+
+  it('確認が出ている間の3番目の操作は「削除する」という名前で引ける', () => {
+    // B-67 規則15 / 原本 13b
+    renderSettings();
+
+    fireEvent.click(deleteOperation());
+
+    expect(confirmOperation()).toBe(screen.getByRole('button', { name: '削除する' }));
+  });
+
+  it('確認が出ている間の4番目の操作は「やめる」という名前で引ける', () => {
+    // B-67 規則15 / 原本 13b
+    renderSettings();
+
+    fireEvent.click(deleteOperation());
+
+    expect(cancelOperation()).toBe(screen.getByRole('button', { name: 'やめる' }));
+  });
+
+  it('確認が出ている間も、帯は「アカウント」「データ」の2つのまま残る', () => {
+    // B-67 規則12・15: 確認は削除の操作と入れ替わるだけで、帯は消えない。
+    renderSettings();
+
+    fireEvent.click(deleteOperation());
+
+    expect(bandHeadingTexts()).toEqual(['アカウント', 'データ']);
+  });
+
+  it('削除に失敗した案内は、やめる操作より後に出る', async () => {
+    // B-67 規則17 / B-56f 規則8: 案内は確認の中、操作群の後ろ。文言は暫定なので見ない。
+    renderSettings({}, { delete: [{ outcome: 'failed' }] });
+
+    await confirmDeletion();
+
+    const notices = screen.getAllByRole('status');
+    expect(notices).toHaveLength(1);
+    const [notice] = notices;
+    if (notice === undefined) throw new Error('案内が無い');
+    expect(precedes(cancelOperation(), notice)).toBe(true);
+  });
+});
+
+/**
+ * 接続が切れている間（B-70 設計 6章 規則6・12 / FR-41 / FR-27）。
+ *
+ * **止めるのは確認の中の削除の操作（削除する）だけ**で、確認を開くこと・やめること・
+ * ログアウト・戻ることは止めない（規則6 / `Session.ts` 規則8 — サインアウトは手元を必ず捨てる）。
+ */
+describe('設定画面 SettingsScreen の接続が切れている間', () => {
+  it('接続が切れている間は、確認の中の削除の操作が押せない', () => {
+    renderSettings({ offline: true });
+
+    fireEvent.click(deleteOperation());
+
+    // 規則12 / FR-41: 世帯のデータを消すのは書き込みを伴う操作である。
+    expect((confirmOperation() as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('接続が切れていても、削除の確認を開ける', () => {
+    renderSettings({ offline: true });
+
+    fireEvent.click(deleteOperation());
+
+    // 規則12・6: 確認を開くのは遷移である。
+    expect(screen.getAllByRole('button')).toHaveLength(CONFIRMING_OPERATION_COUNT);
+  });
+
+  it('接続が切れていても、確認をやめると最初の3つの操作に戻る', () => {
+    const { deletion } = renderSettings({ offline: true });
+
+    fireEvent.click(deleteOperation());
+    fireEvent.click(cancelOperation());
+
+    // 規則12・6: やめるのは遷移であり、削除は送られない。
+    expect(screen.getAllByRole('button')).toHaveLength(SETTINGS_OPERATION_COUNT);
+    expect(deletion.deleteCount).toBe(0);
+  });
+
+  it('接続が切れていても、ログアウトが届く', async () => {
+    const signedOut: string[] = [];
+    renderSettings({
+      offline: true,
+      onSignOut: () => {
+        signedOut.push('signOut');
+        return Promise.resolve();
+      },
+    });
+
+    fireEvent.click(signOutOperation());
+    await flush();
+
+    // 規則6 / `Session.ts` 規則8: サインアウトは手元のセッションを捨てるだけで止めない。
+    expect(signedOut).toHaveLength(1);
+  });
+
+  it('接続が切れていても、閉じる求めが届く', () => {
+    const closed: string[] = [];
+    renderSettings({ offline: true, onClose: () => closed.push('close') });
+
+    fireEvent.click(closeOperation());
+
+    // 規則6: 設定を閉じるのは遷移である。
+    expect(closed).toHaveLength(1);
   });
 });

@@ -20,15 +20,20 @@
  * **`vi.fn()` で呼び出し回数を数えない**（`docs/testing.md` 2章）。`onSelectTab` が受け取った
  * `TabId` を**控えて観る**。
  *
+ * **選んでいるタブの見た目は、当たっている class をタブどうしで比べて観る**（ADR-055 決定1 /
+ * backlog B-59）。見た目の値（色・寸法・太さ）は単体テストで見ず（ADR-055 決定3）、**class 名の
+ * literal も書かない** — 名前は CSS Modules が生成するものであり、留めると名前を変えただけで
+ * 赤くなる。観るのは「選んでいるタブと選んでいないタブで違う」「選んでいないタブどうしは同じ」
+ * という関係だけである。
+ *
  * **タブは並びの位置で引く。** 名前で引けない以上、`TAB_ORDER` の何番目かで指す。
  * **`TAB_ORDER` の値をここに再掲しない** — 並びそのものは `Tabs.test.ts` が押さえている。
  */
 
 import { describe, expect, it } from 'vitest';
-import { fireEvent, render, screen } from '../support/dom/renderComponent.js';
+import { fireEvent, render, screen, within } from '../support/dom/renderComponent.js';
 import type { TabId } from '../../src/navigation/Tabs.js';
 import { TAB_ORDER } from '../../src/navigation/Tabs.js';
-import { tabStyleOf } from '../../src/navigation/TabAppearance.js';
 import type { TabbedScreenProps } from '../../src/navigation/TabbedScreen.js';
 import { TabbedScreen } from '../../src/navigation/TabbedScreen.js';
 
@@ -40,6 +45,7 @@ const contents = {
   meals: '渡された献立の中身',
   pantry: '渡された在庫の中身',
   history: '渡された履歴の中身',
+  settings: '渡された設定の中身',
 } as const;
 
 /**
@@ -65,6 +71,8 @@ function tabbedScreen(overrides: Partial<TabbedScreenProps> = {}) {
       history={contents.history}
       selectedTab="meals"
       onSelectTab={() => {}}
+      settings={null}
+      onOpenSettings={() => {}}
       {...overrides}
     />
   );
@@ -88,47 +96,12 @@ function tabFor(tab: TabId): HTMLElement {
 }
 
 /**
- * `CSSProperties` のキーを CSS の属性名に直す（`borderTopWidth` → `border-top-width`）。
+ * 帯の「設定」（B-60 設計 6章 規則4・7）。**帯（`navigation`）の中で名前で引く** — 見出しの
+ * 歯車（2周目）も同じ名前「設定」を持つため、置き場で絞る（同 8章）。文言は原本
+ * （`docs/design/src/SideNav.dc.html`）から取ったもので仮ではない（ADR-074 決定1）。
  */
-function cssPropertyNameOf(key: string): string {
-  return key.replace(/[A-Z]/g, (upper) => `-${upper.toLowerCase()}`);
-}
-
-/**
- * 見た目を**同じ正規化を通してから**読み出す（`docs/testing.md` 3章 の「同じ正規化を通った
- * 者どうしを比べる」— RLS の述語の突き合わせと同じ構え）。
- *
- * `CSSProperties` 側は数値でも書けるうえ、ブラウザ（jsdom）は `'currentColor'` のような値を
- * 書き換えることがある。そこで**期待の側もいったん要素に当ててから読み戻し**、木から読んだ
- * 値と同じ土俵に乗せる。**具体値はここにも書かない。**
- *
- * **読むキーは `tabStyleOf` が返したものすべてである。** 一部の項目だけを突き合わせると、
- * **戻り値の一部しか当てていない実装でも緑になる**（B-41 設計 6章 規則6 は丸ごと当てることを
- * 求めている）。
- */
-function styleValuesOf(
-  source: CSSStyleDeclaration,
-  keys: readonly string[],
-): Record<string, string> {
-  return Object.fromEntries(
-    keys.map((key) => [key, source.getPropertyValue(cssPropertyNameOf(key))]),
-  );
-}
-
-/** 木に当たっている見た目。読むのは `tabStyleOf` が返したキーだけ。 */
-function appliedStyleOf(tab: HTMLElement, selected: boolean): Record<string, string> {
-  return styleValuesOf(tab.style, Object.keys(tabStyleOf(selected)));
-}
-
-/**
- * 当たっているべき見た目。いったん要素に当てて読み戻し、木の側と同じ正規化を通す。
- */
-function expectedStyleOf(selected: boolean): Record<string, string> {
-  const expected = tabStyleOf(selected);
-  const scratch = document.createElement('button');
-  Object.assign(scratch.style, expected);
-
-  return styleValuesOf(scratch.style, Object.keys(expected));
+function navigationSettings(): HTMLElement {
+  return within(screen.getByRole('navigation')).getByRole('button', { name: '設定' });
 }
 
 describe('下タブの器 TabbedScreen', () => {
@@ -163,14 +136,28 @@ describe('下タブの器 TabbedScreen', () => {
     expect(tabFor('history').getAttribute('aria-selected')).not.toBe('true');
   });
 
-  it('渡された選択中のタブには、選んでいるときの見た目が当たっている', () => {
+  it('選んでいるタブと選んでいないタブには、違う class が当たる', () => {
     renderTabbedScreen({ selectedTab: 'pantry' });
 
-    // B-41 設計 6章 規則6・規則7: 見た目の値は `TabAppearance.ts` にだけ置き、
-    // 「選ばれているか」だけで決まる（`TabId` ごとに変わらない）。**太さの具体値は書かない。**
-    expect(appliedStyleOf(tabFor('pantry'), true)).toEqual(expectedStyleOf(true));
-    expect(appliedStyleOf(tabFor('meals'), false)).toEqual(expectedStyleOf(false));
-    expect(appliedStyleOf(tabFor('history'), false)).toEqual(expectedStyleOf(false));
+    // ADR-055 決定1 / backlog B-59: 選んでいるときの見た目は class で当てる（色に依らない手がかり。
+    // B-41 規則1・2）。**名前の literal は書かず、タブどうしで比べる。**
+    expect(tabFor('pantry').className).not.toBe(tabFor('meals').className);
+  });
+
+  it('選んでいないタブには、どのタブにも同じ class が当たる', () => {
+    renderTabbedScreen({ selectedTab: 'pantry' });
+
+    // ADR-055 決定1 / backlog B-59（B-41 規則7）: 見た目は「選んでいるか」だけで決まり、
+    // `TabId` ごとに分けない。
+    expect(tabFor('meals').className).toBe(tabFor('history').className);
+  });
+
+  it('選んでいないタブにも見た目の class が当たっている', () => {
+    renderTabbedScreen({ selectedTab: 'pantry' });
+
+    // ADR-055 決定1 / backlog B-59: 選んでいない側の見た目も class で明示する
+    // （太さを両方明示する。設計 B-59 6章 規則7）。**class が空のまま「違う」を満たす実装をここで落とす。**
+    expect(tabFor('meals').className).not.toBe('');
   });
 
   it('タブを押すと、そのタブの識別子が渡した口に届く', () => {
@@ -235,14 +222,14 @@ describe('下タブの器 TabbedScreen', () => {
     expect(tabFor('meals').getAttribute('aria-selected')).not.toBe('true');
   });
 
-  it('渡される選択中のタブが変わると、色に依らない見た目の手がかりも移る', () => {
+  it('渡される選択中のタブが変わると、選んでいるときの class も移る', () => {
     const { rerender } = renderTabbedScreen({ selectedTab: 'meals' });
+    const selectedClassBefore = tabFor('meals').className;
 
     rerender({ selectedTab: 'pantry' });
 
-    // B-41 設計 6章 規則1・2 の波及。**手がかりが増えるだけでは1つに保てない。**
-    expect(appliedStyleOf(tabFor('pantry'), true)).toEqual(expectedStyleOf(true));
-    expect(appliedStyleOf(tabFor('meals'), false)).toEqual(expectedStyleOf(false));
+    // ADR-055 決定1 / backlog B-59（B-41 規則1・2 の波及）: **手がかりが増えるだけでは1つに保てない。**
+    expect(tabFor('pantry').className).toBe(selectedClassBefore);
   });
 
   it('中身がまだ無いタブも帯から消さない', () => {
@@ -281,5 +268,219 @@ describe('下タブの器 TabbedScreen', () => {
       (panel.compareDocumentPosition(tablist) & panel.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
     expect(tablistFollowsPanel).toBe(true);
+  });
+
+  it('設定が渡されていなくても、帯に「設定」の操作を置く', () => {
+    renderTabbedScreen({ settings: null });
+
+    // B-60 規則4: サイドナビの「設定」は DOM に常にある（SP で隠すのは CSS）。
+    expect(screen.queryAllByRole('button', { name: '設定' })).toHaveLength(1);
+  });
+
+  it('ロゴを器に出す', () => {
+    renderTabbedScreen();
+
+    // B-60 規則4: ロゴ「fridge to meal」は DOM に常にある（原本 `SideNav`。SP で隠すのは CSS）。
+    expect(screen.queryByText('fridge to meal')).not.toBeNull();
+  });
+
+  it('帯の「設定」を押すと、設定を開く求めが口に届く', () => {
+    const openRequests: string[] = [];
+    renderTabbedScreen({ onOpenSettings: () => openRequests.push('settings') });
+
+    fireEvent.click(navigationSettings());
+
+    // B-60 規則7: 器は押されたことを伝えるだけで、開いているかは門が持つ（ADR-066 と同じ理由）。
+    expect(openRequests).toEqual(['settings']);
+  });
+
+  it('設定を開いている間もタブは3つ出ている', () => {
+    renderTabbedScreen({ settings: <p>{contents.settings}</p> });
+
+    // B-60 規則3: タブは1組だけで、設定を開いても帯から消さない。
+    expect(screen.getAllByRole('tab')).toHaveLength(3);
+  });
+
+  it('設定が渡されていれば、選んでいるタブの中身の代わりに設定を描く', () => {
+    renderTabbedScreen({ selectedTab: 'pantry', settings: <p>{contents.settings}</p> });
+
+    // B-60 規則7: 設定は4つ目の行き先であり、入れ替わりであって足し算ではない。
+    expect(screen.queryByText(contents.settings)).not.toBeNull();
+    expect(screen.queryByText(contents.pantry)).toBeNull();
+  });
+
+  it('設定が渡されている間は、どのタブも選ばれていると読めない', () => {
+    renderTabbedScreen({ selectedTab: 'pantry', settings: <p>{contents.settings}</p> });
+
+    // B-60 規則7（原本 `TabBar active="none"`）。
+    const selectedTabs = screen
+      .getAllByRole('tab')
+      .filter((tab) => tab.getAttribute('aria-selected') === 'true');
+
+    expect(selectedTabs).toHaveLength(0);
+  });
+
+  it('設定が渡されている間は、選んでいたタブにも選んでいないタブと同じ class が当たる', () => {
+    renderTabbedScreen({ selectedTab: 'pantry', settings: <p>{contents.settings}</p> });
+
+    // B-60 規則7 / ADR-055 決定1: 見た目の手がかりも「どのタブも選ばない」に揃える。
+    expect(tabFor('pantry').className).toBe(tabFor('meals').className);
+  });
+
+  it('設定が渡されている間は、中身の欄を tabpanel にしない', () => {
+    renderTabbedScreen({ selectedTab: 'pantry', settings: <p>{contents.settings}</p> });
+
+    // B-60 規則7: ラベルするタブが無い。
+    expect(screen.queryByRole('tabpanel')).toBeNull();
+  });
+
+  it('設定が渡されている間は、タブの aria-controls が存在しない id を指さない', () => {
+    renderTabbedScreen({ selectedTab: 'pantry', settings: <p>{contents.settings}</p> });
+
+    // B-60 規則7: 指す先が無いなら属性を持たない。持つなら実在する要素を指す。
+    const danglingTabs = screen.getAllByRole('tab').filter((tab) => {
+      const controls = tab.getAttribute('aria-controls');
+      return controls !== null && document.getElementById(controls) === null;
+    });
+
+    expect(danglingTabs).toHaveLength(0);
+  });
+
+  it('設定が渡されている間は、帯の「設定」が今いる場所だと読める', () => {
+    renderTabbedScreen({ settings: <p>{contents.settings}</p> });
+
+    // B-60 規則7（原本 `SideNav active="settings"`）。
+    expect(navigationSettings().getAttribute('aria-current')).toBe('page');
+  });
+
+  it('設定が渡されていない間は、帯の「設定」を今いる場所だと読ませない', () => {
+    renderTabbedScreen({ settings: null });
+
+    // B-60 規則7 の裏側: 開いていないのに「今いる場所」と読ませない。
+    expect(navigationSettings().getAttribute('aria-current')).not.toBe('page');
+  });
+
+  it('設定が渡されると、帯の「設定」に当たる class が変わる', () => {
+    const { rerender } = renderTabbedScreen({ settings: null });
+    const classBefore = navigationSettings().className;
+
+    rerender({ settings: <p>{contents.settings}</p> });
+
+    // B-60 規則7 / ADR-055 決定1: 開いている間は、選んでいるタブと同じ手がかり（太さ・線）で示す。
+    // **名前の literal は書かず、前後で比べる。**
+    expect(navigationSettings().className).not.toBe(classBefore);
+  });
+
+  it('設定が渡されている間に、選んでいたタブを押してもその識別子が口に届く', () => {
+    const record = selectedTabRecord();
+    renderTabbedScreen({
+      selectedTab: 'pantry',
+      settings: <p>{contents.settings}</p>,
+      onSelectTab: (tab) => {
+        record.latest = tab;
+      },
+    });
+
+    fireEvent.click(tabFor('pantry'));
+
+    // B-60 規則8: 押したのが開く前に選んでいたタブでも、門が設定を閉じられるよう求めは届く。
+    expect(record.latest).toBe('pantry');
+  });
+
+  it('設定を描いている間も、帯は中身より後ろに置く', () => {
+    renderTabbedScreen({ settings: <p>{contents.settings}</p> });
+
+    // B-60 規則5 / NFR-14: 文書順は「中身 → 帯」のまま。
+    const settings = screen.getByText(contents.settings);
+    const navigation = screen.getByRole('navigation');
+    const navigationFollowsSettings =
+      (settings.compareDocumentPosition(navigation) & settings.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+    expect(navigationFollowsSettings).toBe(true);
+  });
+});
+
+/**
+ * 帯を止める口 `disabled`（B-60b 設計 6章 規則1・6・7）。**器は削除の意味を知らない** —
+ * 真偽1つを受け取り、帯の3つのタブと帯の「設定」を効かなくするだけである。
+ *
+ * **止めたことは `disabled` と口に届いた控えで観る**（`vi.fn()` を使わない。`docs/testing.md` 2章）。
+ */
+describe('下タブの器 TabbedScreen の帯を止める口', () => {
+  it('帯を止めると、3つのタブがどれも押せない', () => {
+    renderTabbedScreen({ disabled: true });
+
+    // B-60b 規則1: 送っている間は帯の3つのタブを `disabled` にする。
+    const disabledStates = screen
+      .getAllByRole('tab')
+      .map((tab) => (tab as HTMLButtonElement).disabled);
+
+    expect(disabledStates).toEqual([true, true, true]);
+  });
+
+  it('帯を止めると、帯の「設定」も押せない', () => {
+    renderTabbedScreen({ disabled: true });
+
+    // B-60b 規則1: 帯の「設定」も同じく止める。
+    expect((navigationSettings() as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('帯を止めている間にタブを押しても、識別子は口に届かない', () => {
+    const record = selectedTabRecord();
+    renderTabbedScreen({
+      selectedTab: 'meals',
+      disabled: true,
+      onSelectTab: (tab) => {
+        record.latest = tab;
+      },
+    });
+
+    fireEvent.click(tabFor('pantry'));
+
+    // B-60b 規則1: 押しても選んでいるタブは変わらない（門に求めが届かない）。
+    expect(record.latest).toBeNull();
+  });
+
+  it('帯を止めている間に帯の「設定」を押しても、設定を開く求めは口に届かない', () => {
+    const openRequests: string[] = [];
+    renderTabbedScreen({
+      disabled: true,
+      onOpenSettings: () => openRequests.push('settings'),
+    });
+
+    fireEvent.click(navigationSettings());
+
+    // B-60b 規則1: 帯の「設定」も押しても届かない。
+    expect(openRequests).toEqual([]);
+  });
+
+  it('帯を止めても、渡した中身の操作は止めない', () => {
+    renderTabbedScreen({
+      disabled: true,
+      settings: <button type="button">{contents.settings}</button>,
+    });
+
+    // B-60b 規則6: 止めるのは帯だけ。中身の操作を効かなくするのは中身の持ち分である。
+    const content = screen.getByRole('button', { name: contents.settings });
+
+    expect((content as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('帯を止めても、選んでいるタブは選ばれていると読める', () => {
+    renderTabbedScreen({ selectedTab: 'pantry', disabled: true });
+
+    // B-60b 規則7: 止めても選択の手がかり（`aria-selected`）は変えない。
+    const selectedTabs = screen
+      .getAllByRole('tab')
+      .filter((tab) => tab.getAttribute('aria-selected') === 'true');
+
+    expect(selectedTabs).toEqual([tabFor('pantry')]);
+  });
+
+  it('設定を描いたまま帯を止めても、帯の「設定」は今いる場所だと読める', () => {
+    renderTabbedScreen({ disabled: true, settings: <p>{contents.settings}</p> });
+
+    // B-60b 規則7 / B-60 規則7: 止めても `aria-current="page"` のまま。
+    expect(navigationSettings().getAttribute('aria-current')).toBe('page');
   });
 });

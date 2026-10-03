@@ -6,12 +6,14 @@
  * 効かせない。
  *
  * **置き場所は設定画面である**（`SettingsScreen.tsx` / B-56c / `docs/screen-design.md` 2.1・8章）。
- * 入口は履歴タブの右上にあり、ADR-046 結果4 の「暫定」（在庫タブの下）は解けた。
+ * 入口は SP では3つのタブの見出しの歯車、PC ではサイドナビの下端の「設定」にあり（B-60）、
+ * ADR-046 結果4 の「暫定」
+ * （在庫タブの下）は解けた。
  */
 
 import { useState } from 'react';
 
-/** 操作の名札。仮の文言である（`docs/screen-design.md` 論点3）。 */
+/** 操作の名札（原本 `docs/design/src/index.dc.html` 13。ADR-074 決定1 — デザインが正）。 */
 const SIGN_OUT_LABEL = 'ログアウト';
 
 export type SignOutButtonProps = {
@@ -22,9 +24,11 @@ export type SignOutButtonProps = {
    * サインアウトすると、失敗の案内を出す相手が居なくなる。
    */
   disabled?: boolean;
+  /** 置き場（設定画面）の見た目（B-67 規則13）。省略時は class を当てない。 */
+  className?: string | undefined;
 };
 
-export function SignOutButton({ onSignOut, disabled = false }: SignOutButtonProps) {
+export function SignOutButton({ onSignOut, disabled = false, className }: SignOutButtonProps) {
   const [sending, setSending] = useState(false);
 
   async function signOut() {
@@ -39,7 +43,7 @@ export function SignOutButton({ onSignOut, disabled = false }: SignOutButtonProp
   }
 
   return (
-    <button type="button" disabled={sending || disabled} onClick={signOut}>
+    <button type="button" className={className} disabled={sending || disabled} onClick={signOut}>
       {SIGN_OUT_LABEL}
     </button>
   );

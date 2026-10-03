@@ -21,8 +21,10 @@
  * セッションも `fetch` も基点も知らない。ログアウトも知らない — ログアウトは設定画面にあり、
  * 在庫タブには置かない（B-56c 規則12 / `docs/screen-design.md` 2.1）。
  *
- * **日本語はここには登録を開く操作の名札だけを置く**（規則15）。見出し・欄のラベル・保存・
- * 「←」・案内は `StockItemForm.tsx` の持ち分である。
+ * **日本語はここには一覧の見出し `冷蔵庫` と登録を開く操作の名前だけを置く**（規則15 /
+ * B-64 設計 規則1・2）。欄のラベル・保存・「←」・案内は `StockItemForm.tsx` の持ち分である。
+ *
+ * **見た目の値は `PantryTab.module.css` にだけ置く**（ADR-055 決定1 / B-64 設計 規則12）。
  */
 
 import type { JSX } from 'react';
@@ -33,18 +35,26 @@ import { PantryList } from './PantryList.js';
 import type { PantryListState } from './PantryList.js';
 import { StockItemEditForm } from './StockItemEditForm.js';
 import { StockItemForm } from './StockItemForm.js';
+import styles from './PantryTab.module.css';
+import { Icon } from '../../icons/Icon.js';
 import type {
   DeleteStockItem,
   RegisterStockItem,
   UpdateStockItem,
 } from '../../server/StockItemRequests.js';
+import { ScreenHeader } from '../../navigation/ScreenHeader.js';
 
 /**
- * 登録を開く操作の名札。**仮の文言である**（`docs/screen-design.md` 論点3 / 規則15）—
- * 同書 5章のワイヤーは見出しの行の右端に「＋」を置いており、記号だけでは読み上げに乗らない
- * ため、いまは文字を添えてある。
+ * 一覧の見出し（原本 `PantryScreen.dc.html` / B-60 規則13 / B-64 規則1）。文言はデザインが正である
+ * （ADR-074 決定1）。
  */
-const OPEN_REGISTER_LABEL = '＋ 食材を追加';
+const HEADING = '冷蔵庫';
+
+/**
+ * 登録を開く操作の名前（B-64 設計 規則2）。見えるのは `plus` のアイコンだけで、名前は
+ * `aria-label` のこの文だけが運ぶ（アイコンは `aria-hidden`）。
+ */
+const OPEN_REGISTER_LABEL = '食材を追加';
 
 export type PantryTabProps = {
   /** 在庫一覧の3値。**門から素通しで受け取る**（B-22 設計 規則10 / B-39 設計 規則4）。 */
@@ -70,6 +80,10 @@ export type PantryTabProps = {
    * 使わず、この画面は中身も読まない（読むのは `StockItemForm` の側である）。
    */
   ingredientNames: IngredientNamesState;
+  /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
+  offline?: boolean;
+  /** 見出しの行の歯車が押された（B-60 設計 6章 規則12）。設定を開いているかは門が持つ。 */
+  onOpenSettings: () => void;
 };
 
 export function PantryTab({
@@ -79,7 +93,10 @@ export function PantryTab({
   onRegister,
   onUpdate,
   ingredientNames,
+  offline = false,
+  onOpenSettings,
 }: PantryTabProps): JSX.Element {
+  // `offline`（B-70）はこの画面では読まず、書き込みを持つ3つの画面へ素通しする。
   // 開いた直後は一覧である（規則2 / 要件 第7章）。
   const [registering, setRegistering] = useState(false);
   // 編集している在庫品1件（null なら編集していない。B-55 設計 規則16・17）。**行から
@@ -95,6 +112,7 @@ export function PantryTab({
         onRegister={onRegister}
         onClose={() => setRegistering(false)}
         ingredientNames={ingredientNames}
+        offline={offline}
       />
     );
   }
@@ -106,22 +124,49 @@ export function PantryTab({
   // mount のたびに作り直される（同 規則2・17 / `StockItemEditForm` の初期値）。
   if (editing !== null) {
     return (
-      <StockItemEditForm stockItem={editing} onUpdate={onUpdate} onClose={() => setEditing(null)} />
+      <StockItemEditForm
+        stockItem={editing}
+        onUpdate={onUpdate}
+        onClose={() => setEditing(null)}
+        offline={offline}
+        today={today}
+      />
     );
   }
 
-  // 登録を開く操作は一覧より前に置く（規則3。`docs/screen-design.md` 5章の見出しの行の右端）。
-  // **一覧が取れなかった回も置いたままにする** — 取得の断りは登録に及ばない（7章）。
+  // 一覧の枝の先頭に見出しの行を置く（B-60 設計 6章 規則12 / B-64 規則1）。**登録・編集の画面には
+  // 置かない**（原本に無い）。**一覧の結末に関わらず置く** — どのタブからもログアウトに届き、
+  // 取得の断りは登録に及ばない（7章）。登録を開く `+` は見出しの行の右、歯車の前に置く
+  // （B-64 規則2 / 原本 `PantryScreen`）。
   return (
-    <>
-      <button type="button" onClick={() => setRegistering(true)}>
-        {OPEN_REGISTER_LABEL}
-      </button>
+    <div className={styles.screen}>
+      <div className={styles.header}>
+        <ScreenHeader
+          title={HEADING}
+          onOpenSettings={onOpenSettings}
+          actions={
+            <button
+              type="button"
+              className={styles.iconButton}
+              aria-label={OPEN_REGISTER_LABEL}
+              onClick={() => setRegistering(true)}
+            >
+              <Icon name="plus" size={24} />
+            </button>
+          }
+        />
+      </div>
 
       {/* 行のタップで編集へ移る（B-55 設計 規則15・16 / `docs/screen-design.md` 2章
           `pantry --> edit`）。**どの動きをタップと読むかは一覧の側の判断である**
           （`SwipeGesture.ts`）— ここは受け取った1件を持つだけである。 */}
-      <PantryList stockItems={stockItems} today={today} onDelete={onDelete} onEdit={setEditing} />
-    </>
+      <PantryList
+        stockItems={stockItems}
+        today={today}
+        onDelete={onDelete}
+        onEdit={setEditing}
+        offline={offline}
+      />
+    </div>
   );
 }

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&amp;family=Zen+Kaku+Gothic+New:wght@400;500&amp;display=swap" rel="stylesheet"><style>@keyframes ftm-indet{0%{transform:translateX(-100%)}100%{transform:translateX(320%)}}</style></helmet>
+<div style="position:relative;box-sizing:border-box;display:flex;flex-direction:{{ L.dir }};width:{{ L.w }};min-height:{{ L.h }};background:#FAF9F6;color:#1F1E1B;font-size:16px;line-height:1.75;letter-spacing:0.02em;font-family:var(--ftm-font, 'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui, sans-serif)">
+  <sc-if value="{{ pc }}" hint-placeholder-val="{{ false }}"><dc-import name="SideNav" active="meal" hint-size="240px,900px"></dc-import></sc-if>
+  <main style="position:relative;flex:1;min-width:0;display:flex;flex-direction:column;padding:{{ L.pad }}">
+    {{ progress }}
+    <div style="flex:1;width:100%;max-width:{{ L.max }};display:flex;flex-direction:column">
+      <header style="min-height:48px;display:flex;flex-direction:column;justify-content:center;gap:0;padding:{{ L.head }}">
+        <div style="min-height:48px;display:flex;align-items:center;justify-content:space-between"><h1 style="margin:0;font-size:20px;font-weight:500;line-height:1.45;letter-spacing:0.02em">今日の献立</h1><sc-if value="{{ sp }}" hint-placeholder-val="{{ true }}"><button type="button" aria-label="設定" style="width:48px;height:48px;margin-right:-12px;display:flex;align-items:center;justify-content:center;padding:0;border:0;background:none;color:#1F1E1B;cursor:pointer" style-focus="outline:2px solid #1F1E1B;outline-offset:2px"><dc-import name="Icon" icon="settings" size="24" hint-size="24px,24px"></dc-import></button></sc-if></div>
+        <sc-if value="{{ hasCards }}" hint-placeholder-val="{{ true }}"><p style="margin:0;font-size:14px;line-height:1.6;letter-spacing:0.02em;color:#55524C">太字の材料は今日が期限です</p></sc-if>
+      </header>
+      <sc-if value="{{ hasCards }}" hint-placeholder-val="{{ true }}">
+        <div style="display:grid;grid-template-columns:{{ L.cols }};gap:24px;opacity:{{ dim }};transition:opacity 150ms">
+          <sc-for list="{{ cards }}" as="c" hint-placeholder-count="2">
+            <dc-import name="MealCard" meal="{{ c.meal }}" reuse="{{ c.reuse }}" hint-size="100%,190px"></dc-import>
+          </sc-for>
+        </div>
+        <div style="margin-top:24px">
+          <dc-import name="RequestBlock" desktop="{{ pc }}" changed="{{ changed }}" pending="{{ pending }}" hint-size="100%,120px"></dc-import>
+        </div>
+        <div style="margin-top:48px">
+          <dc-import name="AiNotice" hint-size="100%,72px"></dc-import>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isFirst }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:3;min-height:24px"></div>
+        <dc-import name="RequestBlock" desktop="{{ pc }}" hint-size="100%,120px"></dc-import>
+        <div style="flex:1;min-height:24px"></div>
+      </sc-if>
+      <sc-if value="{{ isShort }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:3;min-height:24px"></div>
+        <div style="width:100%;max-width:{{ L.emptyMax }};display:flex;flex-direction:column;gap:24px">
+          <div style="display:flex;flex-direction:column;gap:8px;padding:24px 16px;background:#ECE7DF">
+            <p style="margin:0;font-size:20px;font-weight:500;line-height:1.45;letter-spacing:0.02em"><span style="display:inline-block">冷蔵庫にあるものを</span><span style="display:inline-block">2つ以上登録してください</span></p>
+            <p style="margin:0;font-size:14px;line-height:1.6;color:#55524C">献立は冷蔵庫の食材から考えます</p>
+          </div>
+          <button type="button" style="width:100%;max-width:360px;height:56px;border:0;border-radius:0;background:#1F1E1B;color:#FAF9F6;font-family:inherit;font-size:16px;font-weight:500;letter-spacing:0.02em;cursor:pointer" style-active="background:#55524C">食材を登録する</button>
+        </div>
+        <div style="flex:1;min-height:24px"></div>
+      </sc-if>
+      <sc-if value="{{ isLimit }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:3;min-height:24px"></div>
+        <div style="width:100%;max-width:{{ L.emptyMax }};display:flex;flex-direction:column;gap:8px;padding:24px 16px;box-sizing:border-box;background:#ECE7DF">
+          <p style="margin:0;font-size:20px;font-weight:500;line-height:1.45;letter-spacing:0.02em;text-wrap:balance">今日の新しい献立は以上です</p>
+        </div>
+        <div style="flex:2;min-height:24px"></div>
+      </sc-if>
+    </div>
+  </main>
+  <sc-if value="{{ sp }}" hint-placeholder-val="{{ true }}"><dc-import name="TabBar" active="meal" hint-size="390px,64px"></dc-import></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:844},&quot;state&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;reuse&quot;,&quot;generated&quot;,&quot;pending&quot;,&quot;short&quot;,&quot;limit&quot;,&quot;first&quot;],&quot;default&quot;:&quot;reuse&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;desktop&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.props.state ?? 'reuse';
+    const pc = !!this.props.desktop;
+    const A = { name: '豚こま肉と白菜の生姜焼き', meta: '材料4件・不足なし', uses: [{ n: '豚こま肉', today: true }, { n: '白菜' }, { n: '玉ねぎ' }] };
+    const B = { name: '小松菜と卵の炒めもの', meta: '材料3件・不足なし', uses: [{ n: '小松菜', today: true }, { n: '卵' }] };
+    const C = { name: 'にんじんと玉ねぎの味噌汁', meta: '材料3件・不足1件', uses: [{ n: 'にんじん' }, { n: '玉ねぎ' }] };
+    let cards = [];
+    if (st === 'reuse' || st === 'pending') cards = [A, B].map(meal => ({ meal, reuse: true }));
+    if (st === 'generated') cards = [A, B, C].map(meal => ({ meal, reuse: false }));
+    const pending = st === 'pending';
+    const reduce = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const progress = pending ? React.createElement('div', { style: { position: 'absolute', top: 0, left: 0, right: 0, height: 2, overflow: 'hidden', zIndex: 2 } },
+      React.createElement('div', { style: { position: 'absolute', top: 0, bottom: 0, left: 0, width: '32%', background: '#1F1E1B', animation: reduce ? 'none' : 'ftm-indet 1.8s cubic-bezier(.45,0,.25,1) infinite' } })) : null;
+    return {
+      sp: !pc, pc, cards, hasCards: cards.length > 0, pending, changed: st === 'generated',
+      isFirst: st === 'first', isShort: st === 'short', isLimit: st === 'limit',
+      dim: pending ? 0.4 : 1, progress,
+      L: pc
+        ? { dir: 'row', w: '1440px', h: '900px', pad: '0 48px 64px', max: '1080px', head: '40px 0 32px', cols: 'repeat(3, minmax(0, 1fr))', emptyMax: '520px' }
+        : { dir: 'column', w: '390px', h: '844px', pad: '0 16px 24px', max: 'none', head: '16px 0 24px', cols: 'minmax(0, 1fr)', emptyMax: 'none' }
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -15,21 +15,28 @@
  * **開いている献立を持つのは門である**（設計 規則9 / ADR-066 と同じ理由）。ここは行から
  * 識別子を渡し、渡された詳細を一覧の代わりに描くだけである（先行 `MealsTab.mealDetail`）。
  *
- * **設定への入口もここに置く**（B-56c / 同書 2.1・7章 — 履歴タブの右上）。一覧を出す3つの状態
- * （読み込み中・取れなかった・取れた）のすべてで出す — 履歴が取れなかった回にログアウトへ
- * 届かなくなってはならない（B-56c 設計 規則2）。**設定を開いているかは門が持ち**（同 規則1 /
- * ADR-066 と同じ理由）、ここは入口の押下を口で渡し、門が組んだ設定画面を一覧の代わりに描く
- * だけである。`features/identity/` は import しない（中身は `ReactNode` で届く）。
+ * **先頭に見出しの行（`h1` 履歴と歯車）を置く**（B-60 設計 6章 規則12〜13）。設定への入口は
+ * SP では3つのタブの見出しの歯車、PC ではサイドナビの下端の「設定」である（B-56c の
+ * 「⚙ 設定」はここで撤去した）。一覧を出す3つの状態（読み込み中・取れなかった・取れた）の
+ * すべてで出す — 履歴が取れなかった回にログアウトへ届かなくなってはならない（B-56c 設計
+ * 規則2 の趣旨）。**設定を開いているかは門が持ち**（ADR-066 と同じ理由）、ここは歯車の押下を
+ * 口で渡すだけである。**設定画面を描くのはここではない** — 設定はタブの外の4つ目の行き先になり、
+ * 器（`TabbedScreen`）が選んでいたタブの中身の代わりに描く（B-60 設計 6章 規則7）。
+ * `features/identity/` は import しない。
  *
  * 名称での検索（FR-33）はまだ置かない。
  *
- * **文言は仮である**（`docs/screen-design.md` 冒頭・論点3）。
+ * **見た目はデザイン 12 に揃えた**（B-67。値は `HistoryTab.module.css`）。題・切り替え・件数の
+ * 文言はデザインが正である（ADR-074 決定1）。読み込み中・取れなかった・0件の案内はデザインに
+ * 無いので暫定のまま。
  */
 
 import { useState } from 'react';
 import type { JSX, ReactNode } from 'react';
 import type { MealSummaryOutput } from '@fridge-to-meal/contract';
 import type { MealListOutcome } from '../../server/MealRequests.js';
+import { ScreenHeader } from '../../navigation/ScreenHeader.js';
+import styles from './HistoryTab.module.css';
 
 /** 門から渡される履歴の状態（設計 5章）。取りに行くまでは「読み込み中」である。 */
 export type HistoryTabState = { readonly outcome: 'loading' } | MealListOutcome;
@@ -39,10 +46,8 @@ export type HistoryTabProps = {
   onOpenMeal: (mealId: string) => void;
   /** null でなければ一覧の代わりにこれを描く（先行 MealsTab.mealDetail） */
   mealDetail: ReactNode | null;
-  /** 設定への入口が押された（docs/screen-design.md 2.1）。 */
+  /** 見出しの行の歯車が押された（B-60 設計 6章 規則12）。設定を開いているかは門が持つ。 */
   onOpenSettings: () => void;
-  /** null でなければ一覧の代わりにこれを描く（先行 mealDetail）。 */
-  settings: ReactNode | null;
 };
 
 /** 2つの列（ADR-068 決定3）。キーは `ListMealsOutput` のものをそのまま使う。 */
@@ -51,7 +56,7 @@ type Column = 'seen' | 'cooked';
 /** 開いた直後の列（設計 規則5。ワイヤーの左を採った — 設計 10章 前提3）。 */
 const INITIAL_COLUMN: Column = 'seen';
 
-/** 列の切り替えの文言（**仮**。ワイヤーの字面）。並びも切り替えの左右の順である。 */
+/** 列の切り替えの文言（原本 `index.dc.html` 12。ADR-074 決定1 — デザインが正）。並びも切り替えの左右の順である。 */
 const COLUMN_LABELS: readonly { readonly column: Column; readonly label: string }[] = [
   { column: 'seen', label: '以前見た献立' },
   { column: 'cooked', label: 'つくった献立' },
@@ -73,11 +78,8 @@ const EMPTY_COLUMN_NOTICES: Readonly<Record<Column, string>> = {
   cooked: 'つくった献立はまだありません。',
 };
 
-/**
- * 設定への入口の名札（**仮**）。**記号だけにしない** — 読み上げに乗らない（B-56c 設計 規則4 /
- * NFR-16）。
- */
-const OPEN_SETTINGS_LABEL = '⚙ 設定';
+/** 見出しの行の題（原本 `index.dc.html` 12。ADR-074 決定1 — 仮ではない）。 */
+const HEADING = '履歴';
 
 /** 主材料の件数（ADR-068 決定4。件数は主材料で数えたものがサーバから届く — C-16）。 */
 function ingredientCountText(ingredientCount: number): string {
@@ -86,8 +88,8 @@ function ingredientCountText(ingredientCount: number): string {
 
 /**
  * 列の切り替え（設計 規則5 / NFR-17）。**`role="tab"` にしない** — 下タブの `tablist` と
- * 入れ子になる（設計 10章 前提2）。選んでいる側は文字だけでなく `aria-pressed` で読め、
- * **色は1つも足さない**。
+ * 入れ子になる（設計 10章 前提2）。選んでいる側は `aria-pressed` で読め、見た目（地・文字色・
+ * 太さ）は**同じ真偽1つ**から class を当てる（B-67 規則4 / 10章 前提5）。
  */
 function ColumnToggles({
   selected,
@@ -97,30 +99,24 @@ function ColumnToggles({
   onSelect: (column: Column) => void;
 }) {
   return (
-    <div>
-      {COLUMN_LABELS.map(({ column, label }) => (
-        <button
-          key={column}
-          type="button"
-          aria-pressed={column === selected}
-          onClick={() => onSelect(column)}
-        >
-          {label}
-        </button>
-      ))}
+    <div className={styles.inset}>
+      <div className={styles.toggles}>
+        {COLUMN_LABELS.map(({ column, label }) => {
+          const pressed = column === selected;
+          return (
+            <button
+              key={column}
+              type="button"
+              className={pressed ? `${styles.toggle} ${styles.toggleSelected}` : styles.toggle}
+              aria-pressed={pressed}
+              onClick={() => onSelect(column)}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
     </div>
-  );
-}
-
-/**
- * 設定への入口（B-56c 設計 規則3・4）。**文書順で列の切り替え・案内・行より前に置く**（ワイヤーの
- * 見出しの行の右端）。`aria-pressed` を付けない — 列の切り替えと区別する。
- */
-function SettingsEntry({ onOpenSettings }: { onOpenSettings: () => void }) {
-  return (
-    <button type="button" onClick={onOpenSettings}>
-      {OPEN_SETTINGS_LABEL}
-    </button>
   );
 }
 
@@ -136,13 +132,15 @@ function MealRows({
   onOpenMeal: (mealId: string) => void;
 }) {
   return (
-    <ul>
+    // `role="list"` を明示するのは、`list-style: none` で一覧の役割を落とす読み手（Safari）が
+    // あるため（B-67 規則8 / 先行 `MealsTab` の `.cards`）。
+    <ul role="list" className={styles.rows}>
       {meals.map((meal) => (
         // 識別子で鍵を取る — 名称が同じ別の献立を畳まない（設計 規則3）。
         <li key={meal.mealId}>
-          <button type="button" onClick={() => onOpenMeal(meal.mealId)}>
-            <span>{meal.title}</span>
-            <span>{ingredientCountText(meal.ingredientCount)}</span>
+          <button type="button" className={styles.row} onClick={() => onOpenMeal(meal.mealId)}>
+            <span className={styles.title}>{meal.title}</span>
+            <span className={styles.count}>{ingredientCountText(meal.ingredientCount)}</span>
           </button>
         </li>
       ))}
@@ -155,29 +153,41 @@ export function HistoryTab({
   onOpenMeal,
   mealDetail,
   onOpenSettings,
-  settings,
 }: HistoryTabProps): JSX.Element {
-  // 詳細・設定を開いている間もこの部品は mount されたままなので、選んだ列は戻っても保たれる
-  // （規則6 / B-56c 規則8）。
+  // 詳細を開いている間もこの部品は mount されたままなので、選んだ列は戻っても保たれる（規則6）。
+  // **設定を開くと、ここは木から外れる**（B-60 規則10 / B-38 規則6）— タブを移ったときと同じく、
+  // 戻ったときの列は初期に戻る（B-56c 規則8 はここで置き換わった）。
   const [selectedColumn, setSelectedColumn] = useState<Column>(INITIAL_COLUMN);
 
   // **詳細は結末より先に見る**（先行 `MealsTab`）。一覧と並べず入れ替え、列の切り替えも出さない。
   if (mealDetail !== null) return <div>{mealDetail}</div>;
 
-  // 設定も入れ替わりであって足し算ではない。優先は詳細 → 設定 → 一覧（B-56c 規則5）。
-  if (settings !== null) return <div>{settings}</div>;
-
   return (
-    <div>
-      <SettingsEntry onOpenSettings={onOpenSettings} />
+    <div className={styles.screen}>
+      {/* 見出しの行は列の切り替え・案内・行より前（B-60 規則12。原本: 見出しは一覧の先頭）。 */}
+      <div className={styles.inset}>
+        <ScreenHeader title={HEADING} onOpenSettings={onOpenSettings} />
+      </div>
       {historyBody()}
     </div>
   );
 
   function historyBody(): JSX.Element {
     // 読み込み中と取れなかった回は、切り替えを出さない — 切り替えた先にも見せるものが無い。
-    if (meals.outcome === 'loading') return <p role="status">{LOADING_NOTICE}</p>;
-    if (meals.outcome === 'failed') return <p role="status">{LOAD_FAILURE_NOTICE}</p>;
+    if (meals.outcome === 'loading') {
+      return (
+        <p role="status" className={styles.notice}>
+          {LOADING_NOTICE}
+        </p>
+      );
+    }
+    if (meals.outcome === 'failed') {
+      return (
+        <p role="status" className={styles.notice}>
+          {LOAD_FAILURE_NOTICE}
+        </p>
+      );
+    }
 
     const rows = meals.meals[selectedColumn];
 
@@ -185,7 +195,9 @@ export function HistoryTab({
       <>
         <ColumnToggles selected={selectedColumn} onSelect={setSelectedColumn} />
         {rows.length === 0 ? (
-          <p role="status">{EMPTY_COLUMN_NOTICES[selectedColumn]}</p>
+          <p role="status" className={styles.notice}>
+            {EMPTY_COLUMN_NOTICES[selectedColumn]}
+          </p>
         ) : (
           <MealRows meals={rows} onOpenMeal={onOpenMeal} />
         )}

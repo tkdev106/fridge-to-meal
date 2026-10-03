@@ -1,0 +1,100 @@
+/*
+ * 見た目の土台（設計 B-59 6章 規則1〜3 / ADR-055 決定2 / ADR-074 決定4）。
+ * `index.html` が `<link>` で1度だけ読む。**グローバルな CSS はこの1枚だけ**で、画面ごとの
+ * 見た目は各画面の `*.module.css` に置く（ADR-055 決定1）。
+ *
+ * トークンの値は `docs/design/README.md`「トークン」と原本の値をそのまま写す。**名前は役割で
+ * 付け、値は component の側に書かず `var(--…)` で引く。** 値を詰めるのはデザインの側であり、
+ * ここ1か所を直せば全体が追う形にしておく。
+ */
+
+:root {
+  /* 色（原本で使われている色のすべて。これ以外の色を component の側で作らない） */
+  --color-background: #faf9f6; /* 地 */
+  --color-surface: #ffffff; /* カード・入力欄・パネルの面 */
+  --color-surface-muted: #ece7df; /* 控えめな面（注意表示・案内の帯・設定の帯） */
+  --color-border: #e3ded6; /* 区切り線・枠 */
+  --color-border-strong: #8c877f; /* 入力欄の枠・カードの hover の枠 */
+  --color-text: #1f1e1b; /* 文字・主の操作の地 */
+  --color-text-secondary: #55524c; /* 補助の文字・主の操作を押している間 */
+  --color-text-muted: #6e6a63; /* さらに弱い文字（任意・置き文字・無効） */
+  --color-positive: #4a6236; /* 緑の文字（再利用の印・賄える・在庫が変わった） */
+  --color-positive-surface: #e2ebd0; /* 緑の地 */
+  --color-danger: #a33a26; /* 赤の文字（今日まで・不足・削除） */
+  --color-danger-surface: #f7e3dc; /* 赤の地 */
+  --color-caution: #8a5a12; /* 黄土の文字（期限が近い） */
+  --color-caution-surface: #f5ebd8; /* 黄土の地 */
+
+  /* 文字の大きさ（6段）と太さ（2つ） */
+  --font-size-12: 12px;
+  --font-size-14: 14px;
+  --font-size-16: 16px;
+  --font-size-18: 18px;
+  --font-size-20: 20px;
+  --font-size-26: 26px;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+
+  /*
+   * 書体の並び（原本の画面の根）。先頭2つの読み込みは `public/fonts/fonts.css`
+   * （index.html が読む。ADR-075）であってここではない — まだ取りに行っていない分割の
+   * 文字は、並びの3つ目以降（手元にある書体）に落ちる。
+   */
+  --font-family:
+    'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui,
+    sans-serif;
+
+  /* 操作の高さ。副は 48px、主は 56px。押せる要素はどれも 44px 以上にする */
+  --control-height-secondary: 48px;
+  --control-height-primary: 56px;
+
+  /* 下タブの帯の高さ（原本 `TabBar`）。下端の安全域は使う側で足す */
+  --tab-bar-height: 64px;
+
+  /* フォーカスの輪郭（NFR-16。文字色と同じ色で地との比を新しく作らない） */
+  --focus-outline: 2px solid var(--color-text);
+  --focus-outline-offset: 2px;
+}
+
+/*
+ * リセットは**既存の画面の操作の見分けを奪わない範囲に絞る**（設計 B-59 6章 規則3 / NFR-16）。
+ * **ボタンの枠と地は全体で消さない** — 消すと、まだ見た目を持たない画面のボタンが文字だけになり、
+ * 押せると読めなくなる。消すのは見た目を実装する各画面の module の側である。
+ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+/*
+ * フォーム部品は既定で独自の書体と色を持つ。地の書体と色を継がせる。
+ * 角は丸めない（README「トークン」）。
+ */
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  border-radius: 0;
+}
+
+:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-outline-offset);
+}
+
+/* 地（原本の画面の根 `MealScreen` ほかと同じ。設計 B-59 6章 規則2） */
+body {
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family: var(--font-family);
+  font-size: var(--font-size-16);
+  line-height: 1.75;
+  letter-spacing: 0.02em;
+}

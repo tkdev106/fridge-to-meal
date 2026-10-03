@@ -7,9 +7,10 @@
  * **切り出せないもの**だけ — 2欄に打った値がどちらの口へ届くか、送っている間に何が起きないか、
  * 案内が出る／消える／別のものになる、入力が残る、である。
  *
- * **仮の文言と記号を期待値に書かない**（ADR-052 結果2 / 設計 規則2）。見出しも2つの操作の名札も
- * 案内の文面も未確定であり（`docs/screen-design.md` 論点3）、留めると**文言を変えただけで
- * 赤くなる**。観察は次の3つだけで行う（設計 規則3）。
+ * **ADR-074 で文言の正は `docs/design/` に移った。** B-40 の時点では見出しも2つの操作の名札も
+ * 案内の文面も未確定だったため（ADR-052 結果2 / 設計 規則2）、既存の行は文言を期待値に書かず
+ * **位置で引くまま**残す。**新しい行（B-68）は名札で引く** — 見出し・欄・操作の名札とロゴの文字は
+ * `docs/design/` の原本の文言である。既存の行の観察は次の3つだけで行う（設計 規則3）。
  *
  * - **口へ何が届いたか** … `FixedSession.receivedCredentials`（テストが打った値）
  * - **案内** … `queryAllByRole('paragraph')` の**数**と、2回の描画の**文字列が一致しないこと**
@@ -21,7 +22,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
+import { fireEvent, render, screen, waitFor, within } from '../../support/dom/renderComponent.js';
 import { FixedSession } from '../../support/session/FixedSession.js';
 import type { FixedSessionOptions } from '../../support/session/FixedSession.js';
 import { SignInForm } from '../../../src/features/identity/SignInForm.js';
@@ -120,6 +121,16 @@ function soleNoticeText(): string {
   }
 
   return notice.textContent ?? '';
+}
+
+/** 出ている案内の要素。B-68 の行が class と記号を見るために使う。同時に出る案内は1つまでである。 */
+function soleNotice(): HTMLElement {
+  const [notice, ...rest] = notices();
+  if (notice === undefined || rest.length > 0) {
+    throw new Error('案内が1つだけ出ている状態ではない');
+  }
+
+  return notice;
 }
 
 /** 断り（などの案内）が届くまで待つ。**待つ条件に仮の文言を使わない**（設計 規則7・11）。 */
@@ -303,5 +314,100 @@ describe('ログインの画面 SignInForm', () => {
     await waitFor(() => {
       expect(session.receivedCredentials).toHaveLength(2);
     });
+  });
+
+  // ---- B-68: 構造（デザイン 14 / ADR-074）。見た目の値は見ず、class は互いに比べる（ADR-055 決定1・3）。
+
+  it('画面の上にロゴ「fridge to meal」が出る', () => {
+    renderSignInForm();
+
+    // B-68 設計 6章 規則2 / ADR-074: ロゴは原本の文字1つ。
+    expect(screen.getByText('fridge to meal')).not.toBeNull();
+  });
+
+  it('見出しは「ログイン」の1つだけで、階層1である', () => {
+    renderSignInForm();
+
+    // B-68 設計 6章 規則3: 門の signedOut 枝でこの画面だけが描かれ、上位の見出しが無いので h1 にする。
+    // ロゴを見出しにすると2つになる（規則2）。
+    const headings = screen.getAllByRole('heading');
+    expect(headings).toHaveLength(1);
+    expect(headings[0]).toBe(screen.getByRole('heading', { level: 1, name: 'ログイン' }));
+  });
+
+  it('2つの欄は「メールアドレス」と「パスワード」の名札で引ける', () => {
+    renderSignInForm();
+
+    // B-68 設計 6章 規則4: 欄の見出しを span に分けても、<label> が欄を包む形を保ち名札を失わない。
+    expect(screen.getByRole('textbox', { name: 'メールアドレス' })).not.toBeNull();
+    expect(screen.getByLabelText('パスワード')).not.toBeNull();
+  });
+
+  it('操作は「ログイン」「アカウントを作る」の順に並ぶ', () => {
+    renderSignInForm();
+
+    // B-68 設計 6章 規則6 / 2026-10-02 のユーザー決定: アカウントを作るはログインの下に残す。
+    expect(screen.getAllByRole('button')).toEqual([
+      screen.getByRole('button', { name: 'ログイン' }),
+      screen.getByRole('button', { name: 'アカウントを作る' }),
+    ]);
+  });
+
+  it('ログインとアカウントを作るには違う class が当たり、どちらも空ではない', () => {
+    renderSignInForm();
+
+    const signIn = screen.getByRole('button', { name: 'ログイン' });
+    const signUp = screen.getByRole('button', { name: 'アカウントを作る' });
+
+    // B-68 設計 6章 規則6・7: 主と副は見た目の役割が違い、それを別の class で表す。
+    // **class が空のまま「違う」を満たす実装をここで落とす**（先行 TabbedScreen.test.tsx）。
+    expect(signIn.className).not.toBe(signUp.className);
+    expect(signIn.className).not.toBe('');
+    expect(signUp.className).not.toBe('');
+  });
+
+  it('断りの案内と確認のメールの案内には違う class が当たる', async () => {
+    const rejected = renderSignInForm({ signUp: ['rejected'] });
+
+    fillCredentials();
+    fireEvent.click(signUpOperation());
+    await waitForSoleNotice();
+    const rejectedClass = soleNotice().className;
+    rejected.rendered.unmount();
+
+    renderSignInForm({ signUp: ['confirmationRequired'] });
+
+    fillCredentials();
+    fireEvent.click(signUpOperation());
+    await waitForSoleNotice();
+    const confirmationClass = soleNotice().className;
+
+    // B-68 設計 6章 規則9 / NFR-16: 断りの帯と控えめな帯で配色を分ける。値ではなく class を比べる。
+    expect(rejectedClass).not.toBe(confirmationClass);
+  });
+
+  it('断りの案内に添える記号 ! は読み上げに出ない', async () => {
+    renderSignInForm({ signIn: ['rejected'] });
+
+    fillCredentials();
+    fireEvent.click(signInOperation());
+    await waitForSoleNotice();
+
+    const mark = within(soleNotice()).getByText('!');
+
+    // B-68 設計 6章 規則9 / NFR-17: 色だけで分けないために記号を添え、読み上げでは文を変えない。
+    // ARIA の約束（aria-hidden）を見る手段がほかに無いため、この1行だけ DOM を辿る。
+    expect(mark.closest('[aria-hidden="true"]')).not.toBeNull();
+  });
+
+  it('確認のメールの案内には ! を添えない', async () => {
+    renderSignInForm({ signUp: ['confirmationRequired'] });
+
+    fillCredentials();
+    fireEvent.click(signUpOperation());
+    await waitForSoleNotice();
+
+    // B-68 設計 6章 規則9: 記号は断りの帯だけに添える。確認のメールは断りではない。
+    expect(within(soleNotice()).queryByText('!')).toBeNull();
   });
 });

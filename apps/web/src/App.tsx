@@ -30,6 +30,8 @@ import type { TabId } from './navigation/Tabs.js';
 import { DEFAULT_TAB } from './navigation/Tabs.js';
 import { TabbedScreen } from './navigation/TabbedScreen.js';
 import type { Session, SessionState } from './session/Session.js';
+import type { Connectivity, ConnectivityState } from './connectivity/Connectivity.js';
+import { OfflineBanner } from './connectivity/OfflineBanner.js';
 import type {
   DeleteStockItem,
   ListStockItems,
@@ -101,6 +103,8 @@ export type AppProps = {
   listMeals: ListMeals;
   /** 世帯のデータを消す口（B-56f）。組み立てるのはやはり `main.tsx` だけである。 */
   deleteHouseholdData: DeleteHouseholdData;
+  /** 接続状態の継ぎ目（B-70 設計 5章）。**必須**であり、組み立てるのは `main.tsx` だけである。 */
+  connectivity: Connectivity;
 };
 
 /** 開いている献立と、その出どころのタブ（B-54b 設計 規則9。門の内部の形で export しない）。 */
@@ -119,6 +123,7 @@ export function App({
   addCookingRecord,
   listMeals,
   deleteHouseholdData,
+  connectivity,
 }: AppProps) {
   // 購読を始めた時点の状態は subscribe が1度目に渡す（`Session.ts` 規則5）ので、
   // ここで先に決めない。最初の描画は購読が始まるまでの一瞬だけ 'unknown' でよい。
@@ -163,12 +168,23 @@ export function App({
   /**
    * **設定を開いているか**（B-56c 設計 規則1 / `docs/screen-design.md` 2.1・8章）。
    *
-   * **履歴タブではなく門が持つ** — 開いている献立（`openMeal`）と同じ置き方であり、理由も
-   * ADR-066 と同じである。タブを移っても閉じず（規則9）、閉じるのは設定画面の「閉じる」と
-   * サインイン済みでなくなった回だけである（規則10）。開いても閉じても何も取りに行かない
-   * （規則11）。
+   * **門が持つ** — 開いている献立（`openMeal`）と同じ置き方であり、理由も ADR-066 と同じである。
+   * **設定はタブの外の4つ目の行き先であり**（B-60 設計 6章 規則7）、器（`TabbedScreen`）が
+   * 選んでいたタブの中身の代わりに描く。**開く入口は、SP では3つのタブの見出しの歯車、PC では
+   * サイドナビの下端の「設定」である**（B-60 規則4・12）。閉じるのは設定画面の「閉じる」、**タブを押した回**
+   * （B-60 規則8。B-56c 規則9「タブを移っても閉じない」はここで置き換わった）、サインイン済みで
+   * なくなった回（B-56c 規則10）である。開閉で `selectedTab` も `openMeal` も変えない
+   * （B-60 規則9）。開いても閉じても何も取りに行かない（B-56c 規則11）。
    */
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  /**
+   * 世帯のデータの削除を送っている間か（B-60b 規則1・4・8）。**帯を止めるために門も持つ** —
+   * 設定画面の「送っている間はどの操作も効かない」（B-56f 規則6）は設定画面の中にしか及ばず、
+   * 帯のタブを押すと設定が閉じて（B-60 規則8）、失敗の案内を見ないまま残る。設定画面の
+   * `deleting` とは別に持つ（二重に持つ。設定画面の口と状態は変えない）。
+   */
+  const [deletingHouseholdData, setDeletingHouseholdData] = useState(false);
 
   // 開いた献立の取得の結末。**開くまでは「読み込み中」ですらない**（詳細を出していない）。
   const [mealDetail, setMealDetail] = useState<MealDetailState>({ outcome: 'loading' });
@@ -190,13 +206,23 @@ export function App({
   // 在庫の登録・更新・削除では履歴は変わらない。
   const [mealListReloadCount, setMealListReloadCount] = useState(0);
 
-  // 「新しい献立を求める」（B-49b / FR-36）を送っている間か（S-5）。
-  const [requestingNewMeals, setRequestingNewMeals] = useState(false);
+  // 「新しい献立を求める」（B-49b / FR-36）を求めた時刻（ミリ秒）。`null` なら送っていない（S-5）。
+  // **送信中かどうかはこの値だけで決まる**（B-62 設計 10章 前提1。真偽と時刻の2つを持たない）。
+  // 経過秒数の起点を門が持つのは、器が選んでいないタブを木から外すためである — 献立タブを
+  // 離れて戻っても秒数が0に戻らない（B-62 規則12 / D-6 / NFR-04）。
+  const [newMealsRequestedAt, setNewMealsRequestedAt] = useState<number | null>(null);
   // 直前の要求が失敗したか（S-6）。押し直した時点で消す（規則: 同時に出さない）。
   const [newMealsFailed, setNewMealsFailed] = useState(false);
 
   // 購読は1本。`session` が同じなら張り替えず、外れるとき戻り値で解除する（規則2）。
   useEffect(() => session.subscribe(setState), [session]);
+
+  // 接続状態も門が持つ（B-70 設計 規則3 / ADR-066）。購読は1本で、`connectivity` が同じなら
+  // 張り替えない。**購読が渡すまでの初期値は `online`** — 一瞬の描画で操作を止めない。
+  // セッションとは別に持つので、サインアウトしても捨てない。
+  const [connectivityState, setConnectivityState] = useState<ConnectivityState>('online');
+  useEffect(() => connectivity.subscribe(setConnectivityState), [connectivity]);
+  const offline = connectivityState === 'offline';
 
   // 取りに行くのは**サインイン済みのときだけ1度**（B-22 設計 規則10）。サインアウトしている間は
   // 叩いても 401 が返るだけで、往復を1つ無駄にする。
@@ -352,7 +378,7 @@ export function App({
    * **サインイン済みでなくなったら、設定も閉じる**（B-56c 規則10 / ADR-066 結果1 / NFR-09）。
    *
    * 門は signedOut の間も生き続けるので、mount には頼れない。閉じないと、入り直した回に
-   * 履歴タブが一覧ではなく設定のまま出る。
+   * タブの中身ではなく設定のまま出る。
    */
   useEffect(() => {
     if (state === 'signedIn') return;
@@ -458,10 +484,16 @@ export function App({
    * データも利用者も残っており（ADR-073 結果3）、案内を出すのは設定画面である。
    */
   const deleteHouseholdDataAndSignOut: DeleteHouseholdData = async () => {
-    const outcome = await deleteHouseholdData();
-    if (outcome.outcome === 'deleted') await session.signOut();
+    // **結末がどちらでも・口が投げても帯を戻す**（B-60b 規則4）。戻し忘れると帯が効かないまま残る。
+    setDeletingHouseholdData(true);
+    try {
+      const outcome = await deleteHouseholdData();
+      if (outcome.outcome === 'deleted') await session.signOut();
 
-    return outcome;
+      return outcome;
+    } finally {
+      setDeletingHouseholdData(false);
+    }
   };
 
   /**
@@ -493,7 +525,8 @@ export function App({
    * **断られても詳細を閉じない** — 案内を読む前に画面が変わる。
    */
   const handleAddCookingRecord = () => {
-    if (openMeal === null || recordingCooking) return;
+    // **接続が切れている間は何もしない**（B-70 規則8）— 見た目の `disabled` と門の二重である。
+    if (openMeal === null || recordingCooking || offline) return;
 
     setRecordingCooking(true);
     setRecordFailureNotice(null);
@@ -535,7 +568,7 @@ export function App({
   /**
    * 「新しい献立を求める」操作の配線（B-49b / FR-36）。
    *
-   * **押している間は2度目の要求を出さない** — `requestingNewMeals` が真なら何もしない。
+   * **押している間は2度目の要求を出さない** — `newMealsRequestedAt` が `null` でなければ何もしない。
    * 1度の求めで生成が2回走ると、**1日10回の枠（NFR-C2）が利用者の意図の倍で減る。**
    * **押した時点で前回の失敗の案内を消す**（役割の割り当て。送信中と失敗は同時に出ない）。
    *
@@ -549,13 +582,15 @@ export function App({
    * なる（FR-28）。在庫が足りない・上限に達した・失敗の回は生成が起きず、献立は増えない。
    */
   const handleRequestNewMeals = () => {
-    if (requestingNewMeals) return;
+    // **接続が切れている間は何もしない**（B-70 規則7）— 見た目の `disabled` と門の二重である。
+    if (newMealsRequestedAt !== null || offline) return;
 
-    setRequestingNewMeals(true);
+    // 時計を読むのは門だけである（`docs/testing.md` 5章。先行 `todayOf(new Date())`）。
+    setNewMealsRequestedAt(Date.now());
     setNewMealsFailed(false);
 
     void requestNewMeals().then((outcome) => {
-      setRequestingNewMeals(false);
+      setNewMealsRequestedAt(null);
 
       if (outcome.outcome === 'suggested') {
         setSuggestion({
@@ -586,6 +621,8 @@ export function App({
   if (state === 'signedOut') {
     return (
       <main>
+        {/* 帯はログインの画面にも出す（B-70 規則5）。ログインの操作は止めない（設計 10章 前提2）。 */}
+        {offline && <OfflineBanner />}
         <SignInForm
           onSignIn={(email, password) => session.signIn(email, password)}
           onSignUp={(email, password) => session.signUp(email, password)}
@@ -610,11 +647,12 @@ export function App({
   // 1つ渡すだけで、いまどちらの画面が出ているかを知らない — 知ると、上の「在庫を取りに行く
   // 効果」と画面の遷移が同じ場所に混ざる。**取り直しても登録の画面は閉じない。**
   //
-  // **在庫タブにログアウトを置かない**（B-56c 規則12）。ログアウトへの経路は、履歴タブの右上の
-  // 入口から開く設定画面の1つだけである（`docs/screen-design.md` 2.1・8章）。
+  // **在庫タブにログアウトを置かない**（B-56c 規則12）。ログアウトへの経路は設定画面の1つだけで
+  // ある（`docs/screen-design.md` 2.1・8章）。
   //
-  // **設定画面を組むのも門である**（B-56c 規則1）。`HistoryTab` は `features/identity/` を
-  // import せず、組んだものを `settings` で受け取って一覧の代わりに描くだけである。
+  // **設定画面を組むのも門である**（B-56c 規則1）。組んだものは器（`TabbedScreen`）の `settings`
+  // に渡し、器が選んでいたタブの中身の代わりに描く（B-60 規則7）。`features/` は
+  // `features/identity/` を import しない。
   //
   // **開いている献立の詳細は1つだけ組み、出どころのタブにだけ渡す**（B-54b 規則9）。もう片方の
   // タブは一覧のままであり、履歴から開いた詳細が献立タブに漏れない（逆も同じ）。
@@ -627,22 +665,49 @@ export function App({
         recording={recordingCooking}
         recordFailureNotice={recordFailureNotice}
         recorded={cookingRecorded}
+        offline={offline}
       />
     );
 
   return (
     <main>
+      {/* 帯は `<main>` の最初の子で、器より前に出す（B-70 規則4）。 */}
+      {offline && <OfflineBanner />}
       <TabbedScreen
         // 選んでいるタブは門が持つ（ADR-066 決定2）。器へは値と、押されたことを受ける口を
         // 渡すだけで、**運ばれてくるのは `TabId` だけ**である（同 決定3）。
         selectedTab={selectedTab}
-        onSelectTab={setSelectedTab}
+        // **設定を開いている間にタブを押すと、設定を閉じてそのタブを出す**（B-60 設計 6章
+        // 規則8）。押したのが開く前に選んでいたタブでも同じである。
+        onSelectTab={(tab) => {
+          setSettingsOpen(false);
+          setSelectedTab(tab);
+        }}
+        // **設定は4つ目の行き先である**（B-60 規則7）。組むのは門で、器はタブの中身の代わりに
+        // 描くだけである。開閉で `selectedTab` も開いている献立も変えない（同 規則9）— 閉じれば
+        // 開く前に選んでいたタブ（詳細を開いていれば詳細）に戻る。
+        settings={
+          settingsOpen ? (
+            <SettingsScreen
+              onSignOut={() => session.signOut()}
+              onClose={() => setSettingsOpen(false)}
+              onDeleteHouseholdData={deleteHouseholdDataAndSignOut}
+              offline={offline}
+            />
+          ) : null
+        }
+        onOpenSettings={() => setSettingsOpen(true)}
+        // **削除を送っている間は帯を止める**（B-60b 規則1）。確認を出しているだけの間・
+        // オフラインの間は止めない（同 規則5）。
+        disabled={deletingHouseholdData}
         meals={
           <MealsTab
             suggestion={suggestion}
             today={todayOf(new Date())}
             onRequestNewMeals={handleRequestNewMeals}
-            requestingNewMeals={requestingNewMeals}
+            newMealsRequestedAt={newMealsRequestedAt}
+            // 経過秒数を読むための時計（B-62 規則4・5）。画面は自分で時計を読まない。
+            now={Date.now}
             newMealsFailed={newMealsFailed}
             // **在庫タブへ送る**（`docs/screen-design.md` D-7 / B-49c 規則9 / ADR-066 決定2）。
             // 門がするのは `'pantry'` にすることだけで、**「在庫が足りないから在庫タブへ」
@@ -655,6 +720,8 @@ export function App({
             // **詳細を組むのは門である**（設計 規則17）。器は渡されたものを描くかどうかだけを
             // 決める（先行 `PantryTab` の一覧 ⇄ 登録）。
             mealDetail={openMeal?.from === 'meals' ? openMealDetail : null}
+            offline={offline}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         }
         pantry={
@@ -665,6 +732,8 @@ export function App({
             onRegister={registerAndReload}
             onUpdate={updateAndReload}
             ingredientNames={ingredientNames}
+            offline={offline}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         }
         history={
@@ -674,15 +743,6 @@ export function App({
             onOpenMeal={openMealFrom('history')}
             mealDetail={openMeal?.from === 'history' ? openMealDetail : null}
             onOpenSettings={() => setSettingsOpen(true)}
-            settings={
-              settingsOpen ? (
-                <SettingsScreen
-                  onSignOut={() => session.signOut()}
-                  onClose={() => setSettingsOpen(false)}
-                  onDeleteHouseholdData={deleteHouseholdDataAndSignOut}
-                />
-              ) : null
-            }
           />
         }
       />

@@ -1,0 +1,186 @@
+/*
+ * 設定画面（原本 `docs/design/src/index.dc.html` 13 / 13b / 設計 B-67 6章 規則11〜21）。
+ *
+ * **見た目の値はここにだけ置く**（ADR-055 決定1・2）。`SettingsScreen.tsx` は class 名しか書かない。
+ * 色・文字の大きさ・太さ・操作の高さはトークン（`src/global.css` の `:root`）から `var(--…)` で
+ * 引き、ここで新しい色を作らない。トークンに無い寸法（余白・帯の高さ・字間）は原本の値を直に書く。
+ *
+ * PC（幅 1024px 以上）の組み替えはここに無い — デザインが 13 / 13b を SP でしか描いていない
+ * （設計 2章）。フォーカスの輪郭はグローバルの `:focus-visible` に任せ、ここで消さない（規則21）。
+ */
+
+/* 画面の欄（原本 `main` の `0 0 24px`）。帯と行は幅いっぱいに引く。 */
+.screen {
+  padding: 0 0 24px;
+}
+
+/* 見出しの行（規則11）。左に戻る、続けて題。 */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 48px;
+  padding: 24px 16px 24px 4px;
+}
+
+/*
+ * 戻る。見えるのは `back` のアイコンだけで、押せる範囲は 48px 四方（規則11 / NFR-16）。
+ * 素の button の枠と地はここで消す（規則2）。
+ */
+.back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height-secondary);
+  height: var(--control-height-secondary);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+/* 削除を送っている間（B-56f 規則6）。押せないことを弱い文字色で示す。 */
+.back:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+/* 題（`h1`）。 */
+.title {
+  margin: 0;
+  font-size: var(--font-size-20);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.45;
+}
+
+/* 帯（規則12。見出し `h2`）。 */
+.band {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  margin: 0;
+  padding: 0 16px;
+  background: var(--color-surface-muted);
+  font-size: var(--font-size-12);
+  font-weight: var(--font-weight-regular);
+  line-height: 1.5;
+  letter-spacing: 0.12em;
+}
+
+/* `データ` の帯（上を 24px 空ける。規則12）。 */
+.bandSpaced {
+  margin-top: 24px;
+}
+
+/* ログアウトの行（規則13）。素の button の枠と地はここで消す。 */
+.signOut {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: var(--control-height-primary);
+  padding: 0 16px;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  background: none;
+  color: var(--color-text);
+  font-size: var(--font-size-16);
+  letter-spacing: 0.02em;
+  text-align: left;
+  cursor: pointer;
+}
+
+.signOut:hover:not(:disabled) {
+  background: var(--color-surface);
+}
+
+.signOut:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+/* 削除の置き場（規則14）。 */
+.dataArea {
+  padding: 24px 16px;
+}
+
+/* 削除の操作（規則14）。赤の枠と文字・地なし。 */
+.delete {
+  width: 100%;
+  height: var(--control-height-secondary);
+  border: 1px solid var(--color-danger);
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-danger);
+  font-size: var(--font-size-16);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+/* 確認（規則15）。文と操作群の間 24px。 */
+.confirmation {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.confirmSentence {
+  margin: 0;
+  font-size: var(--font-size-16);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.75;
+  text-wrap: pretty;
+}
+
+/* 確認の操作群。操作どうし 12px で縦に並ぶ。 */
+.confirmActions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* `削除する`。 */
+.confirm {
+  width: 100%;
+  height: var(--control-height-secondary);
+  border: 0;
+  border-radius: 0;
+  background: var(--color-danger);
+  color: var(--color-background);
+  font-size: var(--font-size-16);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+/* 押せない間（送っている間・オフライン）は地と文字を弱める（先行 `MealDetail.module.css`）。 */
+.confirm:disabled {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+/* `やめる`。 */
+.cancel {
+  width: 100%;
+  height: var(--control-height-secondary);
+  border: 1px solid var(--color-text);
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--font-size-16);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.cancel:disabled {
+  border-color: var(--color-border-strong);
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+/* 失敗の案内（規則17。文言は暫定）。 */
+.failure {
+  margin: 0;
+}
