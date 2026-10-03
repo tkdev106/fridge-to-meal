@@ -36,7 +36,9 @@ const FIELD_LABELS: Record<keyof SignUpFormValues, string> = {
 const SUBMIT_LABEL = 'アカウントを作る';
 const BACK_LABEL = 'ログイン画面へ戻る';
 const DONE_BACK_LABEL = 'ログイン画面へ';
-const SENDING_LABEL = '送っています…';
+/** 送っている間の名札。見える文字は `…` だけで、読み上げには `SENDING_NAME` を渡す（ログインの画面と同じ）。 */
+const SENDING_LABEL = '…';
+const SENDING_NAME = '送っています';
 
 /** 欄の下の理由（規則3・4・8）。下限と上限の数は `SignUpFormValues.ts` の値と揃える。 */
 const EMAIL_PROBLEMS: Record<EmailProblem, string> = {
@@ -228,7 +230,12 @@ export function SignUpForm({ onSignUp, onBackToSignIn }: SignUpFormProps) {
             </p>
           )}
 
-          <button type="submit" disabled={sending} className={classOf(shared.primary)}>
+          <button
+            type="submit"
+            disabled={sending}
+            aria-label={sending ? SENDING_NAME : undefined}
+            className={classOf(shared.primary)}
+          >
             {sending ? SENDING_LABEL : SUBMIT_LABEL}
           </button>
           <button
