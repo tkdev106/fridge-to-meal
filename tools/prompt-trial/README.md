@@ -13,7 +13,7 @@ Node.js 18 以上（`fetch` を使う）。依存パッケージなし。`npm in
 API キーは環境変数から読む。使うプロバイダのぶんだけあればよい。
 
 ```
-ANTHROPIC_API_KEY / GOOGLE_API_KEY / OPENAI_API_KEY
+ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY
 ```
 
 ## まず動作を確かめる（API キー不要）
@@ -48,7 +48,7 @@ node tools/prompt-trial/run.mjs --patterns P-1 --runs 3
 node tools/prompt-trial/run.mjs --patterns P-1 --runs 3 --structured
 
 # 他のプロバイダに同じプロンプトを投げる
-node tools/prompt-trial/run.mjs --provider google --model gemini-2.5-flash --runs 3
+node tools/prompt-trial/run.mjs --provider google --model gemini-3.5-flash-lite --runs 3 --structured
 node tools/prompt-trial/run.mjs --provider openai --model gpt-5.6-luna    --runs 3
 ```
 
@@ -83,8 +83,8 @@ node tools/prompt-trial/run.mjs --provider openai --model gpt-5.6-luna    --runs
 | anthropic | **Claude Opus 5 / Sonnet 5 は `temperature` を受け付けない**（400 になる）。`--temperature` は無視される。多様性は避けたい献立の一覧で作る |
 | anthropic | `--effort` の既定は `low`。生成は難しい仕事ではないので、既定を上げると出力トークンと費用が増える |
 | anthropic | **思考のトークンが `--max-tokens` の枠を消費する。** 既定を 8192 にしてあるのはこのため。切り詰めると応答が途中で切れ、JSON の破損として現れる |
-| google | ⚠ **思考の深さを揃えられていない。** 現状 `--effort` は anthropic にしか渡しておらず、Gemini 側の思考設定を送っていない。既定で思考が働くモデルでは出力トークンと応答時間が anthropic と非対称になり、**第11章の比較軸(3)(4) が歪む**。比べる前に、各社の思考設定を揃えること |
-| google | `responseSchema` は OpenAPI 由来のため `additionalProperties` を落として送っている |
+| google | `--effort` を `thinkingConfig.thinkingLevel` として送る（既定 `low`。アプリ本体と同じ。ADR-078）。思考のトークンは出力トークンに足して数える |
+| google | `--structured` は `responseJsonSchema` で送る（アプリ本体と同じ。`additionalProperties` を落とさなくてよい） |
 | openai | `--structured` は `response_format: json_schema` の strict モードを使う |
 
 公式 SDK ではなく素の HTTP を使っているのは、**3社を同じ形で比べるため**と、このリポジトリにまだ `package.json` がないため。アプリ本体（`apps/api`）は各社の公式 SDK を使ってよい。

@@ -74,19 +74,25 @@ export const PROVIDERS = {
 
   /* ------------------------------------------------------------------ */
   google: {
-    envKey: 'GOOGLE_API_KEY',
-    defaultModel: 'gemini-2.5-flash',
-    async generate({ model, system, user, maxTokens, schema, temperature }) {
+    // アプリ本体（MealGeneratorImpl）と同じ名前で読む（ADR-078 決定4）。
+    envKey: 'GEMINI_API_KEY',
+    defaultModel: 'gemini-3.5-flash-lite',
+    async generate({ model, system, user, maxTokens, effort, schema, temperature }) {
       const generationConfig = { maxOutputTokens: maxTokens };
       if (temperature !== undefined) generationConfig.temperature = temperature;
+      // 思考の深さを anthropic の effort と揃える（第7章「浅く」）。送らないとモデルの既定になり、
+      // 出力トークンと応答時間が比べられなくなる。
+      if (effort) generationConfig.thinkingConfig = { thinkingLevel: effort };
       if (schema) {
+        // responseJsonSchema は JSON Schema をそのまま受け取る（responseSchema と違い
+        // additionalProperties を落とさなくてよい）。アプリ本体と同じ送り方にする。
         generationConfig.responseMimeType = 'application/json';
-        generationConfig.responseSchema = toGeminiSchema(schema);
+        generationConfig.responseJsonSchema = schema;
       }
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GOOGLE_API_KEY },
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': process.env.GEMINI_API_KEY },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: system }] },
           contents: [{ role: 'user', parts: [{ text: user }] }],
@@ -95,12 +101,20 @@ export const PROVIDERS = {
       });
       const data = await jsonOrThrow(res, 'google');
       const cand = data.candidates?.[0];
-      const text = (cand?.content?.parts ?? []).map((p) => p.text ?? '').join('');
+      // 思考の要約（thought: true）は応答の本文ではない。
+      const text = (cand?.content?.parts ?? [])
+        .filter((p) => !p.thought)
+        .map((p) => p.text ?? '')
+        .join('');
       return {
         text,
         usage: {
           input: data.usageMetadata?.promptTokenCount ?? null,
-          output: data.usageMetadata?.candidatesTokenCount ?? null,
+          // 思考のトークンも出力として課金されるので足す。
+          output:
+            data.usageMetadata?.candidatesTokenCount == null
+              ? null
+              : data.usageMetadata.candidatesTokenCount + (data.usageMetadata.thoughtsTokenCount ?? 0),
           cacheRead: data.usageMetadata?.cachedContentTokenCount ?? 0,
         },
         stopReason: cand?.finishReason ?? null,
@@ -149,15 +163,3 @@ export const PROVIDERS = {
     },
   },
 };
-
-/** Gemini の responseSchema は OpenAPI 由来で additionalProperties を受け付けない。 */
-function toGeminiSchema(node) {
-  if (Array.isArray(node)) return node.map(toGeminiSchema);
-  if (node === null || typeof node !== 'object') return node;
-  const out = {};
-  for (const [k, v] of Object.entries(node)) {
-    if (k === 'additionalProperties') continue;
-    out[k] = toGeminiSchema(v);
-  }
-  return out;
-}
