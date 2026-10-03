@@ -213,7 +213,7 @@ flowchart TD
 | ADR-077 | 本番の Supabase への移行の適用を GitHub Actions から Supabase CLI の `db push` で行う | 承認 |
 | ADR-078 | Supabase 無料プランの一時停止を、GitHub Actions の定期実行で1日1回 DB を読んで防ぐ | 承認 |
 | ADR-079 | LLM プロバイダを Gemini（`gemini-3.5-flash-lite`）とし、SDK を使わず `fetch` で呼び、モデル名を設定の1か所に置く | 承認 |
-| ADR-080 | 500 `unexpected` に畳む失敗を、種類と最小限の手がかりだけでサーバのログに1行残す | 提案 |
+| ADR-080 | 500 `unexpected` に畳む失敗を、種類と最小限の手がかりだけでサーバのログに1行残す | 承認 |
 
 ---
 
@@ -1744,7 +1744,7 @@ flowchart TD
 
 ---
 
-### ADR-080　500 `unexpected` に畳む失敗を、種類と最小限の手がかりだけでサーバのログに1行残す　`提案`
+### ADR-080　500 `unexpected` に畳む失敗を、種類と最小限の手がかりだけでサーバのログに1行残す　`承認`
 
 - **状況** — api 層は、写せない失敗を 500 の `unexpected` に畳み、`message` を応答に出さない（ADR-045 結果2 / NFR-09）。**応答に出さないだけでなく、どこにも残していなかった。** 2026-10-03、本番に api を初めてデプロイしたところ、全経路が 500 `unexpected` になり、`wrangler tail` にも何も出ず、原因を特定できなかった（Worker は落ちておらず、api が受け止めて 500 を返していた）。ADR-045 結果3 は、素の `Error` の境目を「その周で決める」と預けていたが、**運用で原因を見る手段**は決めていなかった。
 - **決定** — **500 に畳む直前に、失敗の種類と最小限の手がかりだけをサーバのログ（`console.error`）に1行出す。** 応答の本体は変えない。ログに何を載せ、何を載せないかは、1か所（`apps/api/src/shared/api/UnexpectedFailureLog.ts`）に置く。
