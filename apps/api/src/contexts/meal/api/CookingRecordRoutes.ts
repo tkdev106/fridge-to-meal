@@ -9,6 +9,7 @@ import type { Context } from 'hono';
 import { extractAccessToken } from './AccessToken.js';
 import { statusOfThrown } from './RuleViolationStatus.js';
 import type { AddCookingRecord } from '../usecase/AddCookingRecord.js';
+import { logUnexpectedFailure } from '../../../shared/api/UnexpectedFailureLog.js';
 
 /** 世帯は**中身を見ない値**として扱う。型はユースケースから引く（ADR-032 決定1）。 */
 type HouseholdIdParam = Parameters<AddCookingRecord>[0];
@@ -86,11 +87,7 @@ function reject(c: Context, thrown: unknown) {
   const mappedError = statusOfThrown(thrown);
   if (mappedError !== null) return c.json(mappedError.body, mappedError.status);
 
-  // 応答には原因を出さない代わりに、サーバ側のログにだけ種類とメッセージを残す（応答の規則14 / NFR-09 は
-  // 変えない）。スタックと `cause` は出さない — 接続の情報が混ざりうる。
-  console.error(
-    'unexpected',
-    thrown instanceof Error ? `${thrown.name}: ${thrown.message}` : typeof thrown,
-  );
+  // 応答には原因を出さない代わりに、サーバのログにだけ種類を残す（ADR-080）。
+  logUnexpectedFailure(thrown);
   return c.json({ rule: 'unexpected' } satisfies ErrorResponseDto, 500);
 }

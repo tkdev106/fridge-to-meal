@@ -277,6 +277,7 @@ apps/api/                  Hono on Cloudflare Workers
   src/contexts/catalog/
   src/contexts/identity/
   src/shared/domain/
+  src/shared/api/            HTTP 層が共有する最小限の部品（500 に畳む失敗のログ。ADR-080）
   src/shared/infrastructure/  コンテキストをまたぐインフラ（トランザクションの helper）。infrastructure/ と main.ts だけが引く（ADR-059）
   src/main.ts              composition root
   test/contexts/           単体テスト（src と同じ木）
