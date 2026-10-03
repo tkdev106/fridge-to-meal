@@ -1,0 +1,20 @@
+# web を Cloudflare Workers の静的アセットとして配信する（ADR-082）。スクリプトを持たない Worker で、
+# `vite build` の出力 `dist/` をそのまま返す。api（`apps/api/wrangler.toml`）とは別の Worker である。
+#
+# 配信される origin は https://fridge-to-meal.tkdev106.workers.dev（Worker の名前とアカウントの
+# workers.dev のサブドメインで決まる）。api の CORS の許可一覧（`apps/api/src/main.ts` の
+# ALLOWED_WEB_ORIGINS）にこの origin がある。名前を変えたら、そちらも同じ周で変える。
+#
+# VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY / VITE_API_BASE_URL の3つはビルドの時点でバンドルに入る。
+# 実行時の変数ではないので、ここの [vars] には置かず、Workers Builds の「ビルド変数」に置く。
+name = "fridge-to-meal"
+compatibility_date = "2026-09-07"
+
+# Cloudflare への利用統計の送信を止める（api と同じ理由）。
+send_metrics = false
+
+# 画面の出し分けは URL ではなく状態で行うが、どの道で開かれても index.html を返しておく。
+# 404 の素のページを出さないためである。
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
