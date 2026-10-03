@@ -11,7 +11,9 @@
  * 記録が通った・記録できなかった）は今のまま仮である。
  *
  * **見た目の値は `MealDetail.module.css` にだけ置き**、ここには class 名しか書かない
- * （ADR-055 決定1）。PC の2列は B-63b に送った（設計 B-63 冒頭）。
+ * （ADR-055 決定1）。**PC（幅 1024px 以上）では材料と「手順・注意表示・記録の操作」の2列になる**
+ * （B-63b）。そのための包みは役割を持たない `div` 2つで、**文書順（＝読み上げと Tab の順）は
+ * SP と同じ**である（NFR-17 / ADR-076 結果1）。
  *
  * **表示は生成時のまま不変である**（FR-30 / C-3）— 献立の中身に手を入れる操作を1つも置かない。
  * **充足だけは開いた時点の在庫で算出されたもの**であり（FR-32 / ADR-009）、取り直すのは門の
@@ -22,7 +24,7 @@
  * 同じ位置に残る。
  */
 
-import type { JSX } from 'react';
+import type { JSX, ReactNode } from 'react';
 import { mealDetailIngredientsOf } from './MealDetailIngredients.js';
 import type { MealDetailIngredient } from './MealDetailIngredients.js';
 import type { CookingRecordFailureNotice } from './CookingRecordFailureNotice.js';
@@ -167,8 +169,11 @@ function IngredientList({ ingredients }: { ingredients: readonly MealDetailIngre
   );
 }
 
-/** 献立の中身（材料・手順・注意表示）。**結末の分岐はここに置かない。** */
-function MealBody({ meal }: { meal: MealOutput }) {
+/**
+ * 献立の中身（材料・手順・注意表示）。**結末の分岐はここに置かない。**
+ * `children` は右の列の末尾に置く記録の操作の並びである（B-63b）。
+ */
+function MealBody({ meal, children }: { meal: MealOutput; children: ReactNode }) {
   // 並び（主材料が先・調味料が後）と印の判断は `mealDetailIngredientsOf` のまま（C-12）。
   // ここでは印の有無で2つの一覧に分けるだけである（B-63 規則6）。
   const ingredients = mealDetailIngredientsOf(meal);
@@ -179,40 +184,48 @@ function MealBody({ meal }: { meal: MealOutput }) {
     <>
       <h1 className={styles.title}>{meal.title}</h1>
 
-      <section className={styles.ingredientsSection}>
-        <div className={styles.ingredientsHeader}>
-          <h2 className={styles.heading}>{INGREDIENTS_HEADING}</h2>
-          <span className={styles.servings}>{SERVINGS}</span>
-        </div>
-        {mains.length > 0 && <IngredientList ingredients={mains} />}
-        {/* **区切り線は両方が1件以上あるときだけ**（B-63 規則6）— 区切る相手が無いと、
+      {/* **包みは役割を持たない `div` にする**（B-63b）— 区分けの要素にすると、中の名前の無い
+          `aside` が `complementary` の役割を失う。 */}
+      <div className={styles.columns}>
+        <section className={styles.ingredientsSection}>
+          <div className={styles.ingredientsHeader}>
+            <h2 className={styles.heading}>{INGREDIENTS_HEADING}</h2>
+            <span className={styles.servings}>{SERVINGS}</span>
+          </div>
+          {mains.length > 0 && <IngredientList ingredients={mains} />}
+          {/* **区切り線は両方が1件以上あるときだけ**（B-63 規則6）— 区切る相手が無いと、
             上か下に余計な線が出る。 */}
-        {mains.length > 0 && seasonings.length > 0 && <hr className={styles.separator} />}
-        {seasonings.length > 0 && <IngredientList ingredients={seasonings} />}
-      </section>
+          {mains.length > 0 && seasonings.length > 0 && <hr className={styles.separator} />}
+          {seasonings.length > 0 && <IngredientList ingredients={seasonings} />}
+        </section>
 
-      {/* **手順が0件でも断らない**（規則6）— 献立は取れており、断ると材料も読めなくなる。
+        <div className={styles.mainColumn}>
+          {/* **手順が0件でも断らない**（規則6）— 献立は取れており、断ると材料も読めなくなる。
           番号は `<ol>` に任せず自分で添える: 手順の番号が生成時のまま（FR-30）であることを
           画面の側で読める。 */}
-      <section className={styles.stepsSection}>
-        <h2 className={styles.heading}>{STEPS_HEADING}</h2>
-        <ol className={styles.steps}>
-          {meal.steps.map((step, index) => (
-            <li key={`${index}-${step}`} className={styles.step}>
-              <span className={styles.stepNumber}>{index + 1}</span>
-              <span className={styles.stepText}>{step}</span>
-            </li>
-          ))}
-        </ol>
-      </section>
+          <section className={styles.stepsSection}>
+            <h2 className={styles.heading}>{STEPS_HEADING}</h2>
+            <ol className={styles.steps}>
+              {meal.steps.map((step, index) => (
+                <li key={`${index}-${step}`} className={styles.step}>
+                  <span className={styles.stepNumber}>{index + 1}</span>
+                  <span className={styles.stepText}>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
 
-      {/* **必ず1回出す**（FR-20 / 規則7）。共有の部品にはしない（B-63 規則9）。 */}
-      <aside className={styles.caution}>
-        <span className={styles.cautionIcon}>
-          <Icon name="info" size={20} />
-        </span>
-        <span className={styles.cautionText}>{CAUTION}</span>
-      </aside>
+          {/* **必ず1回出す**（FR-20 / 規則7）。共有の部品にはしない（B-63 規則9）。 */}
+          <aside className={styles.caution}>
+            <span className={styles.cautionIcon}>
+              <Icon name="info" size={20} />
+            </span>
+            <span className={styles.cautionText}>{CAUTION}</span>
+          </aside>
+
+          {children}
+        </div>
+      </div>
     </>
   );
 }
@@ -251,45 +264,43 @@ export function MealDetail({
           {notice}
         </p>
       ) : (
-        <MealBody meal={shown} />
-      )}
-
-      {/* **記録の操作は取れた献立の枝にだけ置く**（規則9）— 押しても指す献立が画面に無い。
-       **記録済みでも同じ位置に在る**（FR-31 の前半 / 画面設計 4章）。
-       **確認ダイアログを出さない**（規則8）。 */}
-      {shown !== null && (
-        <div className={styles.actions}>
-          {/* **記録済みの表示は `cooked` か直前の記録の結末のどちらかで出し、重ねない**（規則8 /
+        <MealBody meal={shown}>
+          {/* **記録の操作は取れた献立の枝にだけ置く**（規則9）— 押しても指す献立が画面に無い。
+           **記録済みでも同じ位置に在る**（FR-31 の前半 / 画面設計 4章）。
+           **確認ダイアログを出さない**（規則8）。 */}
+          <div className={styles.actions}>
+            {/* **記録済みの表示は `cooked` か直前の記録の結末のどちらかで出し、重ねない**（規則8 /
            ADR-070 結果3）— 門は記録のあとに詳細を取り直さないので、`cooked` だけでは押した直後に
            出ない。**読み上げの割り込み（`status`）にしない**（規則10）— 利用者の操作の結末ではなく、
            開いた時点の事実である。置き場は記録の操作の上（B-63 規則10）。 */}
-          {(shown.cooked || recorded) && (
-            <p className={styles.cookedIndicator}>
-              <Icon name="check" size={20} />
-              {COOKED_INDICATOR}
-            </p>
-          )}
-          {/* 記録の結末の案内は、記録済みの表示と操作の間に置く（B-63 規則10）。 */}
-          {recorded && (
-            <p role="status" className={styles.notice}>
-              {RECORDED_NOTICE}
-            </p>
-          )}
-          {recordFailureNotice !== null && (
-            <p role="status" className={styles.notice}>
-              {RECORD_FAILURE_NOTICES[recordFailureNotice]}
-            </p>
-          )}
-          {/* **接続が切れている間は押せない**（B-70 規則8）。上の「閉じる」は止めない（規則6）。 */}
-          <button
-            type="button"
-            className={styles.cooked}
-            onClick={onAddCookingRecord}
-            disabled={recording || offline}
-          >
-            {COOKED_LABEL}
-          </button>
-        </div>
+            {(shown.cooked || recorded) && (
+              <p className={styles.cookedIndicator}>
+                <Icon name="check" size={20} />
+                {COOKED_INDICATOR}
+              </p>
+            )}
+            {/* 記録の結末の案内は、記録済みの表示と操作の間に置く（B-63 規則10）。 */}
+            {recorded && (
+              <p role="status" className={styles.notice}>
+                {RECORDED_NOTICE}
+              </p>
+            )}
+            {recordFailureNotice !== null && (
+              <p role="status" className={styles.notice}>
+                {RECORD_FAILURE_NOTICES[recordFailureNotice]}
+              </p>
+            )}
+            {/* **接続が切れている間は押せない**（B-70 規則8）。上の「閉じる」は止めない（規則6）。 */}
+            <button
+              type="button"
+              className={styles.cooked}
+              onClick={onAddCookingRecord}
+              disabled={recording || offline}
+            >
+              {COOKED_LABEL}
+            </button>
+          </div>
+        </MealBody>
       )}
     </div>
   );

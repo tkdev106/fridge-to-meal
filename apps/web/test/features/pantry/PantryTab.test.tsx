@@ -1263,12 +1263,13 @@ describe('在庫タブの中身のパネルを閉じたときの焦点', () => {
     fillRegisterFields();
     fireEvent.click(saveAndClose());
 
+    // 閉じる描画と焦点を移す副作用は別の時機に走る（`useEffect`）。act の外で結末が届くため、
+    // パネルが消えた直後にはまだ移っていないことがある — 焦点が移るまで待つ。
     await waitFor(() => {
       expect(comboboxes()).toHaveLength(0);
+      // B-65b 規則7。
+      expect(document.activeElement).toBe(soleOpenRegister());
     });
-
-    // B-65b 規則7。
-    expect(document.activeElement).toBe(soleOpenRegister());
   });
 
   it('「保存してもう1件」が通っても、焦点は `食材を追加` へ移らない', async () => {
@@ -1349,12 +1350,12 @@ describe('在庫タブの中身のパネルを閉じたときの焦点', () => {
     tapRow(rowOf(cabbageWithAmount.name));
     fireEvent.click(saveEditOperation());
 
+    // 焦点を移す副作用はパネルが消える描画より後に走ることがある（上の登録の回と同じ）。
     await waitFor(() => {
       expect(textboxes()).toHaveLength(0);
+      // B-65b 規則7: 編集の `保存` が通った回も閉じ方の1つである。
+      expect(document.activeElement).toBe(rowToggleOf(cabbageWithAmount.name));
     });
-
-    // B-65b 規則7: 編集の `保存` が通った回も閉じ方の1つである。
-    expect(document.activeElement).toBe(rowToggleOf(cabbageWithAmount.name));
   });
 
   it('更新が断られた回は、焦点を行の `…` へ移さない', async () => {

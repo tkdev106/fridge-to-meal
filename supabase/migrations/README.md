@@ -89,15 +89,28 @@ pnpm --filter @fridge-to-meal/api db:generate --custom --name create_delete_own_
 | 相手 | 手段 |
 | --- | --- |
 | ローカル Postgres（テスト） | `pnpm test:db` の `globalSetup`（`apps/api/test/support/db/ApplyMigrations.ts`）が、このディレクトリの `*.sql` を**ファイル名順に、1ファイル = 1回**流す |
-| 本番 Supabase | **Supabase の SQL エディタに貼る。** Supabase CLI は依存に入れていない |
+| 本番 Supabase | **`main` に入ると `.github/workflows/migrate-production.yml` が `supabase db push` で流す**（ADR-077）。流したファイルは本番の `supabase_migrations.schema_migrations` に記録され、次からは未適用のものだけが流れる。Supabase CLI は依存に入れず、CI の中で版を固定して入れる |
 
 **どちらも「ファイルの全文をそのまま1回で流す」形に揃えてある。** これが `begin;` / `commit;` を
 残す理由である — `drizzle-kit migrate` のような migrator は `--> statement-breakpoint` で文ごとに
 割るため、`begin;` が単独のトランザクションになり、**表と RLS が別トランザクションに割れる。**
 上の「1ファイルに置く」規約が守ろうとしている窓が、適用の側から開く。
 
-**CI での本番への適用は自動化していない。** 決めるのはデプロイを扱う周であり、
-先取りすると使われない経路が1本増える。
+**`supabase db push` も1ファイルを1回で流す。** `begin;` / `commit;` を含んだまま通り、途中で落ちたファイルは
+表も記録も残さない（ADR-077 の 状況）。
+
+### 本番への適用（ADR-077）
+
+- **Secret `SUPABASE_DB_URL` が要る。** Supabase の「Connect」にある **Session pooler** の接続文字列
+  （ユーザー `postgres.<ref>`、ポート 5432）に DB のパスワードを埋めたもの。直接接続は IPv6 だけで GitHub から届かず、
+  Transaction pooler（6543）は移行に向かない
+- **初回だけ、SQL エディタで流し済みのファイルを記録する。** Actions の「Migrate production DB」を手で回し、
+  `mark_applied` に日時を空白区切りで入れる（`apply` は外したまま）。dry-run の出力に、まだ流れていないファイルだけが残ることを見る
+- **手で回すとき、`apply` を外せば移行は流さない**（dry-run で流れるファイルを見るだけ）。ただし `mark_applied` を入れた回は、
+  その記録だけは本番の `schema_migrations` に書く
+- **ファイル名の日時は生成した時刻なので、マージの順と食い違ってよい。** 本番で最後に流したものより古い日時の
+  ファイルも `--include-all` で流す（ADR-077 結果7）
+- **api のデプロイとは順序を揃えていない。** 移行が先に流れても古い api が壊れない形（足すだけ）で書く
 
 ## スキーマ修飾
 
