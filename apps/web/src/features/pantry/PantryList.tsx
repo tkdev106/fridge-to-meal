@@ -40,6 +40,7 @@ import type { SwipePoint } from './SwipeGesture.js';
 import { isDeleteSwipe, isTap } from './SwipeGesture.js';
 import styles from './PantryList.module.css';
 import { Icon } from '../../icons/Icon.js';
+import { useBackHandler } from '../../backNavigation/BackHandler.js';
 import type { DeleteStockItem, StockItemsOutcome } from '../../server/StockItemRequests.js';
 
 /**
@@ -378,6 +379,30 @@ export function PantryList({
     if (focusOperationsRequest !== null) focusToggle(focusOperationsRequest.stockItemId);
   }, [focusOperationsRequest]);
 
+  // 状態が指す行が取り直しで消えていれば、何も出ていないものとして扱う（B-69 規則15）。
+  // **確認だけは別である** — 開いた時点の在庫品を抱えて出し続ける（規則12）。
+  // 一覧を描かない回（読み込み中・取れなかった・0件）は、何も出ていない。
+  const current: RowOperations =
+    stockItems.outcome !== 'loaded' || stockItems.stockItems.length === 0
+      ? IDLE
+      : (rowOperations.kind === 'revealed' || rowOperations.kind === 'operationsOpen') &&
+          !stockItems.stockItems.some((listed) => listed.id === rowOperations.stockItemId)
+        ? IDLE
+        : rowOperations;
+
+  function dispatch(event: RowOperationEvent) {
+    setRowOperations(nextRowOperations(current, event));
+  }
+
+  // 端末の戻るは、出ているもの（現れた `削除`・開いた `…`・確認）を Esc・やめると同じ口で
+  // 閉じる（B-75 規則1・2）。焦点も同じくその行の `…` に戻す（B-69 規則13）。何も出ていない
+  // 間は登録しない。閉じるのは書き込みではないので、接続が切れていても止めない（規則11）。
+  useBackHandler(current.kind !== 'idle', () => {
+    dispatch({ kind: 'dismissed' });
+    if (current.kind === 'confirming') focusToggle(current.stockItem.id);
+    else if (current.kind === 'operationsOpen') focusToggle(current.stockItemId);
+  });
+
   function deleteRow(id: string) {
     // 二重に送っても2度目は 404 になり、それを「すでに消えている」と読む（ADR-050）ので
     // 害は無いが、往復を1つ無駄にする。
@@ -412,18 +437,6 @@ export function PantryList({
 
   // 在庫品が0件なら帯を1つも出さない（規則11）。行の操作も描かない（B-69 規則16）。
   if (sections.length === 0) return <p className={styles.notice}>{EMPTY_NOTICE}</p>;
-
-  // 状態が指す行が取り直しで消えていれば、何も出ていないものとして扱う（B-69 規則15）。
-  // **確認だけは別である** — 開いた時点の在庫品を抱えて出し続ける（規則12）。
-  const current: RowOperations =
-    (rowOperations.kind === 'revealed' || rowOperations.kind === 'operationsOpen') &&
-    !stockItems.stockItems.some((listed) => listed.id === rowOperations.stockItemId)
-      ? IDLE
-      : rowOperations;
-
-  function dispatch(event: RowOperationEvent) {
-    setRowOperations(nextRowOperations(current, event));
-  }
 
   function showingOf(id: string): RowShowing {
     if (current.kind === 'revealed' && current.stockItemId === id) return 'revealed';

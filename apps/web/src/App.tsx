@@ -32,6 +32,7 @@ import { TabbedScreen } from './navigation/TabbedScreen.js';
 import type { Session, SessionState } from './session/Session.js';
 import type { Connectivity, ConnectivityState } from './connectivity/Connectivity.js';
 import { OfflineBanner } from './connectivity/OfflineBanner.js';
+import { useBackHandler } from './backNavigation/BackHandler.js';
 import type {
   DeleteStockItem,
   ListStockItems,
@@ -436,6 +437,21 @@ export function App({
 
     setSelectedTab(DEFAULT_TAB);
   }, [state]);
+
+  /**
+   * **端末の戻るで、既定でないタブから献立タブへ戻す**（B-75 規則2・4 / ADR-064 / ADR-084）。
+   *
+   * 口の格は `'tab'` — 開いている画面（詳細・パネル・確認）の口がすべて無いときにだけ呼ばれる。
+   * **設定を開いている間は外す**（規則5）— 設定はタブの中身の代わりに描かれ、戻るで閉じた先は
+   * 開く前のタブである。献立タブで何も開いていなければ登録せず、戻るはアプリを離れる（規則3）。
+   */
+  useBackHandler(
+    state === 'signedIn' && selectedTab !== DEFAULT_TAB && !settingsOpen,
+    () => {
+      setSelectedTab(DEFAULT_TAB);
+    },
+    'tab',
+  );
 
   /**
    * 登録が通ったら一覧を取り直す（FR-01 / FR-04 / B-24）。

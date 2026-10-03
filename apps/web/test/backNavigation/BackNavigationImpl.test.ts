@@ -1,5 +1,5 @@
 /**
- * 端末の「戻る」の継ぎ目の実装 `BackNavigationImpl`（B-74 設計 5章 / 6章 規則4・8・9）。
+ * 端末の「戻る」の継ぎ目の実装 `BackNavigationImpl`（B-75 設計 5章 / 6章 規則4・8・9）。
  *
  * **node の上で動かす**（`docs/testing.md` 5章 — DOM を起動しない）。窓は構造型
  * `BackNavigationSource` で受け取るので、テストは**偽の窓**を渡す（先行
@@ -300,7 +300,7 @@ describe('端末の戻るの継ぎ目 BackNavigationImpl の進む', () => {
     source.userForward();
     await settle(source);
 
-    // 7章 行1 / ADR-083 結果: 進むでは開き直さず、口も呼ばない。着いた深さ（2）が積んだ数（1）
+    // 7章 行1 / ADR-084 結果: 進むでは開き直さず、口も呼ばない。着いた深さ（2）が積んだ数（1）
     // より大きいので、開いている数（1）の深さまで戻して揃える（規則8）。
     expect(closed).toEqual(['top']);
     expect(source.currentState).toEqual({ fridgeToMealBack: 1 });

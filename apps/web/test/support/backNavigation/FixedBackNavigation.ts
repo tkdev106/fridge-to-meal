@@ -1,6 +1,6 @@
 /**
  * 端末の「戻る」の継ぎ目（`src/backNavigation/BackNavigation.ts`）の**記憶上の実装**
- * （B-74 設計 4章・5章）。
+ * （B-75 設計 4章・5章）。
  *
  * **`vi.mock` も `vi.fn()` も使わない**（`docs/testing.md` 2章）。登録された口は自分で持ち、
  * テストが `pressBack()` で「利用者が戻るを押した」ことにする（先行 `FixedConnectivity.emit`）。

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * 端末の「戻る」の hook `useBackHandler` と provider（B-74 設計 5章 / 6章 規則4・5・10）。
+ * 端末の「戻る」の hook `useBackHandler` と provider（B-75 設計 5章 / 6章 規則4・5・10）。
  *
  * 継ぎ目は記憶上の `FixedBackNavigation` に差し替え、`pressBack()` で「利用者が戻るを
  * 押した」ことにする。**履歴の出し入れはここでは見ない** — それは

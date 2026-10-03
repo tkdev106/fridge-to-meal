@@ -32,6 +32,7 @@ import type { MealOutput } from '@fridge-to-meal/contract';
 import type { MealOutcome } from '../../server/MealRequests.js';
 import { Icon } from '../../icons/Icon.js';
 import styles from './MealDetail.module.css';
+import { useBackHandler } from '../../backNavigation/BackHandler.js';
 
 /** 読み込み中の案内（**暫定**。デザインに描かれていない）。 */
 const LOADING_NOTICE = '献立を読み込んでいます。';
@@ -240,6 +241,12 @@ export function MealDetail({
   offline = false,
 }: MealDetailProps): JSX.Element {
   const shown = meal.outcome === 'shown' ? meal.meal : null;
+
+  // 端末の戻るは「←」と同じ口で閉じる（B-75 規則1・2）。読み込み中も閉じられる。
+  // **調理記録を送っている間は飲み込む**（規則6）— 「←」の `disabled={recording}` と同じ理由。
+  useBackHandler(true, () => {
+    if (!recording) onClose();
+  });
 
   // **断られた回も取れなかった回と同じ案内に畳む**（設計 7章 / ADR-032 決定3）。
   const notice = meal.outcome === 'loading' ? LOADING_NOTICE : LOAD_FAILURE_NOTICE;

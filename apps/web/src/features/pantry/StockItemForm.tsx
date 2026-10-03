@@ -36,6 +36,7 @@ import type { RegisterStockItem } from '../../server/StockItemRequests.js';
 import { Icon } from '../../icons/Icon.js';
 import { expiryDateLabelOf } from './ExpiryDateLabel.js';
 import styles from './StockItemForm.module.css';
+import { useBackHandler } from '../../backNavigation/BackHandler.js';
 
 /** 画面の見出し（B-65 規則2 / ADR-074）。 */
 const HEADING = '食材を登録';
@@ -165,6 +166,12 @@ export function StockItemForm({
   // 食材名が空でも「捨てて戻る」は効かねばならないので、`registerInput === null` は含めない。
   // **接続が切れている間も保存の2つと Enter を止める**（B-70 規則9）。入力は消さない。
   const saveDisabled = registerInput === null || sending || offline;
+
+  // 端末の戻るは「←」と同じ口で閉じる（B-75 規則1・2）。**送っている間は飲み込む**（規則6）—
+  // 「←」と同じく、結末が届く前に閉じると断りの案内が出ないまま入力が捨てられる。
+  useBackHandler(true, () => {
+    if (!sending) onClose();
+  });
 
   function changeField(field: keyof StockItemFormValues) {
     return (event: ChangeEvent<HTMLInputElement>) => {
