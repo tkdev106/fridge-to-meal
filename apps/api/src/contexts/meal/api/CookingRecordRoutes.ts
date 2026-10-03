@@ -86,5 +86,11 @@ function reject(c: Context, thrown: unknown) {
   const mappedError = statusOfThrown(thrown);
   if (mappedError !== null) return c.json(mappedError.body, mappedError.status);
 
+  // 応答には原因を出さない代わりに、サーバ側のログにだけ種類とメッセージを残す（応答の規則14 / NFR-09 は
+  // 変えない）。スタックと `cause` は出さない — 接続の情報が混ざりうる。
+  console.error(
+    'unexpected',
+    thrown instanceof Error ? `${thrown.name}: ${thrown.message}` : typeof thrown,
+  );
   return c.json({ rule: 'unexpected' } satisfies ErrorResponseDto, 500);
 }
