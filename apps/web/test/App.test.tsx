@@ -267,8 +267,6 @@ function operationAt(index: number, expectedCount: number): HTMLElement {
  * は `aria-expanded` を持つ開閉ボタンであり（B-69 設計 規則3）、数えるときはそれで除く。
  */
 const LIST_OPERATION_COUNT = 1;
-/** 登録の画面に出ている操作は3つ（閉じる／保存2つ）である（B-56c 規則12）。 */
-const REGISTER_OPERATION_COUNT = 3;
 
 /** 行ごとの `…`（B-69 設計 規則3）を除いた、在庫の一覧の操作を文書順に。 */
 function listOperations(): readonly HTMLElement[] {
@@ -290,12 +288,26 @@ function openRegisterOperation(): HTMLElement {
   return found;
 }
 
+/**
+ * 登録・編集の画面の操作は**名前で引く**（B-65b）。パネルを出している間も一覧の側（`食材を追加`・
+ * 行の `…`）が木に残り、`戻る` の隣に `閉じる` も並ぶので、文書順の位置では引けない。名前は原本から
+ * 取った文言で仮ではない（ADR-074 決定1）。
+ */
+function namedOperation(name: string): HTMLElement {
+  return screen.getByRole('button', { name });
+}
+
+/** 保存せずに閉じる操作（アイコンの `戻る`。B-65 規則2）。 */
 function closeRegisterOperation(): HTMLElement {
-  return operationAt(0, REGISTER_OPERATION_COUNT);
+  return namedOperation('戻る');
+}
+
+function saveAndStayOperation(): HTMLElement {
+  return namedOperation('保存してもう1件');
 }
 
 function saveAndCloseOperation(): HTMLElement {
-  return operationAt(2, REGISTER_OPERATION_COUNT);
+  return namedOperation('保存して閉じる');
 }
 
 /**
@@ -1222,20 +1234,34 @@ describe('門 App のタブの結線', () => {
  */
 describe('在庫の編集（B-55）', () => {
   /**
-   * 編集の画面に出ている操作は2つ（閉じる／保存）である。下タブは `role="tab"` なので混ざらない。
-   * **ログアウトは置かない**（B-56c 規則12。編集の画面の規則12 はこの件数で押さえる）。
+   * 編集の画面に出ている操作は、保存せずに閉じる2つ（`戻る` / `閉じる`。B-65b 規則9）を除けば
+   * 保存の1つである。下タブは `role="tab"` なので混ざらない。**ログアウトは置かない**（B-56c 規則12。
+   * 編集の画面の規則12 はこの件数で押さえる）。一覧の側はパネルを出している間も木に残るが
+   * `inert` の中にあるので（B-65b 規則1・3）、数えない。
    */
-  const EDIT_OPERATION_COUNT = 2;
+  const EDIT_SAVE_OPERATION_COUNT = 1;
+
+  /** 帯の外・`inert` の外にある操作のうち、保存せずに閉じる2つを除いたもの。 */
+  function editPanelOperations(): readonly HTMLElement[] {
+    const closes = [
+      ...screen.queryAllByRole('button', { name: '戻る' }),
+      ...screen.queryAllByRole('button', { name: '閉じる' }),
+    ];
+
+    return contentOperations()
+      .filter((operation) => operation.closest('[inert]') === null)
+      .filter((operation) => !closes.includes(operation));
+  }
 
   /** 打った分量。**テストが渡した値**なので、一覧に出ていないことを当ててよい（設計 規則6）。 */
   const EDITED_AMOUNT = '300g';
 
   function closeEditOperation(): HTMLElement {
-    return operationAt(0, EDIT_OPERATION_COUNT);
+    return namedOperation('戻る');
   }
 
   function saveEditOperation(): HTMLElement {
-    return operationAt(1, EDIT_OPERATION_COUNT);
+    return namedOperation('保存');
   }
 
   /**
@@ -1286,7 +1312,7 @@ describe('在庫の編集（B-55）', () => {
     // FR-05 / 設計 5章: 更新の口が門から通っていることの検めである。編集の欄は分量
     // （`textbox`）と期限（`type="date"`）の2つで、名称の欄は無い（設計 規則1）。
     expect(textboxes()).toHaveLength(1);
-    expect(contentOperations()).toHaveLength(EDIT_OPERATION_COUNT);
+    expect(editPanelOperations()).toHaveLength(EDIT_SAVE_OPERATION_COUNT);
   });
 
   it('更新が通ると、一覧を取り直して新しい在庫品が出る', async () => {
@@ -3002,15 +3028,18 @@ describe('門 App の設定', () => {
     expect(rowOperationToggles()).toHaveLength(1);
   });
 
-  it('在庫の登録の画面に出る操作は、閉じると保存2つの3つだけである', async () => {
+  it('在庫の登録の画面に出る操作は、閉じる2つと保存2つの4つだけである', async () => {
     // 規則12: 登録の画面にもログアウトを置かない。
+    // B-65b 規則1・3・9: 一覧の側は `inert` の中に残るので数えず、パネルの `戻る`・`閉じる`・保存2つを数える。
     renderApp({ initialState: 'signedIn' }, { list: [loaded(carrot)] });
 
     openPantry();
     await screen.findByText(carrot.name);
-    fireEvent.click(contentOperations()[0] as HTMLElement);
+    fireEvent.click(screen.getByRole('button', { name: '食材を追加' }));
 
-    expect(contentOperations()).toHaveLength(3);
+    expect(
+      contentOperations().filter((operation) => operation.closest('[inert]') === null),
+    ).toHaveLength(4);
   });
   it('削除を確かめて通ると、ログインの画面へ戻る', async () => {
     // B-56f 規則7 / ADR-071 結果2 / `Session.ts` 規則8: 消えた回は門がすぐにサインアウトし、
@@ -3732,9 +3761,6 @@ describe('門 App の接続が切れている間も止めない閲覧と遷移',
 });
 
 describe('門 App の接続が切れている間の在庫と設定の操作', () => {
-  /** 編集の画面に出ている操作は2つ（閉じる／保存）である（B-55）。 */
-  const EDIT_OPERATION_COUNT = 2;
-
   /** 行をタップする。**押下と離上を同じ座標に送る**（先行 `在庫の編集（B-55）`）。 */
   function tapSoleRow(): void {
     const row = soleRow();
@@ -3764,7 +3790,7 @@ describe('門 App の接続が切れている間の在庫と設定の操作', ()
     emitConnectivity(connectivity, 'offline');
 
     // 規則9: 門 → `PantryTab` → `StockItemForm` へ `offline` が素通しされている。
-    expect((operationAt(1, REGISTER_OPERATION_COUNT) as HTMLButtonElement).disabled).toBe(true);
+    expect((saveAndStayOperation() as HTMLButtonElement).disabled).toBe(true);
     expect((saveAndCloseOperation() as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -3777,7 +3803,8 @@ describe('門 App の接続が切れている間の在庫と設定の操作', ()
     emitConnectivity(connectivity, 'offline');
 
     // 規則10: 門 → `PantryTab` → `StockItemEditForm` へ `offline` が素通しされている。
-    expect((operationAt(1, EDIT_OPERATION_COUNT) as HTMLButtonElement).disabled).toBe(true);
+    // 名札 `保存` は原本から取った文言（ADR-074）。一覧の側も木に残るので位置では引かない（B-65b）。
+    expect((namedOperation('保存') as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('接続が切れている間は、行の削除を確かめても削除が送られない', async () => {

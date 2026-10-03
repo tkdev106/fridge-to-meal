@@ -1,25 +1,27 @@
 // @vitest-environment jsdom
 /**
- * 在庫タブの中身 `PantryTab` の**一覧と登録の入れ替わり**（B-39 設計 6章 規則1〜7・14〜16 /
- * 7章 / ADR-052 / `docs/testing.md` 4.1）。
+ * 在庫タブの中身 `PantryTab` の**一覧と登録・編集のパネル**（B-39 設計 6章 規則1〜7・14〜16 /
+ * 7章 / B-55 / B-65b 設計 6章 規則1〜10 / 7章 / ADR-052 / ADR-076 / `docs/testing.md` 4.1）。
  *
  * 一覧そのものの見せ方は `PantryList.test.tsx`、登録の入力の扱いは `StockItemFormValues.test.ts`
  * と `RegisterFailureNotice.test.ts` が既に押さえている。ここで確かめるのは**切り出せないもの**
- * だけ — いまどちらの画面を出しているか、操作でどちらへ移るか、移っても残らないものである。
+ * だけ — いまパネルを出しているか、操作でどう移るか、移っても残らないもの、焦点がどこへ戻るかである。
  *
- * **文言は ADR-074 で確定した**（`docs/design/`。B-65）。それでもこのファイルの観点は文言に
- * 頼らずに書いたまま残す — 「＋」「戻る」も保存の名札も見出しも、留めると**文言を変えただけで
- * 赤くなる**。観察は次の3つで行う（例外は末尾の B-60・B-64・B-65 の観点で、見出し `冷蔵庫`・歯車の名前 `設定`・
- * 登録を開く操作の名前 `食材を追加`・編集の画面の残日数の文字を見る）。
+ * **B-65b で入れ替わりは「一覧を常に置き、パネルを隣に出す」に変わった**（B-65b 規則1。B-39 規則1・
+ * B-55 規則16 の置き換え）。パネルを出している間、一覧の側（見出しの行と一覧）は木に残ったまま
+ * `inert` の中に入る（規則3）。SP で一覧の側を隠すのは CSS で、jsdom では見えない（ADR-055 決定3）。
  *
- * - **一覧が出ている** … **テストが渡した在庫品の名称**を `queryByText` で引く。**編集が絡む観点では
- *   名称で観られない**（B-55）— 編集の画面は対象の在庫品の名称を出すため（B-55 設計 規則1）、
- *   名称は一覧が出ていなくても当たる。そちらは **`listitem` の有無**（一覧だけが `<li>` を描く）で観る
- * - **登録の画面が出ている** … `queryAllByRole('textbox')` が1つ以上（一覧は `textbox` を
- *   1つも描かない。期限の欄は `type="date"` なのでこの役割に入らず、欄は [食材名, 分量] の2つ）
- * - **操作** … `getAllByRole('button')` から**名前 `設定` のもの（見出しの歯車。B-60）を除いて**
- *   **文書順の位置**で引く。一覧では先頭が登録を開く操作で、その後ろに行ごとの `…`
- *   （`aria-expanded` を持つ。B-69）が並ぶ。登録の画面では先頭が閉じる操作・末尾が保存である
+ * **文言は ADR-074 で確定した**（`docs/design/`）。観察は次の手がかりで行う。
+ *
+ * - **パネルが出ている** … 登録なら `combobox`（食材名の欄）の有無、編集なら `textbox`（分量の欄）が
+ *   1つあるか。**一覧の側は `textbox` も `combobox` も描かない。** 一覧の側が常に木にあるので、
+ *   在庫品の名称や `listitem` の有無では「パネルが出ているか」を読めない（B-65b）
+ * - **`inert`** … `closest('[inert]')` で属性の有無を見る（先例 `PantryList.test.tsx`）。引くときは
+ *   `hidden: true` を付ける
+ * - **焦点** … `document.activeElement`（先例 `PantryList.test.tsx`）
+ * - **操作** … 確定した文言の名前で引く（`食材を追加` `戻る` `閉じる` `保存してもう1件`
+ *   `保存して閉じる` `保存` `操作` `設定`。ADR-074）。**一覧だけを出している回の数え方**は
+ *   `contentButtons` / `operationAt` で、名前 `設定` を除いた文書順の位置で引く
  *
  * **閉じたことを「渡した関数が呼ばれた回数」で観ない**（`docs/testing.md` 2章 / B-39 設計 8章）。
  * 送っていないことも、`vi.fn()` ではなく**テストが持つ配列の中身**で見る。
@@ -29,7 +31,14 @@ import { describe, expect, it } from 'vitest';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import type { RegisterStockItemInput, StockItemDto } from '@fridge-to-meal/contract';
-import { act, fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '../../support/dom/renderComponent.js';
 import { installPointerCapture } from '../../support/dom/pointerCapture.js';
 import { FixedStockItemRequests } from '../../support/server/FixedStockItemRequests.js';
 import type { FixedStockItemRequestsOptions } from '../../support/server/FixedStockItemRequests.js';
@@ -110,12 +119,15 @@ function pantryTab(overrides: Partial<PantryTabProps> = {}) {
  * 名前は原本から取った文言で仮ではない（ADR-074 決定1）ので、名前で引く。
  */
 function settingsButtons(): HTMLElement[] {
-  return screen.queryAllByRole('button', { name: '設定' });
+  return screen.queryAllByRole('button', { name: '設定', hidden: true });
 }
 
 /**
  * 在庫の操作を**文書順**で引く。**見出しの歯車（と帯の「設定」）は数えない**（B-60）— 歯車は
  * 一覧の先頭に置かれるので、数えると「一覧の先頭の操作＝登録を開く」が崩れる。
+ *
+ * **一覧だけを出している回にだけ使う。** パネルを出している回は一覧の側の操作も木に残る
+ * （B-65b 規則1）ので、位置ではなく名前で引く。
  */
 function contentButtons(): HTMLElement[] {
   const settings = settingsButtons();
@@ -130,7 +142,7 @@ function precedes(before: Node, after: Node): boolean {
 
 /**
  * 押せる操作を**文書順の位置**で引く（負の位置は末尾から数える）。**見出しの歯車は数えない**
- * （`contentButtons`。B-60）。
+ * （`contentButtons`。B-60）。**一覧だけを出している回にだけ使う**（`contentButtons`）。
  *
  * **下タブは混ざらない。** 帯のタブは `role="tab"` を明示しており、この問い合わせに
  * 引っかからない（`TabbedScreen.tsx` / 2026-09-21 に実物で確認）。
@@ -142,6 +154,34 @@ function operationAt(index: number): HTMLElement {
   return found;
 }
 
+/** 要素が `inert` の中にあるか（先例 `PantryList.test.tsx`）。 */
+function insideInert(element: HTMLElement): boolean {
+  return element.closest('[inert]') !== null;
+}
+
+/**
+ * 登録を開く操作 `食材を追加`（B-64 規則2 / ADR-074）。**`inert` の中にあっても引く**
+ * （`hidden: true`）— パネルを出している間も木に残る（B-65b 規則1）。
+ */
+function openRegisterButton(): HTMLElement {
+  return screen.getByRole('button', { name: '食材を追加', hidden: true });
+}
+
+/** 登録を開く。 */
+function openRegister(): void {
+  fireEvent.click(openRegisterButton());
+}
+
+/** 保存せずに閉じる操作 `戻る`（アイコン。B-65 規則2 / B-65b 規則9）。 */
+function backButton(): HTMLElement {
+  return screen.getByRole('button', { name: '戻る' });
+}
+
+/** 保存せずに閉じる操作 `閉じる`（見える文字。B-65b 規則9）。 */
+function closeButton(): HTMLElement {
+  return screen.getByRole('button', { name: '閉じる' });
+}
+
 /**
  * 食材名の欄。**`role="combobox"` を明示しているため役割は `combobox` である**（B-50c /
  * B-66 設計 規則13）— 補完が0件の回も欄はこの役割のままである。
@@ -151,6 +191,27 @@ function operationAt(index: number): HTMLElement {
  */
 function ingredientNameField(): HTMLInputElement {
   return screen.getByRole('combobox') as HTMLInputElement;
+}
+
+/** 登録のパネルが出ているかの手がかり。**一覧の側は `combobox` を描かない。** */
+function comboboxes(): HTMLElement[] {
+  return screen.queryAllByRole('combobox');
+}
+
+/** 行をすべて。**`inert` の中にあっても引く**（`hidden: true`）。 */
+function rows(): HTMLElement[] {
+  return screen.queryAllByRole('listitem', { hidden: true });
+}
+
+/** 渡した名称を含む行（1つであることを先に確かめる）。 */
+function rowOf(name: string): HTMLElement {
+  const found = rows().filter((row) => within(row).queryByText(name) !== null);
+  expect(found).toHaveLength(1);
+
+  const [row] = found;
+  if (row === undefined) throw new Error(`${name} の行が無い`);
+
+  return row;
 }
 
 describe('在庫タブの中身 PantryTab', () => {
@@ -178,13 +239,16 @@ describe('在庫タブの中身 PantryTab', () => {
     expect(screen.queryAllByRole('textbox').length).toBeGreaterThan(0);
   });
 
-  it('登録を開くと、一覧に出ていた在庫品は描かれなくなる', () => {
+  it('登録を開いても、一覧の在庫品は描かれたまま `inert` の中にある', () => {
     render(pantryTab());
 
-    fireEvent.click(operationAt(0));
+    openRegister();
 
-    // 規則1: **入れ替わりであって、足し算ではない**（先行 `TabbedScreen.test.tsx` と同じ構え）。
-    expect(screen.queryByText(carrot.name)).toBeNull();
+    // B-65b 規則1・3 / ADR-076 決定2: 一覧の側は木から外さない（B-39 規則1「出すのは一方だけ」の
+    // 置き換え）。パネルを出している間は `inert` で操作を受けない。
+    const found = rows();
+    expect(found).toHaveLength(1);
+    expect(found.map(insideInert)).toEqual([true]);
   });
 
   it('一覧のときに押せる操作は、登録を開くもの1つと行ごとの操作である', () => {
@@ -198,23 +262,25 @@ describe('在庫タブの中身 PantryTab', () => {
     expect(operations.filter((button) => button.hasAttribute('aria-expanded'))).toHaveLength(2);
   });
 
-  it('登録から閉じる操作を押すと、一覧へ戻る', () => {
+  it('登録から `戻る` で閉じると、パネルが消え一覧の側の `inert` が外れる', () => {
     render(pantryTab());
 
-    fireEvent.click(operationAt(0));
-    // 規則7: 保存せずに閉じる手段を1つ置く。登録の画面では**先頭**がそれである。
-    fireEvent.click(operationAt(0));
+    openRegister();
+    // 規則7 / B-65b 規則9: 保存せずに閉じる手段。
+    fireEvent.click(backButton());
 
-    expect(screen.queryByText(carrot.name)).not.toBeNull();
+    // B-65b 規則1・3 / B-39 規則7: 閉じればパネルは木から外れ、一覧の側は操作を受けるようになる。
+    expect(comboboxes()).toHaveLength(0);
+    expect(insideInert(rowOf(carrot.name))).toBe(false);
   });
 
   it('閉じてから開き直すと、打ちかけの食材名は残っていない', () => {
     render(pantryTab());
 
-    fireEvent.click(operationAt(0));
+    openRegister();
     fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
-    fireEvent.click(operationAt(0));
-    fireEvent.click(operationAt(0));
+    fireEvent.click(backButton());
+    openRegister();
 
     // 規則7: 入力は捨てる。下書きを保存しない。
     expect(ingredientNameField().value).toBe('');
@@ -224,9 +290,9 @@ describe('在庫タブの中身 PantryTab', () => {
     const registrations: RegisterStockItemInput[] = [];
     render(pantryTab({ onRegister: recordingRegister(registrations, { outcome: 'registered' }) }));
 
-    fireEvent.click(operationAt(0));
+    openRegister();
     fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
-    fireEvent.click(operationAt(0));
+    fireEvent.click(backButton());
 
     // 規則7 / ADR-007: 閉じるのは捨てることである。**送った中身を配列で見る。**
     expect(registrations).toEqual([]);
@@ -235,13 +301,13 @@ describe('在庫タブの中身 PantryTab', () => {
   it('一覧が取れなかったときも登録を開ける', () => {
     render(pantryTab({ stockItems: { outcome: 'failed' } }));
 
-    fireEvent.click(operationAt(0));
+    openRegister();
 
     // 7章3行目 / 規則3: 一覧が取れない断りは登録の画面に及ばない（B-22 / B-23）。
     expect(screen.queryAllByRole('textbox').length).toBeGreaterThan(0);
   });
 
-  it('登録が断られても登録の画面のままで、一覧へ戻らない', async () => {
+  it('登録が断られても、パネルは閉じず一覧の側は `inert` のままである', async () => {
     const registrations: RegisterStockItemInput[] = [];
     render(
       pantryTab({
@@ -249,31 +315,135 @@ describe('在庫タブの中身 PantryTab', () => {
       }),
     );
 
-    fireEvent.click(operationAt(0));
+    openRegister();
     fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
-    // 登録の画面では**末尾**が保存である。
-    fireEvent.click(operationAt(-1));
+    fireEvent.click(screen.getByRole('button', { name: '保存して閉じる' }));
 
     // 結末は非同期に届くので、送られたことを待ってから画面を見る。**待つ手がかりは案内の
-    // 文言ではなくテストが記録した配列である** — 文言は仮である（規則15）。
+    // 文言ではなくテストが記録した配列である。**
     await waitFor(() => {
       expect(registrations).toHaveLength(1);
     });
 
-    // 7章1行目 / NFR-15 / ADR-032 決定3: 断られた回は閉じない。入力を残して案内を出す。
-    expect(screen.queryAllByRole('textbox').length).toBeGreaterThan(0);
-    expect(screen.queryByText(carrot.name)).toBeNull();
+    // 7章1行目 / NFR-15 / ADR-032 決定3 / B-65b 7章: 断られた回は閉じない。入力を残して案内を出す。
+    expect(comboboxes()).toHaveLength(1);
+    expect(insideInert(rowOf(carrot.name))).toBe(true);
   });
 
   it('一覧の結末が入れ替わっても、開いている登録の画面は閉じない', () => {
     const { rerender } = render(pantryTab());
 
-    fireEvent.click(operationAt(0));
+    openRegister();
     rerender(pantryTab({ stockItems: loaded(chineseCabbage) }));
 
-    // 規則4 / B-22 設計 規則10: 出し分けの状態は中身が持つ。門が一覧を取り直しても閉じない。
-    expect(screen.queryAllByRole('textbox').length).toBeGreaterThan(0);
-    expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+    // 規則4 / B-22 設計 規則10 / B-65b 規則10: 出し分けの状態は中身が持つ。門が一覧を取り直しても閉じない。
+    expect(comboboxes()).toHaveLength(1);
+  });
+
+  it('登録を開いている間に取り直した一覧は、`inert` の中で新しい在庫品を出す', () => {
+    const { rerender } = render(pantryTab());
+
+    openRegister();
+    rerender(pantryTab({ stockItems: loaded(chineseCabbage) }));
+
+    // B-65b 規則1・10: 一覧の側は木に残り、門が渡した結末をそのまま出す。
+    expect(insideInert(rowOf(chineseCabbage.name))).toBe(true);
+  });
+});
+
+/**
+ * パネルを出している間の一覧の側（B-65b 設計 6章 規則1〜5 / ADR-076 決定2・結果2）。
+ *
+ * **`inert` は属性の有無で観る**（jsdom 30 は `inert` の振る舞いを持たない。先例
+ * `PantryList.test.tsx`）。`inert` の中の操作を押しても効かないことは、jsdom では作れないので書かない。
+ */
+
+/** 一覧の見出し `冷蔵庫`（`h1`）をすべて引く。**`inert` の中にあっても引く。** */
+function pantryHeadings(): readonly HTMLElement[] {
+  return screen.queryAllByRole('heading', { level: 1, name: '冷蔵庫', hidden: true });
+}
+
+/** 唯一の見出し `冷蔵庫`。 */
+function soleHeading(): HTMLElement {
+  const headings = pantryHeadings();
+  expect(headings).toHaveLength(1);
+
+  const [heading] = headings;
+  if (heading === undefined) throw new Error('見出し `冷蔵庫` が無い');
+
+  return heading;
+}
+
+/** 唯一の名前 `設定` の操作（見出しの行の歯車）。 */
+function soleGear(): HTMLElement {
+  const gears = settingsButtons();
+  expect(gears).toHaveLength(1);
+
+  const [gear] = gears;
+  if (gear === undefined) throw new Error('歯車が無い');
+
+  return gear;
+}
+
+/** 唯一の `食材を追加`。 */
+function soleOpenRegister(): HTMLElement {
+  const found = screen.queryAllByRole('button', { name: '食材を追加', hidden: true });
+  expect(found).toHaveLength(1);
+
+  const [open] = found;
+  if (open === undefined) throw new Error('`食材を追加` が無い');
+
+  return open;
+}
+
+describe('在庫タブの中身のパネルと一覧の側', () => {
+  it('登録を開いている間、`食材を追加` は `inert` の中にある', () => {
+    render(pantryTab());
+
+    openRegister();
+
+    // B-65b 規則3: パネルを開いたまま `+` は効かない。
+    expect(insideInert(soleOpenRegister())).toBe(true);
+  });
+
+  it('パネルを出していない間は、一覧の側を `inert` にしない', () => {
+    render(pantryTab());
+
+    // B-65b 規則3: `inert` を付けるのはパネルを出している間だけである。
+    expect(
+      [soleHeading(), soleOpenRegister(), soleGear(), rowOf(carrot.name)].map(insideInert),
+    ).toEqual([false, false, false, false]);
+  });
+
+  it('登録のパネルの欄は `inert` の外にある', () => {
+    render(pantryTab());
+
+    openRegister();
+
+    // B-65b 規則3: `inert` は一覧の側だけで、パネルを包まない。
+    expect(insideInert(ingredientNameField())).toBe(false);
+  });
+
+  it('一覧の側は文書順でパネルより前にある', () => {
+    render(pantryTab());
+
+    openRegister();
+
+    // B-65b 規則2 / 原本 `PantryScreen`（`main` の後に `aside`）。
+    const panelHeading = screen.getByRole('heading', { level: 1, name: '食材を登録' });
+    expect(precedes(soleHeading(), panelHeading)).toBe(true);
+  });
+
+  it('登録のパネルの包みに `dialog` と `complementary` の役割を付けない', () => {
+    render(pantryTab());
+
+    openRegister();
+
+    // B-65b 規則5 / ADR-076 結果2: SP ではパネルが画面そのものであり、幅で ARIA を変えられない。
+    expect([
+      screen.queryAllByRole('dialog', { hidden: true }),
+      screen.queryAllByRole('complementary', { hidden: true }),
+    ]).toEqual([[], []]);
   });
 });
 
@@ -329,34 +499,45 @@ describe('在庫タブの中身と下タブの器', () => {
 
     // **起動時に開くのは献立タブである**（ADR-064 / `navigation/Tabs.ts`）。
     fireEvent.click(tabFor('pantry'));
-    fireEvent.click(operationAt(0));
+    openRegister();
 
     // 規則5 / NFR-14: 帯は下位の画面でも隠さない。隠すには器か門が「在庫タブが下位の画面に
     // 居る」ことを知る必要があり、規則4（状態は中身が持つ）と衝突する。
     expect(screen.getAllByRole('tab')).toHaveLength(3);
   });
 
-  it('別のタブへ移って在庫タブへ戻ると、一覧が出ている', () => {
+  it('登録の画面を出している間も、下タブの帯は `inert` にしない', () => {
     tabbedPantryTab();
 
     fireEvent.click(tabFor('pantry'));
-    fireEvent.click(operationAt(0));
+    openRegister();
+
+    // B-65b 規則4: `inert` は在庫タブの中身の一覧の側だけで、帯（`PantryTab` の外）には及ばない。
+    expect(screen.getAllByRole('tab').map(insideInert)).toEqual([false, false, false]);
+  });
+
+  it('登録を開いたまま別のタブへ移って戻ると、登録のパネルは閉じている', () => {
+    tabbedPantryTab();
+
+    fireEvent.click(tabFor('pantry'));
+    openRegister();
     fireEvent.click(tabFor('meals'));
     fireEvent.click(tabFor('pantry'));
 
-    // 規則6 / B-38 設計 6章 規則6: 選んだタブの中身だけを木に置くことの帰結である。
-    expect(screen.queryByText(carrot.name)).not.toBeNull();
+    // 規則6 / B-38 設計 6章 規則6 / B-65b 規則4: 選んだタブの中身だけを木に置くことの帰結である。
+    expect(comboboxes()).toHaveLength(0);
+    expect(insideInert(rowOf(carrot.name))).toBe(false);
   });
 
   it('別のタブを挟むと、打ちかけの食材名は残らない', () => {
     tabbedPantryTab();
 
     fireEvent.click(tabFor('pantry'));
-    fireEvent.click(operationAt(0));
+    openRegister();
     fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
     fireEvent.click(tabFor('meals'));
     fireEvent.click(tabFor('pantry'));
-    fireEvent.click(operationAt(0));
+    openRegister();
 
     // 規則6: 打ちかけの入力も消える。この周で器を変えてまで残さない。
     expect(ingredientNameField().value).toBe('');
@@ -364,10 +545,10 @@ describe('在庫タブの中身と下タブの器', () => {
 });
 
 /**
- * 2つの保存を押したときに、**どちらの画面が出ているか**（B-39 設計 6章 規則8〜12 / 7章）。
+ * 2つの保存を押したときに、**パネルが閉じるか**（B-39 設計 6章 規則8〜12 / 7章）。
  *
  * **閉じたことを「渡した関数が呼ばれた回数」で観ない**（`docs/testing.md` 2章 / 設計 8章）—
- * `PantryTab` 越しに「一覧が出ている／出ていない」で観る。入力が残るかどうかは登録の画面の
+ * `PantryTab` 越しに「`combobox` が出ている／出ていない」で観る。入力が残るかどうかは登録の画面の
  * 持ち分であり、`StockItemForm.test.tsx` にある。
  *
  * 一覧に置く標本は**白菜1件だけ**にし、登録の欄には別の名称を打つ。同じ名称を使うと、
@@ -376,7 +557,7 @@ describe('在庫タブの中身と下タブの器', () => {
 
 /**
  * 分量の欄。**`textbox` はこれ1つだけである** — 食材名は `role="combobox"` を明示しているため `combobox`（B-50c / B-66）、期限は
- * `type="date"` なので、どちらもこの役割に入らない。
+ * `type="date"` なので、どちらもこの役割に入らない。一覧の側は `textbox` を描かない。
  */
 function amountField(): HTMLInputElement {
   const field = screen.getAllByRole('textbox')[0];
@@ -404,34 +585,17 @@ function fillRegisterFields(): void {
 }
 
 /**
- * 保存の操作を**文書順**で返す（規則8）。
- *
- * 登録の画面の押せる操作は3つで、**先頭が閉じる操作**（規則7）、後ろ2つが保存である。
- * **この数を先に確かめる** — 崩れた回に閉じる操作を保存として押してしまうと、テストは
- * 「一覧へ戻らない」ではなく別の理由で落ち、何が壊れたか読めなくなる。**名札は見ない**（規則15）。
+ * 「保存してもう1件」。前に出すほうである（規則8）。名札は原本から取った文言で仮ではない
+ * （ADR-074）ので名前で引く — 一覧の側の操作も木に残るため、位置では引けない（B-65b 規則1）。
+ * **送っている間は押した側の名札が変わる**ので、押す前に引く。
  */
-function saveOperations(): readonly HTMLElement[] {
-  const operations = contentButtons();
-  expect(operations).toHaveLength(3);
-
-  return operations.slice(1);
-}
-
-function saveOperationAt(index: number): HTMLElement {
-  const found = saveOperations().at(index);
-  if (found === undefined) throw new Error(`${index} 番目の保存の操作が無い`);
-
-  return found;
-}
-
-/** 「保存してもう1件」。前に出すほうである（規則8）。 */
 function saveAndStay(): HTMLElement {
-  return saveOperationAt(0);
+  return screen.getByRole('button', { name: '保存してもう1件' });
 }
 
 /** 「保存して閉じる」。文書順の最後である（規則8）。 */
 function saveAndClose(): HTMLElement {
-  return saveOperationAt(1);
+  return screen.getByRole('button', { name: '保存して閉じる' });
 }
 
 describe('在庫タブの中身と2つの保存', () => {
@@ -444,13 +608,15 @@ describe('在庫タブの中身と2つの保存', () => {
       }),
     );
 
-    fireEvent.click(operationAt(0));
+    openRegister();
     fillRegisterFields();
     fireEvent.click(saveAndClose());
 
-    // 規則9 / `docs/screen-design.md` 6章: 通ったら一覧へ戻る。**待つ手がかりはテストが渡した
-    // 在庫品の名称である**（仮の文言を使わない。規則15）。
-    expect(await screen.findByText(chineseCabbage.name)).not.toBeNull();
+    // 規則9 / `docs/screen-design.md` 6章: 通ったら一覧へ戻る。パネルが消えるのを待つ。
+    await waitFor(() => {
+      expect(comboboxes()).toHaveLength(0);
+    });
+    expect(insideInert(rowOf(chineseCabbage.name))).toBe(false);
   });
 
   it('送っている間は閉じる操作も効かない', async () => {
@@ -463,26 +629,26 @@ describe('在庫タブの中身と2つの保存', () => {
 
     render(pantryTab({ stockItems: loaded(chineseCabbage), onRegister: pendingRegister }));
 
-    fireEvent.click(operationAt(0));
+    openRegister();
     fillRegisterFields();
     fireEvent.click(saveAndStay());
 
     // 送っている間に閉じようとする。`onClose` は onClick で**同期に**呼ばれるので、効いて
-    // しまえばこの時点で一覧が出る。
-    fireEvent.click(operationAt(0));
+    // しまえばこの時点でパネルが消える。
+    fireEvent.click(backButton());
 
     // 規則10 / 規則11: **送っている間に閉じられてはいけない。** 閉じると、断りの案内が出ない
     // まま画面が消え、打った入力も捨てられる — 利用者は保存できたと思い込む。結末が届く前に
     // 画面を捨てることは、規則10 が守ろうとしているものをこの経路だけ抜けさせる。
-    expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+    expect(comboboxes()).toHaveLength(1);
 
     settle({ outcome: 'failed' });
 
-    // 結末が届いたあとも登録の画面のままである（`saveOperations` が3つを確かめる）。
+    // 結末が届いたあとも登録の画面のままである（名札が元に戻るのを待つ）。
     await waitFor(() => {
-      expect(saveOperations()).toHaveLength(2);
+      expect(saveAndStay()).not.toBeNull();
     });
-    expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+    expect(comboboxes()).toHaveLength(1);
   });
 
   it('「保存してもう1件」が通っても一覧へ戻らない', async () => {
@@ -494,7 +660,7 @@ describe('在庫タブの中身と2つの保存', () => {
       }),
     );
 
-    fireEvent.click(operationAt(0));
+    openRegister();
     fillRegisterFields();
     fireEvent.click(saveAndStay());
 
@@ -505,7 +671,7 @@ describe('在庫タブの中身と2つの保存', () => {
     });
 
     // 規則9 / FR-08: こちらは登録の画面に留まり、続けてもう1件入れられる。
-    expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+    expect(comboboxes()).toHaveLength(1);
   });
 
   it('登録が失敗したときは一覧へ戻らない', async () => {
@@ -517,7 +683,7 @@ describe('在庫タブの中身と2つの保存', () => {
       }),
     );
 
-    fireEvent.click(operationAt(0));
+    openRegister();
     fillRegisterFields();
     fireEvent.click(saveAndClose());
 
@@ -527,7 +693,7 @@ describe('在庫タブの中身と2つの保存', () => {
 
     // 規則10 / 7章 行2 / ADR-007: 失敗した回は閉じない。自動で送り直さないので、
     // 送り直せる画面を残す必要がある。
-    expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+    expect(comboboxes()).toHaveLength(1);
   });
 
   it('食材名が空のまま「保存して閉じる」を押しても一覧へ戻らない', () => {
@@ -539,13 +705,13 @@ describe('在庫タブの中身と2つの保存', () => {
       }),
     );
 
-    fireEvent.click(operationAt(0));
+    openRegister();
     // 分量だけを埋める。食材名が空のままでは登録の入力が作れない（B-12 設計 規則2）。
     fireEvent.change(amountField(), { target: { value: '2本' } });
     fireEvent.click(saveAndClose());
 
     // 規則11: 効かない操作で画面が移らない。送っていないので待つものも無い。
-    expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+    expect(comboboxes()).toHaveLength(1);
   });
 
   it('保存して閉じたあとの一覧に、いま登録した食材名は出ない', async () => {
@@ -557,11 +723,14 @@ describe('在庫タブの中身と2つの保存', () => {
       }),
     );
 
-    fireEvent.click(operationAt(0));
+    openRegister();
     fillRegisterFields();
     fireEvent.click(saveAndClose());
 
-    await screen.findByText(chineseCabbage.name);
+    // パネルが消えるのを待つ — 一覧の側は開いている間も木にあるので、名称では待てない（B-65b 規則1）。
+    await waitFor(() => {
+      expect(comboboxes()).toHaveLength(0);
+    });
 
     // 規則12 / B-22 設計 規則3 / B-24: 登録が通ったときに一覧を取り直すのは**門**である。
     // 中身の側で列に足すと、並び（期限の近い順）を web が握り直すことになる。
@@ -571,16 +740,16 @@ describe('在庫タブの中身と2つの保存', () => {
 });
 
 /**
- * 一覧と**編集**の入れ替わり（FR-05 / B-55 設計 6章 規則15〜17 / 7章）。
+ * 一覧と**編集**のパネル（FR-05 / B-55 設計 6章 規則15〜17 / 7章 / B-65b 規則1・3）。
  *
  * 編集の画面そのものの振る舞い（欄の値・送る中身・案内）は `StockItemEditForm.test.tsx`、
  * どの動きをタップと読むかは `SwipeGesture.test.ts`、行から編集の口へ届くことは
  * `PantryList.test.tsx` が既に押さえている。ここで確かめるのは**切り出せないもの**だけ —
- * いまどちらの画面を出しているか、どの結末でどちらへ移るかである（規則16）。
+ * いまパネルを出しているか、どの結末で閉じるかである。
  *
- * 観察は上の suite と同じ手がかりで行う（**仮の文言と記号は期待値に書かない**）。編集の画面が
- * 出ていることは `queryAllByRole('textbox')` が**1つ**であることで観る — 編集の欄は分量
- * （`textbox`）と期限（`type="date"`）の2つで、**名称の欄（`combobox`）は無い**（規則1）。
+ * 編集のパネルが出ていることは `queryAllByRole('textbox')` が**1つ**であることで観る — 編集の欄は
+ * 分量（`textbox`）と期限（`type="date"`）の2つで、**名称の欄（`combobox`）は無い**（規則1）。
+ * 一覧の側は `textbox` を描かない。
  *
  * 差し替えは `FixedStockItemRequests` を使う（先行 `StockItemForm.test.tsx` の2つめの suite）。
  * **結末を順に配れて保留もできる**ため、「送っている間」を実時間を待たずに書ける。
@@ -612,19 +781,23 @@ function renderWithUpdate(
   return { requests, rendered: render(pantryTab(props)), props };
 }
 
-/**
- * 行をタップする（規則15）。**押下と離上を同じ座標に送る** — 動かしていないことがタップで
- * ある（判断は `SwipeGesture.ts` の持ち分）。**行の件数を先に確かめる。**
- */
-function tapRowAt(index: number, expectedRows: number): void {
-  const rows = screen.getAllByRole('listitem');
-  expect(rows).toHaveLength(expectedRows);
-
-  const row = rows.at(index);
-  if (row === undefined) throw new Error(`${index} 番目の行が無い`);
-
+/** 行に押下と離上を同じ座標に送る — 動かしていないことがタップである（判断は `SwipeGesture.ts`）。 */
+function tapRow(row: HTMLElement): void {
   fireEvent.pointerDown(row, { pointerId: 1, clientX: 0, clientY: 0 });
   fireEvent.pointerUp(row, { pointerId: 1, clientX: 0, clientY: 0 });
+}
+
+/**
+ * 行をタップする（規則15）。**行の件数を先に確かめる。**
+ */
+function tapRowAt(index: number, expectedRows: number): void {
+  const found = rows();
+  expect(found).toHaveLength(expectedRows);
+
+  const row = found.at(index);
+  if (row === undefined) throw new Error(`${index} 番目の行が無い`);
+
+  tapRow(row);
 }
 
 /**
@@ -636,29 +809,14 @@ function editAmountField(): HTMLInputElement {
   return screen.getByRole('textbox') as HTMLInputElement;
 }
 
-/**
- * 編集の画面の操作を**文書順**で返す。**2つである**（規則5 — 先頭が閉じる操作、末尾が保存）。
- * **この数を先に確かめる** — 崩れた回に閉じる操作を保存として押すと、何が壊れたか読めない。
- */
-function editOperations(): readonly HTMLElement[] {
-  const found = contentButtons();
-  expect(found).toHaveLength(2);
-
-  return found;
+/** 編集のパネルが出ているかの手がかり。**一覧の側は `textbox` を描かない。** */
+function textboxes(): HTMLElement[] {
+  return screen.queryAllByRole('textbox');
 }
 
-function closeEditOperation(): HTMLElement {
-  const found = editOperations().at(0);
-  if (found === undefined) throw new Error('閉じる操作が無い');
-
-  return found;
-}
-
+/** 編集の保存（名札 `保存`。B-65 規則11 / ADR-074）。送っている間は名札が変わるので、押す前に引く。 */
 function saveEditOperation(): HTMLElement {
-  const found = editOperations().at(-1);
-  if (found === undefined) throw new Error('保存の操作が無い');
-
-  return found;
+  return screen.getByRole('button', { name: '保存' });
 }
 
 describe('在庫タブの中身と編集', () => {
@@ -672,37 +830,56 @@ describe('在庫タブの中身と編集', () => {
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
   });
 
-  it('編集を開くと、一覧に出ていた在庫品は描かれなくなる', () => {
+  it('編集を開いても、一覧の行は描かれたまま `inert` の中にある', () => {
     renderWithUpdate({});
 
     tapRowAt(0, 1);
 
-    // 規則16: **入れ替わりであって、足し算ではない**（登録の画面と同じ構え）。
-    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
-    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
-    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    // B-65b 規則1・3: 一覧の側は木から外さない（B-55 規則16「入れ替わる」の置き換え）。
+    const found = rows();
+    expect(found).toHaveLength(1);
+    expect(found.map(insideInert)).toEqual([true]);
   });
 
-  it('編集を開いている間は、登録を開く操作が出ていない', () => {
+  it('編集を開いている間、`食材を追加` は `inert` の中にある', () => {
     renderWithUpdate({});
 
     tapRowAt(0, 1);
 
-    // 規則16 / 規則5: 出すのは常に一方だけである。編集の画面の操作は閉じると保存の2つで、
-    // 一覧の側の「＋」は木に無い。
-    expect(contentButtons()).toHaveLength(2);
+    // B-65b 規則3: パネルを開いたまま登録へは移れない。
+    expect(insideInert(soleOpenRegister())).toBe(true);
   });
 
-  it('編集から閉じる操作を押すと、一覧へ戻る', () => {
+  it('編集のパネルの欄は `inert` の外にある', () => {
     renderWithUpdate({});
 
     tapRowAt(0, 1);
-    fireEvent.click(closeEditOperation());
 
-    // 規則7・8: 保存せずに閉じる手段を1つ置く（編集の画面では**先頭**である）。
-    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
-    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
-    expect(screen.queryAllByRole('listitem')).toHaveLength(1);
+    // B-65b 規則3。
+    expect(insideInert(editAmountField())).toBe(false);
+  });
+
+  it('編集のパネルの包みに `dialog` と `complementary` の役割を付けない', () => {
+    renderWithUpdate({});
+
+    tapRowAt(0, 1);
+
+    // B-65b 規則5 / ADR-076 結果2。
+    expect([
+      screen.queryAllByRole('dialog', { hidden: true }),
+      screen.queryAllByRole('complementary', { hidden: true }),
+    ]).toEqual([[], []]);
+  });
+
+  it('編集から `戻る` で閉じると、パネルが消え一覧の側の `inert` が外れる', () => {
+    renderWithUpdate({});
+
+    tapRowAt(0, 1);
+    fireEvent.click(backButton());
+
+    // 規則7・8 / B-65b 規則1・3。
+    expect(textboxes()).toHaveLength(0);
+    expect(insideInert(rowOf(carrot.name))).toBe(false);
   });
 
   it('保存せずに閉じる操作は、更新を送らない', () => {
@@ -710,7 +887,7 @@ describe('在庫タブの中身と編集', () => {
 
     tapRowAt(0, 1);
     fireEvent.change(editAmountField(), { target: { value: '300g' } });
-    fireEvent.click(closeEditOperation());
+    fireEvent.click(backButton());
 
     // 規則7: 閉じるのは捨てることである。**送った中身を配列で見る**（`vi.fn()` を使わない）。
     expect(requests.receivedUpdates).toEqual([]);
@@ -723,12 +900,9 @@ describe('在庫タブの中身と編集', () => {
     fireEvent.change(editAmountField(), { target: { value: '300g' } });
     fireEvent.click(saveEditOperation());
 
-    // 規則8: **通った回だけ閉じる。** 待つ手がかりは一覧の行が戻ることである
-    // （仮の文言を使わない）。
-    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
-    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
+    // 規則8: **通った回だけ閉じる。** 待つ手がかりはパネルの欄が消えることである。
     await waitFor(() => {
-      expect(screen.queryAllByRole('listitem')).toHaveLength(1);
+      expect(textboxes()).toHaveLength(0);
     });
   });
 
@@ -746,10 +920,7 @@ describe('在庫タブの中身と編集', () => {
     });
 
     // 規則8 / 7章 行2 / NFR-15: 断られた回は閉じない。入力を残して案内を出す。
-    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
-    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
-    expect(screen.getAllByRole('textbox')).toHaveLength(1);
-    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    expect(textboxes()).toHaveLength(1);
   });
 
   it('見つからないという断りでも、編集の画面を閉じない', async () => {
@@ -767,10 +938,7 @@ describe('在庫タブの中身と編集', () => {
 
     // **ADR-050 結果5** / 規則10: 削除は `delete.notFound` を「すでに消えている」と読んで
     // 何も出さないが、**更新は案内を出して画面も閉じない** — 利用者は書いた内容を持っている。
-    expect(screen.getAllByRole('textbox')).toHaveLength(1);
-    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
-    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
-    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    expect(textboxes()).toHaveLength(1);
   });
 
   it('更新が失敗しても一覧へ戻らない', async () => {
@@ -785,9 +953,7 @@ describe('在庫タブの中身と編集', () => {
     });
 
     // 規則8 / 7章 行4: 失敗も断りと同じ扱いで、送り直せる画面を残す（自動で送り直さない）。
-    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
-    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
-    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    expect(textboxes()).toHaveLength(1);
   });
 
   it('送っている間に閉じる操作を押しても、一覧へ戻らない', async () => {
@@ -800,14 +966,12 @@ describe('在庫タブの中身と編集', () => {
     fireEvent.click(saveEditOperation());
 
     // 送っている間に閉じようとする。`onClose` は onClick で**同期に**呼ばれるので、効いて
-    // しまえばこの時点で一覧が出る。
-    fireEvent.click(closeEditOperation());
+    // しまえばこの時点でパネルが消える。
+    fireEvent.click(backButton());
 
     // 規則7: 結末が届く前に閉じると、**断りの案内が出ないまま画面が消え、打った入力も
     // 捨てられる** — 利用者は保存できたと思い込む。
-    // **一覧が出ていないことは行の有無で観る**（名称では観られない） — 編集の画面は
-    // 対象の在庫品の名称を出すため（規則1）、`queryByText(carrot.name)` は編集の画面でも当たる。
-    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+    expect(textboxes()).toHaveLength(1);
 
     // 保留を解いてから終える — 届いた更新を `act` の中で起こすためである。
     await act(async () => {
@@ -823,9 +987,8 @@ describe('在庫タブの中身と編集', () => {
       pantryTab({ onUpdate: requests.updateStockItem, stockItems: loaded(chineseCabbage) }),
     );
 
-    // 規則17 / B-22 設計 規則10: 門が一覧を取り直しても閉じない（登録の画面と同じ構え）。
-    expect(screen.getAllByRole('textbox')).toHaveLength(1);
-    expect(screen.queryByText(chineseCabbage.name)).toBeNull();
+    // 規則17 / B-22 設計 規則10 / B-65b 規則10: 門が一覧を取り直しても閉じない（登録の画面と同じ構え）。
+    expect(textboxes()).toHaveLength(1);
   });
 
   it('一覧の結末が入れ替わっても、編集の欄の値は変わらない', () => {
@@ -849,7 +1012,7 @@ describe('在庫タブの中身と編集', () => {
     );
 
     tapRowAt(0, 2);
-    fireEvent.click(closeEditOperation());
+    fireEvent.click(backButton());
     tapRowAt(1, 2);
 
     // 規則2・17: 開くたびに**その行の値**が出る（前に開いた行の値を持ち回さない）。
@@ -864,12 +1027,6 @@ describe('在庫タブの中身と編集', () => {
  * **見出し `冷蔵庫` と操作の名前 `食材を追加` はデザインが正である**（ADR-074 結果1）ので、
  * ここでは期待値に置く。**見た目（アイコン・余白・class 名）は見ない**（ADR-055 結果1）。
  */
-
-/** 一覧の見出し `冷蔵庫`（`h1`）をすべて引く。 */
-function pantryHeadings(): readonly HTMLElement[] {
-  return screen.queryAllByRole('heading', { level: 1, name: '冷蔵庫' });
-}
-
 describe('在庫タブの見出しの行', () => {
   it.each([
     ['読み込み中', { outcome: 'loading' } as const],
@@ -883,22 +1040,23 @@ describe('在庫タブの見出しの行', () => {
     expect(pantryHeadings()).toHaveLength(1);
   });
 
-  it('登録の画面を開くと、見出し `冷蔵庫` は描かれなくなる', () => {
+  it('登録の画面を開いても、見出し `冷蔵庫` は `inert` の中に残る', () => {
     render(pantryTab({ stockItems: loaded(carrot) }));
 
-    fireEvent.click(operationAt(0));
+    openRegister();
 
-    // B-64 規則1 / B-39 規則1: 登録の画面は一覧と入れ替わる。見出しも一覧の側のものである。
-    expect(screen.queryByRole('heading', { name: '冷蔵庫' })).toBeNull();
+    // B-65b 規則1・3: 見出しの行も一覧の側であり、木に残ったまま `inert` に入る
+    // （B-64 規則1 の「登録の画面は一覧と入れ替わる」の置き換え）。
+    expect(insideInert(soleHeading())).toBe(true);
   });
 
-  it('編集の画面を開くと、見出し `冷蔵庫` は描かれなくなる', () => {
+  it('編集の画面を開いても、見出し `冷蔵庫` は `inert` の中に残る', () => {
     render(pantryTab({ stockItems: loaded(carrot) }));
 
     tapRowAt(0, 1);
 
-    // B-64 規則1 / B-55 規則16: 編集の画面も一覧と入れ替わる。
-    expect(screen.queryByRole('heading', { name: '冷蔵庫' })).toBeNull();
+    // B-65b 規則1・3（B-55 規則16 の置き換え）。
+    expect(insideInert(soleHeading())).toBe(true);
   });
 
   it('登録を開く操作の名前は `食材を追加` である', () => {
@@ -933,7 +1091,8 @@ describe('在庫タブの見出しの行', () => {
  * 見出しの行（B-60 設計 6章 規則12〜13）。
  *
  * **題 `冷蔵庫` と歯車の名前 `設定` は原本から取った文言であり、仮ではない**（ADR-074 決定1）。
- * 歯車を置くのは**一覧の側だけ**で、登録・編集の画面には置かない（原本に無い）。
+ * 歯車を置くのは**一覧の側だけ**で、登録・編集の画面には置かない（原本に無い）。B-65b で一覧の側は
+ * パネルを出している間も木に残るので、歯車も `inert` の中に残る。
  */
 describe('在庫タブの中身の見出しの行', () => {
   it.each<[string, PantryTabProps['stockItems']]>([
@@ -982,22 +1141,22 @@ describe('在庫タブの中身の見出しの行', () => {
     }
   });
 
-  it('登録の画面には歯車を置かない', () => {
-    // B-60 規則12 / 2章: 登録の画面に歯車は無い（原本に無い）。
+  it('登録の画面を開いても、歯車は `inert` の中に残る', () => {
+    // B-65b 規則1・3 / B-60 規則12 の読み替え: パネルに歯車は無いが、一覧の側の歯車は木に残る。
     render(pantryTab());
 
-    fireEvent.click(operationAt(0));
+    openRegister();
 
-    expect(settingsButtons()).toHaveLength(0);
+    expect(insideInert(soleGear())).toBe(true);
   });
 
-  it('編集の画面には歯車を置かない', () => {
-    // B-60 規則12 / 2章: 編集の画面に歯車は無い（原本に無い）。
+  it('編集の画面を開いても、歯車は `inert` の中に残る', () => {
+    // B-65b 規則1・3 / B-60 規則12 の読み替え。
     render(pantryTab());
 
     tapRowAt(0, 1);
 
-    expect(settingsButtons()).toHaveLength(0);
+    expect(insideInert(soleGear())).toBe(true);
   });
 });
 
@@ -1005,18 +1164,243 @@ describe('在庫タブの中身の見出しの行', () => {
  * 編集の画面へ基準日を渡すこと（B-65 設計 4章 / 5章 / 6章 規則8 / NFR-17）。
  *
  * 残日数の文字は ADR-074 で確定した（`docs/design/` の原本 ★11）ので literal で書く。
- * **一覧が消えたあとで観る** — 一覧の行も残日数を出すため、行が残っていると編集の画面が
- * 出したものと読み分けられない。
+ * **一覧の行も残日数を出し、B-65b からは編集の間も木に残る**ので、`inert` の外にあるもの
+ * （パネルの側）だけを数える。
  */
 describe('在庫タブの中身と編集の基準日', () => {
-  it('編集の画面には、在庫タブが受け取った基準日で数えた残日数が出る', () => {
+  it('編集の画面を開くと、パネルに在庫タブが受け取った基準日で数えた残日数が出る', () => {
     renderWithUpdate({}, { stockItems: loaded({ ...carrot, expiryDate: '2026-09-22' }) });
 
     tapRowAt(0, 1);
-    // 前提: 一覧は消え、編集の画面に入れ替わっている（行の残日数を数えないため）。
-    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
 
     // B-65 規則8 / 4章: 基準日 2026-09-20 は `PantryTab` から編集の画面へ渡る。
-    expect(screen.queryByText('あと2日')).not.toBeNull();
+    const outsideInert = screen
+      .queryAllByText('あと2日')
+      .filter((element) => !insideInert(element));
+    expect(outsideInert).toHaveLength(1);
+  });
+});
+
+/**
+ * パネルを閉じたときの焦点（B-65b 設計 6章 規則6〜9 / 7章 / B-69 規則13 の先行）。
+ *
+ * 焦点は `document.activeElement` で見る（先例 `PantryList.test.tsx`）。**`inert` を外してから
+ * 焦点を移す順序は、jsdom では `inert` の中にも焦点が乗るので観られない**（書かない）。
+ *
+ * 編集の観点は2行の一覧で、**名称で選んだ行**の `…`（名前 `操作`）へ戻るかを見る — 位置で引くと、
+ * 一覧の並べ方を変えただけで赤くなる。
+ */
+
+/** その名称の行の `…`（名前 `操作`。B-64 規則6）。 */
+function rowToggleOf(name: string): HTMLElement {
+  return within(rowOf(name)).getByRole('button', { name: '操作', hidden: true });
+}
+
+/** 一覧に出ている `…` をすべて。 */
+function allRowToggles(): HTMLElement[] {
+  return screen.queryAllByRole('button', { name: '操作', hidden: true });
+}
+
+/** `食材を追加` をすべて（`inert` の中にあっても引く）。 */
+function openRegisterButtons(): HTMLElement[] {
+  return screen.queryAllByRole('button', { name: '食材を追加', hidden: true });
+}
+
+/** 2行の一覧を描く（豚こま肉・白菜）。 */
+function renderTwoRows(options: FixedStockItemRequestsOptions = {}) {
+  return renderWithUpdate(options, { stockItems: loaded(porkWithAmount, cabbageWithAmount) });
+}
+
+describe('在庫タブの中身のパネルを閉じたときの焦点', () => {
+  it('登録を開いた直後は食材名の欄に焦点がある', () => {
+    render(pantryTab());
+
+    openRegister();
+
+    // B-65b 規則6 / B-39 規則13。
+    expect(document.activeElement).toBe(ingredientNameField());
+  });
+
+  it('編集を開いた直後は分量の欄に焦点がある', () => {
+    renderTwoRows();
+
+    tapRow(rowOf(cabbageWithAmount.name));
+
+    // B-65b 規則6 / B-55。
+    expect(document.activeElement).toBe(editAmountField());
+  });
+
+  it('登録を `戻る` で閉じると、焦点は `食材を追加` へ戻る', () => {
+    render(pantryTab());
+
+    openRegister();
+    fireEvent.click(backButton());
+
+    // B-65b 規則7 / B-69 規則13: キーボードの利用者が元の場所を見失わない。
+    expect(document.activeElement).toBe(soleOpenRegister());
+  });
+
+  it('登録を `閉じる` で閉じると、焦点は `食材を追加` へ戻る', () => {
+    render(pantryTab());
+
+    openRegister();
+    fireEvent.click(closeButton());
+
+    // B-65b 規則7・9: 閉じ方を問わない。
+    expect(document.activeElement).toBe(soleOpenRegister());
+  });
+
+  it('「保存して閉じる」が通ると、焦点は `食材を追加` へ戻る', async () => {
+    const registrations: RegisterStockItemInput[] = [];
+    render(
+      pantryTab({
+        stockItems: loaded(chineseCabbage),
+        onRegister: recordingRegister(registrations, { outcome: 'registered' }),
+      }),
+    );
+
+    openRegister();
+    fillRegisterFields();
+    fireEvent.click(saveAndClose());
+
+    await waitFor(() => {
+      expect(comboboxes()).toHaveLength(0);
+    });
+
+    // B-65b 規則7。
+    expect(document.activeElement).toBe(soleOpenRegister());
+  });
+
+  it('「保存してもう1件」が通っても、焦点は `食材を追加` へ移らない', async () => {
+    const registrations: RegisterStockItemInput[] = [];
+    render(
+      pantryTab({
+        stockItems: loaded(chineseCabbage),
+        onRegister: recordingRegister(registrations, { outcome: 'registered' }),
+      }),
+    );
+
+    openRegister();
+    fillRegisterFields();
+    fireEvent.click(saveAndStay());
+
+    await waitFor(() => {
+      expect(screen.queryByDisplayValue('にんじん')).toBeNull();
+    });
+
+    // B-65b 規則8 / B-39 規則9: 閉じないので焦点を戻さない。
+    expect(openRegisterButtons()).not.toContain(document.activeElement);
+  });
+
+  it('登録が断られた回は、焦点を `食材を追加` へ移さない', async () => {
+    const registrations: RegisterStockItemInput[] = [];
+    render(
+      pantryTab({
+        onRegister: recordingRegister(registrations, { outcome: 'rejected', rule: 'name.empty' }),
+      }),
+    );
+
+    openRegister();
+    fireEvent.change(ingredientNameField(), { target: { value: 'ねぎ' } });
+    fireEvent.click(saveAndClose());
+
+    await waitFor(() => {
+      expect(registrations).toHaveLength(1);
+    });
+
+    // B-65b 7章1行目: 断られた回は閉じず、焦点も戻さない。
+    expect(openRegisterButtons()).not.toContain(document.activeElement);
+  });
+
+  it('タップで開いた編集を `戻る` で閉じると、焦点はその行の `…` へ戻る', () => {
+    renderTwoRows();
+
+    tapRow(rowOf(cabbageWithAmount.name));
+    fireEvent.click(backButton());
+
+    // B-65b 規則7 / 10章 前提2: タップで開いた回も `…` に戻す。
+    expect(document.activeElement).toBe(rowToggleOf(cabbageWithAmount.name));
+  });
+
+  it('行の `…` の `編集` から開いた編集を閉じると、焦点はその行の `…` へ戻る', () => {
+    renderTwoRows();
+
+    fireEvent.click(rowToggleOf(cabbageWithAmount.name));
+    fireEvent.click(screen.getByRole('button', { name: '編集' }));
+    fireEvent.click(backButton());
+
+    // B-65b 規則7。
+    expect(document.activeElement).toBe(rowToggleOf(cabbageWithAmount.name));
+  });
+
+  it('編集を `閉じる` で閉じると、焦点はその行の `…` へ戻る', () => {
+    renderTwoRows();
+
+    tapRow(rowOf(cabbageWithAmount.name));
+    fireEvent.click(closeButton());
+
+    // B-65b 規則7・9。
+    expect(document.activeElement).toBe(rowToggleOf(cabbageWithAmount.name));
+  });
+
+  it('更新が通って閉じると、焦点はその行の `…` へ戻る', async () => {
+    renderTwoRows({ update: [{ outcome: 'updated' }] });
+
+    tapRow(rowOf(cabbageWithAmount.name));
+    fireEvent.click(saveEditOperation());
+
+    await waitFor(() => {
+      expect(textboxes()).toHaveLength(0);
+    });
+
+    // B-65b 規則7: 編集の `保存` が通った回も閉じ方の1つである。
+    expect(document.activeElement).toBe(rowToggleOf(cabbageWithAmount.name));
+  });
+
+  it('更新が断られた回は、焦点を行の `…` へ移さない', async () => {
+    const { requests } = renderTwoRows({
+      update: [{ outcome: 'rejected', rule: 'expiryDate.format' }],
+    });
+
+    tapRow(rowOf(cabbageWithAmount.name));
+    fireEvent.click(saveEditOperation());
+
+    await waitFor(() => {
+      expect(requests.receivedUpdates).toHaveLength(1);
+    });
+
+    // B-65b 7章1行目 / ADR-050 結果5: 閉じないので焦点も戻さない。
+    expect(allRowToggles()).not.toContain(document.activeElement);
+  });
+
+  it('同じ行の編集を2度開いて閉じても、2度目も焦点はその行の `…` へ戻る', () => {
+    renderTwoRows();
+
+    tapRow(rowOf(cabbageWithAmount.name));
+    fireEvent.click(backButton());
+    // 1度目の戻しのあと、焦点を別の行の `…` へ移しておく。
+    act(() => {
+      rowToggleOf(porkWithAmount.name).focus();
+    });
+    tapRow(rowOf(cabbageWithAmount.name));
+    fireEvent.click(backButton());
+
+    // B-65b 規則7 / 10章 前提5: 同じ行を2度戻せる（求めの参照が変わるたびに移す）。
+    expect(document.activeElement).toBe(rowToggleOf(cabbageWithAmount.name));
+  });
+
+  it('編集していた行が取り直しで消えたあとに閉じると、焦点はどの行の `…` にも移らない', () => {
+    const { requests, rendered } = renderTwoRows();
+
+    tapRow(rowOf(cabbageWithAmount.name));
+    rendered.rerender(
+      pantryTab({ onUpdate: requests.updateStockItem, stockItems: loaded(porkWithAmount) }),
+    );
+
+    // B-65b 7章2行目 / B-69 規則13: 戻す先の行が無ければ移さない。投げない。
+    expect(() => {
+      fireEvent.click(backButton());
+    }).not.toThrow();
+    expect(allRowToggles()).not.toContain(document.activeElement);
   });
 });

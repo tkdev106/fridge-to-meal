@@ -26,7 +26,7 @@
  * **見た目の値は `PantryList.module.css` にだけ置く**（ADR-055 決定1 / B-64 設計 規則12）。
  */
 
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { StockItemDto } from '@fridge-to-meal/contract';
 import type { DeleteFailureNotice } from './DeleteFailureNotice.js';
 import { deleteFailureNoticeOf } from './DeleteFailureNotice.js';
@@ -309,6 +309,12 @@ function StockItemRow({
  */
 export type PantryListState = { readonly outcome: 'loading' } | StockItemsOutcome;
 
+/**
+ * 行の `…` へ焦点を移す求め（B-65b 設計 5章 / 規則7）。**参照が変わるたびに1度移す** — 同じ行を
+ * 2度続けて戻せるよう、呼び出し側は求めるたびに新しい値を作る（10章 前提5）。
+ */
+export type FocusOperationsRequest = { readonly stockItemId: string };
+
 export type PantryListProps = {
   stockItems: PantryListState;
   /**
@@ -333,6 +339,12 @@ export type PantryListProps = {
   today: string;
   /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
   offline?: boolean;
+  /**
+   * 新しい値を受け取るたびに、その在庫品の行の `…` へ焦点を移す（B-65b 設計 規則7）。在庫タブが
+   * 登録・編集のパネルを閉じた回に渡す。**行がもう無ければ移さない**（7章 / B-69 規則13）。
+   * 省略は `null`（求めなし）。
+   */
+  focusOperationsRequest?: FocusOperationsRequest | null;
 };
 
 export function PantryList({
@@ -341,6 +353,7 @@ export function PantryList({
   onDelete,
   onEdit,
   offline = false,
+  focusOperationsRequest = null,
 }: PantryListProps) {
   const [notice, setNotice] = useState<DeleteFailureNotice | null>(null);
   const [rowOperations, setRowOperations] = useState<RowOperations>(IDLE);
@@ -358,6 +371,12 @@ export function PantryList({
   function focusToggle(id: string) {
     toggles.current.get(id)?.focus();
   }
+
+  // 求めは描いたあとに移す — 呼び出し側が同じ描画で一覧の側の `inert` を外しており、`inert` の
+  // 中の要素には焦点が乗らないため（B-65b 設計 規則7）。早い return より前に置く（フックの順序）。
+  useEffect(() => {
+    if (focusOperationsRequest !== null) focusToggle(focusOperationsRequest.stockItemId);
+  }, [focusOperationsRequest]);
 
   function deleteRow(id: string) {
     // 二重に送っても2度目は 404 になり、それを「すでに消えている」と読む（ADR-050）ので
