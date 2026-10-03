@@ -1208,6 +1208,8 @@ describe('composition root main', () => {
     // `127.0.0.1` で開く人が居るため、許可の一覧は2つである（設計書 10章 前提2）。
     const webOrigin = 'http://localhost:5173';
     const loopbackWebOrigin = 'http://127.0.0.1:5173';
+    /** 本番の web の origin（ADR-081。`apps/web/wrangler.toml` の Worker の名前で決まる）。 */
+    const productionWebOrigin = 'https://fridge-to-meal-web.tkdev106.workers.dev';
     /** 許可の一覧に無い要求元。架空の値である（B-09 設計書 11章と同じ流儀）。 */
     const unknownOrigin = 'https://akunin.example';
 
@@ -1267,6 +1269,31 @@ describe('composition root main', () => {
       });
 
       expect(response.headers.get('Access-Control-Allow-Origin')).toBe('http://127.0.0.1:5173');
+    });
+
+    it('本番の web の origin も許可の一覧に入っている', async () => {
+      // ADR-081 / ADR-048 決定2: 配信先の origin を一覧へ足す。要求元の反射ではなく明示の1つである。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/stock-items', {
+        headers: { ...bearerHeaders('x'), ...originHeaders(productionWebOrigin) },
+      });
+
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe(
+        'https://fridge-to-meal-web.tkdev106.workers.dev',
+      );
+    });
+
+    it('本番の web の origin からの preflight は認証なしで 204 で通る', async () => {
+      // ADR-081 / ADR-048 決定3: 本番でも preflight は認証にも経路にも届かない。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/stock-items', preflightRequest(productionWebOrigin));
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get('Access-Control-Allow-Origin')).toBe(
+        'https://fridge-to-meal-web.tkdev106.workers.dev',
+      );
     });
 
     it('許していない origin には許可の origin を返さない', async () => {

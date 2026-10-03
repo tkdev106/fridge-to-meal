@@ -308,12 +308,16 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
  * `*` にも要求元の反射にもしない — web は `Authorization` にアクセストークンを載せて来るので
  * （ADR-043）、未知の origin からの往復をブラウザに許させる理由が1つも無い。
  *
- * **いま2つしか無いのは、本番の配信先がまだ決まっていないためである**（ADR-046 結果3 /
- * B-22 設計書 10章）。開発の web は `http://localhost:5173`（`vite.config.ts` の `server.port`）で、
- * `127.0.0.1` で開く人が居るため同じ開発サーバを2つの名で挙げている。
- * **配信先が決まった周に、その origin をこの一覧へ足す** — 先回りで未知の origin を許さない。
+ * 本番の web は Workers の静的アセット（`apps/web/wrangler.toml`）で配信し、origin は Worker の
+ * 名前とアカウントの workers.dev のサブドメインで決まる（ADR-081）。Worker の名前を変えるときや
+ * 独自ドメインを付けるときは、この一覧も同じ周で変える。開発の web は `http://localhost:5173`
+ * （`vite.config.ts` の `server.port`）で、`127.0.0.1` で開く人が居るため同じ開発サーバを2つの名で挙げている。
  */
-const ALLOWED_WEB_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+const ALLOWED_WEB_ORIGINS = [
+  'https://fridge-to-meal-web.tkdev106.workers.dev',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
 
 /**
  * CORS で許す method。**画面の有無ではなく結線済みの経路に合わせる**（B-22 設計書 規則13 / B-09）。
@@ -342,7 +346,7 @@ const ALLOWED_HEADERS = ['Authorization', 'Content-Type'];
  * （`GET /meals/:id`。FR-30 / FR-32 / B-52）— **調理記録の経路より後ろに置いても前に置いても
  * 食い合わない**（道が違う）。**接頭辞は増やさない**（B-22 設計書 規則15）— この Worker の origin は
  * 在庫と献立の API と `/health` しか出さないので、`/api` で切り分ける相手が居ない。接頭辞が効くのは
- * web と api が1つのドメインを分け合うときで、**その配信先はまだ決まっていない。**
+ * web と api が1つのドメインを分け合うときで、web は別の Worker から配信している（ADR-081）。
  *
  * **CORS は経路より前に `app.use('*', …)` で置く**（B-22 設計書 規則11・14 / ADR-046 結果3）。
  * `/health` も経路の1つなので、その前である。後ろに挿すと、通った応答にしか許可のヘッダが付かず、
