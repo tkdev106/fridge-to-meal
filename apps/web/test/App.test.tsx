@@ -995,11 +995,8 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
     await settleSuggestions(suggestions);
   });
 
-  it('生成中に在庫タブへ移って戻っても、経過秒数は押した時刻から数える', async () => {
-    // B-62 規則12 / D-6 / NFR-04: 器は選んでいないタブを木から外すので、起点は門が持つ。
-    // 偽にするのは `Date` だけで、`findBy` の待ちは実のタイマーで回す（実時間は待たない）。
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(1_790_000_000_000);
+  it('生成中に在庫タブへ移って戻っても、生成中のまま見える', async () => {
+    // B-62 規則12 / D-6 / NFR-04: 器は選んでいないタブを木から外すので、送信中かどうかは門が持つ。
     const { suggestions } = renderApp(
       { initialState: 'signedIn' },
       { list: [loaded(carrot)] },
@@ -1010,10 +1007,10 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
     fireEvent.click(requestNewMealsOperation());
     openPantry();
     await screen.findByText(carrot.name);
-    vi.setSystemTime(1_790_000_007_000);
     fireEvent.click(mealsTab());
 
-    expect(screen.getByText('7秒')).not.toBeNull();
+    expect(screen.getByText('考えています…')).not.toBeNull();
+    expect(screen.queryByText(/秒$/)).toBeNull();
 
     await settleSuggestions(suggestions);
   });

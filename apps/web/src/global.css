@@ -54,6 +54,25 @@
   /* フォーカスの輪郭（NFR-16。文字色と同じ色で地との比を新しく作らない） */
   --focus-outline: 2px solid var(--color-text);
   --focus-outline-offset: 2px;
+  /*
+   * 操作と入力欄の輪郭は内側に引き、枠に重ねて1本にする（2026-10-03 のユーザーの指摘。
+   * 外に 2px 離すと、枠と輪郭が二重に見える）。
+   */
+  --focus-outline-offset-inset: -2px;
+  /*
+   * 文字色の地の操作（主の操作）の輪郭。地と同じ色の輪郭は見えないので、地の色の線を
+   * 縁から 4px 内側に引く（縁の 2px は文字色のまま残り、線が1本に見える）。
+   */
+  --focus-outline-inverse: 2px solid var(--color-background);
+  --focus-outline-offset-inverse: -4px;
+
+  /*
+   * PC（幅 1024px 以上）の画面の左右の余白と、余白の内側の最大幅（2026-10-03 のユーザーの指摘
+   * 「各タブの左右の隙間がバラバラ」）。**タブの画面はどれもこの2つを使い、画面ごとに値を
+   * 持たない。** 最大幅は献立タブのカード3列（原本 PC の 1080px）に揃えた。
+   */
+  --screen-inset-wide: 48px;
+  --screen-max-width-wide: 1080px;
 }
 
 /*
@@ -87,6 +106,18 @@ textarea {
 :focus-visible {
   outline: var(--focus-outline);
   outline-offset: var(--focus-outline-offset);
+}
+
+/*
+ * 操作と入力欄は輪郭を内側に引く（上の `--focus-outline-offset-inset`）。枠のある部品では
+ * 枠に重なって1本になり、枠の無い部品では押せる範囲の内側に1本出る。**輪郭そのものは消さない**
+ * （NFR-16）。文字色の地の操作は各画面の module が `--focus-outline-inverse` で上書きする。
+ */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline-offset: var(--focus-outline-offset-inset);
 }
 
 /* 地（原本の画面の根 `MealScreen` ほかと同じ。設計 B-59 6章 規則2） */

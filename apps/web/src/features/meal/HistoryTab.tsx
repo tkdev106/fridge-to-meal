@@ -195,7 +195,7 @@ export function HistoryTab({
       <>
         <ColumnToggles selected={selectedColumn} onSelect={setSelectedColumn} />
         {rows.length === 0 ? (
-          <p role="status" className={styles.notice}>
+          <p role="status" className={`${styles.notice} ${styles.emptyNotice}`}>
             {EMPTY_COLUMN_NOTICES[selectedColumn]}
           </p>
         ) : (

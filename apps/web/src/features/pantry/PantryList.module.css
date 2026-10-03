@@ -18,7 +18,11 @@
   gap: 24px;
 }
 
-/* 消せなかった案内。デザインに描かれていないので、行と同じ左右の余白だけを取る。 */
+/*
+ * 案内（読み込み中・取れなかった・0件・消せなかった）。デザインに描かれていないので、行と同じ
+ * 左右の余白だけを取る — 画面の根は横の余白を持たないので、取らないと文字が画面の端に付く
+ * （2026-10-03 のユーザーの指摘）。
+ */
 .notice {
   margin: 0;
   padding: 0 16px;
@@ -254,6 +258,12 @@
   color: var(--color-background);
   font-size: var(--font-size-14);
   cursor: pointer;
+}
+
+/* 赤の地（文字色の輪郭では地との差が小さい）。焦点の輪郭は地の色で内側に引く（`global.css` の `--focus-outline-inverse`）。 */
+.revealedDelete:focus-visible {
+  outline: var(--focus-outline-inverse);
+  outline-offset: var(--focus-outline-offset-inverse);
 }
 
 /*
