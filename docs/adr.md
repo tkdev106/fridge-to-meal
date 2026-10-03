@@ -1785,6 +1785,7 @@ flowchart TD
   1. **メールの確認が有効な設定では、確認済みのアドレスへのサインアップも断られずに `confirmationRequired` で返る**（Supabase の列挙対策）。登録済みかどうかは判定せず、完了の案内に「すでにアカウントがある場合はメールは届きません」と添える。`alreadyRegistered` は確認が無効な設定でだけ現れる。
   2. 画面の下限（8）とサーバの下限がずれている間は、画面が先に止めるので実害は無い。揃えるとサーバの側でも同じ下限になる。
   3. ADR-046 の本文は書き換えない。B-35 の「種別は分けない」はサインアップについてだけここで動く。
+
 ### ADR-082　web を api とは別の Worker の静的アセットとして配信し、`main` から Workers Builds で自動で出す　`提案`
 
 - **状況** — api は Cloudflare Workers の `fridge-to-meal-api`（`https://fridge-to-meal-api.tkdev106.workers.dev`）で動き、Cloudflare の Workers Builds（Git 連携）が `main` から自動でデプロイしている。**web（`apps/web`）には配信先が無い。** web は `vite build` が出す静的ファイル（SPA・PWA。ADR-014 / ADR-016）で、サーバ側の処理を持たない。2026-10-03 にユーザーが「アカウント作成画面ができたら本番環境にフロントエンドをデプロイしたい」と求めた。
