@@ -30,6 +30,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { StockItemDto } from '@fridge-to-meal/contract';
 import type { DeleteFailureNotice } from './DeleteFailureNotice.js';
 import { deleteFailureNoticeOf } from './DeleteFailureNotice.js';
+import { remainingDaysLabelOf } from './ExpiryDateLabel.js';
 import type { ExpirySection, ListedStockItem } from './PantrySections.js';
 import { pantrySectionsOf } from './PantrySections.js';
 import type { RowOperationEvent, RowOperations } from './RowOperations.js';
@@ -106,14 +107,13 @@ const NOTICES: Record<DeleteFailureNotice, string> = {
 
 /**
  * 残日数を読める文にする（NFR-17 / screen-design 9章の「今日」「あと2日」）。
- * 数から文への言い換えだけを行い、どの帯に入るかはここで決めない（規則5 は純粋関数の側）。
+ * 数から文への言い換えは編集の画面と共有する `remainingDaysLabelOf` に任せ（B-64c）、
+ * ここが持つのは期限なしの印だけである。どの帯に入るかはここで決めない（規則5 は純粋関数の側）。
  */
 function remainingDaysText(remainingDays: number | null): string {
   if (remainingDays === null) return NO_REMAINING_DAYS_MARK;
-  if (remainingDays === 0) return '今日';
-  if (remainingDays < 0) return `${-remainingDays}日過ぎ`;
 
-  return `あと${remainingDays}日`;
+  return remainingDaysLabelOf(remainingDays);
 }
 
 /**
