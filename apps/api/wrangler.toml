@@ -58,3 +58,24 @@ id = "fefe9ddf248f42388c89824cf08a7445"
 # ここには書かない（NFR-10）。
 [vars]
 GEMINI_MODEL = "gemini-3.5-flash-lite"
+
+# Workers の可観測性（2026-10-03 にユーザーが指定）。500 の原因をダッシュボードからも追えるように、
+# ログとトレースを全件（head_sampling_rate = 1）保存し、問題の検出も有効にする。
+# ログの1行（api.unexpected …）に載せるものは ADR-080 が決めている — SQL・値・世帯の識別子・
+# トークンは載せない。トレースに載る外向きの呼び出しの URL にも同じ注意を向ける（NFR-13）。
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+persist = true
+
+[observability.issue_detection]
+enabled = true
