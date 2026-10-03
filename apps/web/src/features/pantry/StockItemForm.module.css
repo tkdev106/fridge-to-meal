@@ -7,7 +7,8 @@
  * 色・文字の大きさ・太さ・操作の高さ・フォーカスはトークン（`src/global.css` の `:root`）から
  * `var(--…)` で引き、ここで新しい色を作らない。トークンに無い寸法は原本の値を直に書く。
  *
- * **PC の右から出るパネルはここに無い**（B-65b。切り替える幅は B-60 で決めた 1024px。`docs/screen-design.md` 2.1 / ADR-076）。
+ * **PC（幅 1024px 以上）では右から出るパネルの中に描かれる**（B-65b 設計 6章 規則13・14 / 原本の
+ * `pc`）。パネルの位置・幅・面は `PantryTab.module.css` の持ち分で、ここはフォームの中身だけを持つ。
  */
 
 /*
@@ -51,6 +52,33 @@
 
 /* 送っている間。押せないことを弱い文字色で示す。 */
 .back:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+/*
+ * 閉じる（B-65b 設計 規則9・14）。PC のパネルでだけ見せる下線の文字で、SP では隠す（規則11）—
+ * SP は `.back` のアイコンが同じ「保存せずに閉じる」を担う。押せる高さは 48px（NFR-16）。
+ */
+.close {
+  display: none;
+  height: var(--control-height-secondary);
+  margin-right: -8px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--font-size-14);
+  letter-spacing: 0.02em;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+
+/* 送っている間。`.back` と同じく弱い文字色で押せないことを示す。 */
+.close:disabled {
   color: var(--color-text-muted);
   cursor: default;
 }
@@ -261,4 +289,30 @@
   border-color: var(--color-text-muted);
   color: var(--color-text-muted);
   cursor: default;
+}
+
+/*
+ * PC（幅 1024px 以上。値の正は `docs/screen-design.md` 2.1 / ADR-076。CSS 変数はメディアクエリに
+ * 使えないので写しを書く）。原本 `IngredientForm` の `pc`（B-65b 設計 規則13）: 余白 `40px 40px 0`、
+ * 最小の高さはパネルの高さ（下タブの帯を引かない — PC の帯は左のサイドナビである）。見出しの行は
+ * 左の -12px を外して見出しと `閉じる` を両端に寄せ、`戻る` を隠す。
+ */
+@media (min-width: 1024px) {
+  .form {
+    min-height: 100%;
+    padding: 40px 40px 0;
+  }
+
+  .header {
+    justify-content: space-between;
+    margin: 0;
+  }
+
+  .back {
+    display: none;
+  }
+
+  .close {
+    display: block;
+  }
 }

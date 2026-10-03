@@ -95,29 +95,33 @@ function expiryDateField(currentValue: string): HTMLElement {
 }
 
 /**
- * 押せる操作を**文書順**で返す（設計 規則5）。
- *
- * 編集の画面の操作は2つで、**先頭が閉じる操作**（規則7・8）、**末尾が保存**である
- * （「保存してもう1件」は置かない。規則5）。**この数を先に確かめる** — 崩れた回に閉じる操作を
- * 保存として押してしまうと、テストは何が壊れたか読めない形で落ちる。**名札は見ない**（規則19）。
+ * 保存せずに閉じる操作（`戻る` と `閉じる`。規則7・8 / B-65 規則2 / B-65b 規則9）。名前は原本から
+ * 取った文言で仮ではない（ADR-074）。
  */
-function operations(): readonly HTMLElement[] {
-  const found = screen.getAllByRole('button');
-  expect(found).toHaveLength(2);
-
-  return found;
+function closeOperations(): readonly HTMLElement[] {
+  return [
+    ...screen.queryAllByRole('button', { name: '戻る' }),
+    ...screen.queryAllByRole('button', { name: '閉じる' }),
+  ];
 }
 
-function operationAt(index: number): HTMLElement {
-  const found = operations().at(index);
-  if (found === undefined) throw new Error(`${index} 番目の操作が無い`);
-
-  return found;
-}
-
-/** 保存。文書順の末尾である（設計 規則5）。 */
+/**
+ * 保存。**文書順の末尾である**（設計 規則5）。
+ *
+ * 保存せずに閉じる操作（`closeOperations`）を除けば、編集の画面の操作は保存の1つだけである
+ * （「保存してもう1件」は置かない。規則5）。**この数を先に確かめる** — 崩れた回に閉じる操作を
+ * 保存として押してしまうと、テストは何が壊れたか読めない形で落ちる。**名札では引かない**（規則19。
+ * 送っている間は名札が変わる）。
+ */
 function saveOperation(): HTMLElement {
-  return operationAt(-1);
+  const closes = closeOperations();
+  const all = screen.getAllByRole('button');
+  expect(all.filter((button) => !closes.includes(button))).toHaveLength(1);
+
+  const found = all.at(-1);
+  if (found === undefined) throw new Error('保存の操作が無い');
+
+  return found;
 }
 
 /** 出ている案内。**数だけを見る**（設計 規則19 / 先行 `StockItemForm.test.tsx`）。 */
@@ -250,8 +254,8 @@ describe('編集の画面 StockItemEditForm の保存', () => {
     renderEditForm();
 
     // 規則5: 「保存してもう1件」を置かない — 編集は在庫品1件に閉じ、次の1件が無い
-    // （FR-08 は登録の話である）。先頭が閉じる操作、末尾が保存の2つだけである。
-    expect(screen.getAllByRole('button')).toHaveLength(2);
+    // （FR-08 は登録の話である）。閉じる操作が2つ（`戻る` / `閉じる`。B-65b 規則9）と保存の1つである。
+    expect(screen.getAllByRole('button')).toHaveLength(3);
   });
 
   it('送っている間にもう一度保存を押しても、更新の口へは1件しか届かない', async () => {
@@ -424,7 +428,7 @@ describe('編集の画面 StockItemEditForm の接続が切れている間', () 
     const closed: string[] = [];
     renderEditFormWith(true, () => closed.push('close'));
 
-    fireEvent.click(operationAt(0));
+    fireEvent.click(screen.getByRole('button', { name: '戻る' }));
 
     // 規則6: 保存せずに閉じるのは遷移である。
     expect(closed).toHaveLength(1);
@@ -608,5 +612,106 @@ describe('編集の画面 StockItemEditForm の見た目と文言', () => {
 
     // B-65 規則11・13 / ADR-074: 編集の保存の名札は `保存`。並び（戻る → 保存）は変えない。
     expect(screen.getByRole('button', { name: '保存' })).toBe(saveOperation());
+  });
+});
+
+/**
+ * 見出しの行の `閉じる`（B-65b 設計 6章 規則9 / ADR-074 / ADR-076 決定2）。
+ *
+ * **木には `戻る` と `閉じる` の2つとも置く**（10章 前提3）。jsdom ではどちらも見えるので、名前で
+ * 引き分ける。見た目（下線・幅で隠すこと）は CSS で、ここでは見ない（ADR-055 決定3）。
+ */
+describe('編集の画面 StockItemEditForm の `閉じる`', () => {
+  /** 一覧へ戻す口を配列に残して描く。 */
+  function renderEditFormRecordingClose(
+    closed: string[],
+    options: FixedStockItemRequestsOptions = {},
+    offline = false,
+  ) {
+    const requests = new FixedStockItemRequests(options);
+
+    render(
+      <StockItemEditForm
+        stockItem={stockItemOf()}
+        onUpdate={requests.updateStockItem}
+        onClose={() => closed.push('close')}
+        offline={offline}
+        today={today}
+      />,
+    );
+
+    return requests;
+  }
+
+  function closeButton(): HTMLElement {
+    return screen.getByRole('button', { name: '閉じる' });
+  }
+
+  it('見出しの行は文書順で `戻る`・見出し・`閉じる` と並ぶ', () => {
+    renderEditForm();
+
+    // B-65b 規則9 / 原本 `IngredientForm`（SP は左に戻る、PC は右に閉じる）。
+    const back = screen.getByRole('button', { name: '戻る' });
+    const heading = screen.getByRole('heading', { level: 1, name: '食材を編集' });
+    expect([precedes(back, heading), precedes(heading, closeButton())]).toEqual([true, true]);
+  });
+
+  it('`閉じる` は見える文字 `閉じる` を持つ', () => {
+    renderEditForm();
+
+    // B-65b 規則9 / ADR-074。
+    expect(closeButton().textContent).toBe('閉じる');
+  });
+
+  it('`閉じる` を押すと、一覧へ戻す口が呼ばれる', () => {
+    const closed: string[] = [];
+    renderEditFormRecordingClose(closed);
+
+    fireEvent.click(closeButton());
+
+    // B-65b 規則9: `戻る` と同じ「保存せずに閉じる」である。
+    expect(closed).toEqual(['close']);
+  });
+
+  it('分量を打ってから `閉じる` を押しても、更新の口へは何も届かない', () => {
+    const requests = renderEditFormRecordingClose([]);
+
+    fireEvent.change(amountField(), { target: { value: typedValues.amount } });
+    fireEvent.click(closeButton());
+
+    // B-65b 規則9: 閉じるのは捨てることである（`<form>` の送信にならない）。
+    expect(requests.receivedUpdates).toEqual([]);
+  });
+
+  it('送っている間は `閉じる` を押しても一覧へ戻す口が呼ばれない', async () => {
+    const closed: string[] = [];
+    const requests = renderEditFormRecordingClose(closed, {
+      // 結末を保留する口。押した時点ではまだ返らない（`support/HeldDelivery.ts`）。
+      update: [{ heldUntilSettled: { outcome: 'failed' } }],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    // 前提: 1件は送られ、結末はまだ返っていない。
+    expect(requests.receivedUpdates).toHaveLength(1);
+
+    fireEvent.click(closeButton());
+
+    // B-65b 規則9 / B-39 規則11: 送っている間はどちらの閉じる操作も効かない。
+    expect(closed).toEqual([]);
+
+    // 保留を解いてから終える — 届いた更新を `act` の中で起こすためである。
+    await act(async () => {
+      requests.settle();
+    });
+  });
+
+  it('接続が切れていても `閉じる` で閉じられる', () => {
+    const closed: string[] = [];
+    renderEditFormRecordingClose(closed, {}, true);
+
+    fireEvent.click(closeButton());
+
+    // B-70 / B-65 規則6: 保存せずに閉じるのは遷移で、止めない。
+    expect(closed).toEqual(['close']);
   });
 });

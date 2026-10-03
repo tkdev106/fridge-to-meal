@@ -74,6 +74,12 @@ const SAVE_LABEL = '保存';
 const CLOSE_LABEL = '戻る';
 
 /**
+ * PC のパネルで保存せずに閉じる操作の見える文字（B-65b 設計 規則9 / 原本 `IngredientForm` の `pc`）。
+ * 文言はデザインが正である（ADR-074 決定1）。
+ */
+const CLOSE_TEXT = '閉じる';
+
+/**
  * 残日数の色を帯で選ぶ（B-65 規則8）。帯の決め方は一覧と同じ `expirySectionOf` に任せる。
  * **色だけに頼らない** — 文字（`remainingDaysLabelOf`）が常に出る（NFR-17）。
  */
@@ -191,6 +197,14 @@ export function StockItemEditForm({
         </button>
 
         <h1 className={styles.heading}>{HEADING}</h1>
+
+        {/* `閉じる` は `戻る` と同じ「保存せずに閉じる」（B-65b 設計 規則9）。SP は `戻る`（アイコン）、
+            PC は `閉じる`（下線の文字）だけを CSS で見せる — 幅で ARIA を変えられないので、木には
+            2つとも置く（ADR-076 結果2 / 前提3）。`type="submit"` にしない・送っている間は押せない
+            理由は `戻る` と同じである。 */}
+        <button type="button" className={styles.close} disabled={sending} onClick={onClose}>
+          {CLOSE_TEXT}
+        </button>
       </div>
 
       <div className={styles.fields}>

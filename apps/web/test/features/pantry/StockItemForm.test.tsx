@@ -144,17 +144,30 @@ function fillThreeFields(): void {
 }
 
 /**
+ * 保存せずに閉じる操作（`戻る` と `閉じる`。規則7 / B-65 規則2 / B-65b 規則9）。名前は原本から
+ * 取った文言で仮ではない（ADR-074）。
+ */
+function closeOperations(): readonly HTMLElement[] {
+  return [
+    ...screen.queryAllByRole('button', { name: '戻る' }),
+    ...screen.queryAllByRole('button', { name: '閉じる' }),
+  ];
+}
+
+/**
  * 保存の操作を**文書順**で返す（規則8）。
  *
- * 登録の画面の押せる操作は3つで、**先頭が閉じる操作**（規則7）、後ろ2つが保存である。
+ * 登録の画面の押せる操作は、保存せずに閉じる操作（`closeOperations`）を除けば保存の2つである。
  * **この数を先に確かめる** — 崩れた回に閉じる操作を保存として押してしまうと、テストは
- * 「送られていない」ではなく別の理由で落ち、何が壊れたか読めなくなる。**名札は見ない**（規則15）。
+ * 「送られていない」ではなく別の理由で落ち、何が壊れたか読めなくなる。**保存の名札では引かない**
+ * （規則15。送っている間は押した側の名札が変わる）。
  */
 function saveOperations(): readonly HTMLElement[] {
-  const operations = screen.getAllByRole('button');
-  expect(operations).toHaveLength(3);
+  const closes = closeOperations();
+  const operations = screen.getAllByRole('button').filter((button) => !closes.includes(button));
+  expect(operations).toHaveLength(2);
 
-  return operations.slice(1);
+  return operations;
 }
 
 function saveOperationAt(index: number): HTMLElement {
@@ -950,5 +963,109 @@ describe('登録の画面 StockItemForm の見た目と文言', () => {
       precedes(namedExpiryDateField(), notice as HTMLElement),
       precedes(notice as HTMLElement, screen.getByRole('button', { name: '保存してもう1件' })),
     ]).toEqual([true, true]);
+  });
+});
+
+/**
+ * 見出しの行の `閉じる`（B-65b 設計 6章 規則9 / ADR-074 / ADR-076 決定2）。
+ *
+ * SP は `戻る`（アイコン）、PC は `閉じる`（見える文字）を CSS で出し分けるが、**木には2つとも
+ * 置く**（10章 前提3 — 幅で ARIA を変えられない）。jsdom ではどちらも見えるので、名前で引き分ける。
+ * 見た目（下線・幅で隠すこと）は CSS で、ここでは見ない（ADR-055 決定3）。
+ */
+describe('登録の画面 StockItemForm の `閉じる`', () => {
+  /** 一覧へ戻す口を配列に残して描く。 */
+  function renderFormRecordingClose(
+    onRegister: RegisterStockItem,
+    closed: string[],
+    offline = false,
+  ) {
+    return render(
+      <StockItemForm
+        onRegister={onRegister}
+        onClose={() => closed.push('close')}
+        ingredientNames={{ outcome: 'loading' }}
+        offline={offline}
+      />,
+    );
+  }
+
+  function closeButton(): HTMLElement {
+    return screen.getByRole('button', { name: '閉じる' });
+  }
+
+  it('見出しの行は文書順で `戻る`・見出し・`閉じる` と並ぶ', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    // B-65b 規則9 / 原本 `IngredientForm`（SP は左に戻る、PC は右に閉じる）。
+    const back = screen.getByRole('button', { name: '戻る' });
+    const heading = screen.getByRole('heading', { level: 1, name: '食材を登録' });
+    expect([precedes(back, heading), precedes(heading, closeButton())]).toEqual([true, true]);
+  });
+
+  it('`閉じる` は見える文字 `閉じる` を持つ', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    // B-65b 規則9 / ADR-074: アイコンではなく文字の button である。
+    expect(closeButton().textContent).toBe('閉じる');
+  });
+
+  it('`閉じる` を押すと、一覧へ戻す口が呼ばれる', () => {
+    const closed: string[] = [];
+    renderFormRecordingClose(recordingRegister([], { outcome: 'registered' }), closed);
+
+    fireEvent.click(closeButton());
+
+    // B-65b 規則9: `戻る` と同じ「保存せずに閉じる」である。
+    expect(closed).toEqual(['close']);
+  });
+
+  it('食材名を打ってから `閉じる` を押しても、登録の口へは何も届かない', () => {
+    const registrations: RegisterStockItemInput[] = [];
+    renderFormRecordingClose(recordingRegister(registrations, { outcome: 'registered' }), []);
+
+    fireEvent.change(ingredientNameField(), { target: { value: typedValues.name } });
+    fireEvent.click(closeButton());
+
+    // B-65b 規則9 / B-39 規則7: 閉じるのは捨てることである（`<form>` の送信にならない）。
+    expect(registrations).toEqual([]);
+  });
+
+  it('送っている間は `閉じる` を押しても一覧へ戻す口が呼ばれない', async () => {
+    const closed: string[] = [];
+    const registrations: RegisterStockItemInput[] = [];
+    const { register, settle } = pendingRegister(registrations);
+    renderFormRecordingClose(register, closed);
+
+    fillThreeFields();
+    fireEvent.click(screen.getByRole('button', { name: '保存してもう1件' }));
+    // 前提: 1件は送られ、結末はまだ返っていない（保留のまま）。
+    expect(registrations).toHaveLength(1);
+
+    fireEvent.click(closeButton());
+
+    // B-65b 規則9 / B-39 規則11: 送っている間はどちらの閉じる操作も効かない。
+    expect(closed).toEqual([]);
+
+    // 保留を解いてから終える — 届いた更新を `act` の中で起こすためである。
+    settle();
+    await waitFor(() => {
+      expect(screen.queryByDisplayValue('にんじん')).toBeNull();
+    });
+  });
+
+  it('接続が切れていても `閉じる` で一覧へ戻せる', () => {
+    const closed: string[] = [];
+    const registrations: RegisterStockItemInput[] = [];
+    renderFormRecordingClose(
+      recordingRegister(registrations, { outcome: 'registered' }),
+      closed,
+      true,
+    );
+
+    fireEvent.click(closeButton());
+
+    // B-70 / B-65 規則6: 保存せずに閉じるのは遷移で、止めない。登録の口へは何も届かない。
+    expect([closed, registrations]).toEqual([['close'], []]);
   });
 });
