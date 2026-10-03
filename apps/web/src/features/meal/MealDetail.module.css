@@ -205,12 +205,14 @@
   text-wrap: pretty;
 }
 
-/* 記録済みの表示・記録の案内・`作った` の並び。最大幅 360px（原本）。 */
+/*
+ * 記録済みの表示・記録の案内・`作った` の並び。**幅は横いっぱい**（他の操作と揃え、幅の広い端末でも
+ * 左に寄せない）。
+ */
 .actions {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 360px;
   margin-top: 32px;
 }
 
@@ -241,6 +243,12 @@
   font-weight: var(--font-weight-medium);
   letter-spacing: 0.02em;
   cursor: pointer;
+}
+
+/* 文字色の地。焦点の輪郭は地の色で内側に引く（`global.css` の `--focus-outline-inverse`）。 */
+.cooked:focus-visible {
+  outline: var(--focus-outline-inverse);
+  outline-offset: var(--focus-outline-offset-inverse);
 }
 
 .cooked:active {
@@ -286,12 +294,12 @@
  */
 @media (min-width: 1024px) {
   /*
-   * 余白 40px 48px 64px と、**余白の内側の**最大幅 960px（原本 `pad` / `max`）。全要素が
-   * `border-box` なので（`global.css`）、最大幅には左右の余白 48px × 2 を足す。左に寄せる。
+   * 余白 40px 48px 64px と、**余白の内側の**最大幅。左右の余白と最大幅はタブの画面で共通の
+   * トークン（`global.css`）。全要素が `border-box` なので、最大幅には左右の余白を足す。左に寄せる。
    */
   .detail {
-    max-width: calc(960px + 48px * 2);
-    padding: 40px 48px 64px;
+    max-width: calc(var(--screen-max-width-wide) + var(--screen-inset-wide) * 2);
+    padding: 40px var(--screen-inset-wide) 64px;
   }
 
   /* 材料 360px ／ 手順の2列、列の間 64px（原本 `cols` / `gap`）。名称との間 32px は包みが持つ。 */

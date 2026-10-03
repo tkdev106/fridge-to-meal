@@ -25,7 +25,7 @@ import { MealsTab } from '../../../src/features/meal/MealsTab.js';
 
 const TODAY = '2026-09-20';
 
-/** 生成を求めた時刻（ミリ秒の epoch。B-62）。経過秒数は、これと渡した時計の差から出る。 */
+/** 生成を求めた時刻（ミリ秒の epoch。B-62）。`null` でなければ送信中である。 */
 const T = 1_790_000_000_000;
 
 /** 「新しい献立を見る」の面の文言（B-62 / 原本 `RequestBlock`・案内の帯）。 */
@@ -33,7 +33,7 @@ const REQUEST_BUTTON_NAME = '新しい献立を見る';
 const WAITING_HINT = '時間がかかる場合があります';
 const PANTRY_CHANGED_HINT = '冷蔵庫の食材が変わりました';
 const THINKING = '考えています…';
-const REQUEST_FAILED_BAND = '献立をつくれませんでした。もう一度お試しください';
+const REQUEST_FAILED_BAND = '献立を作れませんでした。もう一度お試しください';
 
 function entry(overrides: Partial<SuggestionEntryOutput> = {}): SuggestionEntryOutput {
   return {
@@ -67,8 +67,7 @@ type RenderTabOverrides = Partial<Omit<Parameters<typeof MealsTab>[0], 'suggesti
  * 「新しい献立を求める」操作まわりの props は**既定値を持たせておく**（B-49b / B-62）。
  * 表示の分岐だけを見る既存の観点が、新しい props を意識せずに済むようにする。
  *
- * **既定は送っていない（`newMealsRequestedAt` が `null`）**。時計の既定は `() => 0` で、
- * 送っていない回は読まれても描くものに効かない。
+ * **既定は送っていない（`newMealsRequestedAt` が `null`）**。
  */
 function tabElement(
   suggestion: Parameters<typeof MealsTab>[0]['suggestion'],
@@ -80,7 +79,6 @@ function tabElement(
       today={TODAY}
       onRequestNewMeals={overrides.onRequestNewMeals ?? (() => {})}
       newMealsRequestedAt={overrides.newMealsRequestedAt ?? null}
-      now={overrides.now ?? (() => 0)}
       newMealsFailed={overrides.newMealsFailed ?? false}
       onGoToPantry={overrides.onGoToPantry ?? (() => {})}
       onOpenMeal={overrides.onOpenMeal ?? (() => {})}
@@ -311,7 +309,7 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
   });
 
   it('送信中は操作が押せない', () => {
-    renderTab(suggested(entry()), { newMealsRequestedAt: T, now: () => T });
+    renderTab(suggested(entry()), { newMealsRequestedAt: T });
 
     // `@testing-library/jest-dom` は入れない（依存の追加は止まる条件。`CLAUDE.md`）ので、
     // 素の `disabled` プロパティで見る。
@@ -319,7 +317,7 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
   });
 
   it('送信中でも、渡された提案のカードはそのまま描かれ続ける', () => {
-    renderTab(suggested(entry({ title: '肉じゃが' })), { newMealsRequestedAt: T, now: () => T });
+    renderTab(suggested(entry({ title: '肉じゃが' })), { newMealsRequestedAt: T });
 
     expect(screen.queryByText('肉じゃが')).not.toBeNull();
   });
@@ -331,7 +329,7 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
   });
 
-  it('失敗した回は案内の帯「献立をつくれませんでした。もう一度お試しください」を status として出す', () => {
+  it('失敗した回は案内の帯「献立を作れませんでした。もう一度お試しください」を status として出す', () => {
     // 規則9 / S-6 / NFR-07: 文言は原本の「案内の帯」。添える `!` は別のケースが見る。
     renderTab({ outcome: 'none' }, { newMealsFailed: true });
 
@@ -348,7 +346,7 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
 
   it('送信中は、失敗ではなく送信中の案内を出す', () => {
     // 規則6・9: status は「送信中か失敗のどちらか1つ」。両方が真でも送信中を先に見る。
-    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T, newMealsFailed: true });
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, newMealsFailed: true });
 
     const statuses = screen.getAllByRole('status');
     expect(statuses).toHaveLength(1);
@@ -395,8 +393,7 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
  * 7章 / NFR-04 / NFR-07 / NFR-17 / S-5 / S-6 / D-6・D-8）。
  *
  * 文言は原本 `RequestBlock` と「案内の帯」から取ったもので、期待値に書く（ADR-074）。
- * **秒数は実時間を待たない** — 時計は書き換えられる値で渡し、1秒ごとの間隔は偽のタイマーで進める
- * （`docs/testing.md` 5章）。
+ * **経過秒数は出さない**（`docs/design/README.md`）。
  */
 describe('献立タブ MealsTab の「新しい献立を見る」の面', () => {
   afterEach(() => {
@@ -420,99 +417,46 @@ describe('献立タブ MealsTab の「新しい献立を見る」の面', () => 
   });
 
   it('生成中は「時間がかかる場合があります」を出さない', () => {
-    // 規則1: 生成中は代わりに `考えています…` と経過秒数を出す（原本 pending）。
-    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T });
+    // 規則1: 生成中は代わりに `考えています…` を出す（原本 pending）。
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T });
 
     expect(screen.queryByText(WAITING_HINT)).toBeNull();
   });
 
   it('生成中は「考えています…」を出す', () => {
     // 規則1 / S-5。
-    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T });
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T });
 
     expect(screen.getByText(THINKING)).not.toBeNull();
   });
 
-  it('生成を求めた直後は「0秒」を出す', () => {
-    // 規則4: 押した直後は `0秒`。
-    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T });
+  it('生成が終わると「考えています…」を出さない', () => {
+    // 規則5: 送信が終わったら生成中の案内を下ろす。
+    const { rerender } = renderTab({ outcome: 'none' }, { newMealsRequestedAt: T });
 
-    expect(screen.getByText('0秒')).not.toBeNull();
-  });
+    rerender(tabElement({ outcome: 'none' }, { newMealsRequestedAt: null }));
 
-  it('経過秒数は渡された開始時刻と時計から出す', () => {
-    // 規則4・12: 起点は門が持つ開始時刻。本体は時計を自分で読まない。
-    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T + 18_500 });
-
-    expect(screen.getByText('18秒')).not.toBeNull();
-  });
-
-  it('生成中は1秒たつごとに秒数が進む', () => {
-    // 規則5: 送信中だけ 1000ms ごとに時計を読み直して描き直す。
-    vi.useFakeTimers();
-    let clock = T;
-    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => clock });
-
-    clock = T + 1_000;
-    act(() => {
-      vi.advanceTimersByTime(1_000);
-    });
-
-    expect(screen.getByText('1秒')).not.toBeNull();
-  });
-
-  it('描き直すたびに時計を読み直すので、間隔の遅れが秒数に溜まらない', () => {
-    // 規則5: 間隔の回数を数えるのではなく、描き直すたびに `now()` を読む。
-    vi.useFakeTimers();
-    let clock = T;
-    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => clock });
-
-    clock = T + 5_000;
-    act(() => {
-      vi.advanceTimersByTime(1_000);
-    });
-
-    expect(screen.getByText('5秒')).not.toBeNull();
-  });
-
-  it('生成が終わると、時間がたっても秒数を出さない', () => {
-    // 規則5: 送信が終わったら止める。
-    vi.useFakeTimers();
-    let clock = T;
-    const { rerender } = renderTab(
-      { outcome: 'none' },
-      { newMealsRequestedAt: T, now: () => clock },
-    );
-
-    rerender(tabElement({ outcome: 'none' }, { newMealsRequestedAt: null, now: () => clock }));
-    clock = T + 3_000;
-    act(() => {
-      vi.advanceTimersByTime(3_000);
-    });
-
-    expect(screen.queryByText(/秒$/)).toBeNull();
     expect(screen.queryByText(THINKING)).toBeNull();
   });
 
-  it('生成中の status は「考えています…」だけで、秒数を含まない', () => {
-    // 規則6 / NFR-04: 秒数を status に入れると毎秒読み上げで割り込む。
-    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T + 18_000 });
+  it('生成中も経過秒数を出さない', () => {
+    // 生成中に出すのは `考えています…` と進行線だけである（`docs/design/README.md`）。
+    vi.useFakeTimers();
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T });
 
+    act(() => {
+      vi.advanceTimersByTime(18_000);
+    });
+
+    expect(screen.queryByText(/\d+秒/)).toBeNull();
     expect(screen.getByRole('status').textContent).toBe(THINKING);
-  });
-
-  it('経過秒数は読み上げから隠さない', () => {
-    // 規則6: status の外に置くが、たどれば読める。
-    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T + 18_000 });
-
-    expect(screen.getByText('18秒').closest('[aria-hidden="true"]')).toBeNull();
   });
 
   it('生成中は在庫が変わっていても「冷蔵庫の食材が変わりました」を出さない', () => {
     // 規則2: 原本 `changed && !pending`。
     renderTab(
       { ...suggested(entry({ origin: 'generated' })), pantryChanged: true },
-      { newMealsRequestedAt: T, now: () => T },
+      { newMealsRequestedAt: T },
     );
 
     expect(screen.queryByText(PANTRY_CHANGED_HINT)).toBeNull();
@@ -571,12 +515,11 @@ describe('献立タブ MealsTab の原本どおりの結末', () => {
     expect(notes[0]?.textContent).toBe(WAITING_HINT);
   });
 
-  it('まだ提案が無い回に押して生成中になると、「考えています…」と「0秒」を出す', () => {
+  it('まだ提案が無い回に押して生成中になると、「考えています…」を出す', () => {
     // 規則13: 同じ位置で規則1・6を満たす。
-    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T, now: () => T });
+    renderTab({ outcome: 'none' }, { newMealsRequestedAt: T });
 
     expect(screen.getByText(THINKING)).not.toBeNull();
-    expect(screen.getByText('0秒')).not.toBeNull();
   });
 
   it('在庫が足りない回は、主文「冷蔵庫にあるものを」「2つ以上登録してください」を案内の中に出す', () => {

@@ -329,11 +329,6 @@
   letter-spacing: 0.02em;
 }
 
-/* 経過秒数。桁が変わっても横にずれないよう数字の幅を揃える（設計 B-62 規則4）。 */
-.elapsedSeconds {
-  font-variant-numeric: tabular-nums;
-}
-
 /*
  * 主の操作（原本 `RequestBlock` / state=short のボタン / 設計 B-62 規則11）。素の button の枠と
  * 地はここで消す（リセットでは消さない。設計 B-59 6章 規則3）。
@@ -351,6 +346,12 @@
   cursor: pointer;
 }
 
+/* 文字色の地。焦点の輪郭は地の色で内側に引く（`global.css` の `--focus-outline-inverse`）。 */
+.primaryButton:focus-visible {
+  outline: var(--focus-outline-inverse);
+  outline-offset: var(--focus-outline-offset-inverse);
+}
+
 .primaryButton:active:not(:disabled) {
   background: var(--color-text-secondary);
 }
@@ -365,11 +366,6 @@
 /* 「新しい献立を見る」。狭い幅では幅いっぱい（広い幅の 360px は末尾）。 */
 .requestButton {
   flex: none;
-}
-
-/* 「食材を登録する」（原本 state=short の `max-width: 360px`）。 */
-.goToPantryButton {
-  max-width: 360px;
 }
 
 /*
@@ -453,12 +449,13 @@
  * （ほかの module にも同じ値の写しがある。ADR-076 決定3）。
  */
 @media (min-width: 1024px) {
+  /* 左右の余白と最大幅はタブの画面で共通のトークン（`global.css`）。 */
   .screen {
-    padding: 0 48px 64px;
+    padding: 0 var(--screen-inset-wide) 64px;
   }
 
   .content {
-    max-width: 1080px;
+    max-width: var(--screen-max-width-wide);
   }
 
   .cards {

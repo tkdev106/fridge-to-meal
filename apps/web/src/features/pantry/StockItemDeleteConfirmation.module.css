@@ -76,6 +76,12 @@
   font-weight: var(--font-weight-medium);
 }
 
+/* 赤の地（文字色の輪郭では地との差が小さい）。焦点の輪郭は地の色で内側に引く（`global.css` の `--focus-outline-inverse`）。 */
+.confirm:focus-visible {
+  outline: var(--focus-outline-inverse);
+  outline-offset: var(--focus-outline-offset-inverse);
+}
+
 /* 接続が切れて押せない `削除`（B-70 規則11）。先行 `SignInForm` の `.primary:disabled` と同じ見た目。 */
 .confirm:disabled {
   background: var(--color-border);

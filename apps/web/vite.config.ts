@@ -10,8 +10,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: '冷蔵庫から献立',
-        short_name: '献立',
+        name: 'fridge to meal',
+        short_name: 'fridge to meal',
         lang: 'ja',
         start_url: '/',
         display: 'standalone',

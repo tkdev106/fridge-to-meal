@@ -1,7 +1,7 @@
 /**
  * 履歴タブ（B-54b）。`docs/screen-design.md` 第7章に当たる。
  *
- * `GET /meals`（B-54a / ADR-068）の2つの列 — 「以前見た献立」（`seen`）と「つくった献立」
+ * `GET /meals`（B-54a / ADR-068）の2つの列 — 「以前見た献立」（`seen`）と「作った献立」
  * （`cooked`）— を**切り替えて1列ずつ**見せる。2つの列は同じ献立を調理記録の有無で
  * 振り分けたものであり、**振り分けも並びもサーバが決める**（ADR-068 決定2・3）— ここでは
  * 並べ替えず、畳まず、渡された順のまま描く（設計 規則3）。
@@ -59,7 +59,7 @@ const INITIAL_COLUMN: Column = 'seen';
 /** 列の切り替えの文言（原本 `index.dc.html` 12。ADR-074 決定1 — デザインが正）。並びも切り替えの左右の順である。 */
 const COLUMN_LABELS: readonly { readonly column: Column; readonly label: string }[] = [
   { column: 'seen', label: '以前見た献立' },
-  { column: 'cooked', label: 'つくった献立' },
+  { column: 'cooked', label: '作った献立' },
 ];
 
 /** 読み込み中の案内（**暫定**）。 */
@@ -75,7 +75,7 @@ const LOAD_FAILURE_NOTICE = '献立の履歴を読み込めませんでした。
 /** 選んでいる列が0件のときの案内（**暫定**）。**失敗ではない**（設計 規則7）。 */
 const EMPTY_COLUMN_NOTICES: Readonly<Record<Column, string>> = {
   seen: '以前見た献立はまだありません。',
-  cooked: 'つくった献立はまだありません。',
+  cooked: '作った献立はまだありません。',
 };
 
 /** 見出しの行の題（原本 `index.dc.html` 12。ADR-074 決定1 — 仮ではない）。 */
@@ -195,7 +195,7 @@ export function HistoryTab({
       <>
         <ColumnToggles selected={selectedColumn} onSelect={setSelectedColumn} />
         {rows.length === 0 ? (
-          <p role="status" className={styles.notice}>
+          <p role="status" className={`${styles.notice} ${styles.emptyNotice}`}>
             {EMPTY_COLUMN_NOTICES[selectedColumn]}
           </p>
         ) : (
