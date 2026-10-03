@@ -36,7 +36,7 @@ Supabase Auth が送るメールの件名と本文。**正はこのディレク�
 | 本文 | 同じ画面の Body | `confirmation.html` | 同上 |
 | 差出人の名前 | Authentication → Emails → SMTP Settings → Sender name | `fridge to meal` | **カスタム SMTP** |
 | 差出人のアドレス | 同じ画面の Sender email | 送信に使うサービスで認証したアドレス | **カスタム SMTP** |
-| 戻り先 | Authentication → URL Configuration → Site URL | `https://fridge-to-meal.tkdev106.workers.dev` | 設定済み |
+| 戻り先 | Authentication → URL Configuration → Site URL | `https://fridge-to-meal.tkdev106.workers.dev` | ADR-082 結果1 の手順で設定する（Redirect URLs も同じ） |
 
 ## 既定の送信の制約
 
@@ -47,6 +47,8 @@ Supabase Auth が送るメールの件名と本文。**正はこのディレク�
 - **差出人は Supabase のもの**で、名前もアドレスも変えられない
 - **2026-06-03 以降に作った無料プランのプロジェクトは、テンプレートを編集できない**（既定の文面のまま送られる）。
   有料プラン、またはカスタム SMTP を設定したプロジェクトは編集できる
+  （出典: https://supabase.com/changelog/46599-changes-to-email-template-customisation-on-free-tier 、
+  https://supabase.com/docs/guides/auth/auth-smtp ）
 
 差出人を `fridge to meal` にすること、組織の外の人が登録できることは、カスタム SMTP を設定して初めてできる。
 
@@ -56,6 +58,6 @@ Supabase の CLI は `supabase/config.toml` の `[auth.email.template.confirmati
 次の理由で置いていない。
 
 - `config.toml` のテンプレートが効くのは CLI が立てるローカルの Supabase だけで、本番のダッシュボードの
-  テンプレートは変わらない。このリポジトリのローカル環境は Postgres だけで、Auth を立てていない（ADR-030）
+  テンプレートは変わらない。このリポジトリのローカル環境は Postgres だけで、Auth を立てていない（ADR-029 決定4 / ADR-030）
 - 本番へ流すには `supabase config push` が要るが、これはファイルにある認証の設定で本番を上書きするため、ダッシュボードで
   決めた値（パスワードの最小文字数・Site URL など）をファイルに写し損ねると本番の値が戻る
