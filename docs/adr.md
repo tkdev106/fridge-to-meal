@@ -212,7 +212,7 @@ flowchart TD
 | ADR-076 | SP と PC を幅 1024px で切り替え、切り替えは CSS のメディアクエリだけで行う | 承認 |
 | ADR-077 | 本番の Supabase への移行の適用を GitHub Actions から Supabase CLI の `db push` で行う | 承認 |
 | ADR-078 | Supabase 無料プランの一時停止を、GitHub Actions の定期実行で1日1回 DB を読んで防ぐ | 承認 |
-| ADR-079 | LLM プロバイダを Gemini（`gemini-3.5-flash-lite`）とし、SDK を使わず `fetch` で呼び、モデル名を設定の1か所に置く | 提案 |
+| ADR-079 | LLM プロバイダを Gemini（`gemini-3.5-flash-lite`）とし、SDK を使わず `fetch` で呼び、モデル名を設定の1か所に置く | 承認 |
 
 ---
 
@@ -1714,7 +1714,7 @@ flowchart TD
 
 ---
 
-### ADR-079　LLM プロバイダを Gemini（`gemini-3.5-flash-lite`）とし、SDK を使わず `fetch` で呼び、モデル名を設定の1か所に置く　`提案`
+### ADR-079　LLM プロバイダを Gemini（`gemini-3.5-flash-lite`）とし、SDK を使わず `fetch` で呼び、モデル名を設定の1か所に置く　`承認`
 
 - **状況** — ADR-019 はプロバイダを意図的に未決とし、その間は仮の生成器 `PlaceholderMealGenerator` が `MealGenerator` の背後を埋めている（ADR-060）。**2026-10-03 にユーザーが「`gemini-3.5-flash-lite` で、最初は無料枠で十分」と決めた**（決め手は単価）。同日に公式の資料で確かめたこと: 有料の単価は入力 $0.30 / 出力 $2.50（100万トークンあたり）で、1回の生成はおよそ0.8円である。`generateContent` は JSON スキーマで出力を縛れ（`responseJsonSchema`）、思考の深さを `thinkingLevel`（`minimal` / `low` / `medium` / `high`。既定は `minimal`）で選べる。**無料枠では送った内容と応答が Google の製品の改善に使われ**、回数の上限はプロジェクト単位で予告なく変わりうる。有料枠へは同じプロジェクトで請求を有効にすれば移れ、呼び方は変わらない。
 - **決定** — 6つ。
