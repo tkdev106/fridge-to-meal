@@ -209,8 +209,7 @@ export function App({
   // 「新しい献立を求める」（B-49b / FR-36）を求めた時刻（ミリ秒）。`null` なら送っていない（S-5）。
   // **送信中かどうかはこの値だけで決まる**（B-62 設計 10章 前提1。真偽と時刻の2つを持たない）。
   // 門が持つのは、器が選んでいないタブを木から外すためである — 献立タブを離れて戻っても
-  // 生成中のまま見える（B-62 規則12 / D-6 / NFR-04）。経過秒数は出さなくなった（2026-10-03 の
-  // ユーザーの指摘）ので、時刻は送信中かどうかの判定にだけ使っている。
+  // 生成中のまま見える（B-62 規則12 / D-6 / NFR-04）。時刻は送信中かどうかの判定にだけ使う。
   const [newMealsRequestedAt, setNewMealsRequestedAt] = useState<number | null>(null);
   // 直前の要求が失敗したか（S-6）。押し直した時点で消す（規則: 同時に出さない）。
   const [newMealsFailed, setNewMealsFailed] = useState(false);

@@ -101,8 +101,7 @@ const WAITING_NOTICE = '時間がかかる場合があります';
 const PANTRY_CHANGED_NOTICE = '冷蔵庫の食材が変わりました';
 
 /**
- * 生成中の案内（S-5 / 設計 規則1・6）。**経過秒数は出さない**（2026-10-03 のユーザーの指摘で
- * 原本の `18秒` を外した。`docs/design/README.md`「原本から変えたもの」）。
+ * 生成中の案内（S-5 / 設計 規則1・6）。**経過秒数は出さない**（`docs/design/README.md`）。
  */
 const REQUESTING_NOTICE = '考えています…';
 

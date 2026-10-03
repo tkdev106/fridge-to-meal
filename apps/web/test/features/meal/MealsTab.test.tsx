@@ -393,7 +393,7 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
  * 7章 / NFR-04 / NFR-07 / NFR-17 / S-5 / S-6 / D-6・D-8）。
  *
  * 文言は原本 `RequestBlock` と「案内の帯」から取ったもので、期待値に書く（ADR-074）。
- * **経過秒数は出さない**（2026-10-03 のユーザーの指摘で原本の `18秒` を外した）。
+ * **経過秒数は出さない**（`docs/design/README.md`）。
  */
 describe('献立タブ MealsTab の「新しい献立を見る」の面', () => {
   afterEach(() => {
@@ -440,7 +440,7 @@ describe('献立タブ MealsTab の「新しい献立を見る」の面', () => 
   });
 
   it('生成中も経過秒数を出さない', () => {
-    // 2026-10-03 のユーザーの指摘: 原本の経過秒数（`18秒`）は外した。
+    // 生成中に出すのは `考えています…` と進行線だけである（`docs/design/README.md`）。
     vi.useFakeTimers();
     renderTab({ outcome: 'none' }, { newMealsRequestedAt: T });
 
