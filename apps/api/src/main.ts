@@ -35,7 +35,8 @@ import type { SuggestionIdGenerator } from './contexts/meal/domain/port/Suggesti
 import { mealIdOf } from './contexts/meal/domain/value/MealId.js';
 import { suggestionIdOf } from './contexts/meal/domain/value/SuggestionId.js';
 import { MealRepositoryImpl } from './contexts/meal/infrastructure/MealRepositoryImpl.js';
-import { PlaceholderMealGenerator } from './contexts/meal/infrastructure/PlaceholderMealGenerator.js';
+import type { FetchGenerateContent } from './contexts/meal/infrastructure/MealGeneratorImpl.js';
+import { MealGeneratorImpl } from './contexts/meal/infrastructure/MealGeneratorImpl.js';
 import { SuggestionRepositoryImpl } from './contexts/meal/infrastructure/SuggestionRepositoryImpl.js';
 import { addCookingRecord } from './contexts/meal/usecase/AddCookingRecord.js';
 import { suggestMeals, suggestNewMeals } from './contexts/meal/usecase/SuggestMeals.js';
@@ -70,6 +71,13 @@ import type { HouseholdId } from './shared/domain/HouseholdId.js';
 export type Bindings = {
   readonly HYPERDRIVE: { readonly connectionString: string };
   readonly SUPABASE_URL: string;
+  /**
+   * 献立の生成に使うモデル名。`wrangler.toml` の `[vars]` の1か所に置き、コードに既定値を持たない
+   * （ADR-079 決定4）。モデルを替えるときに変えるのはここだけである。
+   */
+  readonly GEMINI_MODEL: string;
+  /** Gemini API のキー。Secret（`wrangler secret put` / `.dev.vars`）に置く（ADR-079 決定4 / NFR-10）。 */
+  readonly GEMINI_API_KEY: string;
 };
 
 /** Supabase Auth の経路。JWKS も `iss` もこの下に居る（ADR-043 決定3。実測は B-07f）。 */
@@ -108,7 +116,11 @@ export type AppDependencies = Parameters<typeof createStockItemRoutes>[0] &
   HouseholdDataRoutesDeps;
 
 /** 差し替えられる出口。既定は実行環境の `fetch`。テストは `FixedFetchJwks` を渡す。 */
-export type CompositionPorts = { readonly fetchJwks?: FetchJwks };
+export type CompositionPorts = {
+  readonly fetchJwks?: FetchJwks;
+  /** 献立の生成の要求を送る口（B-72）。テストは `FixedFetchGenerateContent` を渡す。 */
+  readonly fetchGenerateContent?: FetchGenerateContent;
+};
 
 /**
  * 在庫品の識別子の発行（ADR-026 / B-09 設計書 規則10）。`stock_items.id` は `uuid` 列。
@@ -172,7 +184,8 @@ function transactionPerRequest<Args extends unknown[], Result>(
  * `SUPABASE_URL` が無い環境でもここでは投げない。空として認証器に渡し、断るのは検証時である
  * （認証器の「設定が空」の断り。ADR-045 により 401 ではなく 500 に畳まれる）。
  *
- * `fetchJwks` が与えられなければ（`undefined`）認証器の既定（実行環境の `fetch`）に任せる。
+ * `fetchJwks` / `fetchGenerateContent` が与えられなければ（`undefined`）認証器と生成器の既定
+ * （実行環境の `fetch`）に任せる。
  */
 export function composeDependencies(env: Bindings, ports?: CompositionPorts): AppDependencies {
   // `SUPABASE_URL` は型の上では必ずあるが、束縛を欠いた環境でも組み立て自体は投げない（規則1・5）。
@@ -181,8 +194,13 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
     accessTokenVerificationOf(supabaseUrl ?? ''),
     ports?.fetchJwks,
   );
-  // 状態を持たないので2つの入口で共有する（B-47 規則11）。選ぶ設定は置かない（ADR-060）。
-  const mealGenerator = new PlaceholderMealGenerator();
+  // 環境1つにつき1つ作り、2つの入口で共有する。設定が空でもここでは投げず、断るのは生成の
+  // 呼び出し時である（ADR-079 決定4 / ADR-045）— 束縛を欠いた環境でも組み立ては通る。
+  const gemini: { GEMINI_MODEL?: string; GEMINI_API_KEY?: string } = env;
+  const mealGenerator = new MealGeneratorImpl(
+    { model: gemini.GEMINI_MODEL ?? '', apiKey: gemini.GEMINI_API_KEY ?? '' },
+    ports?.fetchGenerateContent,
+  );
 
   /**
    * 提案の依存を1つの `tx` から組む（B-48c）。`listStockItems` は**同じ `tx` の素のもの**を渡す —

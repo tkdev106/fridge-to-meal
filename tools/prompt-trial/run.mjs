@@ -56,7 +56,7 @@ const HELP = `献立生成プロンプトの試行ツール
   --runs <n>          パターンごとの試行回数（既定: 1。設計上の推奨は3）
   --count <n>         生成させる件数（既定: 3）
   --max-tokens <n>    出力の上限（既定: 8192）。**思考のトークンもここを消費する**
-  --effort <level>    anthropic のみ。low|medium|high（既定: low）
+  --effort <level>    anthropic は effort、google は thinkingLevel に渡す。low|medium|high（google は minimal も可。既定: low）
   --temperature <n>   対応プロバイダのみ。Claude Opus 5 / Sonnet 5 は受け付けない
   --avoid <n>         避けたい献立の件数を上書き（Q-6 の検証用。0 / 20 / 50）
   --structured        構造化出力を使う（ADR-019 の比較軸1）
@@ -64,7 +64,7 @@ const HELP = `献立生成プロンプトの試行ツール
   --count-tokens      入力トークンだけ実測する（anthropic のみ・生成しない）
   --self-test         検証器の動作確認だけ行う（API 不要）
 
-  API キーは環境変数から読む: ANTHROPIC_API_KEY / GOOGLE_API_KEY / OPENAI_API_KEY
+  API キーは環境変数から読む: ANTHROPIC_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY
 `;
 
 function resolvePattern(pattern, all) {
@@ -138,7 +138,7 @@ async function main() {
           system: SYSTEM_PROMPT,
           user,
           maxTokens: args.maxTokens,
-          effort: args.provider === 'anthropic' ? args.effort : undefined,
+          effort: args.provider === 'openai' ? undefined : args.effort,
           schema: args.structured ? RESPONSE_SCHEMA : undefined,
           temperature: args.temperature,
         });
