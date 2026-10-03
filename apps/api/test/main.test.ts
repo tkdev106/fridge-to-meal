@@ -1205,7 +1205,7 @@ describe('composition root main', () => {
 
   describe('web からの到達 CORS', () => {
     // B-22 設計書 規則11〜15。開発の web は :5173 で開く（`vite.config.ts` の `server.port`）。
-    // `127.0.0.1` で開く人が居るため、許可の一覧は2つである（設計書 10章 前提2）。
+    // `127.0.0.1` で開く人が居るため、開発の web は2つの名で許す（設計書 10章 前提2）。本番の web は1つ（ADR-081）。
     const webOrigin = 'http://localhost:5173';
     const loopbackWebOrigin = 'http://127.0.0.1:5173';
     /** 本番の web の origin（ADR-081。`apps/web/wrangler.toml` の Worker の名前で決まる）。 */
