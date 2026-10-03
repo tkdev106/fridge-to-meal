@@ -45,9 +45,9 @@
 > （`docs/screen-design.md` 論点4。B-69 / B-70 を足し、`アカウントを作る` は残す）。順は**土台（B-59）→ 器（B-60）→ 各画面**。B-61 以降は互いに別のファイルを触るので、土台と器が済めばどれからでもよい。
 > **見た目の検証はスクリーンショットを撮って捨てる**（ADR-055 決定3 / 結果4）。単体テストで見た目の値を見ない。
 
-> **2026-10-03、ユーザーが LLM プロバイダを決めた**（`gemini-3.5-flash-lite`、最初は無料枠。ADR-078 が ADR-019 を置き換える）。判断待ちの表にあった本物の生成器の行をここに起こした。
+> **2026-10-03、ユーザーが LLM プロバイダを決めた**（`gemini-3.5-flash-lite`、最初は無料枠。ADR-079 が ADR-019 を置き換える）。判断待ちの表にあった本物の生成器の行をここに起こした。
 
-- **B-72** 本物の献立生成器 `MealGeneratorImpl` を置き、仮の生成器と差し替える。Gemini の `generateContent` を SDK なしの `fetch` で呼び、`docs/prompt-design.md` 4〜6章のプロンプトと検証を腐敗防止層に写す。モデル名は `wrangler.toml` の `GEMINI_MODEL`、キーは Secret `GEMINI_API_KEY`。`main.ts` の結線を替え、`PlaceholderMealGenerator` とそのテストを同じ PR で消す。試行ツール（`tools/prompt-trial`）の Gemini 側に思考の深さと JSON スキーマを渡す（ADR-078 / ADR-005 / ADR-060 決定3 / ADR-045 / FR-16〜FR-20 / NFR-10 / NFR-11）
+- **B-72** 本物の献立生成器 `MealGeneratorImpl` を置き、仮の生成器と差し替える。Gemini の `generateContent` を SDK なしの `fetch` で呼び、`docs/prompt-design.md` 4〜6章のプロンプトと検証を腐敗防止層に写す。モデル名は `wrangler.toml` の `GEMINI_MODEL`、キーは Secret `GEMINI_API_KEY`。`main.ts` の結線を替え、`PlaceholderMealGenerator` とそのテストを同じ PR で消す。試行ツール（`tools/prompt-trial`）の Gemini 側に思考の深さと JSON スキーマを渡す（ADR-079 / ADR-005 / ADR-060 決定3 / ADR-045 / FR-16〜FR-20 / NFR-10 / NFR-11）
 
 ## 人の操作（ループは着手しない）
 

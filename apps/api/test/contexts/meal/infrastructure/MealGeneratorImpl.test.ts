@@ -600,7 +600,7 @@ describe('MealGeneratorImpl', () => {
     });
 
     it('モデル名から generateContent の URL を組む', async () => {
-      // B-72 規則8 / ADR-078 決定2
+      // B-72 規則8 / ADR-079 決定2
       const fetchGenerateContent = await sentWith(input(someStockItems));
 
       expect(fetchGenerateContent.received[0]?.url).toBe(
@@ -630,7 +630,7 @@ describe('MealGeneratorImpl', () => {
     });
 
     it('API キーは前後の空白を落として x-goog-api-key ヘッダで送る', async () => {
-      // B-72 規則8 / ADR-078 決定4
+      // B-72 規則8 / ADR-079 決定4
       const fetchGenerateContent = await sentWith(input(someStockItems), {
         model,
         apiKey: `  ${apiKey}  `,
@@ -676,7 +676,7 @@ describe('MealGeneratorImpl', () => {
     });
 
     it('応答の種類に application/json を求める', async () => {
-      // B-72 規則9 / ADR-078 決定3
+      // B-72 規則9 / ADR-079 決定3
       const fetchGenerateContent = await sentWith(input(someStockItems));
 
       expect(requestBodyOf(fetchGenerateContent).generationConfig['responseMimeType']).toBe(
@@ -701,7 +701,7 @@ describe('MealGeneratorImpl', () => {
     });
 
     it('思考の水準を medium にする', async () => {
-      // B-72 規則9 / ADR-078 決定3
+      // B-72 規則9 / ADR-079 決定3
       const fetchGenerateContent = await sentWith(input(someStockItems));
 
       expect(requestBodyOf(fetchGenerateContent).generationConfig['thinkingConfig']).toEqual({
@@ -743,7 +743,7 @@ describe('MealGeneratorImpl', () => {
     });
 
     it('429 が返っても送り直さない', async () => {
-      // B-72 規則20 / ADR-078 決定5
+      // B-72 規則20 / ADR-079 決定5
       const fetchGenerateContent = FixedFetchGenerateContent.delivering(
         { ok: false, status: 429, body: {} },
         okDeliveryOf(envelopeOf([mealsTextOf([validMealText])])),
@@ -755,7 +755,7 @@ describe('MealGeneratorImpl', () => {
     });
 
     it('出力が打ち切られても送り直さない', async () => {
-      // B-72 規則20 / ADR-078 決定5
+      // B-72 規則20 / ADR-079 決定5
       const fetchGenerateContent = FixedFetchGenerateContent.delivering(
         okDeliveryOf(envelopeOf([mealsTextOf([validMealText])], 'MAX_TOKENS')),
         okDeliveryOf(envelopeOf([mealsTextOf([validMealText])])),
@@ -836,7 +836,7 @@ describe('MealGeneratorImpl', () => {
     });
 
     it('finishReason が STOP でなければ、本文が正しくても mealGenerator.empty で断る', async () => {
-      // B-72 規則12 / ADR-078 決定5（安全性による停止）
+      // B-72 規則12 / ADR-079 決定5（安全性による停止）
       await expect(
         generator(
           FixedFetchGenerateContent.delivering(
@@ -901,7 +901,7 @@ describe('MealGeneratorImpl', () => {
 
   describe('失敗の境目', () => {
     it('2xx でない応答は本体が正しくても使わず、生成の規則違反に化けさせずに断る', async () => {
-      // B-72 7章 / ADR-078 決定5・結果2
+      // B-72 7章 / ADR-079 決定5・結果2
       const rejection = await rejectionOf(
         generator(
           FixedFetchGenerateContent.delivering({

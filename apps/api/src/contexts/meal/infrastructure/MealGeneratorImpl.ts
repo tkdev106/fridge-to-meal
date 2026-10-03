@@ -29,10 +29,10 @@ export type FetchGenerateContent = (
   request: GenerateContentRequest,
 ) => Promise<GenerateContentResponse>;
 
-/** モデル名と API キー（ADR-078 決定4）。どちらも設定から来て、コードに既定値を持たない。 */
+/** モデル名と API キー（ADR-079 決定4）。どちらも設定から来て、コードに既定値を持たない。 */
 export type MealGeneratorSettings = { readonly model: string; readonly apiKey: string };
 
-/** Gemini API の `generateContent` の基点（ADR-078 決定2）。 */
+/** Gemini API の `generateContent` の基点（ADR-079 決定2）。 */
 const GENERATE_CONTENT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 /**
@@ -42,7 +42,7 @@ const GENERATE_CONTENT_BASE_URL = 'https://generativelanguage.googleapis.com/v1b
 const MAX_OUTPUT_TOKENS = 8192;
 
 /**
- * 思考の深さ（ADR-078 決定3）。`low` では避けたい献立と主材料・調理法が同じ献立がすり抜けた
+ * 思考の深さ（ADR-079 決定3）。`low` では避けたい献立と主材料・調理法が同じ献立がすり抜けた
  * ため、試行の結果で `medium` にした（2026-10-03 にユーザーが決定）。
  */
 const THINKING_LEVEL = 'medium';
@@ -51,10 +51,10 @@ const THINKING_LEVEL = 'medium';
 const COMPLETED_FINISH_REASON = 'STOP';
 
 /**
- * Gemini の `generateContent` を呼ぶ献立生成器（B-72 / ADR-078）。`MealGenerator` の腐敗防止層
+ * Gemini の `generateContent` を呼ぶ献立生成器（B-72 / ADR-079）。`MealGenerator` の腐敗防止層
  * （ADR-005）であり、プロンプト・JSON・モデル名はここから外へ出ない。
  *
- * 失敗の境目（ADR-078 決定5）: **応答は届いたが使える献立が無い**ときは `mealGenerator.empty`。
+ * 失敗の境目（ADR-079 決定5）: **応答は届いたが使える献立が無い**ときは `mealGenerator.empty`。
  * **応答が届かない**（送れない・2xx でない）ときと設定が空のときは素の `Error`（ADR-045）。
  * どちらも再試行しない（ADR-005）。
  */
@@ -87,7 +87,7 @@ export class MealGeneratorImpl implements MealGenerator {
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
           contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-          // 温度は送らない。既定の 1.0 が prompt-design 7章の「高め」と一致する（ADR-078 決定3）。
+          // 温度は送らない。既定の 1.0 が prompt-design 7章の「高め」と一致する（ADR-079 決定3）。
           generationConfig: {
             responseMimeType: 'application/json',
             responseJsonSchema: RESPONSE_JSON_SCHEMA,
@@ -98,7 +98,7 @@ export class MealGeneratorImpl implements MealGenerator {
       },
     );
     if (!response.ok) {
-      // 429（無料枠の上限）もここ。本体は読まず、状態コードだけを載せる（ADR-078 結果2 / ADR-045 結果2）。
+      // 429（無料枠の上限）もここ。本体は読まず、状態コードだけを載せる（ADR-079 結果2 / ADR-045 結果2）。
       throw new Error(`献立の生成の要求が断られました（状態 ${String(response.status)}）`);
     }
 
@@ -111,7 +111,7 @@ export class MealGeneratorImpl implements MealGenerator {
   }
 }
 
-/** 実行環境の `fetch`。Workers と Node のどちらにもある（ADR-078 決定2）。 */
+/** 実行環境の `fetch`。Workers と Node のどちらにもある（ADR-079 決定2）。 */
 const fetchFromRuntime: FetchGenerateContent = (url, request) => fetch(url, request);
 
 /** 設定の空を断る。message には空の設定の名前だけを載せ、値は載せない（ADR-045 結果2）。 */
@@ -125,7 +125,7 @@ function requireConfiguredSettings(settings: MealGeneratorSettings): MealGenerat
 
 /**
  * 応答の封筒から本文を取り出す（B-72 規則12）。候補が無い・停止理由が `STOP` でない・本文が
- * 無いなら `mealGenerator.empty` — 応答は届いたが使える献立が無い（ADR-078 決定5）。
+ * 無いなら `mealGenerator.empty` — 応答は届いたが使える献立が無い（ADR-079 決定5）。
  * 思考の部分（`thought: true`）は本文ではない。
  */
 function responseTextOf(body: unknown): string {

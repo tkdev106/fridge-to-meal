@@ -73,10 +73,10 @@ export type Bindings = {
   readonly SUPABASE_URL: string;
   /**
    * 献立の生成に使うモデル名。`wrangler.toml` の `[vars]` の1か所に置き、コードに既定値を持たない
-   * （ADR-078 決定4）。モデルを替えるときに変えるのはここだけである。
+   * （ADR-079 決定4）。モデルを替えるときに変えるのはここだけである。
    */
   readonly GEMINI_MODEL: string;
-  /** Gemini API のキー。Secret（`wrangler secret put` / `.dev.vars`）に置く（ADR-078 決定4 / NFR-10）。 */
+  /** Gemini API のキー。Secret（`wrangler secret put` / `.dev.vars`）に置く（ADR-079 決定4 / NFR-10）。 */
   readonly GEMINI_API_KEY: string;
 };
 
@@ -195,7 +195,7 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
     ports?.fetchJwks,
   );
   // 環境1つにつき1つ作り、2つの入口で共有する。設定が空でもここでは投げず、断るのは生成の
-  // 呼び出し時である（ADR-078 決定4 / ADR-045）— 束縛を欠いた環境でも組み立ては通る。
+  // 呼び出し時である（ADR-079 決定4 / ADR-045）— 束縛を欠いた環境でも組み立ては通る。
   const gemini: { GEMINI_MODEL?: string; GEMINI_API_KEY?: string } = env;
   const mealGenerator = new MealGeneratorImpl(
     { model: gemini.GEMINI_MODEL ?? '', apiKey: gemini.GEMINI_API_KEY ?? '' },

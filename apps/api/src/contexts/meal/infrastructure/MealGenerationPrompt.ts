@@ -99,7 +99,7 @@ kind は "main" か "seasoning" のどちらかとする。
 /**
  * 応答の JSON スキーマ（prompt-design 4章「出力する JSON の形式」の形だけ）。**件数と長さの
  * 制約は書かない** — 4章の指示値と6章の検証値はわざと違えてあり、3つ目の値を置かない
- * （B-72 規則11）。スキーマで縛っても6章の検証は省かない（7章 / ADR-078 決定3）。
+ * （B-72 規則11）。スキーマで縛っても6章の検証は省かない（7章 / ADR-079 決定3）。
  */
 export const RESPONSE_JSON_SCHEMA: Readonly<Record<string, unknown>> = {
   type: 'object',

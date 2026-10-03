@@ -505,7 +505,7 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
 
   describe('献立の生成の設定は結線後に読まれる（B-72）', () => {
     it('GEMINI_API_KEY が空の環境で新しい献立を求めると 500 unexpected になり 502 にならない', async () => {
-      // ADR-078 決定4・5 / ADR-045: 設定の不備は「応答が使えない」（502）に化けさせない。
+      // ADR-079 決定4・5 / ADR-045: 設定の不備は「応答が使えない」（502）に化けさせない。
       const emptyKeyApp = createApp(
         composeDependencies(
           { ...env, GEMINI_API_KEY: '' },

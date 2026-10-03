@@ -74,7 +74,7 @@ export const PROVIDERS = {
 
   /* ------------------------------------------------------------------ */
   google: {
-    // アプリ本体（MealGeneratorImpl）と同じ名前で読む（ADR-078 決定4）。
+    // アプリ本体（MealGeneratorImpl）と同じ名前で読む（ADR-079 決定4）。
     envKey: 'GEMINI_API_KEY',
     defaultModel: 'gemini-3.5-flash-lite',
     async generate({ model, system, user, maxTokens, effort, schema, temperature }) {

@@ -64,14 +64,14 @@ describe('wrangler.toml', () => {
   });
 
   it('献立の生成のモデル名は [vars] の GEMINI_MODEL に1か所だけ置く', () => {
-    // ADR-078 決定4: モデル名は設定の1か所に置き、コードに既定値を持たない。
+    // ADR-079 決定4: モデル名は設定の1か所に置き、コードに既定値を持たない。
     expect(wranglerContent).toContain('[vars]');
     expect(occurrencesOf(wranglerContent, 'GEMINI_MODEL')).toBe(1);
     expect(wranglerContent).toContain('GEMINI_MODEL = "gemini-3.5-flash-lite"');
   });
 
   it('wrangler.toml は Gemini の API キーを含まない', () => {
-    // ADR-078 決定4 / NFR-10: キーは Secret に置き、git 管理下のこのファイルに書かない。
+    // ADR-079 決定4 / NFR-10: キーは Secret に置き、git 管理下のこのファイルに書かない。
     expect(wranglerContent).not.toContain('GEMINI_API_KEY');
   });
 });

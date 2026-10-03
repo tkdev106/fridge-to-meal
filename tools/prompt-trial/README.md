@@ -83,7 +83,7 @@ node tools/prompt-trial/run.mjs --provider openai --model gpt-5.6-luna    --runs
 | anthropic | **Claude Opus 5 / Sonnet 5 は `temperature` を受け付けない**（400 になる）。`--temperature` は無視される。多様性は避けたい献立の一覧で作る |
 | anthropic | `--effort` の既定は `low`。生成は難しい仕事ではないので、既定を上げると出力トークンと費用が増える |
 | anthropic | **思考のトークンが `--max-tokens` の枠を消費する。** 既定を 8192 にしてあるのはこのため。切り詰めると応答が途中で切れ、JSON の破損として現れる |
-| google | `--effort` を `thinkingConfig.thinkingLevel` として送る（既定 `low`。アプリ本体と同じ。ADR-078）。思考のトークンは出力トークンに足して数える |
+| google | `--effort` を `thinkingConfig.thinkingLevel` として送る（既定 `low`。アプリ本体と同じ。ADR-079）。思考のトークンは出力トークンに足して数える |
 | google | `--structured` は `responseJsonSchema` で送る（アプリ本体と同じ。`additionalProperties` を落とさなくてよい） |
 | openai | `--structured` は `response_format: json_schema` の strict モードを使う |
 
