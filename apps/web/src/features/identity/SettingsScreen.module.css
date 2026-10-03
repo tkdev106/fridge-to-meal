@@ -5,8 +5,8 @@
  * 色・文字の大きさ・太さ・操作の高さはトークン（`src/global.css` の `:root`）から `var(--…)` で
  * 引き、ここで新しい色を作らない。トークンに無い寸法（余白・帯の高さ・字間）は原本の値を直に書く。
  *
- * PC（幅 1024px 以上）の組み替えはここに無い — デザインが 13 / 13b を SP でしか描いていない
- * （設計 2章）。フォーカスの輪郭はグローバルの `:focus-visible` に任せ、ここで消さない（規則21）。
+ * PC（幅 1024px 以上）は末尾で左右の余白と最大幅だけをタブの画面で共通の値に揃える。フォーカスの輪郭はグローバルの
+ * `:focus-visible` に任せ、ここで消さない（規則21）。
  */
 
 /* 画面の欄（原本 `main` の `0 0 24px`）。帯と行は幅いっぱいに引く。 */
@@ -154,6 +154,12 @@
   cursor: pointer;
 }
 
+/* 赤の地（文字色の輪郭では地との差が小さい）。焦点の輪郭は地の色で内側に引く（`global.css` の `--focus-outline-inverse`）。 */
+.confirm:focus-visible {
+  outline: var(--focus-outline-inverse);
+  outline-offset: var(--focus-outline-offset-inverse);
+}
+
 /* 押せない間（送っている間・オフライン）は地と文字を弱める（先行 `MealDetail.module.css`）。 */
 .confirm:disabled {
   background: var(--color-surface-muted);
@@ -183,4 +189,22 @@
 /* 失敗の案内（規則17。文言は暫定）。 */
 .failure {
   margin: 0;
+}
+
+/*
+ * PC（幅 1024px 以上。値の正は `docs/screen-design.md` 2.1 / ADR-076。CSS 変数はメディアクエリに
+ * 使えないので写しを書く）。左右の余白と最大幅はタブの画面で共通のトークン（`global.css`）。
+ * 見出しの行は縦の余白を他のタブの見出し（`navigation/ScreenHeader`）と同じ `40px 0 32px` にし、
+ * 戻るのアイコンの線を画面の欄の左端に揃える（48px 四方の外側の余白ぶん左へ寄せる）。
+ */
+@media (min-width: 1024px) {
+  .screen {
+    max-width: calc(var(--screen-max-width-wide) + var(--screen-inset-wide) * 2);
+    padding: 0 var(--screen-inset-wide) 64px;
+  }
+
+  .header {
+    margin-left: -12px;
+    padding: 40px 0 32px;
+  }
 }

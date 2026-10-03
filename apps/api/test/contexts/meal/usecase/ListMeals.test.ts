@@ -94,7 +94,7 @@ describe('献立の一覧 ListMeals', () => {
       expect(output.cooked).toEqual([]);
     });
 
-    it('調理記録が1件ある献立は「つくった献立」の列に入る', async () => {
+    it('調理記録が1件ある献立は「作った献立」の列に入る', async () => {
       // 規則2 / FR-29: 記録1件以上は cooked である。
       const { list } = setUp({ meals: [meal({ id: idA, cookingRecords: [cookingRecord()] })] });
 
@@ -104,7 +104,7 @@ describe('献立の一覧 ListMeals', () => {
       expect(output.seen).toEqual([]);
     });
 
-    it('調理記録が複数ある献立も「つくった献立」に1度だけ現れる', async () => {
+    it('調理記録が複数ある献立も「作った献立」に1度だけ現れる', async () => {
       // 規則2 / FR-29: 記録の件数だけ並べない。
       const { list } = setUp({
         meals: [
@@ -166,7 +166,7 @@ describe('献立の一覧 ListMeals', () => {
       expect(output.seen.map((summary) => summary.mealId)).toEqual([idB, idC, idA]);
     });
 
-    it('つくった献立は生成日時の新しい順に並ぶ', async () => {
+    it('作った献立は生成日時の新しい順に並ぶ', async () => {
       // 規則3 / FR-29 / ADR-068 決定2: 古い順に挿入しておく。
       const { list } = setUp({
         meals: [
@@ -181,7 +181,7 @@ describe('献立の一覧 ListMeals', () => {
       expect(output.cooked.map((summary) => summary.mealId)).toEqual([idC, idB, idA]);
     });
 
-    it('つくった献立は調理記録の日時ではなく献立の生成日時で並ぶ', async () => {
+    it('作った献立は調理記録の日時ではなく献立の生成日時で並ぶ', async () => {
       // 規則3 / ADR-068 決定2 / `docs/screen-design.md` 7章「新しい順（生成日時）」:
       // 記録の日時で並べると A が先になる入力である。
       const { list } = setUp({

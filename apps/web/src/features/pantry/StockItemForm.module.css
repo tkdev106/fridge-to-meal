@@ -242,10 +242,12 @@
   padding: 40px 0 24px;
 }
 
-/* 主の保存（規則11）。文字色の地・地の色の文字。 */
+/*
+ * 主の保存（規則11）。文字色の地・地の色の文字。**幅は欄と同じく横いっぱい**（幅の広い端末でも
+ * 左に寄せない）。
+ */
 .primary {
   width: 100%;
-  max-width: 360px;
   height: var(--control-height-primary);
   border: 0;
   background: var(--color-text);
@@ -255,14 +257,19 @@
   cursor: pointer;
 }
 
+/* 文字色の地。焦点の輪郭は地の色で内側に引く（`global.css` の `--focus-outline-inverse`）。 */
+.primary:focus-visible {
+  outline: var(--focus-outline-inverse);
+  outline-offset: var(--focus-outline-offset-inverse);
+}
+
 .primary:active:not(:disabled) {
   background: var(--color-text-secondary);
 }
 
-/* 登録の `保存して閉じる`（規則11）。文字色の 1px の枠・透明の地。 */
+/* 登録の `保存して閉じる`（規則11）。文字色の 1px の枠・透明の地。幅は主の保存と同じく横いっぱい。 */
 .secondary {
   width: 100%;
-  max-width: 360px;
   height: var(--control-height-secondary);
   border: 1px solid var(--color-text);
   background: transparent;

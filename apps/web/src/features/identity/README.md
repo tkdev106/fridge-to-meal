@@ -1,7 +1,9 @@
 # features/identity
 
 世帯コンテキストに対応する画面。`docs/screen-design.md` の第8章（設定・認証）の
-「ログイン／サインアップ」と、設定画面（`SettingsScreen`。B-56c）がここに来る。設定画面の操作は
+「ログイン」（`SignInForm`）と「アカウント作成」（`SignUpForm`。B-73 / ADR-081）、その出し分け
+（`SignedOutScreen`。門は描くだけで、どちらが出ているかを知らない）、設定画面（`SettingsScreen`。B-56c）がここに来る。
+作成画面の検証は `SignUpFormValues.ts`（書式と長さ。ログインの `SignInFormValues.ts` とは別の判断）。設定画面の操作は
 戻る・ログアウト・アカウントとデータを削除（FR-27。B-56f）の3つで、削除は画面の中の確認を経て
 `DELETE /household-data` に届き、通ったら門がサインアウトする。
 入口は SP では3つのタブ（献立・冷蔵庫・履歴）の見出しの歯車、PC ではサイドナビの下端の「設定」

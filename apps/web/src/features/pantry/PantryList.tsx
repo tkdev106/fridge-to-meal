@@ -404,13 +404,14 @@ export function PantryList({
   }
 
   // 出し分けだけを行い、計算を持たない（B-22 設計 8章末尾 / B-11 設計 規則7）。
-  if (stockItems.outcome === 'loading') return <p>{LOADING_NOTICE}</p>;
-  if (stockItems.outcome === 'failed') return <p>{LOAD_FAILURE_NOTICE}</p>;
+  if (stockItems.outcome === 'loading') return <p className={styles.notice}>{LOADING_NOTICE}</p>;
+  if (stockItems.outcome === 'failed')
+    return <p className={styles.notice}>{LOAD_FAILURE_NOTICE}</p>;
 
   const sections = pantrySectionsOf(stockItems.stockItems, today);
 
   // 在庫品が0件なら帯を1つも出さない（規則11）。行の操作も描かない（B-69 規則16）。
-  if (sections.length === 0) return <p>{EMPTY_NOTICE}</p>;
+  if (sections.length === 0) return <p className={styles.notice}>{EMPTY_NOTICE}</p>;
 
   // 状態が指す行が取り直しで消えていれば、何も出ていないものとして扱う（B-69 規則15）。
   // **確認だけは別である** — 開いた時点の在庫品を抱えて出し続ける（規則12）。

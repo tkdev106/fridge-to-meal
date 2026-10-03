@@ -39,7 +39,7 @@ function loaded(meals: ListMealsOutput): HistoryTabState {
   return { outcome: 'loaded', meals };
 }
 
-/** 以前見た献立 A と、つくった献立 C を1件ずつ持つ履歴（ADR-068 決定3）。 */
+/** 以前見た献立 A と、作った献立 C を1件ずつ持つ履歴（ADR-068 決定3）。 */
 const bothColumns = loaded({
   seen: [summaryOf('meal-a', NIKUJAGA)],
   cooked: [summaryOf('meal-c', STIR_FRY)],
@@ -123,7 +123,7 @@ describe('履歴タブ HistoryTab', () => {
     expect(screen.queryByText(NIKUJAGA)).not.toBeNull();
   });
 
-  it('開いた直後は、つくった献立の行を出さない', () => {
+  it('開いた直後は、作った献立の行を出さない', () => {
     // B-54b 規則3・5: 同時に見せるのは1列だけである。
     renderTab(bothColumns);
 
@@ -142,7 +142,7 @@ describe('履歴タブ HistoryTab', () => {
     expect(screen.queryByText(NIKUJAGA)).not.toBeNull();
   });
 
-  it('つくった側に切り替えると、つくった献立の行を出す', () => {
+  it('作った側に切り替えると、作った献立の行を出す', () => {
     // B-54b 規則5 / FR-29
     renderTab(bothColumns);
 
@@ -151,7 +151,7 @@ describe('履歴タブ HistoryTab', () => {
     expect(screen.queryByText(STIR_FRY)).not.toBeNull();
   });
 
-  it('つくった側に切り替えると、以前見た献立の行は消える', () => {
+  it('作った側に切り替えると、以前見た献立の行は消える', () => {
     // B-54b 規則3: 1つの献立を両列に出さない。同時に見せるのは1列だけである。
     renderTab(bothColumns);
 
@@ -160,7 +160,7 @@ describe('履歴タブ HistoryTab', () => {
     expect(screen.queryByText(NIKUJAGA)).toBeNull();
   });
 
-  it('切り替えると、押された状態がつくった側へ移る', () => {
+  it('切り替えると、押された状態が作った側へ移る', () => {
     // B-54b 規則5 / NFR-17
     renderTab(bothColumns);
     const [seenToggle] = screen.getAllByRole('button', { pressed: true });
@@ -301,7 +301,7 @@ describe('履歴タブ HistoryTab', () => {
     expect(emptyNotice).not.toBe(failureNotice);
   });
 
-  it('以前見た列が0件でも、つくった側に切り替えれば行が出る', () => {
+  it('以前見た列が0件でも、作った側に切り替えれば行が出る', () => {
     // B-54b 規則5・7: 片方だけ0件の境界。
     renderTab(loaded({ seen: [], cooked: [summaryOf('meal-c', STIR_FRY)] }));
 
@@ -406,13 +406,13 @@ describe('履歴タブ HistoryTab', () => {
   // --- デザイン 12 の文言と構造（B-67）。切り替えと件数の文言は原本から取ったもので仮ではない
   //     （ADR-074 決定1 / B-67 規則9）ので、字面で引く。 ---
 
-  it('列の切り替えは「以前見た献立」「つくった献立」の2つで、この順に並ぶ', () => {
-    // B-67 規則4・9 / 原本 12: 左が以前見た、右がつくった。
+  it('列の切り替えは「以前見た献立」「作った献立」の2つで、この順に並ぶ', () => {
+    // B-67 規則4・9 / 原本 12: 左が以前見た、右が作った。
     renderTab(bothColumns);
 
     expect(columnToggles().map((toggle) => toggle.textContent)).toEqual([
       '以前見た献立',
-      'つくった献立',
+      '作った献立',
     ]);
   });
 

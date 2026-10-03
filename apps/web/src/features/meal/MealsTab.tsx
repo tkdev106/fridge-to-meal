@@ -23,11 +23,9 @@
  * ADR-066 と同じ理由）— ここは渡された詳細を、カードの一覧の代わりに描くだけである。
  */
 
-import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { MealCard, MealCardIngredient } from './MealCards.js';
 import { mealCardsOf } from './MealCards.js';
-import { elapsedSecondsOf } from './ElapsedSeconds.js';
 import { Icon } from '../../icons/Icon.js';
 import styles from './MealsTab.module.css';
 import type { LatestSuggestionOutcome } from '../../server/SuggestionRequests.js';
@@ -95,26 +93,23 @@ const OPEN_MEAL_LABEL = '作り方を見る';
  * 「新しい献立を見る」の面の文言（B-62 / FR-36。原本 `RequestBlock`）。
  *
  * **待ち時間の案内**（NFR-04 / D-2 の追記）。押す前に、応答が届くまで間が空くことを伝える。
- * **生成中は出さない** — 代わりに `考えています…` と経過秒数を出す（原本 pending / 設計 規則1）。
+ * **生成中は出さない** — 代わりに `考えています…` を出す（原本 pending / 設計 規則1）。
  */
 const WAITING_NOTICE = '時間がかかる場合があります';
 
 /** `pantryChanged` の手がかり（D-8 / 設計 規則2）。**生成中は出さない**（原本 `changed && !pending`）。 */
 const PANTRY_CHANGED_NOTICE = '冷蔵庫の食材が変わりました';
 
-/** 生成中の案内（S-5 / 設計 規則1・6）。**これだけが status である** — 秒数は外に置く。 */
+/**
+ * 生成中の案内（S-5 / 設計 規則1・6）。**経過秒数は出さない**（`docs/design/README.md`）。
+ */
 const REQUESTING_NOTICE = '考えています…';
-
-/** 経過秒数の表記（設計 規則4）。 */
-function elapsedText(seconds: number): string {
-  return `${seconds}秒`;
-}
 
 /**
  * 失敗の帯（S-6 / NFR-07 / 設計 規則9。原本 `index.dc.html` の「案内の帯」）。**原因を断定しない** —
  * 継ぎ目が理由を持っていない。再試行は同じ「新しい献立を見る」で行う。
  */
-const REQUEST_FAILED_NOTICE = '献立をつくれませんでした。もう一度お試しください';
+const REQUEST_FAILED_NOTICE = '献立を作れませんでした。もう一度お試しください';
 
 /** 失敗の帯に添える記号（先行 `SignInForm` の `REJECTED_MARK`）。飾りであり、読み上げに出さない。 */
 const REQUEST_FAILED_MARK = '!';
@@ -212,8 +207,6 @@ export type MealsTabProps = {
   onRequestNewMeals: () => void;
   /** 生成を求めた時刻（ミリ秒）。null なら送っていない。送信中かどうかはこの値だけで決まる */
   newMealsRequestedAt: number | null;
-  /** 時計（ミリ秒）。経過秒数を読むためだけに使う。門が `Date.now` を渡す */
-  now: () => number;
   /** 直前の要求が失敗したか（S-6 を含む）。 */
   newMealsFailed: boolean;
   /**
@@ -318,26 +311,6 @@ function CautionNotice() {
 }
 
 /**
- * 生成中の経過秒数（NFR-04 / D-6 / 設計 規則4・5）。
- *
- * **起点は門が持つ開始時刻である**（規則12）— ここで数え始めると、タブを離れて戻った回に0へ
- * 戻る。**送信中だけ 1000ms ごとに描き直し、描くたびに `now()` を読む** — 間隔の回数を数えないので、
- * 間隔の遅れが表示に溜まらない。送信が終わるか画面が外れたら止める。
- */
-function useElapsedSeconds(startedAt: number | null, now: () => number): number | null {
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    if (startedAt === null) return;
-
-    const interval = setInterval(() => setTick((tick) => tick + 1), 1000);
-    return () => clearInterval(interval);
-  }, [startedAt]);
-
-  return startedAt === null ? null : elapsedSecondsOf(startedAt, now());
-}
-
-/**
  * 失敗の帯（S-6 / NFR-07 / 設計 規則9）。置き場は面の直前（押したボタンの近く。設計 10章 前提2）。
  * 記号は飾りで、文字が意味を運ぶ（NFR-17）。
  */
@@ -360,27 +333,24 @@ function RequestFailedBand() {
  * - `pantryChanged` の手がかり（D-8）… これも `note`。真で、**生成中でないとき**だけ出る（規則2）
  * - 生成中の案内（S-5）と失敗の帯（S-6）… どちらも `status`。**同時には出さない**
  *   （送信中を優先する — 押した時点で失敗の帯を消すのは門の役目だが、ここでも
- *   両方が真になり得ないよう送信中を先に見る）。**秒数は status の外に置く**（規則6 —
- *   入れると毎秒読み上げで割り込む）
+ *   両方が真になり得ないよう送信中を先に見る）
  *
  * **文書順は幅で変えない**（手がかり → ボタン → 案内。規則10）。広い幅の横並びは CSS の配置だけで行う。
  */
 function RequestNewMealsControl({
   pantryChanged,
-  elapsedSeconds,
+  requesting,
   failed,
   offline,
   onRequestNewMeals,
 }: {
   pantryChanged: boolean;
-  /** 生成中なら経過秒数、そうでなければ `null`。 */
-  elapsedSeconds: number | null;
+  /** 生成を求めて結末を待っているか。 */
+  requesting: boolean;
   failed: boolean;
   offline: boolean;
   onRequestNewMeals: () => void;
 }) {
-  const requesting = elapsedSeconds !== null;
-
   return (
     <>
       {!requesting && failed && <RequestFailedBand />}
@@ -409,7 +379,6 @@ function RequestNewMealsControl({
         {requesting ? (
           <p className={styles.requestInfo}>
             <span role="status">{REQUESTING_NOTICE}</span>
-            <span className={styles.elapsedSeconds}>{elapsedText(elapsedSeconds)}</span>
           </p>
         ) : (
           <p role="note" className={styles.requestInfo}>
@@ -443,11 +412,7 @@ function InsufficientStockItemsNotice({ onGoToPantry }: { onGoToPantry: () => vo
         </p>
         <p className={styles.outcomeNote}>{INSUFFICIENT_STOCK_ITEMS_NOTE}</p>
       </div>
-      <button
-        type="button"
-        className={`${styles.primaryButton} ${styles.goToPantryButton}`}
-        onClick={onGoToPantry}
-      >
+      <button type="button" className={styles.primaryButton} onClick={onGoToPantry}>
         {GO_TO_PANTRY_LABEL}
       </button>
     </div>
@@ -487,7 +452,6 @@ export function MealsTab({
   today,
   onRequestNewMeals,
   newMealsRequestedAt,
-  now,
   newMealsFailed,
   onGoToPantry,
   onOpenMeal,
@@ -504,8 +468,7 @@ export function MealsTab({
   // 出せない回にも描けなければならない — 履歴から開いた献立は、在庫が足りない日にも
   // 読める（FR-30）。**一覧と並べず入れ替える**（先行 `PantryTab`）。
   //
-  // **詳細を開いている間は秒数も進行線も描かない**（設計 10章 前提6）。戻れば門が持つ開始時刻から
-  // 正しい秒数が出る（規則12）。
+  // **詳細を開いている間は進行線を描かない**（設計 10章 前提6）。
   if (mealDetail !== null) return <div>{mealDetail}</div>;
 
   return (
@@ -514,7 +477,6 @@ export function MealsTab({
       today={today}
       onRequestNewMeals={onRequestNewMeals}
       newMealsRequestedAt={newMealsRequestedAt}
-      now={now}
       newMealsFailed={newMealsFailed}
       onGoToPantry={onGoToPantry}
       onOpenMeal={onOpenMeal}
@@ -524,23 +486,19 @@ export function MealsTab({
   );
 }
 
-/**
- * 詳細を開いていないときの画面。経過秒数の描き直し（`useElapsedSeconds`）をここに閉じるのは、
- * 詳細の側で時計を回さないためである。
- */
+/** 詳細を開いていないときの画面。 */
 function MealsTabList({
   suggestion,
   today,
   onRequestNewMeals,
   newMealsRequestedAt,
-  now,
   newMealsFailed,
   onGoToPantry,
   onOpenMeal,
   offline = false,
   onOpenSettings,
 }: Omit<MealsTabProps, 'mealDetail'>) {
-  const elapsedSeconds = useElapsedSeconds(newMealsRequestedAt, now);
+  const requesting = newMealsRequestedAt !== null;
 
   const cards =
     suggestion.outcome === 'suggested' ? mealCardsOf(suggestion.suggestion.entries, today) : [];
@@ -556,7 +514,7 @@ function MealsTabList({
       }
     >
       {/* 生成中の進行線（設計 規則7）。飾りであり、状態は「考えています…」の status が伝える。 */}
-      {elapsedSeconds !== null && (
+      {requesting && (
         <div aria-hidden="true" className={styles.progress}>
           <div className={styles.progressBar} />
         </div>
@@ -569,7 +527,7 @@ function MealsTabList({
           suggestion={suggestion}
           cards={cards}
           onRequestNewMeals={onRequestNewMeals}
-          elapsedSeconds={elapsedSeconds}
+          requesting={requesting}
           newMealsFailed={newMealsFailed}
           onGoToPantry={onGoToPantry}
           onOpenMeal={onOpenMeal}
@@ -585,7 +543,7 @@ function MealsTabBody({
   suggestion,
   cards,
   onRequestNewMeals,
-  elapsedSeconds,
+  requesting,
   newMealsFailed,
   onGoToPantry,
   onOpenMeal,
@@ -594,8 +552,8 @@ function MealsTabBody({
   suggestion: MealsTabState;
   cards: readonly MealCard[];
   onRequestNewMeals: () => void;
-  /** 生成中なら経過秒数、そうでなければ `null`。 */
-  elapsedSeconds: number | null;
+  /** 生成を求めて結末を待っているか。 */
+  requesting: boolean;
   newMealsFailed: boolean;
   onGoToPantry: () => void;
   onOpenMeal: (mealId: string) => void;
@@ -631,7 +589,7 @@ function MealsTabBody({
     <div className={styles.request}>
       <RequestNewMealsControl
         pantryChanged={suggestion.outcome === 'suggested' && suggestion.pantryChanged}
-        elapsedSeconds={elapsedSeconds}
+        requesting={requesting}
         failed={newMealsFailed}
         offline={offline}
         onRequestNewMeals={onRequestNewMeals}
@@ -660,7 +618,7 @@ function MealsTabBody({
       <SuggestionBody
         suggestion={suggestion}
         cards={cards}
-        dimmed={elapsedSeconds !== null}
+        dimmed={requesting}
         onOpenMeal={onOpenMeal}
       />
       {control}
