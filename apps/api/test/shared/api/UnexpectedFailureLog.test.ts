@@ -23,6 +23,19 @@ class PostgresError extends Error {
 }
 
 describe('describeFailure', () => {
+  it('name が Error のままのドライバの失敗でも、SQL と値を載せず原因の名前とコードだけを載せる', () => {
+    const thrown = new Error(
+      'Failed query: insert into "stock_item_names" ("household_id", "name") values ($1, $2)\nparams: 05722e34-41bc-43e9-9eb7-724a46a7cd0f,鶏むね肉',
+      { cause: new PostgresError('permission denied for table stock_item_names', '42501') },
+    );
+
+    const line = describeFailure(thrown);
+
+    expect(line).toBe('Error cause=PostgresError code=42501');
+    expect(line).not.toContain('鶏むね肉');
+    expect(line).not.toContain('05722e34');
+  });
+
   it('素の Error は種類とメッセージを載せる（自前の例外は名前しか載せない規律で書かれている）', () => {
     expect(describeFailure(new Error('献立の生成の設定 GEMINI_API_KEY が空です'))).toBe(
       'Error: 献立の生成の設定 GEMINI_API_KEY が空です',
