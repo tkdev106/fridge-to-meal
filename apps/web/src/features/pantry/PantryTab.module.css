@@ -7,7 +7,15 @@
  * の持ち分で、ここは横の余白と `+` だけを持つ。
  */
 
-/* 一覧の側の根。下の余白 24px（原本 SP の `L.pad`）。 */
+/*
+ * 在庫タブの中身の根（B-65b）。一覧の側（`.screen`）と、開いている間だけのパネル（`.formPanel`）を
+ * 文書順に並べる。
+ */
+.tab {
+  width: 100%;
+}
+
+/* 一覧の側。下の余白 24px（原本 SP の `L.pad`）。 */
 .screen {
   width: 100%;
   padding-bottom: 24px;
@@ -39,6 +47,14 @@
 }
 
 /*
+ * SP（幅 1024px 未満。PC は末尾で戻す）: パネルを出している間は一覧の側を隠し、入れ替わりに
+ * 見せる（B-65b 設計 規則11）。一覧の側は木に残り `inert` が付いている（規則1・3）— 隠すのは見た目だけである。
+ */
+.screenBehindPanel {
+  display: none;
+}
+
+/*
  * PC（幅 1024px 以上。値の正は `docs/screen-design.md` 2.1 / ADR-076。CSS 変数はメディアクエリに
  * 使えないので写しを書く）。画面の余白 `0 48px 64px`・最大幅 720px（原本 PC の `L.pad` / `L.max`）。
  */
@@ -50,5 +66,28 @@
 
   .header {
     padding: 0;
+  }
+
+  /* パネルの間も一覧の側は暗くも薄くもせずそのまま見せる（B-65b 設計 規則12）。 */
+  .screenBehindPanel {
+    display: block;
+  }
+
+  /*
+   * パネル（B-65b 設計 規則12 / 原本 `PantryScreen` の `aside`）。表示域の右端に上下いっぱいで
+   * 固定し、幅 440px・面の色・左に 1px の区切り線。中身が長ければパネルの中で縦にスクロールする。
+   * 一覧の側の手前に重ねる。
+   */
+  .formPanel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    box-sizing: border-box;
+    width: 440px;
+    overflow-y: auto;
+    border-left: 1px solid var(--color-border);
+    background: var(--color-surface);
   }
 }
