@@ -39,6 +39,7 @@ import type { ExpirySection } from './PantrySections.js';
 import { expirySectionOf } from './PantrySections.js';
 import { remainingDaysOf } from './RemainingDays.js';
 import styles from './StockItemForm.module.css';
+import { useBackHandler } from '../../backNavigation/BackHandler.js';
 
 /** 画面の見出し（B-65 規則2 / ADR-074）。名称は見出しにせず、食材名の位置に出す（規則9）。 */
 const HEADING = '食材を編集';
@@ -135,6 +136,11 @@ export function StockItemEditForm({
   const [values, setValues] = useState<StockItemEditValues>(() => stockItemEditValuesOf(stockItem));
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState<UpdateFailureNotice | null>(null);
+
+  // 端末の戻るは「←」と同じ口で閉じる（B-75 規則1・2）。**送っている間は飲み込む**（規則6）。
+  useBackHandler(true, () => {
+    if (!sending) onClose();
+  });
 
   function changeField(field: keyof StockItemEditValues) {
     return (event: ChangeEvent<HTMLInputElement>) => {

@@ -16,8 +16,10 @@
 import { describe, expect, it } from 'vitest';
 import { act, fireEvent, render, screen } from '../../support/dom/renderComponent.js';
 import { PendingReleases } from '../../support/HeldDelivery.js';
+import { FixedBackNavigation } from '../../support/backNavigation/FixedBackNavigation.js';
 import { FixedHouseholdDataRequests } from '../../support/server/FixedHouseholdDataRequests.js';
 import type { FixedHouseholdDataRequestsOptions } from '../../support/server/FixedHouseholdDataRequests.js';
+import { BackNavigationProvider } from '../../../src/backNavigation/BackHandler.js';
 import { SettingsScreen } from '../../../src/features/identity/SettingsScreen.js';
 import type { SettingsScreenProps } from '../../../src/features/identity/SettingsScreen.js';
 
@@ -533,5 +535,91 @@ describe('設定画面 SettingsScreen の接続が切れている間', () => {
 
     // 規則6: 設定を閉じるのは遷移である。
     expect(closed).toHaveLength(1);
+  });
+});
+
+/**
+ * 端末の「戻る」（B-75 設計 6章 規則1・2・6 / ADR-084）。
+ *
+ * 継ぎ目は記憶上の `FixedBackNavigation` に差し替え、`pressBack()` で「利用者が戻るを押した」
+ * ことにする。閉じたことは閉じる口を配列に残して観る（`docs/testing.md` 2章）。確認が閉じた
+ * ことは、確認の前の操作が戻ったことで観る。
+ */
+describe('設定画面 SettingsScreen の端末の戻る', () => {
+  function renderSettingsWithBack(
+    closed: string[],
+    deletionOptions: FixedHouseholdDataRequestsOptions = HELD_DELETION,
+  ) {
+    const deletion = new FixedHouseholdDataRequests(deletionOptions);
+    const backNavigation = new FixedBackNavigation();
+
+    render(
+      <BackNavigationProvider backNavigation={backNavigation}>
+        <SettingsScreen
+          onSignOut={() => Promise.resolve()}
+          onClose={() => closed.push('close')}
+          onDeleteHouseholdData={deletion.deleteHouseholdData}
+          offline={false}
+        />
+      </BackNavigationProvider>,
+    );
+
+    return { deletion, backNavigation };
+  }
+
+  function pressBack(backNavigation: FixedBackNavigation): void {
+    act(() => {
+      backNavigation.pressBack();
+    });
+  }
+
+  it('設定で戻ると、閉じる口へ届く', () => {
+    const closed: string[] = [];
+    const { backNavigation } = renderSettingsWithBack(closed);
+
+    pressBack(backNavigation);
+
+    // 規則1・2: 「戻る」の操作と同じ口で閉じる（設定 → 開く前のタブ）。
+    expect(closed).toEqual(['close']);
+  });
+
+  it('削除の確認を出している間に戻ると、確認が閉じて元の削除の操作が出る', () => {
+    const { backNavigation } = renderSettingsWithBack([]);
+    fireEvent.click(deleteOperation());
+
+    pressBack(backNavigation);
+
+    // 規則1・2: 確認が最後に開いたもの。やめると同じ口（`cancelDeletion`）で閉じる。
+    expect(screen.queryAllByRole('button', { name: 'アカウントとデータを削除' })).toHaveLength(1);
+  });
+
+  it('削除の確認を戻るで閉じても、設定は閉じない', () => {
+    const closed: string[] = [];
+    const { backNavigation } = renderSettingsWithBack(closed);
+    fireEvent.click(deleteOperation());
+
+    pressBack(backNavigation);
+
+    // 規則1: 戻る1回で閉じるのは1つだけである。
+    expect(closed).toEqual([]);
+  });
+
+  it('削除を送っている間に戻っても、確認も設定も閉じない', async () => {
+    const closed: string[] = [];
+    const { deletion, backNavigation } = renderSettingsWithBack(closed, {
+      delete: [{ heldUntilSettled: { outcome: 'failed' } }],
+    });
+    fireEvent.click(deleteOperation());
+    fireEvent.click(confirmOperation());
+
+    pressBack(backNavigation);
+
+    // 規則6 / B-56f 規則6: 送っている間は戻るを飲み込む。閉じると失敗の案内を失う。
+    // 確認が出たままであることは「削除する」が残ることで観る（B-67 規則14）。
+    expect([closed, screen.queryAllByRole('button', { name: '削除する' }).length]).toEqual([[], 1]);
+
+    await act(async () => {
+      deletion.settle();
+    });
   });
 });

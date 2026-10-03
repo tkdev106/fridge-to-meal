@@ -17,7 +17,9 @@
 
 import { describe, expect, it } from 'vitest';
 import type { MealIngredientDto, ShowMealOutput } from '@fridge-to-meal/contract';
-import { fireEvent, render, screen, within } from '../../support/dom/renderComponent.js';
+import { act, fireEvent, render, screen, within } from '../../support/dom/renderComponent.js';
+import { FixedBackNavigation } from '../../support/backNavigation/FixedBackNavigation.js';
+import { BackNavigationProvider } from '../../../src/backNavigation/BackHandler.js';
 import { MealDetail } from '../../../src/features/meal/MealDetail.js';
 import type { MealDetailProps } from '../../../src/features/meal/MealDetail.js';
 
@@ -618,5 +620,72 @@ describe('献立詳細 MealDetail の接続が切れている間', () => {
 
     // 規則6・8: 一覧へ戻るのは遷移である。
     expect(closed).toBe(true);
+  });
+});
+
+/**
+ * 端末の「戻る」（B-75 設計 6章 規則1・2・6 / ADR-084）。
+ *
+ * 継ぎ目は記憶上の `FixedBackNavigation` に差し替え、`pressBack()` で「利用者が戻るを押した」
+ * ことにする。**届いた先は閉じる口を配列に残して観る**（`docs/testing.md` 2章）。
+ */
+describe('献立詳細 MealDetail の端末の戻る', () => {
+  function renderDetailWithBack(
+    state: MealDetailProps['meal'],
+    closed: string[],
+    recording = false,
+  ): FixedBackNavigation {
+    const backNavigation = new FixedBackNavigation();
+    render(
+      <BackNavigationProvider backNavigation={backNavigation}>
+        <MealDetail
+          meal={state}
+          onClose={() => closed.push('close')}
+          onAddCookingRecord={() => {}}
+          recording={recording}
+          recordFailureNotice={null}
+          recorded={false}
+          offline={false}
+        />
+      </BackNavigationProvider>,
+    );
+
+    return backNavigation;
+  }
+
+  function pressBack(backNavigation: FixedBackNavigation): void {
+    act(() => {
+      backNavigation.pressBack();
+    });
+  }
+
+  it('献立詳細で戻ると、閉じる口へ届く', () => {
+    const closed: string[] = [];
+    const backNavigation = renderDetailWithBack({ outcome: 'shown', meal: meal() }, closed);
+
+    pressBack(backNavigation);
+
+    // 規則1・2: 「←」と同じ口で閉じる（献立詳細 → 開いたタブの一覧）。
+    expect(closed).toEqual(['close']);
+  });
+
+  it('読み込み中の献立詳細でも、戻ると閉じる口へ届く', () => {
+    const closed: string[] = [];
+    const backNavigation = renderDetailWithBack({ outcome: 'loading' }, closed);
+
+    pressBack(backNavigation);
+
+    // 規則2: 詳細は開いた時点で開いている。読み込みを待たずに閉じられる（「←」と同じ）。
+    expect(closed).toEqual(['close']);
+  });
+
+  it('調理記録を送っている間に戻っても、閉じる口は呼ばれない', () => {
+    const closed: string[] = [];
+    const backNavigation = renderDetailWithBack({ outcome: 'shown', meal: meal() }, closed, true);
+
+    pressBack(backNavigation);
+
+    // 規則6: 送っている間は戻るを飲み込む（既存の `disabled={recording}` と同じ）。
+    expect(closed).toEqual([]);
   });
 });

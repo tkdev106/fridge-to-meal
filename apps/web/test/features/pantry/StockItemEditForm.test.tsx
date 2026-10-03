@@ -24,8 +24,10 @@
 import { describe, expect, it } from 'vitest';
 import type { StockItemDto } from '@fridge-to-meal/contract';
 import { act, fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
+import { FixedBackNavigation } from '../../support/backNavigation/FixedBackNavigation.js';
 import { FixedStockItemRequests } from '../../support/server/FixedStockItemRequests.js';
 import type { FixedStockItemRequestsOptions } from '../../support/server/FixedStockItemRequests.js';
+import { BackNavigationProvider } from '../../../src/backNavigation/BackHandler.js';
 import { StockItemEditForm } from '../../../src/features/pantry/StockItemEditForm.js';
 
 /**
@@ -713,5 +715,67 @@ describe('編集の画面 StockItemEditForm の `閉じる`', () => {
 
     // B-70 / B-65 規則6: 保存せずに閉じるのは遷移で、止めない。
     expect(closed).toEqual(['close']);
+  });
+});
+
+/**
+ * 端末の「戻る」（B-75 設計 6章 規則1・2・6 / ADR-084）。
+ *
+ * 継ぎ目は記憶上の `FixedBackNavigation` に差し替え、`pressBack()` で「利用者が戻るを押した」
+ * ことにする。**届いた先は一覧へ戻す口を配列に残して観る**（`docs/testing.md` 2章）。
+ */
+describe('編集の画面 StockItemEditForm の端末の戻る', () => {
+  function renderEditFormWithBack(closed: string[], options: FixedStockItemRequestsOptions = {}) {
+    const requests = new FixedStockItemRequests(options);
+    const backNavigation = new FixedBackNavigation();
+
+    render(
+      <BackNavigationProvider backNavigation={backNavigation}>
+        <StockItemEditForm
+          stockItem={stockItemOf()}
+          onUpdate={requests.updateStockItem}
+          onClose={() => closed.push('close')}
+          today={today}
+        />
+      </BackNavigationProvider>,
+    );
+
+    return { requests, backNavigation };
+  }
+
+  function pressBack(backNavigation: FixedBackNavigation): void {
+    act(() => {
+      backNavigation.pressBack();
+    });
+  }
+
+  it('編集の画面で戻ると、一覧へ戻す口へ届く', () => {
+    const closed: string[] = [];
+    const { backNavigation } = renderEditFormWithBack(closed);
+
+    pressBack(backNavigation);
+
+    // 規則1・2: 「戻る」の操作と同じ口で閉じる（パネル → 一覧）。
+    expect(closed).toEqual(['close']);
+  });
+
+  it('編集を送っている間に戻っても、一覧へ戻す口は呼ばれない', async () => {
+    const closed: string[] = [];
+    const { requests, backNavigation } = renderEditFormWithBack(closed, {
+      // 結末を保留する口。押した時点ではまだ返らない（`support/HeldDelivery.ts`）。
+      update: [{ heldUntilSettled: { outcome: 'failed' } }],
+    });
+    fireEvent.click(saveOperation());
+    // 前提: 1件は送られ、結末はまだ返っていない。
+    expect(requests.receivedUpdates).toHaveLength(1);
+
+    pressBack(backNavigation);
+
+    // 規則6 / B-39 規則11: 送っている間は戻るを飲み込む。
+    expect(closed).toEqual([]);
+
+    await act(async () => {
+      requests.settle();
+    });
   });
 });

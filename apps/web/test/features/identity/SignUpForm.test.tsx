@@ -11,9 +11,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
+import { act, fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
+import { FixedBackNavigation } from '../../support/backNavigation/FixedBackNavigation.js';
 import { FixedSession } from '../../support/session/FixedSession.js';
 import type { FixedSessionOptions } from '../../support/session/FixedSession.js';
+import { BackNavigationProvider } from '../../../src/backNavigation/BackHandler.js';
 import { SignUpForm } from '../../../src/features/identity/SignUpForm.js';
 
 const typedEmail = 'user@example.com';
@@ -305,5 +307,76 @@ describe('アカウント作成の画面 SignUpForm', () => {
     // B-73 設計 6章 規則13。
     expect(wentBack).toEqual([true]);
     expect(session.receivedCredentials).toEqual([]);
+  });
+});
+
+/**
+ * 端末の「戻る」（B-75 設計 6章 規則1・2・6 / ADR-084）。
+ *
+ * 継ぎ目は記憶上の `FixedBackNavigation` に差し替え、`pressBack()` で「利用者が戻るを押した」
+ * ことにする。届いた先は「ログイン画面へ戻る」と同じ口（`onBackToSignIn`）を配列に残して観る。
+ */
+describe('アカウント作成の画面 SignUpForm の端末の戻る', () => {
+  function renderSignUpFormWithBack(options: FixedSessionOptions = {}) {
+    const session = new FixedSession(options);
+    const backNavigation = new FixedBackNavigation();
+    const wentBack: true[] = [];
+    render(
+      <BackNavigationProvider backNavigation={backNavigation}>
+        <SignUpForm
+          onSignUp={(email, password) => session.signUp(email, password)}
+          onBackToSignIn={() => wentBack.push(true)}
+        />
+      </BackNavigationProvider>,
+    );
+
+    return { session, backNavigation, wentBack };
+  }
+
+  function pressBack(backNavigation: FixedBackNavigation): void {
+    act(() => {
+      backNavigation.pressBack();
+    });
+  }
+
+  it('アカウント作成の画面で戻ると、ログインへ戻る口へ届く', () => {
+    const { backNavigation, wentBack } = renderSignUpFormWithBack();
+
+    pressBack(backNavigation);
+
+    // 規則1・2: アカウント作成 → ログイン。
+    expect(wentBack).toEqual([true]);
+  });
+
+  it('作成を送っている間に戻っても、ログインへ戻らない', async () => {
+    const { session, backNavigation, wentBack } = renderSignUpFormWithBack({
+      signUp: [{ heldUntilSettled: 'rejected' }],
+    });
+    fill(typedEmail, typedPassword);
+    fireEvent.click(submitOperation());
+    // 前提: 1件は送られ、結末はまだ返っていない。
+    expect(session.receivedCredentials).toHaveLength(1);
+
+    pressBack(backNavigation);
+
+    // 規則6 / B-73 規則13: 結末の届く前に閉じると、案内が出ないまま捨てられる。
+    expect(wentBack).toEqual([]);
+
+    session.settle();
+    await waitForSoleNoticeText();
+  });
+
+  it('作成を受け付けた案内の画面でも、戻るとログインへ戻る口へ届く', async () => {
+    const { backNavigation, wentBack } = renderSignUpFormWithBack({
+      signUp: ['confirmationRequired'],
+    });
+    fill(typedEmail, typedPassword);
+    fireEvent.click(submitOperation());
+    await screen.findByText(/確認のメールを送りました/);
+
+    pressBack(backNavigation);
+
+    // 規則2: 案内の画面もアカウント作成の画面の中であり、閉じた先はログインである。
+    expect(wentBack).toEqual([true]);
   });
 });

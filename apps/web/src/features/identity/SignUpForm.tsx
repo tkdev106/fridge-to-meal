@@ -20,6 +20,7 @@ import type { EmailProblem, PasswordProblem, SignUpFormValues } from './SignUpFo
 import { EMPTY_SIGN_UP_FORM, signUpCheckOf } from './SignUpFormValues.js';
 import shared from './SignInForm.module.css';
 import styles from './SignUpForm.module.css';
+import { useBackHandler } from '../../backNavigation/BackHandler.js';
 
 /** ロゴ（ログインの画面と同じ文字。B-68 規則2）。 */
 const LOGO = 'fridge to meal';
@@ -96,6 +97,12 @@ export function SignUpForm({ onSignUp, onBackToSignIn }: SignUpFormProps) {
   const [sending, setSending] = useState(false);
   const [rejection, setRejection] = useState<Rejection | null>(null);
   const [done, setDone] = useState(false);
+
+  // 端末の戻るはログインへ戻る口へ届ける（B-75 規則1・2）。完了の案内の画面でも同じである。
+  // **送っている間は飲み込む**（規則6）— 結末が届く前に離れると、案内が出ないまま捨てられる。
+  useBackHandler(true, () => {
+    if (!sending) onBackToSignIn();
+  });
 
   const emailInput = useRef<HTMLInputElement>(null);
   const passwordInput = useRef<HTMLInputElement>(null);

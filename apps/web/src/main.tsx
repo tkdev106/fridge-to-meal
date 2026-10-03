@@ -5,6 +5,8 @@ import type { Session } from './session/Session.js';
 import { sessionConfigOf } from './session/SessionConfig.js';
 import { SessionImpl } from './session/SessionImpl.js';
 import { ConnectivityImpl } from './connectivity/ConnectivityImpl.js';
+import { BackNavigationImpl } from './backNavigation/BackNavigationImpl.js';
+import { BackNavigationProvider } from './backNavigation/BackHandler.js';
 import { apiBaseUrlOf } from './server/ApiBaseUrl.js';
 import type { StockItemRequestsDeps } from './server/StockItemRequests.js';
 import {
@@ -67,25 +69,31 @@ const requestHouseholdDataDeletion = deleteHouseholdData(stockItemRequests);
 // 接続状態の継ぎ目を `new` するのもここだけ（B-70 設計 4章）。窓は構造型で渡す（設計 5章）。
 const connectivity = new ConnectivityImpl(window);
 
+// 端末の「戻る」の継ぎ目を `new` するのもここだけ（B-75 設計 4章 / ADR-084）。窓は構造型で渡す。
+// 画面へは provider で配り、`features/` は hook だけを見る。
+const backNavigation = new BackNavigationImpl(window);
+
 const container = document.getElementById('root');
 if (!container) throw new Error('#root が見つからない');
 
 createRoot(container).render(
   <StrictMode>
-    <App
-      session={session}
-      listStockItems={requestStockItems}
-      registerStockItem={sendStockItem}
-      deleteStockItem={requestStockItemDeletion}
-      updateStockItem={sendStockItemUpdate}
-      showLatestSuggestion={requestLatestSuggestion}
-      requestNewMeals={requestNewMealsFn}
-      listIngredientNames={requestIngredientNames}
-      showMeal={requestMeal}
-      addCookingRecord={sendCookingRecord}
-      listMeals={requestMealList}
-      deleteHouseholdData={requestHouseholdDataDeletion}
-      connectivity={connectivity}
-    />
+    <BackNavigationProvider backNavigation={backNavigation}>
+      <App
+        session={session}
+        listStockItems={requestStockItems}
+        registerStockItem={sendStockItem}
+        deleteStockItem={requestStockItemDeletion}
+        updateStockItem={sendStockItemUpdate}
+        showLatestSuggestion={requestLatestSuggestion}
+        requestNewMeals={requestNewMealsFn}
+        listIngredientNames={requestIngredientNames}
+        showMeal={requestMeal}
+        addCookingRecord={sendCookingRecord}
+        listMeals={requestMealList}
+        deleteHouseholdData={requestHouseholdDataDeletion}
+        connectivity={connectivity}
+      />
+    </BackNavigationProvider>
   </StrictMode>,
 );

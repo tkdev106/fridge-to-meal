@@ -46,8 +46,10 @@ import type { FixedIngredientNameRequestsOptions } from './support/server/FixedI
 import { FixedHouseholdDataRequests } from './support/server/FixedHouseholdDataRequests.js';
 import type { FixedHouseholdDataRequestsOptions } from './support/server/FixedHouseholdDataRequests.js';
 import { FixedConnectivity } from './support/connectivity/FixedConnectivity.js';
+import { FixedBackNavigation } from './support/backNavigation/FixedBackNavigation.js';
 import type { FixedConnectivityOptions } from './support/connectivity/FixedConnectivity.js';
 import { App } from '../src/App.js';
+import { BackNavigationProvider } from '../src/backNavigation/BackHandler.js';
 import type { SessionState } from '../src/session/Session.js';
 import type { ConnectivityState } from '../src/connectivity/Connectivity.js';
 import type { StockItemsOutcome } from '../src/server/StockItemRequests.js';
@@ -82,6 +84,7 @@ function renderApp(
   mealOptions: FixedMealRequestsOptions = {},
   householdDataOptions: FixedHouseholdDataRequestsOptions = {},
   connectivityOptions: FixedConnectivityOptions = {},
+  backNavigation?: FixedBackNavigation,
 ) {
   const session = new FixedSession(sessionOptions);
   const requests = new FixedStockItemRequests(requestOptions);
@@ -113,7 +116,7 @@ function renderApp(
   // **既定は接続している状態**（B-70）。接続が本題でない観点は、これまでどおり何も止まらない。
   const connectivity = new FixedConnectivity(connectivityOptions);
 
-  render(
+  const app = (
     <App
       session={session}
       listStockItems={requests.listStockItems}
@@ -128,7 +131,17 @@ function renderApp(
       listMeals={meals.listMeals}
       deleteHouseholdData={householdData.deleteHouseholdData}
       connectivity={connectivity}
-    />,
+    />
+  );
+
+  // 端末の戻るを観る観点（B-75）だけが継ぎ目を渡し、provider で包む。**渡さない観点は
+  // 素で描く** — provider の無い木でも描けること（B-75 規則10）に頼っている。
+  render(
+    backNavigation === undefined ? (
+      app
+    ) : (
+      <BackNavigationProvider backNavigation={backNavigation}>{app}</BackNavigationProvider>
+    ),
   );
 
   return { session, requests, suggestions, ingredientNames, meals, householdData, connectivity };
@@ -3897,5 +3910,162 @@ describe('門 App の接続が切れている間の在庫と設定の操作', ()
     // 規則12: 門 → `SettingsScreen` へ `offline` が配られ、削除は送られない。
     expect(confirm.disabled).toBe(true);
     expect(householdData.deleteCount).toBe(0);
+  });
+});
+
+/**
+ * 端末の「戻る」（B-75 設計 6章 規則2〜5 / ADR-084 / ADR-064 / ADR-066 結果1）。
+ *
+ * 継ぎ目は記憶上の `FixedBackNavigation` に差し替えて provider で包み、`pressBack()` で
+ * 「利用者が戻るを押した」ことにする。**受け取ったかどうかは `pressBack()` の戻り値**
+ * （受け取らない＝アプリを離れる。規則3）、閉じた先は**選ばれているタブ**（`aria-selected`）と
+ * **テストが渡した名称**で観る。
+ */
+describe('門 App の端末の戻る', () => {
+  const NIKUJAGA = '肉じゃが';
+  /** 献立タブのカードに出る名称。 */
+  const SUGGESTED = '提案の献立';
+  /** 献立詳細に出る名称（カード・行の名称と見分ける）。 */
+  const DETAIL = '詳細の献立';
+
+  const mealA: SeenMealSummaryOutput = {
+    mealId: 'meal-a',
+    title: NIKUJAGA,
+    ingredientCount: 2,
+    generatedAt: '2026-09-20T09:00:00.000Z',
+  };
+
+  /** 献立タブにカード1枚・履歴に1行・開けば詳細が出る門を、継ぎ目つきで描く。 */
+  function renderAppWithBack(
+    sessionOptions: FixedSessionOptions = { initialState: 'signedIn' },
+    detailMealId = 'meal-s',
+  ): FixedBackNavigation {
+    const backNavigation = new FixedBackNavigation();
+    renderApp(
+      sessionOptions,
+      { list: [loaded(carrot)] },
+      { show: [offlineSuggestedOne('meal-s', SUGGESTED)] },
+      {},
+      { list: [offlineListed([mealA])], show: [offlineShownMeal(detailMealId, DETAIL)] },
+      {},
+      {},
+      backNavigation,
+    );
+
+    return backNavigation;
+  }
+
+  /** 戻るを押す。口が呼ばれたら `true`（`act` で包む。口は画面の状態を変える）。 */
+  function pressBack(backNavigation: FixedBackNavigation): boolean {
+    let received = false;
+    act(() => {
+      received = backNavigation.pressBack();
+    });
+
+    return received;
+  }
+
+  /** 献立タブのカードの開く操作を押す。**カード1枚の回はカードの中の1つだけ**である（B-53）。 */
+  async function openCard(): Promise<void> {
+    const card = (await screen.findAllByRole('listitem'))[0];
+    if (card === undefined) throw new Error('カードが1枚も無い');
+
+    fireEvent.click(within(card).getByRole('button'));
+  }
+
+  /** 履歴の行を名称で引き、その行の開く操作を押す。**行の中の操作は1つだけ**である。 */
+  async function openHistoryRow(title: string): Promise<void> {
+    await screen.findByText(title);
+    const row = screen
+      .getAllByRole('listitem')
+      .find((item) => within(item).queryByText(title) !== null);
+    if (row === undefined) throw new Error(`${title} の行が無い`);
+
+    fireEvent.click(within(row).getByRole('button'));
+  }
+
+  it('ログインの画面では、戻るを受け取らない', async () => {
+    const backNavigation = renderAppWithBack({ initialState: 'signedOut' });
+    await act(async () => {});
+
+    // 規則3: ログインの画面で戻るとアプリを離れる（番兵を置かない）。
+    expect(pressBack(backNavigation)).toBe(false);
+  });
+
+  it('何も開いていない献立タブでは、戻るを受け取らない', async () => {
+    const backNavigation = renderAppWithBack();
+    await screen.findByText(SUGGESTED);
+
+    // 規則3 / ADR-064: 既定のタブで何も開いていなければアプリを離れる。
+    expect(pressBack(backNavigation)).toBe(false);
+  });
+
+  it('在庫タブで戻ると、献立タブが選ばれる', async () => {
+    const backNavigation = renderAppWithBack();
+    openPantry();
+    await screen.findByText(carrot.name);
+
+    pressBack(backNavigation);
+
+    // 規則2・4 / ADR-064: 既定でないタブ → 献立タブ。
+    expect(mealsTab().getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('履歴で開いた詳細は、献立タブを経て履歴に戻ったあとの戻るで閉じ、履歴タブのままである', async () => {
+    const backNavigation = renderAppWithBack({ initialState: 'signedIn' }, 'meal-a');
+    fireEvent.click(historyTab());
+    await openHistoryRow(NIKUJAGA);
+    await screen.findByText(DETAIL);
+    fireEvent.click(mealsTab());
+    await screen.findByText(SUGGESTED);
+    fireEvent.click(historyTab());
+    await screen.findByText(DETAIL);
+
+    pressBack(backNavigation);
+
+    // 規則4 / 設計 10章 前提3: 詳細とタブの口が同じ描画で登録されても、閉じるのは詳細である。
+    expect([screen.queryByText(DETAIL), historyTab().getAttribute('aria-selected')]).toEqual([
+      null,
+      'true',
+    ]);
+  });
+
+  it('献立タブで開いた詳細は、在庫タブから戻ったときには閉じず、献立タブで詳細が出る', async () => {
+    const backNavigation = renderAppWithBack();
+    await openCard();
+    await screen.findByText(DETAIL);
+    openPantry();
+    await screen.findByText(carrot.name);
+
+    pressBack(backNavigation);
+
+    // 規則5: 見えていない献立詳細は閉じない。戻るで閉じるのは在庫タブ（→ 献立タブ）である。
+    expect([mealsTab().getAttribute('aria-selected'), screen.queryByText(DETAIL) === null]).toEqual(
+      ['true', false],
+    );
+  });
+
+  it('在庫タブで設定を開いて戻ると、在庫タブに戻る', async () => {
+    const backNavigation = renderAppWithBack();
+    openPantry();
+    await screen.findByText(carrot.name);
+    fireEvent.click(navigationSettings());
+
+    pressBack(backNavigation);
+
+    // 規則2・5 / B-60 規則9: 設定 → 開く前のタブ。設定を開いている間はタブの口を外している。
+    expect(pantryTab().getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('詳細を開いたまま設定を開いて戻ると、詳細に戻る', async () => {
+    const backNavigation = renderAppWithBack();
+    await openCard();
+    await screen.findByText(DETAIL);
+    fireEvent.click(navigationSettings());
+
+    pressBack(backNavigation);
+
+    // 規則2 / B-60 規則9: 設定 → 開く前のタブ（詳細を含む）。
+    expect(await screen.findByText(DETAIL)).not.toBeNull();
   });
 });

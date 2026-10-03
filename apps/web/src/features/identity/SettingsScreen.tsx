@@ -38,6 +38,7 @@ import type { DeleteHouseholdDataOutcome } from '../../server/HouseholdDataReque
 import { Icon } from '../../icons/Icon.js';
 import { SignOutButton } from './SignOutButton.js';
 import styles from './SettingsScreen.module.css';
+import { useBackHandler } from '../../backNavigation/BackHandler.js';
 
 /*
  * 文言は原本 `docs/design/src/index.dc.html` 13 / 13b から取った（ADR-074 決定1 — デザインが正）。
@@ -93,6 +94,16 @@ export function SettingsScreen({
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [failed, setFailed] = useState(false);
+
+  // 端末の戻るは、確認を出していれば確認を、そうでなければ設定を閉じる（B-75 規則1・2）。
+  // 確認の口は確認を出すたびに後から登録されるので、設定の口より先に呼ばれる。
+  // **削除を送っている間はどちらも飲み込む**（規則6）— 閉じると失敗の案内を失う。
+  useBackHandler(true, () => {
+    if (!deleting) onClose();
+  });
+  useBackHandler(confirming, () => {
+    if (!deleting) cancelDeletion();
+  });
 
   async function confirmDeletion() {
     // **接続が切れている間は確定を止める**（B-70 規則12）。確認を開く・やめるは止めない。
