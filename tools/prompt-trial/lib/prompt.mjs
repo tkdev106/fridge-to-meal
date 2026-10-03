@@ -23,7 +23,8 @@ export const SYSTEM_PROMPT = `あなたは日本の家庭の食事を組み立�
    副菜や汁物をまとめて1件にしない。分量は2人分とする。
 3. 材料には、在庫にある食材を優先して使う。在庫にない食材を足してよいのは
    1件の献立につき2つまでとする。
-4. 在庫にある食材を材料に書くときは、在庫に書かれている名称をそのまま使う。
+4. 在庫にある食材を材料に書くときは、在庫の「名称:」に書かれた文字列をそのまま使う。
+   「分量:」や期限を名称に含めない。
    「豚こま肉」を「豚肉」や「豚こま」に書き換えない。
 5. 材料には kind を必ず付ける。食材そのものは "main"、味付けに使うものは
    "seasoning" とする。
@@ -133,11 +134,11 @@ export function projectStock(stock) {
 /** 第5.1章のテンプレート。表組みを使わず1行1件にしてトークンを抑える。 */
 export function buildUserMessage({ stock, requiredCount, avoidTitles = [] }) {
   const lines = projectStock(stock).map((item) => {
-    const parts = [item.name];
-    if (item.amount) parts.push(item.amount);
+    const parts = [`名称: ${item.name}`];
+    if (item.amount) parts.push(`分量: ${item.amount}`);
     const label = expiryLabel(item.expiryInDays);
     if (label) parts.push(label);
-    return `- ${parts.join(' ')}`;
+    return `- ${parts.join(' / ')}`;
   });
 
   const sections = [
