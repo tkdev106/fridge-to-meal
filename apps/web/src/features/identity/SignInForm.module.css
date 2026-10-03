@@ -1,5 +1,7 @@
 /*
- * ログイン／サインアップの画面（原本 `docs/design/` の 14-sp / 設計 B-68 6章 規則1〜11）。
+ * ログイン／アカウント作成の画面（`docs/design/` の 14 / 設計 B-68 6章 規則1〜11）。
+ * まず SP の見た目を書き、末尾の `@media (min-width: 1024px)` で PC の配置に組み替える
+ * （切り替え幅の正は `docs/screen-design.md` 2.1。PC の配置の値の正は同 8章）。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1・2）。`SignInForm.tsx` は class 名しか書かない。
  * 色・文字の大きさ・太さ・操作の高さはトークン（`src/global.css` の `:root`）から `var(--…)` で
@@ -10,10 +12,9 @@
  */
 
 /*
- * 根。ロゴを上に、フォームを下寄せに置く（規則1）。原本の `flex:1` の詰め物の代わりに
- * フォームの `margin-top: auto` で寄せ、空の要素を足さない。下の余白には安全域を足す
- * （先行 `TabbedScreen.module.css` `.bar`）。幅は 390px で留めて中央に寄せる（規則10。
- * 幅での切り替え（1024px。B-60 / ADR-076）はここでは使わない）。
+ * 根。SP ではロゴを上に、フォームを下寄せに置く（規則1）。フォームの `margin-top: auto` で寄せ、
+ * 空の要素を足さない。下の余白には安全域を足す（先行 `TabbedScreen.module.css` `.bar`）。
+ * 幅は 390px で留めて中央に寄せる（規則10）。
  */
 .screen {
   box-sizing: border-box;
@@ -35,7 +36,7 @@
   letter-spacing: 0.16em;
 }
 
-/* フォーム。下寄せにする（規則1）。 */
+/* フォーム。SP では下寄せにする（規則1）。 */
 .form {
   display: flex;
   flex-direction: column;
@@ -173,4 +174,33 @@
   border-color: var(--color-border);
   color: var(--color-text-muted);
   cursor: default;
+}
+
+/*
+ * PC（幅 1024px 以上）。ロゴは上端の帯の左に置き、フォームは帯の下の上寄りに幅を留めた面として
+ * 横の中央に置く。下寄せにしない — 広い画面の下端に欄が離れると、ロゴと欄の間が空きすぎる。
+ * DOM の順（ロゴ → フォーム）と欄・操作の並びは SP と同じで、配置だけを組み替える。
+ */
+@media (min-width: 1024px) {
+  .screen {
+    max-width: none;
+    padding: 0 0 64px;
+  }
+
+  /* 上端の帯。左右の余白は他の画面の PC の余白（`--screen-inset-wide`）に揃える。 */
+  .logo {
+    height: 64px;
+    padding: 0 var(--screen-inset-wide);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  /* 面。中身の幅 360px に内側の余白を足した幅で留め、帯から画面の高さの 10% 下に置く。 */
+  .form {
+    box-sizing: border-box;
+    width: 440px;
+    margin: 10vh auto 0;
+    padding: 40px;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
 }
