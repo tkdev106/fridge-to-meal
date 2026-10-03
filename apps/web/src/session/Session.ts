@@ -22,12 +22,19 @@ export type SessionState = 'unknown' | 'signedOut' | 'signedIn';
 export type SignInOutcome = 'signedIn' | 'rejected';
 
 /**
- * サインアップの結末（規則7）。
+ * サインアップの結末（規則7 / ADR-081）。
  *
- * `confirmationRequired` は、メールの確認を要する設定のときに返る。**実プロジェクトの設定は
- * 未確認である**（設計 10章）— 確認が要らないと判ったら、この変種は落としてよい。
+ * `confirmationRequired` は、メールの確認を要する設定（本番はこの設定）のときに返る。**断りはサインインと違い種別に分ける**（ADR-081）
+ * — アカウントを作る相手は Supabase Auth で、その検証の結果を画面が文言で知らせるため。
+ * 対応は `SignUpOutcomes.ts` の `signUpOutcomeOf` が持ち、分けられない断りは `rejected` に倒れる。
  */
-export type SignUpOutcome = 'signedIn' | 'confirmationRequired' | 'rejected';
+export type SignUpOutcome =
+  | 'signedIn'
+  | 'confirmationRequired'
+  | 'weakPassword'
+  | 'invalidEmail'
+  | 'alreadyRegistered'
+  | 'rejected';
 
 /** 継ぎ目の口。画面はこの型だけを受け取る（規則1）。 */
 export type Session = {
