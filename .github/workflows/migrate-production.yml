@@ -14,7 +14,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'supabase/migrations/**'
+      # README.md や meta/ だけの変更では動かさない
+      - 'supabase/migrations/*.sql'
   workflow_dispatch:
     inputs:
       apply:

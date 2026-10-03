@@ -210,7 +210,7 @@ flowchart TD
 | ADR-074 | 画面の見た目と文言の正を `docs/design/` のデザインに置き、`docs/screen-design.md` は構造・状態・遷移の正に絞る | 提案 |
 | ADR-075 | 書体をデザインの原本から取り出して `apps/web/public/fonts/` に自前で置き、実行時に使った分割だけを端末に持つ | 提案 |
 | ADR-076 | SP と PC を幅 1024px で切り替え、切り替えは CSS のメディアクエリだけで行う | 提案 |
-| ADR-077 | 本番の Supabase への移行の適用を GitHub Actions から Supabase CLI の `db push` で行う | 提案 |
+| ADR-077 | 本番の Supabase への移行の適用を GitHub Actions から Supabase CLI の `db push` で行う | 承認 |
 
 ---
 
@@ -1646,7 +1646,7 @@ flowchart TD
   2. **SP と PC で ARIA の属性を変えられない。** サイドナビにしても帯は `role="tablist"` のままで、`aria-orientation` を付けない。
   3. **閾値は複数の CSS module に写しとして現れる。** 値を変えるときは `docs/screen-design.md` 2.1 と、`min-width: 1024px` を検索して当たる module をすべて替える。
 
-### ADR-077　本番の Supabase への移行の適用を GitHub Actions から Supabase CLI の `db push` で行う　`提案`
+### ADR-077　本番の Supabase への移行の適用を GitHub Actions から Supabase CLI の `db push` で行う　`承認`
 
 - **状況** — `supabase/migrations/*.sql` は drizzle-kit が生成し、RLS を手で足したファイルである（ADR-029 決定2）。ローカルの Postgres へは `pnpm test:db` が流すが、**本番へは人が Supabase の SQL エディタに貼って流していた**（`supabase/migrations/README.md`「適用」）。README は「CI での本番への適用は自動化していない。決めるのはデプロイを扱う周」と書いたまま、デプロイを扱う周は来ていない（api の `wrangler deploy` も手で打つ）。その間に `20261001110212_create_delete_own_account.sql`（B-56d / ADR-071）が**本番に流れていないまま** `main` に入り、流れるまで本番のアカウント削除は 500 になる。どれを流したかの記録が本番の側に無いので、**流し忘れに気づく手段が人の記憶しか無い。** 2026-10-03 にユーザーが「DB マイグレーションは CI/CD でできないか」と尋ねた。
 
@@ -1663,7 +1663,7 @@ flowchart TD
   | 端末が無いとき（CI） | 確認を求めずに流す |
 
 - **決定** — 5つ。
-  1. **本番への適用は `.github/workflows/migrate-production.yml` が `supabase db push` で行う。** 動くのは、`main` に `supabase/migrations/**` の変更が入ったとき（自動）と、Actions の画面から手で回したとき（`apply` を外せば移行は流さない。`mark_applied` の記録だけは書く）の2つだけである。PR では動かない。**`--include-all` を付ける**（結果7）。
+  1. **本番への適用は `.github/workflows/migrate-production.yml` が `supabase db push` で行う。** 動くのは、`main` に `supabase/migrations/*.sql` の変更が入ったとき（自動。README と `meta/` だけの変更では動かない）と、Actions の画面から手で回したとき（`apply` を外せば移行は流さない。`mark_applied` の記録だけは書く）の2つだけである。PR では動かない。**`--include-all` を付ける**（結果7）。
   2. **Supabase CLI は依存パッケージに入れず、CI の中で版を固定して入れる**（`supabase/setup-cli@v1`、`2.119.0`）。手元とアプリは CLI を知らない。版を上げるときは手元で dry-run を見てから上げる。
   3. **接続は Secret `SUPABASE_DB_URL` の1つだけで行い、中身は Supabase の Session pooler の接続文字列（ユーザー `postgres.<ref>`、ポート 5432）とする。** 直接接続（`db.<ref>.supabase.co`）は IPv6 だけで、GitHub のランナーから届かない。Transaction pooler（6543）は移行に向かない。**ロールは SQL エディタと同じ `postgres`（表の所有者）である** — 表と関数の所有者を手で流したときと揃えるためで、ADR-071 の関数も所有者が `postgres` である前提で書かれている。アクセストークンとプロジェクトの ref は使わない（`supabase link` をしない）。
   4. **初回だけ、手で流し済みのファイルを「適用済み」として記録する。** 手で回すときの入力 `mark_applied` に日時を空白区切りで渡すと `supabase migration repair --status applied` を打ち、その後に dry-run で残りを見る。どれを渡すかは人が決める（本番に何を流したかを知っているのは人だけである）。
