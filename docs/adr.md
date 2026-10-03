@@ -1,6 +1,6 @@
 # アーキテクチャ決定録（ADR）
 
-> ドラフト v0.41 / 2026-10-02 / ADR-001 〜 ADR-076
+> ドラフト v0.42 / 2026-10-03 / ADR-001 〜 ADR-077
 > **この文書がアーキテクチャ決定の正である。**
 
 決定を変更する場合は、既存の ADR を書き換えず、**新しい ADR を起こして旧 ADR の状態を「置き換え済み」に改める**。
@@ -210,6 +210,7 @@ flowchart TD
 | ADR-074 | 画面の見た目と文言の正を `docs/design/` のデザインに置き、`docs/screen-design.md` は構造・状態・遷移の正に絞る | 提案 |
 | ADR-075 | 書体をデザインの原本から取り出して `apps/web/public/fonts/` に自前で置き、実行時に使った分割だけを端末に持つ | 提案 |
 | ADR-076 | SP と PC を幅 1024px で切り替え、切り替えは CSS のメディアクエリだけで行う | 提案 |
+| ADR-077 | 本番の Supabase への移行の適用を GitHub Actions から Supabase CLI の `db push` で行う | 提案 |
 
 ---
 
@@ -1644,3 +1645,45 @@ flowchart TD
   1. **SP と PC で DOM は同じである。** 出し分ける部品は両方とも木にあり、jsdom の単体テストでは両方が見える。テストは置き場（帯の中か外か）で絞って引く。
   2. **SP と PC で ARIA の属性を変えられない。** サイドナビにしても帯は `role="tablist"` のままで、`aria-orientation` を付けない。
   3. **閾値は複数の CSS module に写しとして現れる。** 値を変えるときは `docs/screen-design.md` 2.1 と、`min-width: 1024px` を検索して当たる module をすべて替える。
+
+### ADR-077　本番の Supabase への移行の適用を GitHub Actions から Supabase CLI の `db push` で行う　`提案`
+
+- **状況** — `supabase/migrations/*.sql` は drizzle-kit が生成し、RLS を手で足したファイルである（ADR-029 決定2）。ローカルの Postgres へは `pnpm test:db` が流すが、**本番へは人が Supabase の SQL エディタに貼って流していた**（`supabase/migrations/README.md`「適用」）。README は「CI での本番への適用は自動化していない。決めるのはデプロイを扱う周」と書いたまま、デプロイを扱う周は来ていない（api の `wrangler deploy` も手で打つ）。その間に `20261001110212_create_delete_own_account.sql`（B-56d / ADR-071）が**本番に流れていないまま** `main` に入り、流れるまで本番のアカウント削除は 500 になる。どれを流したかの記録が本番の側に無いので、**流し忘れに気づく手段が人の記憶しか無い。** 2026-10-03 にユーザーが「DB マイグレーションは CI/CD でできないか」と尋ねた。
+
+  Supabase CLI の `supabase db push` は `supabase/migrations/<日時>_<名前>.sql` を読み、流したものを本番の `supabase_migrations.schema_migrations` に記録して、次からは未適用のものだけを流す。**ファイル名の形は drizzle-kit の出力とすでに一致している。** 2.119.0 をローカルの Postgres に当てて次を確かめた（2026-10-03）。
+
+  | 確かめたこと | 結果 |
+  | --- | --- |
+  | 既存の4本を手で流した DB に、4本を `migration repair --status applied` で記録してから `db push` | 5本目だけが流れ、関数の権限（`anon` 不可・`authenticated` 可）も SQL エディタで流したときと同じ |
+  | 空の DB に `db push` | 5本すべて流れ、RLS（`enable` / `force`）も付く |
+  | ファイルの `begin;` / `commit;` | そのまま通る。**1ファイルを1回で流す形は変わらない**（README が `drizzle-kit migrate` を退けた理由に当たらない） |
+  | 途中で落ちるファイル | 表は1つも残らず、記録もされず、終了コード 1 |
+  | 2回目の `db push` | 「up to date」で何もしない |
+  | `README.md` と `meta/` | 読み飛ばす。`supabase/config.toml` が無くても動く |
+  | 端末が無いとき（CI） | 確認を求めずに流す |
+
+- **決定** — 5つ。
+  1. **本番への適用は `.github/workflows/migrate-production.yml` が `supabase db push` で行う。** 動くのは、`main` に `supabase/migrations/**` の変更が入ったとき（自動）と、Actions の画面から手で回したとき（`apply` を外せば移行は流さない。`mark_applied` の記録だけは書く）の2つだけである。PR では動かない。**`--include-all` を付ける**（結果7）。
+  2. **Supabase CLI は依存パッケージに入れず、CI の中で版を固定して入れる**（`supabase/setup-cli@v1`、`2.119.0`）。手元とアプリは CLI を知らない。版を上げるときは手元で dry-run を見てから上げる。
+  3. **接続は Secret `SUPABASE_DB_URL` の1つだけで行い、中身は Supabase の Session pooler の接続文字列（ユーザー `postgres.<ref>`、ポート 5432）とする。** 直接接続（`db.<ref>.supabase.co`）は IPv6 だけで、GitHub のランナーから届かない。Transaction pooler（6543）は移行に向かない。**ロールは SQL エディタと同じ `postgres`（表の所有者）である** — 表と関数の所有者を手で流したときと揃えるためで、ADR-071 の関数も所有者が `postgres` である前提で書かれている。アクセストークンとプロジェクトの ref は使わない（`supabase link` をしない）。
+  4. **初回だけ、手で流し済みのファイルを「適用済み」として記録する。** 手で回すときの入力 `mark_applied` に日時を空白区切りで渡すと `supabase migration repair --status applied` を打ち、その後に dry-run で残りを見る。どれを渡すかは人が決める（本番に何を流したかを知っているのは人だけである）。
+  5. **アプリの実行時の規則は変えない。** `apps/api` が繋ぐのは引き続き非所有者のログインロールで、`service_role` も所有者の接続文字列もアプリには渡さない（ADR-029 結果1）。所有者の接続文字列は**移行の適用にだけ**使い、置き場は GitHub の Secret に限る。
+- **比較した案**
+
+  | | 案 | 退ける理由 |
+  | --- | --- | --- |
+  | **A** | **GitHub Actions ＋ `supabase db push`**（採用） | — |
+  | B | 今のまま SQL エディタに貼る | 流したかどうかの記録が無く、流し忘れが本番の 500 になって初めて分かる（B-56d で起きている） |
+  | C | `drizzle-kit migrate` | 文ごとに割って流すため、`begin;` が単独のトランザクションになり、表と RLS が別トランザクションに割れる（README「適用」がすでに退けた理由） |
+  | D | `psql` でファイルを順に流す自前のスクリプト | 何を流したかの記録を自前で持つことになる。`db push` がその表を持っている |
+  | E | Supabase の GitHub 連携（Branching） | 有料のプランが要る。プレビュー用の DB も作られ、この規模では要らない |
+  | F | `supabase link` ＋ アクセストークン ＋ DB パスワード | Secret が3つになる。アクセストークンはアカウントの全プロジェクトに届き、移行に要る権限より広い |
+- **理由** — **(1) 記録が本番の側に残る。** 何を流したかを人の記憶ではなく `schema_migrations` が持ち、dry-run で差がいつでも読める。**(2) ファイルの形を変えずに済む。** 生成の手順・1ファイル1トランザクション・RLS を同居させる規約（README）はそのまま使え、ローカルの適用（`ApplyMigrations.ts`）とも同じ「全文を1回で流す」形が保たれる。**(3) 1つの Secret で済む。** 漏れたときの影響は本番 DB 1つに閉じる。
+- **結果** — 7つの帰結を引き受ける。
+  1. **`main` に入った移行は、レビューを経たものとして本番へ流れる。** 入れたあとに止める窓は無い。流したくない移行は `main` に入れない。
+  2. **適用済みのファイルを書き換えても本番には流れない**（`db push` は日時しか見ない）。README の「適用済みのファイルは書き換えない」がそのまま効く。
+  3. **api のデプロイは手のままで、移行と順序を揃える仕組みは無い。** 移行が先に流れ、古い api が新しい表を相手にする時間がある。移行は古い api を壊さない形（足すだけ）で書く。デプロイを自動化する周でこの順序を決め直す。
+  4. **GitHub のプランによっては Environment の承認者が使えず、Secret はリポジトリの Secret に置く。** 書き込み権限を持つ者は Secret を使う workflow を書ける。今は書き込めるのがユーザー1人である。
+  5. **Secret が無い間、`supabase/migrations/` を変える PR を `main` に入れるとこの workflow が赤くなる。** 黙って緑にしない — 本番に流れていないことを知らせるのが目的である。
+  6. **B-56e の確かめで本番に作った関数とスキーマが残っていると、`20261001110212_create_delete_own_account.sql` は `schema "private" already exists` で落ちる**（ADR-071 決定4 は消すと決めている）。残っていれば、そのファイルを `mark_applied` に含めるか、スキーマを消してから流す。dry-run ではこれは分からない。
+  7. **本番で流れる順はマージの順になり、ファイル名の順とは限らない。** drizzle-kit はファイル名に生成した時刻を付けるので、先に生成した移行の PR が後からマージされると、本番で最後に流したものより古い日時のファイルが現れる。`db push` は既定ではこれを断るため `--include-all` を付けて流す（2.119.0 で確かめた）。ローカル（`pnpm test:db`）はファイル名の順に流すので、**互いに依存する移行を並行する PR に割らない。**

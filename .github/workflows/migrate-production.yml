@@ -1,0 +1,85 @@
+name: Migrate production DB
+
+# supabase/migrations/*.sql を本番の Supabase へ流す（ADR-077）。
+# 流したファイルは Supabase CLI が supabase_migrations.schema_migrations に記録し、
+# 次の回はまだ流していないファイルだけを流す。
+#
+# 動くのは2つの場合だけ。
+#   - main に supabase/migrations/ の変更が入ったとき（自動で適用する）
+#   - Actions の画面から手で回したとき（apply を外せば移行は流さない。mark_applied の記録だけは書く）
+#
+# 必要な Secret は1つ: SUPABASE_DB_URL（Session pooler の接続文字列。ADR-077 決定3）。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: '本当に流す（外したままなら dry-run で、流れるファイルを見るだけ）'
+        type: boolean
+        default: false
+      mark_applied:
+        description: 'SQL エディタで手で流し済みのファイルの日時（空白区切り）。適用済みとして記録だけする（初回の1度だけ）'
+        type: string
+        default: ''
+
+# 本番への適用を2本同時に走らせない。走っている回は止めない（途中で切ると、どこまで流れたかが読みにくい）。
+concurrency:
+  group: migrate-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # 所有者の接続文字列はジョブ全体の env に置かない。使うステップにだけ渡す（ADR-077 決定5）。
+    steps:
+      - uses: actions/checkout@v4
+
+      # 版を固定する。上げるときは手元で dry-run を見てから（ADR-077 決定2）。
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.119.0
+
+      # Secret が無いのに緑で終わると、本番に流れていないことに気づけない（ADR-077 結果5）。
+      - name: Secret があるか確かめる
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::Secret SUPABASE_DB_URL がありません。Settings → Secrets and variables → Actions に置いてください（ADR-077）"
+            exit 1
+          fi
+
+      - name: 手で流し済みのファイルを適用済みとして記録する
+        if: github.event_name == 'workflow_dispatch' && inputs.mark_applied != ''
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          VERSIONS: ${{ inputs.mark_applied }}
+        run: |
+          # 14桁の日時を空白区切りで並べたものだけを通す（グロブやオプションを紛れ込ませない）
+          if ! printf '%s' "$VERSIONS" | grep -Eq '^[0-9]{14}( [0-9]{14})*$'; then
+            echo "::error::mark_applied は 14桁の日時を空白1つで区切って並べてください（例: 20260910034508 20260921121933）"
+            exit 1
+          fi
+          # 検めたので、引数に割るためにわざと引用符で囲まない
+          # shellcheck disable=SC2086
+          supabase migration repair --db-url "$SUPABASE_DB_URL" --status applied $VERSIONS
+
+      # --include-all: ファイル名の日時は生成した時刻で、マージの順と食い違ってよい（ADR-077 結果7）。
+      - name: 流れるファイルを見る（dry-run）
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --include-all --dry-run
+
+      - name: 流す
+        if: github.event_name == 'push' || inputs.apply
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --include-all
