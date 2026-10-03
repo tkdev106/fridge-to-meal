@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type {
+  CookedMealSummaryOutput,
   ListMealsOutput,
   MealCoverageDto,
   MealIngredientDto,
   MealOutput,
   MealSummaryOutput,
+  SeenMealSummaryOutput,
   ShowMealOutput,
   SuggestionEntryOutput,
   SuggestMealsOutput,
@@ -372,15 +374,120 @@ function mealSummaryOutput(): MealSummaryOutput {
   return { mealId, title: '肉じゃが', ingredientCount: 2 };
 }
 
+/** 以前見た献立の1件を作る。本題でない値をここに隠す。 */
+function seenMealSummaryOutput(): SeenMealSummaryOutput {
+  return { ...mealSummaryOutput(), generatedAt: '2026-09-14T03:00:00.000Z' };
+}
+
+/** 作った献立の1件を作る。本題でない値をここに隠す。 */
+function cookedMealSummaryOutput(): CookedMealSummaryOutput {
+  return { ...mealSummaryOutput(), cookedAt: '2026-09-20T10:00:00.000Z' };
+}
+
 describe('献立の一覧 ListMealsOutput', () => {
-  it('献立の一覧は seen と cooked の2列を一覧の1件の列として持つ', () => {
-    // 規則2 / FR-28 / FR-29 / ADR-068 決定3: 1回の応答で2列を返す。
-    const seen: MealSummaryOutput[] = [mealSummaryOutput()];
-    const cooked: MealSummaryOutput[] = [];
+  it('献立の一覧は seen と cooked の2列をそれぞれの一覧の1件の列として持つ', () => {
+    // FR-28 / FR-29 / ADR-068 決定3 / ADR-083 決定2: 1回の応答で2列を返し、1件はその列の日時を持つ。
+    const seen: SeenMealSummaryOutput[] = [seenMealSummaryOutput()];
+    const cooked: CookedMealSummaryOutput[] = [cookedMealSummaryOutput()];
     const output: ListMealsOutput = { seen, cooked };
 
-    expect(output.seen).toEqual([{ mealId, title: '肉じゃが', ingredientCount: 2 }]);
-    expect(output.cooked).toEqual([]);
+    expect(output.seen).toEqual([
+      { mealId, title: '肉じゃが', ingredientCount: 2, generatedAt: '2026-09-14T03:00:00.000Z' },
+    ]);
+    expect(output.cooked).toEqual([
+      { mealId, title: '肉じゃが', ingredientCount: 2, cookedAt: '2026-09-20T10:00:00.000Z' },
+    ]);
+  });
+
+  it('以前見た献立の列に生成日時の無い1件を入れられない', () => {
+    // ADR-083 決定2: seen の1件は生成日時を必ず持つ。
+    const summary: MealSummaryOutput = mealSummaryOutput();
+    // @ts-expect-error 生成日時の無い1件は seen の1件ではない
+    const output: ListMealsOutput = { seen: [summary], cooked: [] };
+
+    expect(output).toBeDefined();
+  });
+
+  it('作った献立の列に直近の調理記録の日時の無い1件を入れられない', () => {
+    // ADR-083 決定2: cooked の1件は直近の調理記録の日時を必ず持つ。
+    const summary: MealSummaryOutput = mealSummaryOutput();
+    // @ts-expect-error 直近の調理記録の日時の無い1件は cooked の1件ではない
+    const output: ListMealsOutput = { seen: [], cooked: [summary] };
+
+    expect(output).toBeDefined();
+  });
+});
+
+describe('以前見た献立の1件 SeenMealSummaryOutput', () => {
+  it('以前見た献立の1件は識別子・名称・主材料の件数と生成日時を持つ', () => {
+    // ADR-083 決定1・2: 以前見た献立の日時は献立の生成日時である。
+    const summary: SeenMealSummaryOutput = seenMealSummaryOutput();
+
+    expect(summary.mealId).toBe(mealId);
+    expect(summary.title).toBe('肉じゃが');
+    expect(summary.ingredientCount).toBe(2);
+    expect(summary.generatedAt).toBe('2026-09-14T03:00:00.000Z');
+  });
+
+  it('以前見た献立の1件は生成日時を省略できない', () => {
+    // ADR-083 決定2: 日ごとに分けるのに日時が要る。
+    // @ts-expect-error 生成日時は必須である
+    const summary: SeenMealSummaryOutput = mealSummaryOutput();
+
+    expect(summary).toBeDefined();
+  });
+
+  it('以前見た献立の1件に直近の調理記録の日時を持たせられない', () => {
+    // ADR-083 決定2: 1件に載せる日時はその列の日時1つだけである。
+    const summary: SeenMealSummaryOutput = {
+      ...seenMealSummaryOutput(),
+      // @ts-expect-error 直近の調理記録の日時は以前見た献立の1件に無い
+      cookedAt: '2026-09-20T10:00:00.000Z',
+    };
+
+    expect(summary).toBeDefined();
+  });
+});
+
+describe('作った献立の1件 CookedMealSummaryOutput', () => {
+  it('作った献立の1件は識別子・名称・主材料の件数と直近の調理記録の日時を持つ', () => {
+    // ADR-083 決定1・2: 作った献立の日時は直近の調理記録の日時である。
+    const summary: CookedMealSummaryOutput = cookedMealSummaryOutput();
+
+    expect(summary.mealId).toBe(mealId);
+    expect(summary.title).toBe('肉じゃが');
+    expect(summary.ingredientCount).toBe(2);
+    expect(summary.cookedAt).toBe('2026-09-20T10:00:00.000Z');
+  });
+
+  it('作った献立の1件は直近の調理記録の日時を省略できない', () => {
+    // ADR-083 決定2: 日ごとに分けるのに日時が要る。
+    // @ts-expect-error 直近の調理記録の日時は必須である
+    const summary: CookedMealSummaryOutput = mealSummaryOutput();
+
+    expect(summary).toBeDefined();
+  });
+
+  it('作った献立の1件に生成日時を持たせられない', () => {
+    // ADR-083 決定2: 1件に載せる日時はその列の日時1つだけである。
+    const summary: CookedMealSummaryOutput = {
+      ...cookedMealSummaryOutput(),
+      // @ts-expect-error 生成日時は作った献立の1件に無い
+      generatedAt: '2026-09-14T03:00:00.000Z',
+    };
+
+    expect(summary).toBeDefined();
+  });
+
+  it('作った献立の1件に調理記録の全件を持たせられない', () => {
+    // ADR-083 決定2 / B-48a 規則12: 記録の件数・全件の日時を載せない。
+    const summary: CookedMealSummaryOutput = {
+      ...cookedMealSummaryOutput(),
+      // @ts-expect-error 調理記録は契約に無い
+      cookingRecords: [],
+    };
+
+    expect(summary).toBeDefined();
   });
 });
 
@@ -428,7 +535,7 @@ describe('一覧の1件 MealSummaryOutput', () => {
   });
 
   it('一覧の1件に生成日時を持たせられない', () => {
-    // 規則6 / ADR-068 決定4: 日付を出さない。
+    // ADR-083 決定2: MealSummaryOutput そのものは変えない。
     const summary: MealSummaryOutput = {
       ...mealSummaryOutput(),
       // @ts-expect-error 生成日時は契約に無い

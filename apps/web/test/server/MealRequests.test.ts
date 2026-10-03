@@ -8,7 +8,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { ListMealsOutput, MealSummaryOutput, ShowMealOutput } from '@fridge-to-meal/contract';
+import type {
+  CookedMealSummaryOutput,
+  ListMealsOutput,
+  SeenMealSummaryOutput,
+  ShowMealOutput,
+} from '@fridge-to-meal/contract';
 import { FixedHttpFetch } from '../support/server/FixedHttpFetch.js';
 import type { HttpDelivery } from '../support/server/FixedHttpFetch.js';
 import { addCookingRecord, listMeals, showMeal } from '../../src/server/MealRequests.js';
@@ -349,14 +354,24 @@ describe('調理記録を1件足す継ぎ目 addCookingRecord', () => {
   });
 });
 
-function summaryOf(mealId: string, title: string, ingredientCount = 2): MealSummaryOutput {
-  return { mealId, title, ingredientCount };
+function seenOf(mealId: string, title: string, generatedAt: string): SeenMealSummaryOutput {
+  return { mealId, title, ingredientCount: 2, generatedAt };
 }
 
-/** 標本の履歴。以前見た献立2件と、作った献立1件（ADR-068 決定3）。 */
+function cookedOf(mealId: string, title: string, cookedAt: string): CookedMealSummaryOutput {
+  return { mealId, title, ingredientCount: 2, cookedAt };
+}
+
+/**
+ * 標本の履歴。以前見た献立2件と、作った献立1件（ADR-068 決定3）。1件はその列の日時を持つ
+ * （ADR-083 決定2）。
+ */
 const history: ListMealsOutput = {
-  seen: [summaryOf('meal-a', '肉じゃが'), summaryOf('meal-b', '豚こま肉と白菜の生姜焼き')],
-  cooked: [summaryOf('meal-c', 'にんじんと卵の炒めもの')],
+  seen: [
+    seenOf('meal-a', '肉じゃが', '2026-10-03T09:00:00.000Z'),
+    seenOf('meal-b', '豚こま肉と白菜の生姜焼き', '2026-10-01T09:00:00.000Z'),
+  ],
+  cooked: [cookedOf('meal-c', 'にんじんと卵の炒めもの', '2026-10-02T11:00:00.000Z')],
 };
 
 function listWith(delivery: HttpDelivery, accessToken = heldToken) {
@@ -378,12 +393,13 @@ describe('献立の履歴を取りに行く継ぎ目 listMeals', () => {
   });
 
   it('列の並びを変えずに返す', async () => {
-    // B-54b 規則2・3 / ADR-068 決定2: 並びを決めるのはサーバである。
+    // B-54b 規則2・3 / ADR-083 決定1: 並びを決めるのはサーバである。
+    // 日時も名称も識別子も、どの順にも揃っていない並びにする（ADR-083 決定1 の降順でもない）。
     const unsorted: ListMealsOutput = {
       seen: [
-        summaryOf('meal-b', 'にんじんと卵の炒めもの'),
-        summaryOf('meal-a', '豚こま肉と白菜の生姜焼き'),
-        summaryOf('meal-d', '肉じゃが'),
+        seenOf('meal-b', 'にんじんと卵の炒めもの', '2026-10-01T09:00:00.000Z'),
+        seenOf('meal-a', '豚こま肉と白菜の生姜焼き', '2026-10-03T09:00:00.000Z'),
+        seenOf('meal-d', '肉じゃが', '2026-10-02T09:00:00.000Z'),
       ],
       cooked: [],
     };
@@ -395,7 +411,8 @@ describe('献立の履歴を取りに行く継ぎ目 listMeals', () => {
   });
 
   it('列の要素の中身は確かめず、そのまま返す', async () => {
-    // B-54b 規則2: 要素の中身は検めない（相手は自分のサーバであり、contract の型が正）。
+    // B-54b 規則2 / B-74 設計 規則15: 要素の中身は検めない（相手は自分のサーバであり、
+    // contract の型が正）。日時を欠いた要素もそのまま返す。
     const body = { seen: [{ mealId: 'm1' }], cooked: [] };
     const { request } = listWith({ ok: true, body });
 

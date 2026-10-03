@@ -5,9 +5,13 @@
  *
  * **暫定の文言を期待値に書かない**（`docs/screen-design.md` 論点3）。読み込み中・取れなかった・0件の
  * 案内はデザインに無い暫定の文言なので字面を見ない。切り替えの名前と `材料N件` は `docs/design/` から
- * 取った文言で仮ではない（ADR-074 決定1）ので、末尾の節（B-67）で字面を確かめる。観察は次の4つで行う。
+ * 取った文言で仮ではない（ADR-074 決定1）ので、末尾の節（B-67）で字面を確かめる。日の見出しの
+ * `2026年10月3日` と ▼ は ADR-083 決定3・4 が定めた形で仮ではないので、名前で引く（B-74 設計 規則8・10）。
+ * 観察は次の4つで行う。
  *
- * - **役割** … 行は `listitem`、案内は `status`、列の切り替えは `aria-pressed` を持つ `button`
+ * - **役割** … 行は `listitem`、案内は `status`、列の切り替えは `aria-pressed` を持つ `button`、
+ *   日の見出しは `aria-expanded` で開閉を、`aria-controls` でその日の行の一覧を指す `button`
+ *   （B-74 設計 規則10。畳んだ日の行は役割で引けなくなることで「見えない」を観る — 規則11）
  * - **こちらが渡したデータ** … 献立の名称と主材料の件数
  * - **件数** … 行がいくつ出るか
  * - **案内どうしの違い** … 2つの案内の textContent が異なること（文言そのものは見ない）
@@ -21,7 +25,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { ListMealsOutput, MealSummaryOutput } from '@fridge-to-meal/contract';
+import type {
+  CookedMealSummaryOutput,
+  ListMealsOutput,
+  SeenMealSummaryOutput,
+} from '@fridge-to-meal/contract';
 import { fireEvent, render, screen, within } from '../../support/dom/renderComponent.js';
 import { HistoryTab } from '../../../src/features/meal/HistoryTab.js';
 import type { HistoryTabProps, HistoryTabState } from '../../../src/features/meal/HistoryTab.js';
@@ -31,8 +39,34 @@ const GINGER_PORK = '豚こま肉と白菜の生姜焼き';
 const STIR_FRY = 'にんじんと卵の炒めもの';
 const MISO_SOUP = '大根の味噌汁';
 
-function summaryOf(mealId: string, title: string, ingredientCount = 2): MealSummaryOutput {
-  return { mealId, title, ingredientCount };
+/** 端末の時刻で組んだ日時を UTC の ISO 8601 にする（サーバが届ける形。ADR-083 決定2）。 */
+function localDateTime(year: number, monthIndex: number, day: number, hour: number): string {
+  return new Date(year, monthIndex, day, hour, 0).toISOString();
+}
+
+/** 日の見出しが本題でないケースの日時。**同じ日に置く** — 行が1つの一覧に並ぶ。 */
+const DEFAULT_SEEN_AT = localDateTime(2026, 9, 3, 8);
+const DEFAULT_COOKED_AT = localDateTime(2026, 9, 3, 19);
+
+function seenOf(
+  mealId: string,
+  title: string,
+  overrides: { ingredientCount?: number; generatedAt?: string } = {},
+): SeenMealSummaryOutput {
+  return {
+    mealId,
+    title,
+    ingredientCount: overrides.ingredientCount ?? 2,
+    generatedAt: overrides.generatedAt ?? DEFAULT_SEEN_AT,
+  };
+}
+
+function cookedOf(
+  mealId: string,
+  title: string,
+  overrides: { cookedAt?: string } = {},
+): CookedMealSummaryOutput {
+  return { mealId, title, ingredientCount: 2, cookedAt: overrides.cookedAt ?? DEFAULT_COOKED_AT };
 }
 
 function loaded(meals: ListMealsOutput): HistoryTabState {
@@ -41,8 +75,8 @@ function loaded(meals: ListMealsOutput): HistoryTabState {
 
 /** 以前見た献立 A と、作った献立 C を1件ずつ持つ履歴（ADR-068 決定3）。 */
 const bothColumns = loaded({
-  seen: [summaryOf('meal-a', NIKUJAGA)],
-  cooked: [summaryOf('meal-c', STIR_FRY)],
+  seen: [seenOf('meal-a', NIKUJAGA)],
+  cooked: [cookedOf('meal-c', STIR_FRY)],
 });
 
 function propsOf(meals: HistoryTabState, overrides: Partial<HistoryTabProps> = {}) {
@@ -173,13 +207,14 @@ describe('履歴タブ HistoryTab', () => {
   });
 
   it('行を渡された順のまま出し、並べ替えない', () => {
-    // B-54b 規則3 / ADR-068 決定2: 並びを決めるのはサーバである。
+    // B-54b 規則3 / B-74 設計 規則9 / ADR-083 決定1: 並びを決めるのはサーバである。
+    // 3件とも同じ日に置く（既定の生成日時）— 1つの見出しの下に並ぶ。
     renderTab(
       loaded({
         seen: [
-          summaryOf('meal-b', GINGER_PORK),
-          summaryOf('meal-a', NIKUJAGA),
-          summaryOf('meal-d', MISO_SOUP),
+          seenOf('meal-b', GINGER_PORK),
+          seenOf('meal-a', NIKUJAGA),
+          seenOf('meal-d', MISO_SOUP),
         ],
         cooked: [],
       }),
@@ -191,11 +226,11 @@ describe('履歴タブ HistoryTab', () => {
     expect(within(rowAt(2)).queryByText(MISO_SOUP)).not.toBeNull();
   });
 
-  it('同じ名称の献立が2件あっても、畳まずに2行出す', () => {
-    // B-54b 規則3: web で畳まない。名称が同じでも別の献立である。
+  it('同じ名称の献立が2件あっても、1行にまとめずに2行出す', () => {
+    // B-54b 規則3: 名称が同じでも別の献立である。
     renderTab(
       loaded({
-        seen: [summaryOf('meal-a', NIKUJAGA), summaryOf('meal-b', NIKUJAGA)],
+        seen: [seenOf('meal-a', NIKUJAGA), seenOf('meal-b', NIKUJAGA)],
         cooked: [],
       }),
     );
@@ -204,9 +239,9 @@ describe('履歴タブ HistoryTab', () => {
   });
 
   it('行に、献立の名称と主材料の件数を出す', () => {
-    // B-54b 規則4 / ADR-068 決定4: 1行に出すのは名称と主材料の件数だけ。
+    // B-54b 規則4 / ADR-083 決定2: 1行に出すのは名称と主材料の件数だけ（日付は見出しにだけ出す）。
     // ここでは数字が読めることだけを見る。字面（「材料N件」）は末尾の節（B-67）が見る。
-    renderTab(loaded({ seen: [summaryOf('meal-a', NIKUJAGA, 7)], cooked: [] }));
+    renderTab(loaded({ seen: [seenOf('meal-a', NIKUJAGA, { ingredientCount: 7 })], cooked: [] }));
 
     const row = rowAt(0);
     expect(within(row).queryByText(NIKUJAGA)).not.toBeNull();
@@ -217,7 +252,7 @@ describe('履歴タブ HistoryTab', () => {
     // B-54b 規則8
     renderTab(
       loaded({
-        seen: [summaryOf('meal-a', NIKUJAGA), summaryOf('meal-b', GINGER_PORK)],
+        seen: [seenOf('meal-a', NIKUJAGA), seenOf('meal-b', GINGER_PORK)],
         cooked: [],
       }),
     );
@@ -234,7 +269,7 @@ describe('履歴タブ HistoryTab', () => {
     const openedMealIds: string[] = [];
     renderTab(
       loaded({
-        seen: [summaryOf('m1', NIKUJAGA), summaryOf('m2', GINGER_PORK)],
+        seen: [seenOf('m1', NIKUJAGA), seenOf('m2', GINGER_PORK)],
         cooked: [],
       }),
       { onOpenMeal: (mealId) => openedMealIds.push(mealId) },
@@ -283,7 +318,7 @@ describe('履歴タブ HistoryTab', () => {
 
   it('選んでいる列が0件なら、行を出さずに案内を出す', () => {
     // B-54b 規則7
-    renderTab(loaded({ seen: [], cooked: [summaryOf('meal-c', STIR_FRY)] }));
+    renderTab(loaded({ seen: [], cooked: [cookedOf('meal-c', STIR_FRY)] }));
 
     expect(screen.queryAllByRole('listitem')).toHaveLength(0);
     expect(screen.getAllByRole('status')).toHaveLength(1);
@@ -291,7 +326,7 @@ describe('履歴タブ HistoryTab', () => {
 
   it('0件の案内は、取れなかった回の案内とは違う', () => {
     // B-54b 規則7: 0件は失敗ではない。
-    const { unmount } = renderTab(loaded({ seen: [], cooked: [summaryOf('meal-c', STIR_FRY)] }));
+    const { unmount } = renderTab(loaded({ seen: [], cooked: [cookedOf('meal-c', STIR_FRY)] }));
     const emptyNotice = soleNoticeText();
     unmount();
 
@@ -303,7 +338,7 @@ describe('履歴タブ HistoryTab', () => {
 
   it('以前見た列が0件でも、作った側に切り替えれば行が出る', () => {
     // B-54b 規則5・7: 片方だけ0件の境界。
-    renderTab(loaded({ seen: [], cooked: [summaryOf('meal-c', STIR_FRY)] }));
+    renderTab(loaded({ seen: [], cooked: [cookedOf('meal-c', STIR_FRY)] }));
 
     fireEvent.click(unpressedToggle());
 
@@ -383,13 +418,19 @@ describe('履歴タブ HistoryTab', () => {
     }
   });
 
-  it('行と列の切り替えの外にある操作は、歯車の1つだけである', () => {
+  it('行・列の切り替え・日の見出しの外にある操作は、歯車の1つだけである', () => {
     // B-60 規則12・13: 履歴の「⚙ 設定」は撤去し、入口は見出しの歯車1つに畳む。
+    // 日の見出し（`aria-expanded` を持つ。B-74 設計 規則10）は日ごとに置かれるので除く。
     renderTab(bothColumns);
 
     const outsideRowsAndToggles = screen
       .getAllByRole('button')
-      .filter((button) => button.closest('li') === null && !button.hasAttribute('aria-pressed'));
+      .filter(
+        (button) =>
+          button.closest('li') === null &&
+          !button.hasAttribute('aria-pressed') &&
+          !button.hasAttribute('aria-expanded'),
+      );
 
     expect(outsideRowsAndToggles).toEqual(headerSettingsButtons());
     expect(outsideRowsAndToggles).toHaveLength(1);
@@ -424,17 +465,18 @@ describe('履歴タブ HistoryTab', () => {
   });
 
   it('行の主材料の件数を「材料N件」と出す', () => {
-    // B-67 規則6・9 / ADR-068 決定4: 件数の文言は原本 12 の字面。
-    renderTab(loaded({ seen: [summaryOf('meal-a', NIKUJAGA, 7)], cooked: [] }));
+    // B-67 規則6・9 / ADR-083 決定2: 件数の文言は原本 12 の字面。
+    renderTab(loaded({ seen: [seenOf('meal-a', NIKUJAGA, { ingredientCount: 7 })], cooked: [] }));
 
     expect(within(rowAt(0)).queryByText('材料7件')).not.toBeNull();
   });
 
   it('行はひとつの一覧の項目として読める', () => {
     // B-67 規則8: `list-style: none` にしても一覧の役割を保つ（先行 `MealsTab` の `.cards`）。
+    // 2件とも同じ日に置く（既定の生成日時）— 一覧は日ごとに1つである（B-74 設計 規則10）。
     renderTab(
       loaded({
-        seen: [summaryOf('meal-a', NIKUJAGA), summaryOf('meal-b', GINGER_PORK)],
+        seen: [seenOf('meal-a', NIKUJAGA), seenOf('meal-b', GINGER_PORK)],
         cooked: [],
       }),
     );
@@ -444,5 +486,239 @@ describe('履歴タブ HistoryTab', () => {
     const [list] = lists;
     if (list === undefined) throw new Error('一覧が無い');
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+  });
+});
+
+/**
+ * 日ごとの見出しと開閉（B-74 設計 6章 規則10〜14・16 / ADR-083 決定3・4）。
+ *
+ * 見出しは `aria-expanded` を持つ `button` で、名前は日付だけである（▼ は読み上げに出さない）。
+ * 畳んだ日の行は役割で引けなくなること（`hidden` の一覧の項目は `listitem` として現れない）で
+ * 「見えない」を観る。`aria-controls` の先は `id` で引く — 見出しと一覧を結ぶ関係そのものである。
+ */
+describe('履歴タブ HistoryTab の日ごとの見出し', () => {
+  const OCT_3 = '2026年10月3日';
+  const OCT_1 = '2026年10月1日';
+  const OCT_4 = '2026年10月4日';
+
+  /** 以前見た列は 10月3日に2件・10月1日に1件、作った列は 10月3日に1件（サーバの降順で届く）。 */
+  const twoDays = loaded({
+    seen: [
+      seenOf('meal-b', GINGER_PORK, { generatedAt: localDateTime(2026, 9, 3, 19) }),
+      seenOf('meal-a', NIKUJAGA, { generatedAt: localDateTime(2026, 9, 3, 8) }),
+      seenOf('meal-d', MISO_SOUP, { generatedAt: localDateTime(2026, 9, 1, 12) }),
+    ],
+    cooked: [cookedOf('meal-c', STIR_FRY, { cookedAt: localDateTime(2026, 9, 3, 20) })],
+  });
+
+  /** 取り直しで 10月4日の献立が1件増えた履歴。10月3日・10月1日はそのまま。 */
+  const refetchedWithNewDay = loaded({
+    seen: [
+      seenOf('meal-n', '新しいご飯', { generatedAt: localDateTime(2026, 9, 4, 9) }),
+      seenOf('meal-b', GINGER_PORK, { generatedAt: localDateTime(2026, 9, 3, 19) }),
+      seenOf('meal-a', NIKUJAGA, { generatedAt: localDateTime(2026, 9, 3, 8) }),
+      seenOf('meal-d', MISO_SOUP, { generatedAt: localDateTime(2026, 9, 1, 12) }),
+    ],
+    cooked: [cookedOf('meal-c', STIR_FRY, { cookedAt: localDateTime(2026, 9, 3, 20) })],
+  });
+
+  /** 日の見出し（`aria-expanded` を持つ操作）を文書順に。 */
+  function dayHeaders(): readonly HTMLElement[] {
+    return screen.queryAllByRole('button').filter((button) => button.hasAttribute('aria-expanded'));
+  }
+
+  /** 日付を名前に持つ見出し。 */
+  function dayHeader(label: string): HTMLElement {
+    return screen.getByRole('button', { name: label });
+  }
+
+  function expandedOf(header: HTMLElement): string | null {
+    return header.getAttribute('aria-expanded');
+  }
+
+  /** 見出しの `aria-controls` が指す要素。 */
+  function controlledBy(header: HTMLElement): HTMLElement | null {
+    const id = header.getAttribute('aria-controls');
+    if (id === null) throw new Error('aria-controls が無い');
+
+    return document.getElementById(id);
+  }
+
+  /** 見えている（役割で引ける）行に、その名称の行があるか。 */
+  function isRowShown(title: string): boolean {
+    return screen
+      .queryAllByRole('listitem')
+      .some((item) => within(item).queryByText(title) !== null);
+  }
+
+  it('日ごとに、日付を名前に持つ見出しの操作を届いた順に置く', () => {
+    // B-74 規則9・10 / ADR-083 決定3・4
+    renderTab(twoDays);
+
+    expect(dayHeaders()).toHaveLength(2);
+    expect(dayHeaders()[0]).toBe(dayHeader(OCT_3));
+    expect(dayHeaders()[1]).toBe(dayHeader(OCT_1));
+  });
+
+  it('見出しは ▼ を持つが、読み上げの名前は日付だけである', () => {
+    // B-74 規則10 / NFR-17: ▼ は飾りで読み上げに出さない。名前の一致は全体の一致で引いている。
+    renderTab(twoDays);
+
+    expect(dayHeader(OCT_3).textContent).toContain('▼');
+  });
+
+  it('見出しの操作は、日付を名前に持つ2段目の見出しとして辿れる', () => {
+    // B-74 設計 10章 前提2: 題が `h1`、日の見出しが `h2`。
+    renderTab(twoDays);
+
+    const heading = screen.getByRole('heading', { level: 2, name: OCT_3 });
+    expect(within(heading).getByRole('button', { name: OCT_3 })).toBe(dayHeader(OCT_3));
+  });
+
+  it('見出しの aria-controls は、その日の行だけを持つ一覧を指す', () => {
+    // B-74 規則10 / ADR-083 決定4
+    renderTab(twoDays);
+
+    const list = controlledBy(dayHeader(OCT_3));
+    if (list === null) throw new Error('指す先が無い');
+    const items = within(list).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    expect(within(list).queryByText(GINGER_PORK)).not.toBeNull();
+    expect(within(list).queryByText(NIKUJAGA)).not.toBeNull();
+    expect(within(list).queryByText(MISO_SOUP)).toBeNull();
+  });
+
+  it('開いた直後は、すべての日の見出しが開いた状態で読める', () => {
+    // B-74 規則11 / ADR-083 決定4
+    renderTab(twoDays);
+
+    expect(dayHeaders().map(expandedOf)).toEqual(['true', 'true']);
+  });
+
+  it('開いた直後は、すべての日の行が出ている', () => {
+    // B-74 規則11
+    renderTab(twoDays);
+
+    expect(screen.getAllByRole('listitem')).toHaveLength(3);
+  });
+
+  it('見出しを押すと、その日の見出しは畳んだ状態で読める', () => {
+    // B-74 規則10・11 / NFR-17
+    renderTab(twoDays);
+
+    fireEvent.click(dayHeader(OCT_3));
+
+    expect(expandedOf(dayHeader(OCT_3))).toBe('false');
+  });
+
+  it('見出しを押すと、その日の行は見えなくなる', () => {
+    // B-74 規則11: 畳んだ日の行は見えず操作できない。
+    renderTab(twoDays);
+
+    fireEvent.click(dayHeader(OCT_3));
+
+    expect(isRowShown(GINGER_PORK)).toBe(false);
+    expect(isRowShown(NIKUJAGA)).toBe(false);
+  });
+
+  it('ある日を畳んでも、他の日は開いたままである', () => {
+    // B-74 規則11: 畳むのは押した日のまとまりだけ。
+    renderTab(twoDays);
+
+    fireEvent.click(dayHeader(OCT_3));
+
+    expect(expandedOf(dayHeader(OCT_1))).toBe('true');
+    expect(isRowShown(MISO_SOUP)).toBe(true);
+  });
+
+  it('畳んでも、aria-controls の指す一覧は文書に残る', () => {
+    // B-74 規則11 / 設計 10章 前提3: 指す先を消さない。
+    renderTab(twoDays);
+
+    fireEvent.click(dayHeader(OCT_3));
+
+    expect(controlledBy(dayHeader(OCT_3))).not.toBeNull();
+  });
+
+  it('同じ見出しをもう一度押すと、開いてその日の行がまた出る', () => {
+    // B-74 規則11
+    renderTab(twoDays);
+
+    fireEvent.click(dayHeader(OCT_3));
+    fireEvent.click(dayHeader(OCT_3));
+
+    expect(expandedOf(dayHeader(OCT_3))).toBe('true');
+    expect(isRowShown(GINGER_PORK)).toBe(true);
+  });
+
+  it('以前見た列で畳んだ日は、作った列の同じ日を畳まない', () => {
+    // B-74 規則12: 開閉は列ごとに独立して持つ。
+    renderTab(twoDays);
+    fireEvent.click(dayHeader(OCT_3));
+
+    fireEvent.click(unpressedToggle());
+
+    expect(expandedOf(dayHeader(OCT_3))).toBe('true');
+    expect(isRowShown(STIR_FRY)).toBe(true);
+  });
+
+  it('列を切り替えて戻っても、畳んだ日は畳んだままである', () => {
+    // B-74 規則12
+    renderTab(twoDays);
+    fireEvent.click(dayHeader(OCT_3));
+
+    fireEvent.click(unpressedToggle());
+    fireEvent.click(unpressedToggle());
+
+    expect(expandedOf(dayHeader(OCT_3))).toBe('false');
+  });
+
+  it('詳細を開いて閉じても、畳んだ日は畳んだままである', () => {
+    // B-74 規則12: 詳細を開いている間も `HistoryTab` は木に残る（B-54b 規則6）。
+    const { rerender } = renderTab(twoDays);
+    fireEvent.click(dayHeader(OCT_3));
+
+    rerender(<HistoryTab {...propsOf(twoDays, { mealDetail: <p>目印の詳細</p> })} />);
+    rerender(<HistoryTab {...propsOf(twoDays)} />);
+
+    expect(expandedOf(dayHeader(OCT_3))).toBe('false');
+  });
+
+  it('取り直しで新しい日が届くと、その日は開いている', () => {
+    // B-74 規則13 / ADR-083 決定4: 開いた直後はすべて開く。
+    const { rerender } = renderTab(twoDays);
+    fireEvent.click(dayHeader(OCT_3));
+
+    rerender(<HistoryTab {...propsOf(refetchedWithNewDay)} />);
+
+    expect(expandedOf(dayHeader(OCT_4))).toBe('true');
+  });
+
+  it('取り直したあとも、畳んだ日と同じ日付の見出しは畳んだままである', () => {
+    // B-74 規則13 / 設計 10章 前提5: 畳んだ日付の集合で持つ。
+    const { rerender } = renderTab(twoDays);
+    fireEvent.click(dayHeader(OCT_3));
+
+    rerender(<HistoryTab {...propsOf(refetchedWithNewDay)} />);
+
+    expect(expandedOf(dayHeader(OCT_3))).toBe('false');
+  });
+
+  it('行には日付を出さない', () => {
+    // B-74 規則14: 日付は見出しにだけ出す。
+    renderTab(twoDays);
+
+    for (const row of screen.getAllByRole('listitem')) {
+      expect(row.textContent).not.toContain('10月');
+      expect(row.textContent).not.toContain('2026');
+    }
+  });
+
+  it('選んでいる列が0件なら、日の見出しを出さない', () => {
+    // B-74 規則16 / B-54b 規則7: 0件の案内は変えず、見出しも出さない。
+    renderTab(loaded({ seen: [], cooked: [cookedOf('meal-c', STIR_FRY)] }));
+
+    expect(dayHeaders()).toHaveLength(0);
+    expect(screen.queryAllByRole('heading', { level: 2 })).toHaveLength(0);
   });
 });
