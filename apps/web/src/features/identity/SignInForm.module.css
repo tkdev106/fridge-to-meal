@@ -1,7 +1,7 @@
 /*
  * ログイン／アカウント作成の画面（`docs/design/` の 14 / 設計 B-68 6章 規則1〜11）。
  * まず SP の見た目を書き、末尾の `@media (min-width: 1024px)` で PC の配置に組み替える
- * （幅の切り替えは B-60 / ADR-076。値の正は `docs/screen-design.md` 2.1）。
+ * （切り替え幅の正は `docs/screen-design.md` 2.1。PC の配置の値の正は同 8章）。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1・2）。`SignInForm.tsx` は class 名しか書かない。
  * 色・文字の大きさ・太さ・操作の高さはトークン（`src/global.css` の `:root`）から `var(--…)` で
