@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@supabase/supabase-js';
 import type { SessionConfig } from './SessionConfig.js';
 import type { Session, SessionState, SignInOutcome, SignUpOutcome } from './Session.js';
+import { signUpOutcomeOf } from './SignUpOutcomes.js';
 
 /**
  * `Session` の実装（B-34 設計 4章・5章 / 6章 規則1〜9）。
@@ -36,19 +37,17 @@ export class SessionImpl implements Session {
   /**
    * アカウントを作る（FR-25 / 規則7）。
    *
-   * 結末が3つに分かれるのは、**メールの確認を要する設定だとセッションが返らない**ためである。
-   * 実プロジェクトの設定は未確認のままである — B-35 は実物に繋げず確かめられなかったため、
-   * `'confirmationRequired'` の変種を残し、画面は確認メールの案内を出す（B-35 設計 10章）。
-   * 確認が要らないと判った周に、`Session.ts` の doc どおり変種と文言を落とす。
+   * **判断は持たない** — 応答を `SignUpResult` に詰め替えて `signUpOutcomeOf` に渡すだけである
+   * （B-73 設計 6章 規則2 / ADR-081）。断りの種別分けとセッションの有無の読みはあちらにあり、
+   * `pnpm test` で観察する。
    */
   async signUp(email: string, password: string): Promise<SignUpOutcome> {
     const { data, error } = await this.client.auth.signUp({ email, password });
 
-    if (error !== null) return 'rejected';
-
-    // セッションが返れば、そのままサインインしている。返らずに利用者だけができたときが
-    // メールの確認待ちである。
-    return data.session !== null ? 'signedIn' : 'confirmationRequired';
+    return signUpOutcomeOf({
+      error: error === null ? null : { code: error.code },
+      sessionReturned: data.session !== null,
+    });
   }
 
   /**

@@ -34,16 +34,19 @@ import { SignInForm } from '../../../src/features/identity/SignInForm.js';
 const typedEmail = 'user@example.com';
 const typedPassword = 'correct-horse';
 
-function renderSignInForm(options: FixedSessionOptions = {}) {
+function renderSignInForm(options: FixedSessionOptions = {}, returnedFromSignUp = false) {
   const session = new FixedSession(options);
+  // 作成画面へ移る口が押された回を、押された順に記録する（`vi.fn()` で数えない。`docs/testing.md` 2章）。
+  const openedSignUp: true[] = [];
   const rendered = render(
     <SignInForm
       onSignIn={(email, password) => session.signIn(email, password)}
-      onSignUp={(email, password) => session.signUp(email, password)}
+      onOpenSignUp={() => openedSignUp.push(true)}
+      returnedFromSignUp={returnedFromSignUp}
     />,
   );
 
-  return { session, rendered };
+  return { session, rendered, openedSignUp };
 }
 
 /**
@@ -155,17 +158,31 @@ describe('ログインの画面 SignInForm', () => {
     ]);
   });
 
-  it('アカウントを作る操作を押すと、同じ2欄の値がサインアップの口へ届く', () => {
-    const { session } = renderSignInForm({ signUp: ['signedIn'] });
+  it('アカウントを作る操作を押すと作成画面へ移り、どちらの口へも何も届かない', () => {
+    const { session, openedSignUp } = renderSignInForm();
 
     fillCredentials();
     fireEvent.click(signUpOperation());
 
-    // FR-25 / ADR-046 決定2: 送る中身は2つの操作で同じであり、**違うのは届く口だけ**である。
-    // ログインの口には1件も届かない（届いていればこの配列に現れる）。
-    expect(session.receivedCredentials).toEqual([
-      { operation: 'signUp', email: 'user@example.com', password: 'correct-horse' },
-    ]);
+    // B-73 設計 6章 規則16 / ADR-081: ログインの画面からはアカウントを作らない。打った値も運ばない。
+    expect(openedSignUp).toEqual([true]);
+    expect(session.receivedCredentials).toEqual([]);
+  });
+
+  it('欄が空のままでもアカウントを作る操作で作成画面へ移れる', () => {
+    const { openedSignUp } = renderSignInForm();
+
+    fireEvent.click(signUpOperation());
+
+    // B-73 設計 6章 規則16: 入力の有無では止めない。
+    expect(openedSignUp).toEqual([true]);
+  });
+
+  it('作成画面から戻った直後はアカウントを作る操作に焦点がある', () => {
+    renderSignInForm({}, true);
+
+    // B-73 設計 6章 規則15 / 先行 B-65b: 閉じた画面を開いた操作へ焦点を戻す。
+    expect(document.activeElement).toBe(signUpOperation());
   });
 
   it('パスワードを打たないままログインの操作を押しても、どちらの口へも何も届かない', () => {
@@ -179,8 +196,10 @@ describe('ログインの画面 SignInForm', () => {
     expect(session.receivedCredentials).toEqual([]);
   });
 
-  it('送っている間にアカウントを作る操作を押しても、口へ届くのは1件だけである', async () => {
-    const { session } = renderSignInForm({ signIn: [{ heldUntilSettled: 'rejected' }] });
+  it('送っている間にアカウントを作る操作を押しても、作成画面へは移らない', async () => {
+    const { session, openedSignUp } = renderSignInForm({
+      signIn: [{ heldUntilSettled: 'rejected' }],
+    });
 
     fillCredentials();
     fireEvent.click(signInOperation());
@@ -190,7 +209,9 @@ describe('ログインの画面 SignInForm', () => {
 
     fireEvent.click(signUpOperation());
 
-    // FR-25 / ADR-007 の構え / 設計 規則7: 送っている間はどちらの操作も効かない。
+    // FR-25 / ADR-007 の構え / 設計 規則7 / B-73 規則16: 送っている間はどちらの操作も効かない
+    // — 移ると結末の案内が出ないまま捨てられる。
+    expect(openedSignUp).toEqual([]);
     expect(session.receivedCredentials).toEqual([
       { operation: 'signIn', email: 'user@example.com', password: 'correct-horse' },
     ]);
@@ -215,44 +236,6 @@ describe('ログインの画面 SignInForm', () => {
       expect(notices()).toHaveLength(1);
     });
     expect(session.receivedCredentials).toHaveLength(1);
-  });
-
-  it('ログインの断りとアカウントを作る断りでは、出る案内が違う', async () => {
-    const signInRejected = renderSignInForm({ signIn: ['rejected'] });
-
-    fillCredentials();
-    fireEvent.click(signInOperation());
-    const signInNotice = await waitForSoleNotice();
-    signInRejected.rendered.unmount();
-
-    renderSignInForm({ signUp: ['rejected'] });
-
-    fillCredentials();
-    fireEvent.click(signUpOperation());
-    const signUpNotice = await waitForSoleNotice();
-
-    // 設計 規則11 / ADR-046: **どちらの操作が断られたのかが読めること**を、2回の描画の
-    // 文字列が一致しないことで観る。**文面そのものは期待値に書かない。**
-    expect(signUpNotice).not.toBe(signInNotice);
-  });
-
-  it('確認のメールが要る結末では、断りとは違う案内が出る', async () => {
-    const confirmationRequired = renderSignInForm({ signUp: ['confirmationRequired'] });
-
-    fillCredentials();
-    fireEvent.click(signUpOperation());
-    const confirmationNotice = await waitForSoleNotice();
-    confirmationRequired.rendered.unmount();
-
-    renderSignInForm({ signUp: ['rejected'] });
-
-    fillCredentials();
-    fireEvent.click(signUpOperation());
-    const rejectedNotice = await waitForSoleNotice();
-
-    // `Session.ts` `SignUpOutcome` / B-35 設計 規則9: 確認のメールは断りではない。
-    // どちらも案内は1つで、**同じ文字列にはならない**（設計 規則11）。
-    expect(confirmationNotice).not.toBe(rejectedNotice);
   });
 
   it('サインインが通った回は案内を出さない', async () => {
@@ -366,26 +349,6 @@ describe('ログインの画面 SignInForm', () => {
     expect(signUp.className).not.toBe('');
   });
 
-  it('断りの案内と確認のメールの案内には違う class が当たる', async () => {
-    const rejected = renderSignInForm({ signUp: ['rejected'] });
-
-    fillCredentials();
-    fireEvent.click(signUpOperation());
-    await waitForSoleNotice();
-    const rejectedClass = soleNotice().className;
-    rejected.rendered.unmount();
-
-    renderSignInForm({ signUp: ['confirmationRequired'] });
-
-    fillCredentials();
-    fireEvent.click(signUpOperation());
-    await waitForSoleNotice();
-    const confirmationClass = soleNotice().className;
-
-    // B-68 設計 6章 規則9 / NFR-16: 断りの帯と控えめな帯で配色を分ける。値ではなく class を比べる。
-    expect(rejectedClass).not.toBe(confirmationClass);
-  });
-
   it('断りの案内に添える記号 ! は読み上げに出ない', async () => {
     renderSignInForm({ signIn: ['rejected'] });
 
@@ -398,16 +361,5 @@ describe('ログインの画面 SignInForm', () => {
     // B-68 設計 6章 規則9 / NFR-17: 色だけで分けないために記号を添え、読み上げでは文を変えない。
     // ARIA の約束（aria-hidden）を見る手段がほかに無いため、この1行だけ DOM を辿る。
     expect(mark.closest('[aria-hidden="true"]')).not.toBeNull();
-  });
-
-  it('確認のメールの案内には ! を添えない', async () => {
-    renderSignInForm({ signUp: ['confirmationRequired'] });
-
-    fillCredentials();
-    fireEvent.click(signUpOperation());
-    await waitForSoleNotice();
-
-    // B-68 設計 6章 規則9: 記号は断りの帯だけに添える。確認のメールは断りではない。
-    expect(within(soleNotice()).queryByText('!')).toBeNull();
   });
 });

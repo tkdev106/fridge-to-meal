@@ -1,0 +1,49 @@
+/*
+ * アカウント作成の画面（B-73 設計 6章 規則17 / ADR-081）。
+ *
+ * **ログインの画面（`SignInForm.module.css`）にある値はそちらを引き、ここには足りない値だけを置く**
+ * （ADR-055 決定1・2）。欄の下の文字は欄の見出しの大きさ（12px）に揃え、色はトークンから引いて新しい色を作らない。
+ */
+
+/*
+ * 欄の下の理由。欄の塊は `gap: 24px` で並ぶので、負の上余白で直前の欄へ寄せる（欄との間 8px）。
+ * 理由は文字で読めるので `!` を添えない（規則17）。
+ */
+.problem,
+.hint {
+  margin-top: -16px;
+  font-size: var(--font-size-12);
+  line-height: 1.5;
+}
+
+.problem {
+  color: var(--color-danger);
+}
+
+.hint {
+  color: var(--color-text-secondary);
+}
+
+/* 理由のある欄。枠の色だけを変え、太さは変えない（並びが動かないように）。 */
+.invalid {
+  border-color: var(--color-danger);
+}
+
+/* 確認のメールの案内（規則12）。見出しから 32px、行ごとに段を分ける。 */
+.done {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 32px 0 0;
+  font-size: var(--font-size-14);
+  line-height: 1.7;
+}
+
+/* 焦点は移すが、読ませるための移動なので枠は出さない（操作できる要素ではない）。 */
+.done:focus {
+  outline: none;
+}
+
+.doneLine {
+  display: block;
+}

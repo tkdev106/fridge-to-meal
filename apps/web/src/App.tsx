@@ -11,7 +11,7 @@
  * 実装を `new` するのは `main.tsx` だけ（規則3）。
  */
 import { useEffect, useState } from 'react';
-import { SignInForm } from './features/identity/SignInForm.js';
+import { SignedOutScreen } from './features/identity/SignedOutScreen.js';
 import { SettingsScreen } from './features/identity/SettingsScreen.js';
 import { HistoryTab } from './features/meal/HistoryTab.js';
 import type { HistoryTabState } from './features/meal/HistoryTab.js';
@@ -623,7 +623,8 @@ export function App({
       <main>
         {/* 帯はログインの画面にも出す（B-70 規則5）。ログインの操作は止めない（設計 10章 前提2）。 */}
         {offline && <OfflineBanner />}
-        <SignInForm
+        {/* ログインとアカウント作成の出し分けは中の部品が持つ（B-73 設計 6章 規則14・18）。 */}
+        <SignedOutScreen
           onSignIn={(email, password) => session.signIn(email, password)}
           onSignUp={(email, password) => session.signUp(email, password)}
         />
