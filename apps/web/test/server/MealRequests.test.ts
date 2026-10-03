@@ -353,7 +353,7 @@ function summaryOf(mealId: string, title: string, ingredientCount = 2): MealSumm
   return { mealId, title, ingredientCount };
 }
 
-/** 標本の履歴。以前見た献立2件と、つくった献立1件（ADR-068 決定3）。 */
+/** 標本の履歴。以前見た献立2件と、作った献立1件（ADR-068 決定3）。 */
 const history: ListMealsOutput = {
   seen: [summaryOf('meal-a', '肉じゃが'), summaryOf('meal-b', '豚こま肉と白菜の生姜焼き')],
   cooked: [summaryOf('meal-c', 'にんじんと卵の炒めもの')],

@@ -229,7 +229,7 @@ function numberedMealId(ordinal: number): string {
 }
 
 /**
- * 名称も生成日時も異なる献立を `count` 件つくる。**`maxAvoidTitles` の確認に使う**
+ * 名称も生成日時も異なる献立を `count` 件作る。**`maxAvoidTitles` の確認に使う**
  * （B-28 規則8 / prompt-design D-6・論点4）。
  *
  * `献立01` が最も新しく、番号が1つ増えるごとに生成日時が1分だけ古くなる。上限で落ちるのが

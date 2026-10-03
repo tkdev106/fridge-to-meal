@@ -913,7 +913,7 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
     fireEvent.click(requestNewMealsOperation());
 
     // B-62 規則9: 失敗の帯の文言は原本の「案内の帯」から取ったもので、待つ条件に使ってよい。
-    await screen.findByText('献立をつくれませんでした。もう一度お試しください', { exact: false });
+    await screen.findByText('献立を作れませんでした。もう一度お試しください', { exact: false });
     expect(screen.queryByText(OLD_MEAL)).not.toBeNull();
   });
 
@@ -1982,7 +1982,7 @@ describe('門 App の履歴タブ', () => {
   });
 
   it('調理記録が通ると、その献立は以前見た列から消える', async () => {
-    // 規則12 / FR-28・29: 記録で献立は「以前見た」から「つくった」へ移る（ADR-068 決定3）。
+    // 規則12 / FR-28・29: 記録で献立は「以前見た」から「作った」へ移る（ADR-068 決定3）。
     renderApp(
       { initialState: 'signedIn' },
       { list: [loaded(carrot)] },
@@ -2009,7 +2009,7 @@ describe('門 App の履歴タブ', () => {
     });
   });
 
-  it('調理記録が通ると、その献立はつくった列に出る', async () => {
+  it('調理記録が通ると、その献立は作った列に出る', async () => {
     // 規則12 / FR-29
     renderApp(
       { initialState: 'signedIn' },
@@ -2223,7 +2223,7 @@ describe('門 App の履歴タブ', () => {
     await screen.findByText(SUGGESTED);
     fireEvent.click(contentOperations().at(-1) as HTMLElement);
     // B-62 規則9: 失敗の帯の文言（原本の「案内の帯」）で待つ。
-    await screen.findByText('献立をつくれませんでした。もう一度お試しください', { exact: false });
+    await screen.findByText('献立を作れませんでした。もう一度お試しください', { exact: false });
 
     openHistory();
 
@@ -2567,7 +2567,7 @@ describe('門 App の履歴タブ', () => {
     expect(screen.queryByText(DETAIL)).toBeNull();
   });
 
-  it('つくった側を選んでから別のタブへ移って戻ると、以前見た献立の列に戻る', async () => {
+  it('作った側を選んでから別のタブへ移って戻ると、以前見た献立の列に戻る', async () => {
     // 規則6: 器は選んだタブしか描かないので、列の選択はタブを移ると初期に戻る。
     renderApp(
       { initialState: 'signedIn' },
@@ -2862,7 +2862,7 @@ describe('門 App の設定', () => {
     expect(await screen.findByText(DETAIL)).not.toBeNull();
   });
 
-  it('つくった側を選んでから設定を開いて閉じると、履歴は以前見た列に戻る', async () => {
+  it('作った側を選んでから設定を開いて閉じると、履歴は以前見た列に戻る', async () => {
     // B-60 規則10 / B-38 規則6: 設定を開くと選んでいたタブの中身は木から外れ、列の選択は
     // タブを移ったときと同じく初期（以前見た）に戻る（B-56c 規則8 の置き換え）。
     renderApp(

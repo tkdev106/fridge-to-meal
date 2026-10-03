@@ -33,7 +33,7 @@ const REQUEST_BUTTON_NAME = '新しい献立を見る';
 const WAITING_HINT = '時間がかかる場合があります';
 const PANTRY_CHANGED_HINT = '冷蔵庫の食材が変わりました';
 const THINKING = '考えています…';
-const REQUEST_FAILED_BAND = '献立をつくれませんでした。もう一度お試しください';
+const REQUEST_FAILED_BAND = '献立を作れませんでした。もう一度お試しください';
 
 function entry(overrides: Partial<SuggestionEntryOutput> = {}): SuggestionEntryOutput {
   return {
@@ -329,7 +329,7 @@ describe('献立タブ MealsTab の「新しい献立を求める」操作', () 
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
   });
 
-  it('失敗した回は案内の帯「献立をつくれませんでした。もう一度お試しください」を status として出す', () => {
+  it('失敗した回は案内の帯「献立を作れませんでした。もう一度お試しください」を status として出す', () => {
     // 規則9 / S-6 / NFR-07: 文言は原本の「案内の帯」。添える `!` は別のケースが見る。
     renderTab({ outcome: 'none' }, { newMealsFailed: true });
 

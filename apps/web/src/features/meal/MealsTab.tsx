@@ -109,7 +109,7 @@ const REQUESTING_NOTICE = '考えています…';
  * 失敗の帯（S-6 / NFR-07 / 設計 規則9。原本 `index.dc.html` の「案内の帯」）。**原因を断定しない** —
  * 継ぎ目が理由を持っていない。再試行は同じ「新しい献立を見る」で行う。
  */
-const REQUEST_FAILED_NOTICE = '献立をつくれませんでした。もう一度お試しください';
+const REQUEST_FAILED_NOTICE = '献立を作れませんでした。もう一度お試しください';
 
 /** 失敗の帯に添える記号（先行 `SignInForm` の `REJECTED_MARK`）。飾りであり、読み上げに出さない。 */
 const REQUEST_FAILED_MARK = '!';
