@@ -309,7 +309,7 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
  * （ADR-043）、未知の origin からの往復をブラウザに許させる理由が1つも無い。
  *
  * 本番の web は Workers の静的アセット（`apps/web/wrangler.toml`）で配信し、origin は Worker の
- * 名前とアカウントの workers.dev のサブドメインで決まる（ADR-081）。Worker の名前を変えるときや
+ * 名前とアカウントの workers.dev のサブドメインで決まる（ADR-082）。Worker の名前を変えるときや
  * 独自ドメインを付けるときは、この一覧も同じ周で変える。開発の web は `http://localhost:5173`
  * （`vite.config.ts` の `server.port`）で、`127.0.0.1` で開く人が居るため同じ開発サーバを2つの名で挙げている。
  */
@@ -346,7 +346,7 @@ const ALLOWED_HEADERS = ['Authorization', 'Content-Type'];
  * （`GET /meals/:id`。FR-30 / FR-32 / B-52）— **調理記録の経路より後ろに置いても前に置いても
  * 食い合わない**（道が違う）。**接頭辞は増やさない**（B-22 設計書 規則15）— この Worker の origin は
  * 在庫と献立の API と `/health` しか出さないので、`/api` で切り分ける相手が居ない。接頭辞が効くのは
- * web と api が1つのドメインを分け合うときで、web は別の Worker から配信している（ADR-081）。
+ * web と api が1つのドメインを分け合うときで、web は別の Worker から配信している（ADR-082）。
  *
  * **CORS は経路より前に `app.use('*', …)` で置く**（B-22 設計書 規則11・14 / ADR-046 結果3）。
  * `/health` も経路の1つなので、その前である。後ろに挿すと、通った応答にしか許可のヘッダが付かず、

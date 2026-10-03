@@ -186,7 +186,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
   `.githooks/pre-push`（git）の2枚で止める。**GitHub のブランチ保護は private + 現行プランでは
   効かない**ため、この2枚が実質の防御であり、どちらも越えられることを前提にする
 - 未完成の機能も**マージを止めない。** 画面に出せない段階でも `main` に入れる
-- **feature flag は置かない。** `main` に入ったものはそのまま本番の web と api に出る（ADR-081 決定5）。
+- **feature flag は置かない。** `main` に入ったものはそのまま本番の web と api に出る（ADR-082 決定5）。
   本番を使うのはユーザー本人だけで、未完成を隠して見せない相手が居ない。
   隠す仕組みを置くと、それ自体の保守（消し忘れ・畳み込み・lint での縛り）が仕事になる。
   **未完成の画面はそのまま出してよい** — `pnpm dev` で見えることは、むしろ確かめる助けになる。
@@ -221,7 +221,7 @@ web のセッションは `claude/<slug>-<生成された識別子>` という�
 | --- | --- | --- |
 | フロントエンド | React 19 + Vite 8（SPA・PWA） | ADR-014。Next.js は**採用しない** — サーバアクション類が ADR-003 と衝突するため |
 | サーバサイド | Hono on Cloudflare Workers | ADR-015。ドメイン層とユースケース層はここに置かれる |
-| 配信 | **web と api は別の Worker。** api は `fridge-to-meal-api`、web は静的アセットだけの `fridge-to-meal-web`（`apps/web/wrangler.toml`）。**どちらも Workers Builds が `main` から自動でデプロイする**。web の `VITE_*` の3つは Workers Builds のビルド変数に置く | ADR-081 |
+| 配信 | **web と api は別の Worker。** api は `fridge-to-meal-api`、web は静的アセットだけの `fridge-to-meal-web`（`apps/web/wrangler.toml`）。**どちらも Workers Builds が `main` から自動でデプロイする**。web の `VITE_*` の3つは Workers Builds のビルド変数に置く | ADR-082 |
 | DB・認証 | Supabase（Postgres + Auth）。**DB アクセスは Drizzle**（`drizzle-orm` + `postgres`）。**サーバの DB アクセスに supabase-js は使わない** — この禁止は `apps/api` の問い合わせに限る（ADR-029 決定1 は「認証と Postgres そのものは Supabase のまま使う」と続けている） | ADR-029（ADR-020 を置き換え） |
 | web のログイン | **`@supabase/supabase-js` を `apps/web` に置き、メールとパスワードでサインインする。** セッションは継ぎ目1つの背後に閉じ、**画面はライブラリの型を見ない。** **継ぎ目は `apps/web/src/session/` に置かれた**（B-34）。**画面（`features/identity/`）と結線（`main.tsx`）も置かれた**（B-35）。失敗の種別は分けておらず、画面の断りの文言は原因を断定しない | ADR-046 |
 | Workers → Postgres の経路 | **Cloudflare Hyperdrive 経由。** origin は Supabase の直接接続（`db.<ref>.supabase.co:5432`）。Supavisor は使わない。**問い合わせキャッシュは切る** | ADR-042 / ADR-044 |

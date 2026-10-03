@@ -1,4 +1,4 @@
-# web を Cloudflare Workers の静的アセットとして配信する（ADR-081）。スクリプトを持たない Worker で、
+# web を Cloudflare Workers の静的アセットとして配信する（ADR-082）。スクリプトを持たない Worker で、
 # `vite build` の出力 `dist/` をそのまま返す。api（`apps/api/wrangler.toml`）とは別の Worker である。
 #
 # 配信される origin は https://fridge-to-meal-web.tkdev106.workers.dev（Worker の名前とアカウントの

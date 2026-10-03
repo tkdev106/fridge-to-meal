@@ -1,6 +1,6 @@
 # アーキテクチャ決定録（ADR）
 
-> ドラフト v0.45 / 2026-10-03 / ADR-001 〜 ADR-081
+> ドラフト v0.45 / 2026-10-03 / ADR-001 〜 ADR-082
 > **この文書がアーキテクチャ決定の正である。**
 
 決定を変更する場合は、既存の ADR を書き換えず、**新しい ADR を起こして旧 ADR の状態を「置き換え済み」に改める**。
@@ -214,7 +214,7 @@ flowchart TD
 | ADR-078 | Supabase 無料プランの一時停止を、GitHub Actions の定期実行で1日1回 DB を読んで防ぐ | 承認 |
 | ADR-079 | LLM プロバイダを Gemini（`gemini-3.5-flash-lite`）とし、SDK を使わず `fetch` で呼び、モデル名を設定の1か所に置く | 承認 |
 | ADR-080 | 500 `unexpected` に畳む失敗を、種類と最小限の手がかりだけでサーバのログに1行残す | 承認 |
-| ADR-081 | web を api とは別の Worker の静的アセットとして配信し、`main` から Workers Builds で自動で出す | 提案 |
+| ADR-082 | web を api とは別の Worker の静的アセットとして配信し、`main` から Workers Builds で自動で出す | 提案 |
 
 ---
 
@@ -1766,7 +1766,7 @@ flowchart TD
   3. **自前の `Error` の `message` が今後ログに出る。** 新しい `throw new Error` を書くときは、ADR-045 結果2 の規律（値を載せない）がログに対しても要る。
   4. **`DrizzleQueryError` 以外の外来の例外は `message` を載せる。** ドライバが別の例外で値を入れる場合は、判別の名前を足す。
 
-### ADR-081　web を api とは別の Worker の静的アセットとして配信し、`main` から Workers Builds で自動で出す　`提案`
+### ADR-082　web を api とは別の Worker の静的アセットとして配信し、`main` から Workers Builds で自動で出す　`提案`
 
 - **状況** — api は Cloudflare Workers の `fridge-to-meal-api`（`https://fridge-to-meal-api.tkdev106.workers.dev`）で動き、Cloudflare の Workers Builds（Git 連携）が `main` から自動でデプロイしている。**web（`apps/web`）には配信先が無い。** web は `vite build` が出す静的ファイル（SPA・PWA。ADR-014 / ADR-016）で、サーバ側の処理を持たない。2026-10-03 にユーザーが「アカウント作成画面ができたら本番環境にフロントエンドをデプロイしたい」と求めた。
 
