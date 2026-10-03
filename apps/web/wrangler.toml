@@ -18,3 +18,9 @@ send_metrics = false
 [assets]
 directory = "./dist"
 not_found_handling = "single-page-application"
+
+# Workers のログ（2026-10-03 にユーザーが指定）。配信の呼び出しをダッシュボードから追えるように残す。
+[observability.logs]
+enabled = true
+invocation_logs = true
+persist = true
