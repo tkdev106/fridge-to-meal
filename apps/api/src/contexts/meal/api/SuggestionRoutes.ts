@@ -10,6 +10,7 @@ import { extractAccessToken } from './AccessToken.js';
 import { statusOfThrown } from './RuleViolationStatus.js';
 import type { SuggestMeals, SuggestNewMeals } from '../usecase/SuggestMeals.js';
 import type { ShowLatestSuggestion } from '../usecase/ShowLatestSuggestion.js';
+import { logUnexpectedFailure } from '../../../shared/api/UnexpectedFailureLog.js';
 
 /** 世帯は**中身を見ない値**として扱う。型はユースケースから引く（ADR-032 の決定1）。 */
 type HouseholdIdParam = Parameters<SuggestMeals>[0];
@@ -105,5 +106,7 @@ function reject(c: Context, thrown: unknown) {
   const mappedError = statusOfThrown(thrown);
   if (mappedError !== null) return c.json(mappedError.body, mappedError.status);
 
+  // 応答には原因を出さない代わりに、サーバのログにだけ種類を残す（ADR-080）。
+  logUnexpectedFailure(thrown);
   return c.json({ rule: 'unexpected' } satisfies ErrorResponseDto, 500);
 }

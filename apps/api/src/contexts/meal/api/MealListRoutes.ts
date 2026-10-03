@@ -9,6 +9,7 @@ import type { Context } from 'hono';
 import { extractAccessToken } from './AccessToken.js';
 import { statusOfThrown } from './RuleViolationStatus.js';
 import type { ListMeals } from '../usecase/ListMeals.js';
+import { logUnexpectedFailure } from '../../../shared/api/UnexpectedFailureLog.js';
 
 /**
  * **基準日時の口も在庫の口も取らない**（B-54a 規則9 / C-8）— 時刻に依存する判断が1つも無く、
@@ -64,5 +65,7 @@ function reject(c: Context, thrown: unknown) {
   const mappedError = statusOfThrown(thrown);
   if (mappedError !== null) return c.json(mappedError.body, mappedError.status);
 
+  // 応答には原因を出さない代わりに、サーバのログにだけ種類を残す（ADR-080）。
+  logUnexpectedFailure(thrown);
   return c.json({ rule: 'unexpected' } satisfies ErrorResponseDto, 500);
 }
