@@ -15,8 +15,17 @@ export default defineConfig({
         lang: 'ja',
         start_url: '/',
         display: 'standalone',
-        background_color: '#ffffff',
-        theme_color: '#0f6b5f',
+        // 地の色（global.css の --color-background）。起動の画面とブラウザの帯がアプリの地と揃う。
+        background_color: '#faf9f6',
+        theme_color: '#faf9f6',
+        // public/icons/icon.svg（冷蔵庫タブのアイコンの形を、文字の色の地に地の色の線で描いたもの）を
+        // 各寸法の PNG に書き出したもの。線は中心から半径 40% の内側に収まるので、
+        // 端末が丸や角丸に切り抜いても欠けない（maskable）。形を変えたら PNG も書き出し直す。
+        icons: [
+          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        ],
       },
       workbox: {
         // 在庫や献立の API 応答はキャッシュしない。
