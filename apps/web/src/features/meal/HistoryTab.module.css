@@ -74,11 +74,72 @@
   outline-offset: var(--focus-outline-offset-inverse);
 }
 
-/* 行の一覧。切り替えとの間 16px（規則5）。`role="list"` は `.tsx` が明示する（規則8）。 */
+/* 日ごとのまとまりの並び。切り替えとの間 16px（規則5）。 */
+.days {
+  margin-top: 16px;
+}
+
+/* 日の見出し（ADR-083 決定4）。`h2` の既定の余白と文字の大きさは持たせない。 */
+.dayHeading {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+/*
+ * 日の見出しの操作。行と同じ左右 16px・高さ 44px・14px・太さ 500・補助の文字色、下辺に区切り線
+ * （`docs/design/README.md` 履歴の日ごとの見出し）。
+ */
+.dayToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-14);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dayToggle:hover {
+  background: var(--color-surface);
+}
+
+/* ▼。畳んでいる間は右向きに回す。 */
+.dayMarker {
+  display: inline-block;
+  font-size: var(--font-size-12);
+  transition: transform 0.15s ease;
+}
+
+.dayMarkerCollapsed {
+  transform: rotate(-90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dayMarker {
+    transition: none;
+  }
+}
+
+/* 1日ぶんの行の一覧。`role="list"` は `.tsx` が明示する（規則8）。 */
 .rows {
-  margin: 16px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* 畳んだ日の一覧。`display` を持つ class があっても `hidden` が効くよう明示する。 */
+.rows[hidden] {
+  display: none;
 }
 
 /*

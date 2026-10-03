@@ -3,14 +3,23 @@
  *
  * `GET /meals`（B-54a / ADR-068）の2つの列 — 「以前見た献立」（`seen`）と「作った献立」
  * （`cooked`）— を**切り替えて1列ずつ**見せる。2つの列は同じ献立を調理記録の有無で
- * 振り分けたものであり、**振り分けも並びもサーバが決める**（ADR-068 決定2・3）— ここでは
- * 並べ替えず、畳まず、渡された順のまま描く（設計 規則3）。
+ * 振り分けたものであり、**振り分けも並びもサーバが決める**（ADR-068 決定3 / ADR-083 決定1）—
+ * ここでは並べ替えず、渡された順のまま描く（設計 規則3）。
  *
- * **1行に出すのは名称と主材料の件数だけである**（設計 規則4 / ADR-068 決定4）。日付も充足も
- * 記録の有無の印も出さない — 充足は開いたときに算出すれば足りる（FR-32）。
+ * **行は日ごとにまとめ、まとまりの前に見出しを置く**（ADR-083 決定3・4）。以前見た献立は
+ * 献立の生成日時、作った献立は直近の調理記録の日時で、端末の時刻帯の暦日に分ける
+ * （`HistoryDays.ts`）。見出しは `h2` の中の `button`（`▼ 2026年10月3日`）で、押すとその日の
+ * 行を畳み、もう一度押すと開く。開閉は `aria-expanded` で読め、`aria-controls` はその日の
+ * 一覧を指す。畳んだ一覧は木に残して `hidden` を当てる — 消すと指す先が無くなる。
+ * **開いた直後はすべて開いている。** 開閉は列ごとに「畳んだ日付の集合」で持つので、取り直しで
+ * 新しい日が届いてもその日は開いて出る。
  *
- * **列の選択はここが持つ**（設計 規則6 / 先行 `PantryTab`）。門も器も知らない — 詳細を開いて
- * 戻っても保たれ、器は選んだタブしか描かないので、タブを移ると初期（以前見た）に戻る。
+ * **1行に出すのは名称と主材料の件数だけである**（設計 規則4）。日付は見出しにだけ出し、
+ * 充足も記録の有無の印も出さない — 充足は開いたときに算出すれば足りる（FR-32）。
+ *
+ * **列の選択と日ごとの開閉はここが持つ**（設計 規則6 / ADR-083 決定4 / 先行 `PantryTab`）。
+ * 門も器も知らない — 詳細を開いて戻っても保たれ、器は選んだタブしか描かないので、タブを移ると
+ * 初期（以前見た・すべて開く）に戻る。保存はしない。
  *
  * **開いている献立を持つのは門である**（設計 規則9 / ADR-066 と同じ理由）。ここは行から
  * 識別子を渡し、渡された詳細を一覧の代わりに描くだけである（先行 `MealsTab.mealDetail`）。
@@ -31,9 +40,11 @@
  * 無いので暫定のまま。
  */
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { JSX, ReactNode } from 'react';
-import type { MealSummaryOutput } from '@fridge-to-meal/contract';
+import type { ListMealsOutput, MealSummaryOutput } from '@fridge-to-meal/contract';
+import { historyDaysOf } from './HistoryDays.js';
+import type { HistoryDay } from './HistoryDays.js';
 import type { MealListOutcome } from '../../server/MealRequests.js';
 import { ScreenHeader } from '../../navigation/ScreenHeader.js';
 import styles from './HistoryTab.module.css';
@@ -120,21 +131,89 @@ function ColumnToggles({
   );
 }
 
+/** 列ごとの畳んだ日の鍵（`HistoryDay.key`）。開いた直後はどちらも空 — すべて開いている。 */
+type CollapsedDays = Readonly<Record<Column, ReadonlySet<string>>>;
+
+const INITIAL_COLLAPSED_DAYS: CollapsedDays = { seen: new Set(), cooked: new Set() };
+
+/** 選んでいる列を日ごとに分ける。列ごとに、その列の日時で分ける（ADR-083 決定1・2）。 */
+function daysOf(meals: ListMealsOutput, column: Column): readonly HistoryDay<MealSummaryOutput>[] {
+  return column === 'seen'
+    ? historyDaysOf(meals.seen, (meal) => meal.generatedAt)
+    : historyDaysOf(meals.cooked, (meal) => meal.cookedAt);
+}
+
 /**
- * 1列ぶんの行（設計 規則3・4・8）。**行そのものを開く操作にする**（ワイヤーに別の操作が無い）。
+ * 日ごとのまとまり（ADR-083 決定3・4 / NFR-17）。見出しは `h2` の中の `button` 1つで、
+ * 読み上げの名前は日付だけ（▼ は飾りなので `aria-hidden`）。畳んだ一覧は `hidden` で残す。
+ */
+function DayGroups({
+  days,
+  collapsed,
+  onToggleDay,
+  onOpenMeal,
+}: {
+  days: readonly HistoryDay<MealSummaryOutput>[];
+  collapsed: ReadonlySet<string>;
+  onToggleDay: (key: string) => void;
+  onOpenMeal: (mealId: string) => void;
+}) {
+  // `aria-controls` が指す一覧の id。画面に同じ部品が2つ出ても衝突しないよう `useId` を頭に付ける。
+  const idPrefix = useId();
+  return (
+    <div className={styles.days}>
+      {days.map((day, index) => {
+        const expanded = !collapsed.has(day.key);
+        // 同じ日付が間を挟んで2度現れうる（`HistoryDays.ts`）ので、id には位置も入れる。
+        const listId = `${idPrefix}-day-${String(index)}`;
+        return (
+          <div key={`${day.key}-${String(index)}`}>
+            <h2 className={styles.dayHeading}>
+              <button
+                type="button"
+                className={styles.dayToggle}
+                aria-expanded={expanded}
+                aria-controls={listId}
+                onClick={() => onToggleDay(day.key)}
+              >
+                <span
+                  aria-hidden="true"
+                  className={
+                    expanded ? styles.dayMarker : `${styles.dayMarker} ${styles.dayMarkerCollapsed}`
+                  }
+                >
+                  ▼
+                </span>
+                {day.label}
+              </button>
+            </h2>
+            <MealRows id={listId} hidden={!expanded} meals={day.meals} onOpenMeal={onOpenMeal} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * 1日ぶんの行（設計 規則3・4・8）。**行そのものを開く操作にする**（ワイヤーに別の操作が無い）。
  * 名称と件数は別の要素に分けておく — 読み上げが名称で止まれるように（先行 `MealsTab`）。
  */
 function MealRows({
+  id,
+  hidden,
   meals,
   onOpenMeal,
 }: {
+  id: string;
+  hidden: boolean;
   meals: readonly MealSummaryOutput[];
   onOpenMeal: (mealId: string) => void;
 }) {
   return (
     // `role="list"` を明示するのは、`list-style: none` で一覧の役割を落とす読み手（Safari）が
     // あるため（B-67 規則8 / 先行 `MealsTab` の `.cards`）。
-    <ul role="list" className={styles.rows}>
+    <ul id={id} role="list" hidden={hidden} className={styles.rows}>
       {meals.map((meal) => (
         // 識別子で鍵を取る — 名称が同じ別の献立を畳まない（設計 規則3）。
         <li key={meal.mealId}>
@@ -158,6 +237,8 @@ export function HistoryTab({
   // **設定を開くと、ここは木から外れる**（B-60 規則10 / B-38 規則6）— タブを移ったときと同じく、
   // 戻ったときの列は初期に戻る（B-56c 規則8 はここで置き換わった）。
   const [selectedColumn, setSelectedColumn] = useState<Column>(INITIAL_COLUMN);
+  // 日ごとの開閉（ADR-083 決定4）。列の選択と同じく、詳細を開いて戻っても保たれる。
+  const [collapsedDays, setCollapsedDays] = useState<CollapsedDays>(INITIAL_COLLAPSED_DAYS);
 
   // **詳細は結末より先に見る**（先行 `MealsTab`）。一覧と並べず入れ替え、列の切り替えも出さない。
   if (mealDetail !== null) return <div>{mealDetail}</div>;
@@ -171,6 +252,16 @@ export function HistoryTab({
       {historyBody()}
     </div>
   );
+
+  /** 選んでいる列の、その日の開閉を入れ替える。他の列の開閉には触らない（ADR-083 決定4）。 */
+  function toggleDay(key: string): void {
+    setCollapsedDays((current) => {
+      const next = new Set(current[selectedColumn]);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return { ...current, [selectedColumn]: next };
+    });
+  }
 
   function historyBody(): JSX.Element {
     // 読み込み中と取れなかった回は、切り替えを出さない — 切り替えた先にも見せるものが無い。
@@ -199,7 +290,12 @@ export function HistoryTab({
             {EMPTY_COLUMN_NOTICES[selectedColumn]}
           </p>
         ) : (
-          <MealRows meals={rows} onOpenMeal={onOpenMeal} />
+          <DayGroups
+            days={daysOf(meals.meals, selectedColumn)}
+            collapsed={collapsedDays[selectedColumn]}
+            onToggleDay={toggleDay}
+            onOpenMeal={onOpenMeal}
+          />
         )}
       </>
     );
