@@ -92,7 +92,7 @@ const EMPTY_COLUMN_NOTICES: Readonly<Record<Column, string>> = {
 /** 見出しの行の題（原本 `index.dc.html` 12。ADR-074 決定1 — 仮ではない）。 */
 const HEADING = '履歴';
 
-/** 主材料の件数（ADR-068 決定4。件数は主材料で数えたものがサーバから届く — C-16）。 */
+/** 主材料の件数（ADR-083 決定2。件数は主材料で数えたものがサーバから届く — C-16）。 */
 function ingredientCountText(ingredientCount: number): string {
   return `材料${ingredientCount}件`;
 }

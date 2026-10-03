@@ -239,7 +239,7 @@ describe('履歴タブ HistoryTab', () => {
   });
 
   it('行に、献立の名称と主材料の件数を出す', () => {
-    // B-54b 規則4 / ADR-068 決定4: 1行に出すのは名称と主材料の件数だけ。
+    // B-54b 規則4 / ADR-083 決定2: 1行に出すのは名称と主材料の件数だけ（日付は見出しにだけ出す）。
     // ここでは数字が読めることだけを見る。字面（「材料N件」）は末尾の節（B-67）が見る。
     renderTab(loaded({ seen: [seenOf('meal-a', NIKUJAGA, { ingredientCount: 7 })], cooked: [] }));
 
@@ -465,7 +465,7 @@ describe('履歴タブ HistoryTab', () => {
   });
 
   it('行の主材料の件数を「材料N件」と出す', () => {
-    // B-67 規則6・9 / ADR-068 決定4: 件数の文言は原本 12 の字面。
+    // B-67 規則6・9 / ADR-083 決定2: 件数の文言は原本 12 の字面。
     renderTab(loaded({ seen: [seenOf('meal-a', NIKUJAGA, { ingredientCount: 7 })], cooked: [] }));
 
     expect(within(rowAt(0)).queryByText('材料7件')).not.toBeNull();

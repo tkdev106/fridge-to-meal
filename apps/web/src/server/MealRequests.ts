@@ -217,7 +217,7 @@ function isListedMeals(body: unknown): body is ListMealsOutput {
  * **`GET` で本体もクエリも送らない**（B-54a）ので `Content-Type` も付けない（ADR-048）。
  * **断りも `rule` を読まず失敗に畳む** — 利用者が直せる入力が無い（先行
  * `listIngredientNames`）。**DTO を詰め替えず、並べ替えもしない** — 並びを決めるのは
- * サーバである（ADR-068 決定2）。
+ * サーバである（ADR-083 決定1）。
  *
  * **例外を外に出さない。** 自分では取りに行き直さない — 呼ばれた1回で1往復だけする。
  */
