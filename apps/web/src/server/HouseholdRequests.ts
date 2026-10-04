@@ -1,14 +1,17 @@
 /**
- * `/household/*`（人数・招待の作成・抜ける）を叩く口の工場と、その結末。
+ * `/household/*`（人数・招待の作成・抜ける・参加する）を叩く口の工場と、その結末。
  *
  * **ここは画面ではない。** 経路の継ぎ目であり、`@supabase/*` も `session/` の型も触らない
  * （ADR-046 決定3）。**世帯は1つも運ばない**（C-9 / NFR-09）。
  *
- * 3つの口はどれも本体を送らないので `Content-Type` を付けない（ADR-048）。**断り（409 を含む）は
- * `rule` を読まず失敗に畳む**（先行 `deleteHouseholdData`）。**例外を外に出さない。** 自分では
+ * 人数・招待・抜けるの3つは本体を送らないので `Content-Type` を付けない（ADR-048）。断り（409 を含む）は
+ * `rule` を読まず失敗に畳む（先行 `deleteHouseholdData`）。参加するだけは本体 `{ token }` を送り、
+ * 断りの `rule` を運ぶ — 使えないリンクと、すでに共有している場合を画面が出し分けるため。**例外を外に出さない。** 自分では
  * 送り直さない — 呼ばれた1回で1往復だけする。
  */
 import type {
+  AcceptHouseholdInvitationInput,
+  ErrorResponseDto,
   HouseholdInvitationOutput,
   HouseholdMemberCountOutput,
 } from '@fridge-to-meal/contract';
@@ -32,14 +35,22 @@ export type CreateHouseholdInvitationOutcome =
 /** 世帯を抜けた結末（FR-46）。 */
 export type LeaveHouseholdOutcome = { readonly outcome: 'left' } | { readonly outcome: 'failed' };
 
+/** 世帯に参加した結末（FR-45）。 */
+export type JoinHouseholdOutcome =
+  | { readonly outcome: 'joined' }
+  | { readonly outcome: 'rejected'; readonly rule: string }
+  | { readonly outcome: 'failed' };
+
 export type ShowHouseholdMemberCount = () => Promise<ShowHouseholdMemberCountOutcome>;
 export type CreateHouseholdInvitation = () => Promise<CreateHouseholdInvitationOutcome>;
 export type LeaveHousehold = () => Promise<LeaveHouseholdOutcome>;
+export type JoinHousehold = (token: string) => Promise<JoinHouseholdOutcome>;
 
 /** 叩く先。**接頭辞を web の側で足さない**（ADR-048 決定4）。 */
 const MEMBER_COUNT_PATH = '/household/member-count';
 const INVITATIONS_PATH = '/household/invitations';
 const LEAVE_PATH = '/household/leave';
+const JOIN_PATH = '/household/join';
 
 /** 畳んだ失敗（先行 `MealRequests` の `FAILED`）。 */
 const FAILED = { outcome: 'failed' } as const;
@@ -67,6 +78,12 @@ async function sendWithoutBody(
     method,
     headers: { Authorization: `Bearer ${token}` },
   });
+}
+
+function isRejection(body: unknown): body is ErrorResponseDto {
+  return (
+    typeof body === 'object' && body !== null && 'rule' in body && typeof body.rule === 'string'
+  );
 }
 
 function isMemberCount(body: unknown): body is HouseholdMemberCountOutput {
@@ -132,6 +149,41 @@ export function leaveHousehold(deps: HouseholdRequestsDeps): LeaveHousehold {
       const response = await sendWithoutBody(deps, LEAVE_PATH, 'POST');
 
       return response?.ok === true ? { outcome: 'left' } : FAILED;
+    } catch {
+      return FAILED;
+    }
+  };
+}
+
+/**
+ * 招待のトークンで世帯に参加する口を組む（FR-45）。**通った回の本体を読まない** — 相手は 204 で
+ * 本体を返さない。断りは `rule` をそのまま運び、どの案内を出すかは画面が決める（ADR-032 決定3）。
+ */
+export function joinHousehold(deps: HouseholdRequestsDeps): JoinHousehold {
+  return async (invitationToken) => {
+    const { baseUrl, accessToken, httpFetch = environmentHttpFetch } = deps;
+
+    try {
+      const token = await accessToken();
+
+      if (token === null) {
+        return FAILED;
+      }
+
+      const input: AcceptHouseholdInvitationInput = { token: invitationToken };
+      const response = await httpFetch(`${baseUrl}${JOIN_PATH}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+
+      if (response.ok) {
+        return { outcome: 'joined' };
+      }
+
+      const body = await response.json();
+
+      return isRejection(body) ? { outcome: 'rejected', rule: body.rule } : FAILED;
     } catch {
       return FAILED;
     }

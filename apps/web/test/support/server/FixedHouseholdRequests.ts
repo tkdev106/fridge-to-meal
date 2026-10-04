@@ -1,16 +1,19 @@
 /**
- * `/household/*` の口（`src/server/HouseholdRequests.ts`）— 人数・招待の作成・抜ける — の
- * **記憶上の実装**（B-76 設計 4章。先行 `FixedHouseholdDataRequests`）。
+ * `/household/*` の口（`src/server/HouseholdRequests.ts`）— 人数・招待の作成・抜ける・参加する — の
+ * **記憶上の実装**（B-76 設計 4章 / B-77 設計 4章。先行 `FixedHouseholdDataRequests`）。
  *
  * **`vi.fn()` で呼び出し回数を数えない**（`docs/testing.md` 2章）。送られた回数は自分の状態と
  * して持つ — 招待は押した回に1往復だけ（設計 規則5）、抜けるは確認を経なければ送られず
  * 自分では送り直さない（規則8・9）、人数は設定を開いた回にだけ取りに行く（規則12）ことが
- * 要件そのものであり、それを観るにはこの数が要る。
+ * 要件そのものであり、それを観るにはこの数が要る。参加するは届いたトークンを積む — 持ち越した
+ * トークンで送られること、`参加しない` では送られないこと（B-77 設計 規則9）を観るためである。
  */
 
 import type {
   CreateHouseholdInvitation,
   CreateHouseholdInvitationOutcome,
+  JoinHousehold,
+  JoinHouseholdOutcome,
   LeaveHousehold,
   LeaveHouseholdOutcome,
   ShowHouseholdMemberCount,
@@ -26,6 +29,8 @@ export type FixedHouseholdRequestsOptions = {
   readonly create?: readonly Delivery<CreateHouseholdInvitationOutcome>[];
   /** 抜けるの結末の台本。渡さなかったら呼ばれた時点で落ちる。 */
   readonly leave?: readonly Delivery<LeaveHouseholdOutcome>[];
+  /** 参加するの結末の台本。渡さなかったら呼ばれた時点で落ちる。 */
+  readonly join?: readonly Delivery<JoinHouseholdOutcome>[];
 };
 
 export class FixedHouseholdRequests {
@@ -33,6 +38,8 @@ export class FixedHouseholdRequests {
   readonly #memberCount: DeliveryLine<ShowHouseholdMemberCountOutcome>;
   readonly #create: DeliveryLine<CreateHouseholdInvitationOutcome>;
   readonly #leave: DeliveryLine<LeaveHouseholdOutcome>;
+  readonly #join: DeliveryLine<JoinHouseholdOutcome>;
+  readonly #joinedTokens: string[] = [];
   #memberCountRequests = 0;
   #createCount = 0;
   #leaveCount = 0;
@@ -52,6 +59,11 @@ export class FixedHouseholdRequests {
       options.leave ?? [],
       this.#pending,
       'この観点では冷蔵庫から抜けない',
+    );
+    this.#join = new DeliveryLine(
+      options.join ?? [],
+      this.#pending,
+      'この観点では冷蔵庫の共有に参加しない',
     );
   }
 
@@ -75,6 +87,13 @@ export class FixedHouseholdRequests {
     return this.#leave.deliver();
   };
 
+  readonly joinHousehold: JoinHousehold = (token) => {
+    // **積むのは配るより先である**（`docs/testing.md` 2章）。
+    this.#joinedTokens.push(token);
+
+    return this.#join.deliver();
+  };
+
   /** 人数を取りに行った回数。 */
   get memberCountRequests(): number {
     return this.#memberCountRequests;
@@ -88,6 +107,11 @@ export class FixedHouseholdRequests {
   /** 抜けるが送られた回数。 */
   get leaveCount(): number {
     return this.#leaveCount;
+  }
+
+  /** 参加するで届いたトークン。送られた順に並ぶ。 */
+  get joinedTokens(): readonly string[] {
+    return [...this.#joinedTokens];
   }
 
   /** 保留している結末を解く（先行 `FixedHouseholdDataRequests.settle`）。 */

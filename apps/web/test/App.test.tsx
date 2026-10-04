@@ -52,6 +52,7 @@ import type { FixedHouseholdRequestsOptions } from './support/server/FixedHouseh
 import { FixedClipboardWriter } from './support/clipboard/FixedClipboardWriter.js';
 import { FixedConnectivity } from './support/connectivity/FixedConnectivity.js';
 import { FixedBackNavigation } from './support/backNavigation/FixedBackNavigation.js';
+import { FixedPendingHouseholdInvitation } from './support/householdInvitation/FixedPendingHouseholdInvitation.js';
 import type { FixedConnectivityOptions } from './support/connectivity/FixedConnectivity.js';
 import { App } from '../src/App.js';
 import { BackNavigationProvider } from '../src/backNavigation/BackHandler.js';
@@ -81,10 +82,12 @@ function loaded(...stockItems: readonly StockItemDto[]): StockItemsOutcome {
   return { outcome: 'loaded', stockItems };
 }
 
-/** 冷蔵庫の共有（B-76）の台本と、招待リンクの基点。**末尾の1つにまとめて渡す。** */
+/** 冷蔵庫の共有（B-76 / B-77）の台本と、招待リンクの基点。**末尾の1つにまとめて渡す。** */
 type SharingRenderOptions = {
   readonly household?: FixedHouseholdRequestsOptions;
   readonly webOrigin?: string;
+  /** 持ち越し中の招待のトークン（B-77）。既定は持ち越していない。 */
+  readonly pendingInvitation?: FixedPendingHouseholdInvitation;
 };
 
 function renderApp(
@@ -139,6 +142,11 @@ function renderApp(
   // 写す継ぎ目。**既定は台本を持たない**（`コピー` が押されなければ呼ばれない。規則5）。
   const clipboard = new FixedClipboardWriter();
 
+  // 持ち越し中の招待のトークン。**既定は持ち越していない**（B-77）— 招待が本題でない観点は、
+  // これまでどおりサインイン済みならタブの器が出る。
+  const pendingInvitation =
+    sharingOptions.pendingInvitation ?? new FixedPendingHouseholdInvitation();
+
   const app = (
     <App
       session={session}
@@ -159,6 +167,8 @@ function renderApp(
       leaveHousehold={household.leaveHousehold}
       clipboard={clipboard}
       webOrigin={sharingOptions.webOrigin ?? 'https://fridge.example'}
+      joinHousehold={household.joinHousehold}
+      pendingHouseholdInvitation={pendingInvitation}
     />
   );
 
@@ -182,6 +192,7 @@ function renderApp(
     connectivity,
     household,
     clipboard,
+    pendingInvitation,
   };
 }
 
@@ -4460,5 +4471,308 @@ describe('門 App の冷蔵庫の共有', () => {
 
     // 規則6 / ADR-087 決定4: 基点は門が `main.tsx` から受け取って設定画面へ渡す。
     expect(await screen.findByText('https://example.test/?invite=tok')).not.toBeNull();
+  });
+});
+
+/**
+ * 招待リンクで開いたときの参加の確認（B-77 設計 6章 規則6・9・15 / 7章 / FR-45 / ADR-087 決定4・5）。
+ *
+ * 確認の画面の見せ方（文言・送っている間・失敗と断りの案内）は `HouseholdJoinScreen.test.tsx` が
+ * 押さえており、ここで観るのは**門が持つ判断**だけである — 確認をいつ出すか、持ち越したトークンを
+ * どの結末で消しどの結末で残すか、参加した回に何を取り直すか。トークンは
+ * `FixedPendingHouseholdInvitation` の `read()` に残っている値で、送ったトークンは
+ * `FixedHouseholdRequests.joinedTokens` で観る（`docs/testing.md` 2章）。
+ */
+describe('門 App の招待リンクの参加の確認', () => {
+  const NIKUJAGA = '肉じゃが';
+  const GINGER_PORK = '豚こま肉と白菜の生姜焼き';
+
+  /** 文言は `docs/design/README.md` の行「冷蔵庫の共有に参加」から取った（ADR-074 決定1）。 */
+  const HEADING = '冷蔵庫の共有に参加';
+  const JOIN = '参加する';
+  const DECLINE = '参加しない';
+  const CLOSE = '閉じる';
+
+  /** 招待リンクから持ち越したトークンの標本。 */
+  const invitationToken = 'tok-1';
+
+  const mealA: SeenMealSummaryOutput = {
+    mealId: 'meal-a',
+    title: NIKUJAGA,
+    ingredientCount: 2,
+    generatedAt: '2026-10-03T03:00:00.000Z',
+  };
+  const mealB: SeenMealSummaryOutput = {
+    mealId: 'meal-b',
+    title: GINGER_PORK,
+    ingredientCount: 2,
+    generatedAt: '2026-10-03T03:00:00.000Z',
+  };
+
+  type JoinRenderOptions = {
+    readonly session?: FixedSessionOptions;
+    readonly requests?: FixedStockItemRequestsOptions;
+    readonly meals?: FixedMealRequestsOptions;
+    readonly connectivity?: ConnectivityState;
+    readonly household?: FixedHouseholdRequestsOptions;
+    readonly backNavigation?: FixedBackNavigation;
+  };
+
+  /**
+   * トークンを持ち越した状態で門を描く。**既定はサインイン済み・在庫は `carrot` 1件**で、
+   * 本題でない台本は既定に寄せる。
+   */
+  function renderWithInvitation(options: JoinRenderOptions = {}) {
+    return renderApp(
+      options.session ?? { initialState: 'signedIn' },
+      options.requests ?? { list: [loaded(carrot)] },
+      {},
+      {},
+      options.meals ?? {},
+      {},
+      options.connectivity === undefined ? {} : { initialState: options.connectivity },
+      options.backNavigation,
+      {
+        household: options.household ?? {},
+        pendingInvitation: new FixedPendingHouseholdInvitation(invitationToken),
+      },
+    );
+  }
+
+  /** 押したあとや状態の変化のあとに届く更新を `act` の中で流す。 */
+  async function flush(): Promise<void> {
+    await act(async () => {});
+  }
+
+  /** 確認の見出しがいくつ出ているか。 */
+  function confirmationHeadingCount(): number {
+    return screen.queryAllByRole('heading', { name: HEADING }).length;
+  }
+
+  /** 確認の `参加する` を押し、結末を流す。 */
+  async function join(): Promise<void> {
+    fireEvent.click(namedOperation(JOIN));
+    await flush();
+  }
+
+  it('サインイン済みでトークンを持ち越していると、下タブの代わりに確認だけを出す', async () => {
+    renderWithInvitation();
+
+    await flush();
+
+    // 規則6 / FR-45: タブの器の代わりに確認の画面だけを出す。
+    expect([confirmationHeadingCount(), tabs().length]).toEqual([1, 0]);
+  });
+
+  it('確認の間も、接続が切れていれば帯を出す', async () => {
+    renderWithInvitation({ connectivity: 'offline' });
+
+    await flush();
+
+    // 規則6 / B-70 規則5: 帯は確認の画面にも出す。
+    expect([confirmationHeadingCount(), offlineBanners().length]).toEqual([1, 1]);
+  });
+
+  it('サインインしていなければ、トークンがあってもログインの画面を出し、確認は出さない', async () => {
+    renderWithInvitation({ session: { initialState: 'signedOut' } });
+
+    await flush();
+
+    // 規則6 / ADR-087 決定4: 未ログインのあいだは今のログインの画面のまま。
+    expect([textboxes().length, confirmationHeadingCount()]).toEqual([1, 0]);
+  });
+
+  it('サインインしていない間は、トークンを消さない', async () => {
+    const { pendingInvitation } = renderWithInvitation({ session: { initialState: 'signedOut' } });
+
+    await flush();
+
+    // 規則6: ログインやアカウント作成を経ても確認に来られるよう、持ち越したままにする。
+    expect(pendingInvitation.read()).toBe(invitationToken);
+  });
+
+  it('トークンを持ち越したままサインインすると、確認が出る', async () => {
+    const { session } = renderWithInvitation({ session: { initialState: 'signedOut' } });
+
+    await flush();
+    emit(session, 'signedIn');
+    await flush();
+
+    // 規則6 / FR-45: ログインを経て参加の確認を出す。
+    expect(confirmationHeadingCount()).toBe(1);
+  });
+
+  it('参加するを押すと、持ち越したトークンで参加するが送られる', async () => {
+    const { household } = renderWithInvitation({ household: { join: [{ outcome: 'joined' }] } });
+    await flush();
+
+    await join();
+
+    // 規則7・9 / ADR-087 決定4。
+    expect(household.joinedTokens).toEqual([invitationToken]);
+  });
+
+  it('参加できたら、トークンを消す', async () => {
+    const { pendingInvitation } = renderWithInvitation({
+      household: { join: [{ outcome: 'joined' }] },
+    });
+    await flush();
+
+    await join();
+
+    // 規則9: 再読み込みで確認が戻らない。
+    expect(pendingInvitation.read()).toBeNull();
+  });
+
+  it('参加できたら確認を閉じ、献立タブが選ばれている', async () => {
+    renderWithInvitation({ household: { join: [{ outcome: 'joined' }] } });
+    await flush();
+
+    await join();
+
+    // 規則9 / ADR-064: 閉じた後に出るのは既定のタブ。
+    expect([confirmationHeadingCount(), mealsTab().getAttribute('aria-selected')]).toEqual([
+      0,
+      'true',
+    ]);
+  });
+
+  it('参加できたら在庫一覧を取り直し、在庫タブに参加した先の在庫品が出る', async () => {
+    renderWithInvitation({
+      requests: { list: [loaded(carrot), loaded(chineseCabbage)] },
+      household: { join: [{ outcome: 'joined' }] },
+    });
+    await flush();
+
+    await join();
+    openPantry();
+
+    // 規則9 / ADR-087 決定5: 招待した人の冷蔵庫の在庫を取り直す（`reloadCount`）。
+    expect(await screen.findByText(chineseCabbage.name)).not.toBeNull();
+    expect(screen.queryByText(carrot.name)).toBeNull();
+  });
+
+  it('参加できたら履歴を取り直し、履歴タブに参加した先の行が出る', async () => {
+    renderWithInvitation({
+      meals: { list: [offlineListed([mealA]), offlineListed([mealB])] },
+      household: { join: [{ outcome: 'joined' }] },
+    });
+    await flush();
+
+    await join();
+    fireEvent.click(historyTab());
+
+    // 規則9: 履歴も `mealListReloadCount` を増やして取り直す。
+    expect(await screen.findByText(GINGER_PORK)).not.toBeNull();
+    expect(screen.queryByText(NIKUJAGA)).toBeNull();
+  });
+
+  it('使えない招待と断られたら、閉じる前にトークンを消し、閉じるを出している', async () => {
+    const { pendingInvitation } = renderWithInvitation({
+      household: { join: [{ outcome: 'rejected', rule: 'joinHousehold.invalidInvitation' }] },
+    });
+    await flush();
+
+    await join();
+
+    // 規則9 / 7章: その時点で消す（再読み込みで確認が戻らない）が、画面は `閉じる` まで残す。
+    expect([pendingInvitation.read(), operationCount(CLOSE)]).toEqual([null, 1]);
+  });
+
+  it('すでに共有していると断られたら、トークンを消す', async () => {
+    const { pendingInvitation } = renderWithInvitation({
+      household: { join: [{ outcome: 'rejected', rule: 'joinHousehold.alreadyMember' }] },
+    });
+    await flush();
+
+    await join();
+
+    // 規則9 / 7章 / ADR-087 決定5。
+    expect(pendingInvitation.read()).toBeNull();
+  });
+
+  it('断りの閉じるを押すと、献立タブが出る', async () => {
+    renderWithInvitation({
+      household: { join: [{ outcome: 'rejected', rule: 'joinHousehold.invalidInvitation' }] },
+    });
+    await flush();
+
+    await join();
+    fireEvent.click(namedOperation(CLOSE));
+    await flush();
+
+    // 規則9 / ADR-064: 閉じた後に出るのは既定のタブ。
+    expect([confirmationHeadingCount(), mealsTab().getAttribute('aria-selected')]).toEqual([
+      0,
+      'true',
+    ]);
+  });
+
+  it('参加できなかったら、トークンを残して確認に留まる', async () => {
+    const { pendingInvitation } = renderWithInvitation({
+      household: { join: [{ outcome: 'failed' }] },
+    });
+    await flush();
+
+    await join();
+
+    // 規則9 / 7章: `unavailable` は継ぎ目を残し、画面に留まる。
+    expect([pendingInvitation.read(), confirmationHeadingCount()]).toEqual([invitationToken, 1]);
+  });
+
+  it('本体の断りでも、トークンを残す', async () => {
+    const { pendingInvitation } = renderWithInvitation({
+      household: { join: [{ outcome: 'rejected', rule: 'request.invalidBody' }] },
+    });
+    await flush();
+
+    await join();
+
+    // 7章: 400 `request.*` は `unavailable` に倒し、トークンを残す。
+    expect(pendingInvitation.read()).toBe(invitationToken);
+  });
+
+  it('参加しないを押すと、トークンを消す', async () => {
+    const { pendingInvitation } = renderWithInvitation({
+      household: { join: [{ outcome: 'joined' }] },
+    });
+    await flush();
+
+    fireEvent.click(namedOperation(DECLINE));
+    await flush();
+
+    // 規則9: 断ったら持ち越さない。
+    expect(pendingInvitation.read()).toBeNull();
+  });
+
+  it('参加しないを押すと、参加するは送られず献立タブが出る', async () => {
+    // 結末の台本はわざと渡す — 誤って送られても最後まで通り、落ちるのは送ったトークンの断定だけになる
+    // （`docs/testing.md` 2章）。
+    const { household } = renderWithInvitation({ household: { join: [{ outcome: 'joined' }] } });
+    await flush();
+
+    fireEvent.click(namedOperation(DECLINE));
+    await flush();
+
+    // 規則9 / ADR-087 決定4。
+    expect([household.joinedTokens, mealsTab().getAttribute('aria-selected')]).toEqual([
+      [],
+      'true',
+    ]);
+  });
+
+  it('確認の画面では、戻るを受け取らない', async () => {
+    const backNavigation = new FixedBackNavigation();
+    renderWithInvitation({ backNavigation });
+    await flush();
+
+    let received = true;
+    act(() => {
+      received = backNavigation.pressBack();
+    });
+
+    // 規則15 / ADR-084 決定2: 戻るはアプリを離れる。トークンは残るので開き直せば確認が出る。
+    // 確認の画面が出ていることも合わせて観る — タブの器が出ている回の「受け取らない」と見分ける。
+    expect([confirmationHeadingCount(), received]).toEqual([1, false]);
   });
 });

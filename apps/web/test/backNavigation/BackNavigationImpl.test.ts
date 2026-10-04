@@ -5,9 +5,15 @@
  * `BackNavigationSource` で受け取るので、テストは**偽の窓**を渡す（先行
  * `test/connectivity/ConnectivityImpl.test.ts`）。
  *
- * 偽の窓は履歴を**項目の state の配列と現在の位置**として持つ素朴なものである。
+ * 偽の窓は履歴を**項目（state と URL）の配列と現在の位置**として持つ素朴なものである。
  *
- * - `pushState` は位置より前方を切り捨てて積み、位置を進める。`popstate` は起こさない
+ * - `pushState` は位置より前方を切り捨てて積み、位置を進める。`popstate` は起こさない。
+ *   URL を渡さないので、積んだ項目の URL は今の項目のものを引き継ぐ（ブラウザと同じ）
+ * - `replaceState` は今の項目の state と URL を置き換える。位置も項目の数も変えず、
+ *   置き換えた回数を `replacedCount` に数える（「置き換えないこと」が要件の1件のため。
+ *   `docs/testing.md` 2章）
+ * - `location` は今の項目の URL から読む。読み込み時の URL は構築時に渡し、すべての項目が
+ *   その URL を持つ
  * - `go` / `back` は位置を**すぐには動かさない** — ブラウザと同じく非同期であり、テストが
  *   `deliver()` で流すまで溜めておく。流すと位置を動かし `popstate` を起こす
  * - 利用者の「戻る」「進む」はテストの側から `userBack()` / `userForward()` で起こす
@@ -28,17 +34,35 @@ import type { BackNavigationSource } from '../../src/backNavigation/BackNavigati
 /** アプリより前に開いていたページの項目。**ここまで戻ったらアプリを離れている。** */
 const elsewhere = 'よそ';
 
+/** 読み込み時の URL の3つの成分。 */
+type LoadedLocation = { readonly search: string; readonly pathname: string; readonly hash: string };
+
+/** 履歴の項目1つ。 */
+type Entry = { state: unknown; url: string };
+
+/** URL の成分を読むための基点。偽の窓の URL は経路から始まるので、解決にだけ使う。 */
+const URL_BASE = 'https://fridge.example.test';
+
 class FakeWindow implements BackNavigationSource {
-  readonly #entries: unknown[];
+  readonly #entries: Entry[];
   #position: number;
+  #replacedCount = 0;
   readonly #pendingDeltas: number[] = [];
   readonly #listeners: (() => void)[] = [];
 
   readonly history: BackNavigationSource['history'];
 
-  /** `entries` は項目の state、`position` は読み込み時に居る項目の位置。 */
-  constructor(entries: readonly unknown[] = [elsewhere, null], position = 1) {
-    this.#entries = [...entries];
+  /**
+   * `entries` は項目の state、`position` は読み込み時に居る項目の位置、`loaded` は読み込み時の
+   * URL（既定はクエリもハッシュも無い `/`）。
+   */
+  constructor(
+    entries: readonly unknown[] = [elsewhere, null],
+    position = 1,
+    loaded: LoadedLocation = { search: '', pathname: '/', hash: '' },
+  ) {
+    const loadedUrl = `${loaded.pathname}${loaded.search}${loaded.hash}`;
+    this.#entries = entries.map((state) => ({ state, url: loadedUrl }));
     this.#position = position;
 
     const entriesOf = this.#entries;
@@ -47,12 +71,17 @@ class FakeWindow implements BackNavigationSource {
     const fake = this;
     this.history = {
       get state(): unknown {
-        return entriesOf[fake.#position];
+        return entriesOf[fake.#position]?.state;
       },
       pushState(state: unknown): void {
+        const url = entriesOf[fake.#position]?.url ?? loadedUrl;
         entriesOf.splice(fake.#position + 1);
-        entriesOf.push(state);
+        entriesOf.push({ state, url });
         fake.#position += 1;
+      },
+      replaceState(state: unknown, _unused: string, url: string): void {
+        entriesOf[fake.#position] = { state, url };
+        fake.#replacedCount += 1;
       },
       back(): void {
         fake.#pendingDeltas.push(-1);
@@ -61,6 +90,13 @@ class FakeWindow implements BackNavigationSource {
         fake.#pendingDeltas.push(delta);
       },
     };
+  }
+
+  /** 今の項目の URL の成分。 */
+  get location(): LoadedLocation {
+    const url = new URL(this.currentUrl, URL_BASE);
+
+    return { search: url.search, pathname: url.pathname, hash: url.hash };
   }
 
   addEventListener(_type: 'popstate', listener: () => void): void {
@@ -94,12 +130,22 @@ class FakeWindow implements BackNavigationSource {
 
   /** 履歴の項目の state を前から順に。 */
   get states(): readonly unknown[] {
-    return [...this.#entries];
+    return this.#entries.map((entry) => entry.state);
   }
 
   /** いま居る項目の state。 */
   get currentState(): unknown {
-    return this.#entries[this.#position];
+    return this.#entries[this.#position]?.state;
+  }
+
+  /** いま居る項目の URL。 */
+  get currentUrl(): string {
+    return this.#entries[this.#position]?.url ?? '';
+  }
+
+  /** `replaceState` で置き換えた回数。 */
+  get replacedCount(): number {
+    return this.#replacedCount;
   }
 
   #moveBy(delta: number): void {
@@ -346,5 +392,66 @@ describe('端末の戻るの継ぎ目 BackNavigationImpl の読み込み', () =>
     // 規則9: 印の無い項目はアプリの外のものか、読み込みの項目そのものである。
     expect(source.states).toEqual([elsewhere, null]);
     expect(source.position).toBe(1);
+  });
+});
+
+describe('端末の戻るの継ぎ目 BackNavigationImpl の読み込み時のクエリ', () => {
+  /** 招待リンクで開いた読み込みの URL。 */
+  const invited: LoadedLocation = { search: '?invite=invite-token', pathname: '/', hash: '' };
+
+  it('クエリがあれば、クエリを外した URL に置き換える', async () => {
+    const source = new FakeWindow([elsewhere, null], 1, invited);
+
+    new BackNavigationImpl(source);
+    await settle(source);
+
+    // 規則3 / ADR-084 決定1: 画面を URL に書かない。トークンを URL に残さない。
+    expect(source.currentUrl).toBe('/');
+  });
+
+  it('クエリを外してもハッシュは保つ', async () => {
+    const source = new FakeWindow([elsewhere, null], 1, {
+      search: '?invite=invite-token',
+      pathname: '/',
+      hash: '#top',
+    });
+
+    new BackNavigationImpl(source);
+    await settle(source);
+
+    // 規則3: 外すのはクエリだけである。
+    expect(source.currentUrl).toBe('/#top');
+  });
+
+  it('クエリを外しても、履歴の項目を増やさない', async () => {
+    const source = new FakeWindow([elsewhere, null], 1, invited);
+
+    new BackNavigationImpl(source);
+    await settle(source);
+
+    // 規則3: 積むと、戻るでクエリつきの項目へ戻ってしまう。
+    expect(source.states).toEqual([elsewhere, null]);
+    expect(source.position).toBe(1);
+  });
+
+  it('クエリを外しても state を保つので、印つきの読み込みでは印の無い項目まで戻る', async () => {
+    const source = new FakeWindow([elsewhere, null, { fridgeToMealBack: 1 }], 2, invited);
+
+    new BackNavigationImpl(source);
+    await settle(source);
+
+    // 規則3 / 規則9（B-75）: 外したあとに既存の「印つきなら戻る」を行う。印を消すと戻れない。
+    expect(source.position).toBe(1);
+    expect(source.states[2]).toEqual({ fridgeToMealBack: 1 });
+  });
+
+  it('クエリが無ければ、URL を置き換えない', async () => {
+    const source = new FakeWindow([elsewhere, null], 1);
+
+    new BackNavigationImpl(source);
+    await settle(source);
+
+    // 規則3: 置き換えないことが要件（`docs/testing.md` 2章）。
+    expect(source.replacedCount).toBe(0);
   });
 });
