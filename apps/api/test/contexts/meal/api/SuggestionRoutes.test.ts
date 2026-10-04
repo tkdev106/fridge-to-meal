@@ -172,15 +172,25 @@ function setUp(
       : { throws: overrides.latestThrows },
   );
 
+  const logLines: string[] = [];
+
   const routes = createSuggestionRoutes({
     identifyHousehold: identifyHousehold.identify,
     suggestMeals: suggestMeals.suggest,
     suggestNewMeals: suggestNewMeals.suggest,
     showLatestSuggestion: showLatestSuggestion.show,
     now: sequentialClock(...(overrides.clockValues ?? [nineOClock])),
+    writeLog: (line) => logLines.push(line),
   });
 
-  return { routes, identifyHousehold, suggestMeals, suggestNewMeals, showLatestSuggestion };
+  return {
+    routes,
+    identifyHousehold,
+    suggestMeals,
+    suggestNewMeals,
+    showLatestSuggestion,
+    logLines,
+  };
 }
 
 /** 認証ヘッダ1つ。方式名と値の組み立てが本題のときだけ引数で上書きする。 */
@@ -578,6 +588,42 @@ describe('提案の経路 SuggestionRoutes', () => {
       await expect(responseBody(response)).resolves.toEqual({
         outcome: 'generationLimitReached',
       });
+    });
+  });
+
+  describe('断った結末のログ', () => {
+    it('在庫が足りない結末はログに1行残す', async () => {
+      const { routes, logLines } = setUp({ suggestOutput: { outcome: 'insufficientStockItems' } });
+
+      await routes.request('/suggestions', postRequest());
+
+      expect(logLines).toEqual(['api.suggestion.declined insufficientStockItems']);
+    });
+
+    it('上限に達した結末はログに1行残す', async () => {
+      const { routes, logLines } = setUp({ suggestOutput: { outcome: 'generationLimitReached' } });
+
+      await routes.request('/suggestions', postRequest());
+
+      expect(logLines).toEqual(['api.suggestion.declined generationLimitReached']);
+    });
+
+    it('新しい献立を求める経路でも上限に達した結末はログに1行残す', async () => {
+      const { routes, logLines } = setUp({
+        newMealsOutput: { outcome: 'generationLimitReached' },
+      });
+
+      await routes.request('/suggestions/new-meals', postRequest());
+
+      expect(logLines).toEqual(['api.suggestion.declined generationLimitReached']);
+    });
+
+    it('提案できた結末はログに残さない', async () => {
+      const { routes, logLines } = setUp();
+
+      await routes.request('/suggestions', postRequest());
+
+      expect(logLines).toEqual([]);
     });
   });
 
