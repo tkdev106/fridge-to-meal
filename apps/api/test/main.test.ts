@@ -12,8 +12,10 @@ import { accessTokenVerificationOf, composeDependencies, createApp } from '../sr
 import { householdIdOf } from '../src/shared/domain/HouseholdId.js';
 import type { AccessTokenClaims } from './support/identity/AccessSigning.js';
 import { accessTokenOf, publicAccessTokenKey } from './support/identity/AccessSigning.js';
+import { FixedCountHouseholdMembers } from './support/identity/FixedCountHouseholdMembers.js';
 import { FixedFetchJwks } from './support/identity/FixedFetchJwks.js';
 import { FixedIdentifyHousehold } from './support/identity/FixedIdentifyHousehold.js';
+import { FixedLeaveHousehold } from './support/identity/FixedLeaveHousehold.js';
 import { FixedAddCookingRecord } from './support/meal/FixedAddCookingRecord.js';
 import { FixedDeleteHouseholdData } from './support/meal/FixedDeleteHouseholdData.js';
 import { FixedListIngredientNames } from './support/meal/FixedListIngredientNames.js';
@@ -149,6 +151,8 @@ function appWithFixedDependencies(
     showMeal?: FixedShowMeal;
     listMeals?: FixedListMeals;
     deleteHouseholdData?: FixedDeleteHouseholdData;
+    countHouseholdMembers?: FixedCountHouseholdMembers;
+    leaveHousehold?: FixedLeaveHousehold;
   } = {},
 ) {
   const suggestMeals =
@@ -167,6 +171,9 @@ function appWithFixedDependencies(
   const listMeals = overrides.listMeals ?? new FixedListMeals({ returns: listMealsOutcome });
   const deleteHouseholdData =
     overrides.deleteHouseholdData ?? new FixedDeleteHouseholdData({ succeeds: true });
+  const countHouseholdMembers =
+    overrides.countHouseholdMembers ?? new FixedCountHouseholdMembers({ returns: 2 });
+  const leaveHousehold = overrides.leaveHousehold ?? new FixedLeaveHousehold({ succeeds: true });
 
   return createApp({
     identifyHousehold: new FixedIdentifyHousehold({ returns: ourHousehold }).identify,
@@ -184,6 +191,8 @@ function appWithFixedDependencies(
     showMeal: showMeal.show,
     listMeals: listMeals.list,
     deleteHouseholdData: deleteHouseholdData.delete,
+    countHouseholdMembers: countHouseholdMembers.count,
+    leaveHousehold: leaveHousehold.leave,
     now: () => fixedNow,
   });
 }
@@ -968,6 +977,104 @@ describe('composition root main', () => {
 
       const response = await app.request(householdDataPath, {
         method: 'DELETE',
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+    });
+  });
+
+  describe('世帯の経路の配置', () => {
+    // B-75 4周目。代役の deps で組み、経路がどこに置かれ、どの口に何が届くかだけを見る。
+    const memberCountPath = '/household/member-count';
+    const leavePath = '/household/leave';
+
+    it('人数の経路を接頭辞なしの GET /household/member-count に置く', async () => {
+      // 設計書 規則9 / ADR-048 決定4: `createHouseholdRoutes` の経路をそのまま根にマウントする。
+      const app = appWithFixedDependencies({
+        countHouseholdMembers: new FixedCountHouseholdMembers({ returns: 2 }),
+      });
+
+      const response = await app.request(memberCountPath, { headers: bearerHeaders('x') });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ memberCount: 2 });
+    });
+
+    it('抜ける経路を接頭辞なしの POST /household/leave に置く', async () => {
+      // 設計書 規則9 / ADR-048 決定4。
+      const leaveHousehold = new FixedLeaveHousehold({ succeeds: true });
+      const app = appWithFixedDependencies({ leaveHousehold });
+
+      const response = await app.request(leavePath, {
+        method: 'POST',
+        headers: bearerHeaders('x'),
+      });
+
+      expect(response.status).toBe(204);
+      expect(leaveHousehold.receivedHouseholdId).not.toBeNull();
+    });
+
+    it('接頭辞を付けた /api/household/leave には経路を置かない', async () => {
+      // ADR-048 決定4: 接頭辞は増やさない。
+      const leaveHousehold = new FixedLeaveHousehold({ succeeds: true });
+      const app = appWithFixedDependencies({ leaveHousehold });
+
+      const response = await app.request(`/api${leavePath}`, {
+        method: 'POST',
+        headers: bearerHeaders('x'),
+      });
+
+      expect(response.status).toBe(404);
+      expect(leaveHousehold.receivedHouseholdId).toBeNull();
+    });
+
+    it('抜ける経路には識別の口で定まった世帯が届く', async () => {
+      // C-9: 世帯はアクセストークンから定まり、ユースケースの引数に渡る。
+      const leaveHousehold = new FixedLeaveHousehold({ succeeds: true });
+      const app = appWithFixedDependencies({ leaveHousehold });
+
+      await app.request(leavePath, { method: 'POST', headers: bearerHeaders('x') });
+
+      expect(leaveHousehold.receivedHouseholdId).toBe('11111111-1111-4111-8111-111111111111');
+    });
+  });
+
+  describe('世帯の経路の結線', () => {
+    // B-75 4周目。composeDependencies の本物の結線で、差し替えるのは JWKS を取りに行く口だけ。
+    const memberCountPath = '/household/member-count';
+    const leavePath = '/household/leave';
+
+    it('アクセストークンが無い抜ける要求は結線後も 401 accessToken.missing になる', async () => {
+      // 設計書 規則9・7章2行目 / ADR-032: 世帯を定めるのが常に先。認証を通らない要求は DB に触れない。
+      const { app } = composedApp(envWithoutHyperdrive);
+
+      const response = await app.request(leavePath, { method: 'POST' });
+
+      expect(response.status).toBe(401);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'accessToken.missing' });
+    });
+
+    it('SUPABASE_URL が空の環境で人数を要求すると 500 unexpected になり 401 にならない', async () => {
+      // 設計書 7章3行目 / ADR-045 決定3 / 結果4: サーバ側の不備を利用者のアクセストークンのせいにしない。
+      const { app } = composedApp({ ...env, SUPABASE_URL: '' });
+
+      const response = await app.request(memberCountPath, {
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+    });
+
+    it('認証を通ったあと HYPERDRIVE の binding が無ければ抜ける要求は 500 unexpected になる', async () => {
+      // 設計書 規則9 / ADR-029 決定3(a) / ADR-045: 接続文字列が読めないのはサーバ側の不備である。
+      // 500 になること自体が、DB に触れるのが認証の**あと**であることの印でもある。
+      const { app } = composedApp(envWithoutHyperdrive);
+
+      const response = await app.request(leavePath, {
+        method: 'POST',
         headers: bearerHeaders(await accessTokenOf(validClaims())),
       });
 

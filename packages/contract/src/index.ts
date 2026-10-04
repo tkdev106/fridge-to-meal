@@ -9,6 +9,8 @@
 
 export type { ErrorResponseDto } from './error.js';
 
+export type { HouseholdMemberCountOutput } from './household.js';
+
 export type { ListIngredientNamesOutput } from './ingredient.js';
 
 export type {

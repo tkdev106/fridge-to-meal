@@ -17,7 +17,13 @@ import type {
   FetchJwks,
 } from './contexts/identity/infrastructure/HouseholdAuthenticatorImpl.js';
 import { HouseholdAuthenticatorImpl } from './contexts/identity/infrastructure/HouseholdAuthenticatorImpl.js';
+import type { HouseholdRoutesDeps } from './contexts/identity/api/HouseholdRoutes.js';
+import { createHouseholdRoutes } from './contexts/identity/api/HouseholdRoutes.js';
+import { HouseholdLeaverImpl } from './contexts/identity/infrastructure/HouseholdLeaverImpl.js';
+import { HouseholdMemberCounterImpl } from './contexts/identity/infrastructure/HouseholdMemberCounterImpl.js';
+import { countHouseholdMembers } from './contexts/identity/usecase/CountHouseholdMembers.js';
 import { identifyHousehold } from './contexts/identity/usecase/IdentifyHousehold.js';
+import { leaveHousehold } from './contexts/identity/usecase/LeaveHousehold.js';
 import type { CookingRecordRoutesDeps } from './contexts/meal/api/CookingRecordRoutes.js';
 import { createCookingRecordRoutes } from './contexts/meal/api/CookingRecordRoutes.js';
 import type { HouseholdDataRoutesDeps } from './contexts/meal/api/HouseholdDataRoutes.js';
@@ -113,7 +119,8 @@ export type AppDependencies = Parameters<typeof createStockItemRoutes>[0] &
   CookingRecordRoutesDeps &
   MealRoutesDeps &
   MealListRoutesDeps &
-  HouseholdDataRoutesDeps;
+  HouseholdDataRoutesDeps &
+  HouseholdRoutesDeps;
 
 /** 差し替えられる出口。既定は実行環境の `fetch`。テストは `FixedFetchJwks` を渡す。 */
 export type CompositionPorts = {
@@ -289,6 +296,9 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
     // 投げたら巻き戻しで1行も消えない（規則8）。生成器・採番・`now` は渡さない。
     deleteHouseholdData: transactionPerRequest(env, (tx) =>
       deleteHouseholdData({
+        countHouseholdMembers: countHouseholdMembers({
+          householdMemberCounter: new HouseholdMemberCounterImpl(tx),
+        }),
         deleteHouseholdStockItems: deleteHouseholdStockItems({
           stockItemRepository: new StockItemRepositoryImpl(tx),
         }),
@@ -298,6 +308,12 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
         mealRepository: new MealRepositoryImpl(tx),
         suggestionRepository: new SuggestionRepositoryImpl(tx),
       }),
+    ),
+    countHouseholdMembers: transactionPerRequest(env, (tx) =>
+      countHouseholdMembers({ householdMemberCounter: new HouseholdMemberCounterImpl(tx) }),
+    ),
+    leaveHousehold: transactionPerRequest(env, (tx) =>
+      leaveHousehold({ householdLeaver: new HouseholdLeaverImpl(tx) }),
     ),
     now,
   };
@@ -382,6 +398,7 @@ export function createApp(deps: AppDependencies): Hono {
   // `GET /meals` は `GET /meals/:id` と形が違い、食い合わない（B-54a）。
   app.route('/', createMealListRoutes(deps));
   app.route('/', createHouseholdDataRoutes(deps));
+  app.route('/', createHouseholdRoutes(deps));
 
   return app;
 }
