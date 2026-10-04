@@ -17,10 +17,12 @@
  *   どうかの検めは画面である**（設計 規則6）— 一覧の台本の2件目が出れば取り直している
  * - **件数の断定** … `listCount` を観るのは「取りに行かないこと」の1件だけ（同 規則6）
  * - **操作** … 帯（`navigation`）の外の `button` を**文書順の位置**で引き、**先に件数を確かめる**
- *   （帯には「設定」の `button` が常にある。B-60 規則4）
+ *   （帯には「設定」の `button` が常にある。B-60 規則4）。**設定画面と登録・編集の画面の操作は
+ *   名前で引く** — 原本から取った文言で仮ではなく（ADR-074 決定1）、帯や操作が増えると位置が崩れる
+ *   （B-65b / B-76 規則1）
  *
  * **`vi.fn()` で呼び出し回数を数えない**（`docs/testing.md` 2章 / 設計 規則5）。差し替えは
- * `FixedSession` と `FixedStockItemRequests` である。**素で描く**（`<StrictMode>` を被せない。
+ * `FixedSession`・`FixedStockItemRequests` をはじめとする記憶上の実装（`support/`）である。**素で描く**（`<StrictMode>` を被せない。
  * 設計 規則13）。
  */
 
@@ -45,6 +47,9 @@ import { FixedIngredientNameRequests } from './support/server/FixedIngredientNam
 import type { FixedIngredientNameRequestsOptions } from './support/server/FixedIngredientNameRequests.js';
 import { FixedHouseholdDataRequests } from './support/server/FixedHouseholdDataRequests.js';
 import type { FixedHouseholdDataRequestsOptions } from './support/server/FixedHouseholdDataRequests.js';
+import { FixedHouseholdRequests } from './support/server/FixedHouseholdRequests.js';
+import type { FixedHouseholdRequestsOptions } from './support/server/FixedHouseholdRequests.js';
+import { FixedClipboardWriter } from './support/clipboard/FixedClipboardWriter.js';
 import { FixedConnectivity } from './support/connectivity/FixedConnectivity.js';
 import { FixedBackNavigation } from './support/backNavigation/FixedBackNavigation.js';
 import type { FixedConnectivityOptions } from './support/connectivity/FixedConnectivity.js';
@@ -76,6 +81,12 @@ function loaded(...stockItems: readonly StockItemDto[]): StockItemsOutcome {
   return { outcome: 'loaded', stockItems };
 }
 
+/** 冷蔵庫の共有（B-76）の台本と、招待リンクの基点。**末尾の1つにまとめて渡す。** */
+type SharingRenderOptions = {
+  readonly household?: FixedHouseholdRequestsOptions;
+  readonly webOrigin?: string;
+};
+
 function renderApp(
   sessionOptions: FixedSessionOptions = {},
   requestOptions: FixedStockItemRequestsOptions = {},
@@ -85,6 +96,7 @@ function renderApp(
   householdDataOptions: FixedHouseholdDataRequestsOptions = {},
   connectivityOptions: FixedConnectivityOptions = {},
   backNavigation?: FixedBackNavigation,
+  sharingOptions: SharingRenderOptions = {},
 ) {
   const session = new FixedSession(sessionOptions);
   const requests = new FixedStockItemRequests(requestOptions);
@@ -116,6 +128,17 @@ function renderApp(
   // **既定は接続している状態**（B-70）。接続が本題でない観点は、これまでどおり何も止まらない。
   const connectivity = new FixedConnectivity(connectivityOptions);
 
+  // **人数の既定は「1人と取れた」を配る**（B-76 規則12）。門は設定を開くたびに取りに行くので、
+  // 共有が本題でない観点でも台本が1つ要る。1人なら抜ける操作は出ない（規則3）。招待と抜けるは
+  // 押されなければ送られないので、**既定は台本を持たない**（呼ばれたら落ちる）。
+  const household = new FixedHouseholdRequests({
+    memberCount: [{ outcome: 'loaded', memberCount: 1 }],
+    ...sharingOptions.household,
+  });
+
+  // 写す継ぎ目。**既定は台本を持たない**（`コピー` が押されなければ呼ばれない。規則5）。
+  const clipboard = new FixedClipboardWriter();
+
   const app = (
     <App
       session={session}
@@ -131,6 +154,11 @@ function renderApp(
       listMeals={meals.listMeals}
       deleteHouseholdData={householdData.deleteHouseholdData}
       connectivity={connectivity}
+      showHouseholdMemberCount={household.showHouseholdMemberCount}
+      createHouseholdInvitation={household.createHouseholdInvitation}
+      leaveHousehold={household.leaveHousehold}
+      clipboard={clipboard}
+      webOrigin={sharingOptions.webOrigin ?? 'https://fridge.example'}
     />
   );
 
@@ -144,7 +172,17 @@ function renderApp(
     ),
   );
 
-  return { session, requests, suggestions, ingredientNames, meals, householdData, connectivity };
+  return {
+    session,
+    requests,
+    suggestions,
+    ingredientNames,
+    meals,
+    householdData,
+    connectivity,
+    household,
+    clipboard,
+  };
 }
 
 /**
@@ -312,6 +350,39 @@ function openRegisterOperation(): HTMLElement {
  */
 function namedOperation(name: string): HTMLElement {
   return screen.getByRole('button', { name });
+}
+
+/**
+ * 設定画面の操作の名前（B-67 / ADR-074 決定1。原本から取った文言で仮ではない）。**設定画面の操作は
+ * 名前で引く** — 帯 `冷蔵庫の共有` が `招待リンクを作る`（人数によっては `この冷蔵庫から抜ける` も）を
+ * 足すので（B-76 規則1・3・4）、数と位置では引けない。
+ */
+const SETTINGS_CLOSE = '戻る';
+const SETTINGS_SIGN_OUT = 'ログアウト';
+const SETTINGS_DELETE = 'アカウントとデータを削除';
+const SETTINGS_CONFIRM_DELETE = '削除する';
+
+/** その名前の操作がいくつ出ているか。 */
+function operationCount(name: string): number {
+  return screen.queryAllByRole('button', { name }).length;
+}
+
+/** 設定画面が出ていて、削除の確認は出ていない（B-56f 規則11）。 */
+function expectSettingsBeforeConfirming(): void {
+  expect([
+    operationCount(SETTINGS_SIGN_OUT),
+    operationCount(SETTINGS_DELETE),
+    operationCount(SETTINGS_CONFIRM_DELETE),
+  ]).toEqual([1, 1, 0]);
+}
+
+/** 設定画面が出ていて、削除の確認が出ている（B-56f 規則11 — 削除の操作が確かめる操作に置き換わる）。 */
+function expectSettingsWhileConfirming(): void {
+  expect([
+    operationCount(SETTINGS_SIGN_OUT),
+    operationCount(SETTINGS_DELETE),
+    operationCount(SETTINGS_CONFIRM_DELETE),
+  ]).toEqual([1, 0, 1]);
 }
 
 /** 保存せずに閉じる操作（アイコンの `戻る`。B-65 規則2）。 */
@@ -2676,14 +2747,6 @@ describe('門 App の設定', () => {
   /** 献立詳細に出る名称（カードの名称と見分ける）。 */
   const DETAIL = '詳細の献立';
 
-  /**
-   * 確認の前に設定画面に出ている操作は3つ（閉じる／ログアウト／アカウントとデータの削除）である
-   * （B-56f 規則11。B-56c 規則6 の「2つ」を置き換えた）。
-   */
-  const SETTINGS_OPERATION_COUNT = 3;
-  /** 確認が出ている間の操作は4つ（閉じる／ログアウト／確かめる／やめる）である（B-56f 規則11）。 */
-  const CONFIRMING_OPERATION_COUNT = 4;
-
   /** 以前見た献立1件。**日時はどれも同じ日に置く** — 日の見出しはここの本題でない（ADR-083 決定2）。 */
   function seenOf(mealId: string, title: string): SeenMealSummaryOutput {
     return { mealId, title, ingredientCount: 2, generatedAt: '2026-10-03T03:00:00.000Z' };
@@ -2739,26 +2802,26 @@ describe('門 App の設定', () => {
   }
 
   function closeSettingsOperation(): HTMLElement {
-    return operationAt(0, SETTINGS_OPERATION_COUNT);
+    return namedOperation(SETTINGS_CLOSE);
   }
 
   function signOutOperation(): HTMLElement {
-    return operationAt(1, SETTINGS_OPERATION_COUNT);
+    return namedOperation(SETTINGS_SIGN_OUT);
   }
 
-  /** 確認の前の3番目の操作（アカウントとデータの削除。B-56f 規則11）。 */
+  /** 確認の前のアカウントとデータの削除（B-56f 規則11）。 */
   function deleteOperation(): HTMLElement {
-    return operationAt(2, SETTINGS_OPERATION_COUNT);
+    return namedOperation(SETTINGS_DELETE);
   }
 
-  /** 確認が出ている間の3番目の操作（確かめる。B-56f 規則11）。 */
+  /** 確認が出ている間の確かめる操作（B-56f 規則11）。 */
   function confirmDeletionOperation(): HTMLElement {
-    return operationAt(2, CONFIRMING_OPERATION_COUNT);
+    return namedOperation(SETTINGS_CONFIRM_DELETE);
   }
 
-  /** 確認が出ている間の先頭の操作（閉じる。B-56f 規則11）。 */
+  /** 確認が出ている間の閉じる操作（B-56f 規則11）。 */
   function closeWhileConfirmingOperation(): HTMLElement {
-    return operationAt(0, CONFIRMING_OPERATION_COUNT);
+    return namedOperation(SETTINGS_CLOSE);
   }
 
   /** 押されていない側の列へ切り替える。**先に1つだけであることを確かめる。** */
@@ -2786,7 +2849,7 @@ describe('門 App の設定', () => {
     fireEvent.click(navigationSettings());
 
     expect(screen.queryByText(SUGGESTED)).toBeNull();
-    expect(contentOperations()).toHaveLength(SETTINGS_OPERATION_COUNT);
+    expectSettingsBeforeConfirming();
   });
 
   it.each<[string, () => Promise<void>, string]>([
@@ -2829,7 +2892,7 @@ describe('門 App の設定', () => {
       fireEvent.click(headerSettings());
 
       expect(screen.queryByText(shownInTab)).toBeNull();
-      expect(contentOperations()).toHaveLength(SETTINGS_OPERATION_COUNT);
+      expectSettingsBeforeConfirming();
     },
   );
 
@@ -3023,7 +3086,7 @@ describe('門 App の設定', () => {
     await openSettingsFromHistory();
     fireEvent.click(navigationSettings());
 
-    expect(contentOperations()).toHaveLength(SETTINGS_OPERATION_COUNT);
+    expectSettingsBeforeConfirming();
   });
 
   it('サインアウトして入り直すと、設定は閉じて履歴の行が出る', async () => {
@@ -3063,7 +3126,7 @@ describe('門 App の設定', () => {
       meals.settle();
     });
 
-    expect(contentOperations()).toHaveLength(SETTINGS_OPERATION_COUNT);
+    expectSettingsBeforeConfirming();
   });
 
   it('設定を開いている間も、下タブ3つは出ている', async () => {
@@ -3147,7 +3210,7 @@ describe('門 App の設定', () => {
     await act(async () => {});
 
     expect(tabs()).toHaveLength(3);
-    expect(contentOperations()).toHaveLength(CONFIRMING_OPERATION_COUNT);
+    expectSettingsWhileConfirming();
     expect(screen.queryAllByRole('status')).toHaveLength(1);
   });
 
@@ -3169,7 +3232,7 @@ describe('門 App の設定', () => {
     await screen.findByText(NIKUJAGA);
     fireEvent.click(navigationSettings());
 
-    expect(contentOperations()).toHaveLength(SETTINGS_OPERATION_COUNT);
+    expectSettingsBeforeConfirming();
     expect(householdData.deleteCount).toBe(0);
   });
 
@@ -3240,7 +3303,7 @@ describe('門 App の設定', () => {
     openPantry();
 
     // B-60b 規則1 / B-56f 規則6: 押しても設定は閉じない（確認が出たままの操作の数で観る）。
-    expect(contentOperations()).toHaveLength(CONFIRMING_OPERATION_COUNT);
+    expectSettingsWhileConfirming();
   });
 
   it('削除が失敗した回、送っている間にタブを押しても設定に留まり、失敗の案内が出る', async () => {
@@ -3261,7 +3324,7 @@ describe('門 App の設定', () => {
     // B-60b 規則1・2 / B-56f 規則8 / `docs/screen-design.md` 8章: 失敗した回は設定画面に留まり、
     // 原因を断定しない案内を出す。**これが失われていたのが B-60b の不具合の本体である。**
     expect(screen.queryAllByRole('status')).toHaveLength(1);
-    expect(contentOperations()).toHaveLength(CONFIRMING_OPERATION_COUNT);
+    expectSettingsWhileConfirming();
   });
 
   it('削除が失敗したあとは、帯のタブがまた押せる', async () => {
@@ -3514,11 +3577,6 @@ async function openOfflineCard(): Promise<void> {
 
 /** 詳細に出ている操作は2つ（閉じる／これを作った）である（B-53）。 */
 const OFFLINE_DETAIL_OPERATION_COUNT = 2;
-
-/** 確認の前に設定画面に出ている操作は3つ（閉じる／ログアウト／アカウントとデータの削除）。 */
-const OFFLINE_SETTINGS_OPERATION_COUNT = 3;
-/** 確認が出ている間の操作は4つ（閉じる／ログアウト／確かめる／やめる）。 */
-const OFFLINE_CONFIRMING_OPERATION_COUNT = 4;
 
 /** 履歴タブで行が出るのを待ってから、帯の「設定」を押す（B-60 規則7）。 */
 async function openOfflineSettings(): Promise<void> {
@@ -3811,7 +3869,7 @@ describe('門 App の接続が切れている間も止めない閲覧と遷移',
     await openOfflineSettings();
 
     // 規則6: 設定を開くのは遷移である。
-    expect(contentOperations()).toHaveLength(OFFLINE_SETTINGS_OPERATION_COUNT);
+    expectSettingsBeforeConfirming();
     expect(screen.queryByText(OFFLINE_NIKUJAGA)).toBeNull();
   });
 
@@ -3822,7 +3880,7 @@ describe('門 App の接続が切れている間も止めない閲覧と遷移',
     });
 
     await openOfflineSettings();
-    fireEvent.click(operationAt(0, OFFLINE_SETTINGS_OPERATION_COUNT));
+    fireEvent.click(namedOperation(SETTINGS_CLOSE));
 
     // 規則6。
     expect(await screen.findByText(OFFLINE_NIKUJAGA)).not.toBeNull();
@@ -3901,9 +3959,9 @@ describe('門 App の接続が切れている間の在庫と設定の操作', ()
     });
 
     await openOfflineSettings();
-    fireEvent.click(operationAt(2, OFFLINE_SETTINGS_OPERATION_COUNT));
+    fireEvent.click(namedOperation(SETTINGS_DELETE));
     emitConnectivity(connectivity, 'offline');
-    const confirm = operationAt(2, OFFLINE_CONFIRMING_OPERATION_COUNT) as HTMLButtonElement;
+    const confirm = namedOperation(SETTINGS_CONFIRM_DELETE) as HTMLButtonElement;
     fireEvent.click(confirm);
     await act(async () => {});
 
@@ -4067,5 +4125,340 @@ describe('門 App の端末の戻る', () => {
 
     // 規則2 / B-60 規則9: 設定 → 開く前のタブ（詳細を含む）。
     expect(await screen.findByText(DETAIL)).not.toBeNull();
+  });
+});
+
+/**
+ * 冷蔵庫の共有の配線（B-76 設計 6章 規則12〜14 / FR-44 / FR-46 / FR-47）。
+ *
+ * 帯の見せ方（人数の行・招待・抜けるの確認）は `SettingsScreen.test.tsx` が押さえており、ここで
+ * 観るのは**門が持つ判断**だけである — 人数を取りに行く条件と捨てる条件、抜けたあとに取り直すもの、
+ * 招待リンクの基点を渡すこと。差し替えは `FixedHouseholdRequests` で、文言は `docs/design/` から
+ * 取ったもの（ADR-074 決定1）と**テストが渡した人数・トークン**である。
+ */
+describe('門 App の冷蔵庫の共有', () => {
+  const NIKUJAGA = '肉じゃが';
+  const GINGER_PORK = '豚こま肉と白菜の生姜焼き';
+  /** 献立タブのカードに出る名称。 */
+  const SUGGESTED = '提案の献立';
+  /** 取り直したことを観るための、提案の2件目の台本に置く名称。 */
+  const ANOTHER_SUGGESTED = '別の提案の献立';
+  /** 献立詳細に出る名称（カードの名称と見分ける）。 */
+  const DETAIL = '詳細の献立';
+
+  /** 抜ける操作と、確認の中の確定（B-76 6章 文言）。 */
+  const LEAVE = 'この冷蔵庫から抜ける';
+  const CONFIRM_LEAVE = '抜ける';
+  /** 招待リンクを作る操作（同 文言）。 */
+  const CREATE_INVITATION = '招待リンクを作る';
+
+  const mealA: SeenMealSummaryOutput = {
+    mealId: 'meal-a',
+    title: NIKUJAGA,
+    ingredientCount: 2,
+    generatedAt: '2026-10-03T03:00:00.000Z',
+  };
+  const mealB: SeenMealSummaryOutput = {
+    mealId: 'meal-b',
+    title: GINGER_PORK,
+    ingredientCount: 2,
+    generatedAt: '2026-10-03T03:00:00.000Z',
+  };
+
+  type SharingOptions = SharingRenderOptions & {
+    readonly requests?: FixedStockItemRequestsOptions;
+    readonly suggestions?: FixedSuggestionRequestsOptions;
+    readonly meals?: FixedMealRequestsOptions;
+  };
+
+  /** サインイン済みで描く。**本題でない台本は既定に寄せ、共有の台本だけを渡す。** */
+  function renderSharing(options: SharingOptions = {}) {
+    return renderApp(
+      { initialState: 'signedIn' },
+      options.requests ?? { list: [loaded(carrot)] },
+      options.suggestions ?? {},
+      {},
+      options.meals ?? {},
+      {},
+      {},
+      undefined,
+      options,
+    );
+  }
+
+  /** 帯の「設定」を押す（B-60 規則7）。 */
+  function openSettings(): void {
+    fireEvent.click(navigationSettings());
+  }
+
+  /** 設定画面の「戻る」を押す。 */
+  function closeSettings(): void {
+    fireEvent.click(namedOperation(SETTINGS_CLOSE));
+  }
+
+  /** 押したあとや保留を解いたあとに届く更新を `act` の中で流す。 */
+  async function flush(): Promise<void> {
+    await act(async () => {});
+  }
+
+  /** 共有の口の保留を解く（先行 `settleHouseholdData`）。 */
+  async function settleHousehold(household: FixedHouseholdRequests): Promise<void> {
+    await act(async () => {
+      household.settle();
+    });
+  }
+
+  /** 抜ける操作が出るのを待って押し、確認の「抜ける」を押して結末を流す（B-76 規則8）。 */
+  async function confirmLeave(): Promise<void> {
+    fireEvent.click(await screen.findByRole('button', { name: LEAVE }));
+    fireEvent.click(namedOperation(CONFIRM_LEAVE));
+    await flush();
+  }
+
+  it('設定を開くと、取れた人数が出る', async () => {
+    renderSharing({ household: { memberCount: [{ outcome: 'loaded', memberCount: 2 }] } });
+
+    openSettings();
+
+    // 規則12 / FR-47: 門は設定を開いた回に人数を取りに行き、取れた数を設定画面へ渡す。
+    expect(await screen.findByText('2人')).not.toBeNull();
+  });
+
+  it('設定を閉じて開き直すと人数を取り直し、新しい人数が出る', async () => {
+    renderSharing({
+      household: {
+        memberCount: [
+          { outcome: 'loaded', memberCount: 2 },
+          { outcome: 'loaded', memberCount: 3 },
+        ],
+      },
+    });
+
+    openSettings();
+    await screen.findByText('2人');
+    closeSettings();
+    openSettings();
+
+    // 規則12: 設定を開くたびに1回取りに行く。
+    expect(await screen.findByText('3人')).not.toBeNull();
+  });
+
+  it('開き直して取り直している間は、前の人数を出さない', async () => {
+    renderSharing({
+      household: {
+        memberCount: [
+          { outcome: 'loaded', memberCount: 2 },
+          { heldUntilSettled: { outcome: 'loaded', memberCount: 3 } },
+        ],
+      },
+    });
+
+    openSettings();
+    await screen.findByText('2人');
+    closeSettings();
+    openSettings();
+    await flush();
+
+    // 規則12 / 規則2: 開くたびに `loading` に戻し、取れるまで数を出さない。
+    expect([screen.queryByText('2人'), screen.queryByText('3人')]).toEqual([null, null]);
+  });
+
+  it('閉じる前に届かなかった人数は、開き直したあとに届いても出さない', async () => {
+    const { household } = renderSharing({
+      household: {
+        memberCount: [
+          { heldUntilSettled: { outcome: 'loaded', memberCount: 5 } },
+          { outcome: 'loaded', memberCount: 2 },
+        ],
+      },
+    });
+
+    openSettings();
+    closeSettings();
+    openSettings();
+    await screen.findByText('2人');
+    await settleHousehold(household);
+
+    // 規則12（先行 B-22 規則10 の `active`）: 閉じる前に届かなかった結末は捨てる。
+    expect([screen.queryAllByText('5人').length, screen.queryAllByText('2人').length]).toEqual([
+      0, 1,
+    ]);
+  });
+
+  it('設定を開いたままサインアウトして入り直しても、人数を取りに行き直さない', async () => {
+    const { session, household } = renderSharing({
+      household: { memberCount: [{ outcome: 'loaded', memberCount: 2 }] },
+    });
+
+    openSettings();
+    await flush();
+    emit(session, 'signedOut');
+    emit(session, 'signedIn');
+    await flush();
+
+    // 規則12 / B-56c 規則10: サインアウトで設定は閉じ、入り直しても開いていないので取りに行かない。
+    // **起きないことは回数でしか観られない**（`docs/testing.md` 2章）。
+    expect(household.memberCountRequests).toBe(1);
+  });
+
+  it('抜けられなかった回も人数を取り直し、1人と分かれば抜ける操作が消える', async () => {
+    renderSharing({
+      household: {
+        memberCount: [
+          { outcome: 'loaded', memberCount: 2 },
+          { outcome: 'loaded', memberCount: 1 },
+        ],
+        leave: [{ outcome: 'failed' }],
+      },
+    });
+
+    openSettings();
+    await confirmLeave();
+    await screen.findByText('1人');
+
+    // 規則13 / 規則3 / FR-46: 結末に関わらず取り直し、1人なら抜ける操作を出さない（409 の回）。
+    expect(operationCount(LEAVE)).toBe(0);
+  });
+
+  it('抜けた回は人数を取り直し、設定画面に新しい人数が出る', async () => {
+    renderSharing({
+      household: {
+        memberCount: [
+          { outcome: 'loaded', memberCount: 2 },
+          { outcome: 'loaded', memberCount: 1 },
+        ],
+        leave: [{ outcome: 'left' }],
+      },
+    });
+
+    openSettings();
+    await confirmLeave();
+
+    // 規則13 / 規則14: 抜けても設定は開いたままで、取り直した人数が出る。
+    expect(await screen.findByText('1人')).not.toBeNull();
+  });
+
+  it('抜けた回は在庫一覧を取り直し、在庫タブに新しい在庫品が出る', async () => {
+    renderSharing({
+      requests: { list: [loaded(carrot), loaded(chineseCabbage)] },
+      household: {
+        memberCount: [{ outcome: 'loaded', memberCount: 2 }],
+        leave: [{ outcome: 'left' }],
+      },
+    });
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    openSettings();
+    await confirmLeave();
+    openPantry();
+
+    // 規則14 / FR-46「空の世帯から始まる」: 抜けた先の世帯の在庫を取り直す。
+    expect(await screen.findByText(chineseCabbage.name)).not.toBeNull();
+    expect(screen.queryByText(carrot.name)).toBeNull();
+  });
+
+  it('抜けた回は保存済みの提案を取り直し、献立タブに新しい提案が出る', async () => {
+    renderSharing({
+      suggestions: {
+        show: [
+          offlineSuggestedOne('meal-s', SUGGESTED),
+          offlineSuggestedOne('meal-t', ANOTHER_SUGGESTED),
+        ],
+      },
+      household: {
+        memberCount: [{ outcome: 'loaded', memberCount: 2 }],
+        leave: [{ outcome: 'left' }],
+      },
+    });
+
+    await screen.findByText(SUGGESTED);
+    openSettings();
+    await confirmLeave();
+    fireEvent.click(mealsTab());
+
+    // 規則14: 提案も `reloadCount` に載せて取り直す。
+    expect(await screen.findByText(ANOTHER_SUGGESTED)).not.toBeNull();
+    expect(screen.queryByText(SUGGESTED)).toBeNull();
+  });
+
+  it('抜けた回は履歴を取り直し、履歴タブに新しい行が出る', async () => {
+    renderSharing({
+      meals: { list: [offlineListed([mealA]), offlineListed([mealB])] },
+      household: {
+        memberCount: [{ outcome: 'loaded', memberCount: 2 }],
+        leave: [{ outcome: 'left' }],
+      },
+    });
+
+    fireEvent.click(historyTab());
+    await screen.findByText(NIKUJAGA);
+    openSettings();
+    await confirmLeave();
+    fireEvent.click(historyTab());
+
+    // 規則14: 履歴も `mealListReloadCount` を増やして取り直す。
+    expect(await screen.findByText(GINGER_PORK)).not.toBeNull();
+    expect(screen.queryByText(NIKUJAGA)).toBeNull();
+  });
+
+  it('献立詳細を開いたまま抜けると、詳細は閉じてカードの一覧に戻る', async () => {
+    renderSharing({
+      suggestions: { show: [offlineSuggestedOne('meal-s', SUGGESTED)] },
+      meals: { show: [offlineShownMeal('meal-s', DETAIL)] },
+      household: {
+        memberCount: [{ outcome: 'loaded', memberCount: 2 }],
+        leave: [{ outcome: 'left' }],
+      },
+    });
+
+    const card = (await screen.findAllByRole('listitem'))[0];
+    if (card === undefined) throw new Error('カードが1枚も無い');
+    fireEvent.click(within(card).getByRole('button'));
+    await screen.findByText(DETAIL);
+    openSettings();
+    await confirmLeave();
+    fireEvent.click(mealsTab());
+
+    // 規則14 / NFR-09: 開いている献立は抜ける前の世帯のものであり、門が閉じる。
+    expect(await screen.findByText(SUGGESTED)).not.toBeNull();
+    expect(screen.queryByText(DETAIL)).toBeNull();
+  });
+
+  it('抜けられなかった回は、在庫一覧を取り直さない', async () => {
+    renderSharing({
+      requests: { list: [loaded(carrot), loaded(chineseCabbage)] },
+      household: {
+        memberCount: [{ outcome: 'loaded', memberCount: 2 }],
+        leave: [{ outcome: 'failed' }],
+      },
+    });
+
+    openPantry();
+    await screen.findByText(carrot.name);
+    openSettings();
+    await confirmLeave();
+    openPantry();
+    await flush();
+
+    // 規則14: 取り直すのは `left` の回だけ。抜けられなければ世帯は変わっていない。
+    expect([
+      screen.queryAllByText(carrot.name).length,
+      screen.queryAllByText(chineseCabbage.name).length,
+    ]).toEqual([1, 0]);
+  });
+
+  it('設定で招待リンクを作ると、門に渡した origin とトークンのリンクが出る', async () => {
+    renderSharing({
+      household: { create: [{ outcome: 'created', token: 'tok' }] },
+      webOrigin: 'https://example.test',
+    });
+
+    openSettings();
+    fireEvent.click(await screen.findByRole('button', { name: CREATE_INVITATION }));
+    await flush();
+
+    // 規則6 / ADR-087 決定4: 基点は門が `main.tsx` から受け取って設定画面へ渡す。
+    expect(await screen.findByText('https://example.test/?invite=tok')).not.toBeNull();
   });
 });

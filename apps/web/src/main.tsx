@@ -19,6 +19,12 @@ import { listIngredientNames } from './server/IngredientNameRequests.js';
 import { requestNewMeals, showLatestSuggestion } from './server/SuggestionRequests.js';
 import { addCookingRecord, listMeals, showMeal } from './server/MealRequests.js';
 import { deleteHouseholdData } from './server/HouseholdDataRequests.js';
+import {
+  createHouseholdInvitation,
+  leaveHousehold,
+  showHouseholdMemberCount,
+} from './server/HouseholdRequests.js';
+import { ClipboardWriterImpl } from './clipboard/ClipboardWriterImpl.js';
 
 // 継ぎ目の実装を `new` するのはここだけ（`SessionImpl.ts` 規則2 / B-35 設計 6章 規則3）。
 // 設定が欠けていれば `sessionConfigOf` の `Error` を**包まずそのまま外へ**出す（規則12 / ADR-045）
@@ -65,6 +71,14 @@ const requestMealList = listMeals(stockItemRequests);
 // 世帯のデータを消す口も**同じ基点・同じトークンの組**で作る（B-56f 設計 規則10）。
 // `HouseholdDataRequestsDeps` も同じ3項目なので、そのまま渡せる。
 const requestHouseholdDataDeletion = deleteHouseholdData(stockItemRequests);
+// 冷蔵庫の共有の3つの口も**同じ基点・同じトークンの組**で作る（B-76 設計 5章）。
+// `HouseholdRequestsDeps` も同じ3項目なので、そのまま渡せる。
+const requestHouseholdMemberCount = showHouseholdMemberCount(stockItemRequests);
+const sendHouseholdInvitation = createHouseholdInvitation(stockItemRequests);
+const sendHouseholdLeave = leaveHousehold(stockItemRequests);
+
+// 文字を写す継ぎ目を `new` するのもここだけ（B-76 設計 4章）。`navigator` は構造型で渡す。
+const clipboard = new ClipboardWriterImpl(navigator);
 
 // 接続状態の継ぎ目を `new` するのもここだけ（B-70 設計 4章）。窓は構造型で渡す（設計 5章）。
 const connectivity = new ConnectivityImpl(window);
@@ -93,6 +107,12 @@ createRoot(container).render(
         listMeals={requestMealList}
         deleteHouseholdData={requestHouseholdDataDeletion}
         connectivity={connectivity}
+        showHouseholdMemberCount={requestHouseholdMemberCount}
+        createHouseholdInvitation={sendHouseholdInvitation}
+        leaveHousehold={sendHouseholdLeave}
+        clipboard={clipboard}
+        // 招待リンクの基点（B-76 規則6）。時計や乱数と同じく、環境を読むのはここだけである。
+        webOrigin={location.origin}
       />
     </BackNavigationProvider>
   </StrictMode>,
