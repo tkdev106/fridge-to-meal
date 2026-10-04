@@ -74,7 +74,7 @@ describe('ローカル Postgres の枠', () => {
   });
 
   eachFile('%s は1トランザクションのまま残る', (_fileName, sql) => {
-    // 規則1 / ADR-028: 適用は sql.unsafe(全文).simple() で流す。begin; / commit; を
+    // 規則1 / ADR-029 決定2: 適用は sql.unsafe(全文).simple() で流す。begin; / commit; を
     // 落とすと、表と RLS が別トランザクションに割れる窓がふたたび開く。
     expect(sql).toMatch(/^begin;$/m);
     expect(sql).toMatch(/^commit;$/m);

@@ -80,7 +80,7 @@ export class StockItemRepositoryImpl implements StockItemRepository {
    *
    * 上書きするのは `name` / `ingredient_id` / `amount` / `expiry_date` / `use_for_meals` の5列すべてで、
    * `null` もそのまま書く（分量や期限を**消す**更新が FR-05 の主役）。
-   * **`household_id` は上書きしない** — 世帯は移らない（設計 規則8 / ADR-028）。
+   * **`household_id` は上書きしない** — 世帯は移らない（設計 規則8 / C-9）。
    *
    * 書き込みが DB に拒まれたら、**握りつぶさずそのまま伝える**（設計 7章）。他世帯の
    * 在庫品と id が衝突する保存は、RLS が更新の対象にできず失敗する（設計 規則13）。

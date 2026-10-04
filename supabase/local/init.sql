@@ -18,7 +18,7 @@ grant anon, authenticated to authenticator;
 create schema auth;
 grant usage on schema auth to anon, authenticated, authenticator;
 
--- 世帯 ID の出どころ。ポリシーの述語 `household_id = (select auth.uid())` はこれを読む。
+-- 利用者 ID の出どころ。世帯を決める関数 `private.current_household_id()` がこれを読む（ADR-087 決定2）。
 --
 -- **`current_setting` の第2引数 true（missing_ok）を落とさない。** 落とすと、クレームを
 -- 張らない問い合わせが「0行」ではなく**例外**になり、ADR-029 が理由に挙げた失敗の向きが

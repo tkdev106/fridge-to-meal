@@ -102,7 +102,7 @@ expect(mealGenerator.callCount).toBe(0); // C-15: 再利用が成立したら生
 
 **RLS のポリシーには、振る舞いからは観察できないものがある。** `select` のポリシーが先に効くため、
 `update` / `delete` が `where` で行を指す以上、その行はまず `select` を通らないと走査に載らない。
-4本の述語が `household_id = (select auth.uid())` で揃っている以上、**「`select` は通るが `update` の
+4本の述語が `household_id = (select private.current_household_id())` で揃っている以上、**「`select` は通るが `update` の
 `using` で弾かれる」入力が存在しない。** 実際、`stock_items` で `update` の `using` / `with check` と
 `delete` の `using` をそれぞれ `true` に緩めても、**振る舞いのテストは1件も落ちなかった**（2026-09-10 の
 変異テスト。B-07b）。これらは**多重防御であって、アプリの入口からは効きが見えない。**

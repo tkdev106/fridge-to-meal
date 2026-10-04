@@ -214,7 +214,7 @@ describe('調理記録の経路 CookingRecordRoutes', () => {
     });
 
     it('クエリの householdId を見ず、認証から定まった世帯だけを渡す', async () => {
-      // C-9 / 規則11 / ADR-028: 世帯を利用者の入力から受け取らない。
+      // C-9 / 規則11 / ADR-087 決定2: 世帯を利用者の入力から受け取らない。
       const { routes, addCookingRecord } = setUp();
 
       await routes.request(

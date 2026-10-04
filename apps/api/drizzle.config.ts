@@ -16,6 +16,7 @@ export default defineConfig({
   schema: [
     './src/contexts/pantry/infrastructure/db/schema.ts',
     './src/contexts/meal/infrastructure/db/schema.ts',
+    './src/contexts/identity/infrastructure/db/schema.ts',
   ],
   out: '../../supabase/migrations',
   migrations: { prefix: 'supabase' },

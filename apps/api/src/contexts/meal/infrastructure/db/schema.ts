@@ -42,8 +42,8 @@ export const meals = pgTable(
     id: uuid('id').primaryKey(),
 
     /**
-     * 既定値（`auth.uid()`）を置かない。渡し忘れを隠すうえ、共有が要件になった日には
-     * 値の意味が変わる（世帯 id ≠ 利用者 id）ため、そのとき必ず消すことになる（ADR-028）。
+     * 既定値を置かない。渡し忘れを隠すうえ、参加した利用者では世帯 id ≠ 利用者 id である
+     * （ADR-087 決定1）。
      */
     householdId: uuid('household_id').notNull(),
 

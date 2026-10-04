@@ -43,6 +43,13 @@
       "when": 1791095118038,
       "tag": "20261004062518_add_use_for_meals_to_stock_items",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791102978104,
+      "tag": "20261004083618_create_household_members",
+      "breakpoints": true
     }
   ]
 }

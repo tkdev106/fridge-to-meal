@@ -12,7 +12,7 @@ import { withTransaction } from '../support/db/WithTransaction.js';
 
 /**
  * 献立の4表に対する行レベルセキュリティの回帰（B-44 設計 規則11 / ADR-029 決定2・決定3 /
- * ADR-028 / NFR-09 / C-9）。**`pnpm test:db` でだけ走る** — `pnpm test` は
+ * ADR-087 決定2 / NFR-09 / C-9）。**`pnpm test:db` でだけ走る** — `pnpm test` は
  * `apps/api/test/db/**` を除外する。
  *
  * 繋ぐのは `authenticator` だけ。所有者（`postgres`）の接続を使うと行レベルセキュリティが
