@@ -1,6 +1,6 @@
 # apps/api のディレクトリ
 
-`CLAUDE.md` のディレクトリ構成と、`docs/adr.md` A章の依存ルールに対応する。
+`docs/architecture.md` のディレクトリ構成と、`docs/adr.md` A章の依存ルールに対応する。
 
 ```
 contexts/<ctx>/
