@@ -38,6 +38,7 @@ export function registerStockItem(deps: {
       ingredientId: ingredientIdOrNull(input.ingredientId),
       amount: amountOf(input.amount ?? null),
       expiryDate: expiryDateOf(input.expiryDate ?? null),
+      useForMeals: input.useForMeals,
     });
 
     await deps.stockItemRepository.save(householdId, stockItem);

@@ -63,6 +63,7 @@ function stockItem(props: {
   ingredientId?: string | null;
   amount?: string | null;
   expiryDate?: string | null;
+  useForMeals?: boolean;
 }): StockItemDto {
   return {
     id: props.id ?? nextStockItemId(),
@@ -70,6 +71,7 @@ function stockItem(props: {
     ingredientId: props.ingredientId ?? null,
     amount: props.amount ?? null,
     expiryDate: props.expiryDate ?? null,
+    useForMeals: props.useForMeals ?? true,
   };
 }
 
@@ -569,7 +571,7 @@ describe('献立を提案する SuggestMeals', () => {
     ]);
   });
 
-  it('献立が使わない在庫品も、在庫スナップショットに入る', async () => {
+  it('献立の材料にない在庫品も、在庫スナップショットに入る', async () => {
     // C-7 / 規則4・13: スナップショットはその時点の在庫の複製であり、使った分だけではない。
     const { suggest, suggestionRepository } = setUp({
       stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
@@ -1466,7 +1468,7 @@ describe('献立を提案する SuggestMeals', () => {
     expect(mealGenerator.receivedInput?.requiredCount).toBe(3);
   });
 
-  it('生成に渡す在庫スナップショットは、献立が使わない在庫品も含めて在庫の全件を持つ', async () => {
+  it('生成に渡す在庫スナップショットは、献立に使う在庫品の全件を持つ', async () => {
     // B-28 規則4 / ADR-037 決定1: 渡すのはその時点の在庫の複製であり、使う分だけではない。
     const { suggest, mealGenerator } = setUp({
       stockItems: [
@@ -3302,6 +3304,24 @@ describe('提案の1件が載せる充足 SuggestMeals', () => {
     expect(coveredNamesOf(output)).toEqual(['にんじん']);
   });
 
+  it('献立に使わない在庫品の名称の主材料も、提案の1件の充足では賄える材料に載る', async () => {
+    // FR-43 / 設計書 規則9: 充足は献立に使うかどうかで濾す前の在庫の全件で算出する。
+    const { suggest } = setUp({
+      stockItems: [
+        stockItem({ name: 'たまねぎ' }),
+        stockItem({ name: 'じゃがいも' }),
+        stockItem({ name: 'にんじん', useForMeals: false }),
+      ],
+      meals: [],
+      generatedMeals: [generatedMeal({ ingredients: [mainIngredient('にんじん')] })],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(coveredNamesOf(output)).toEqual(['にんじん']);
+  });
+
   it('在庫が変わっていない回も、提案の1件に現在の在庫での充足を載せる', async () => {
     // B-48a 規則4・6 / FR-21 / C-7: 短絡した回も同じ形で、現在の在庫で算出した充足を載せる。
     const { suggest } = unchangedStockItemsSetUp({
@@ -3436,5 +3456,184 @@ describe('提案の1件が載せる充足 SuggestMeals', () => {
     const missingIngredient = firstEntryOf(output).coverage.missing[0];
     if (missingIngredient === undefined) throw new Error('不足する材料が無い');
     expect(missingIngredient).not.toHaveProperty('expiryDate');
+  });
+});
+
+describe('献立に使わない在庫品を提案から外す SuggestMeals / SuggestNewMeals', () => {
+  // B-76。献立に使わない在庫品は、作れる献立の選定・在庫の下限・在庫スナップショット・
+  // 生成の入力・C-7 の比較のすべてから外す（FR-43 / ADR-086 / 設計書 規則7・8）。
+  // **どの回も生成結果と発行する献立の識別子をわざと用意してある** — 外し損ねた回が
+  // `mealGenerator.empty` ではなく、値の食い違いで落ちるようにするためである。
+
+  it('献立に使わない在庫品があって初めて作れる献立は、再利用されない', async () => {
+    // FR-43 / C-10 / 設計書 規則7: 作れるかどうかは献立に使う在庫品だけで判定する。
+    const { suggest } = setUp({
+      stockItems: [
+        stockItem({ name: 'たまねぎ' }),
+        stockItem({ name: 'じゃがいも' }),
+        stockItem({ name: 'にんじん', useForMeals: false }),
+      ],
+      meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idD],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idD]);
+  });
+
+  it('同じ名称の献立に使わない在庫品の期限は、再利用の並びに効かない', async () => {
+    // FR-43 / C-12 / 設計書 規則7: 並びの決め手になる期限も献立に使う在庫品だけから取る。
+    const { suggest } = setUp({
+      stockItems: [
+        stockItem({ name: 'にんじん', expiryDate: '2026-10-10' }),
+        stockItem({ name: 'たまねぎ', expiryDate: '2026-10-05' }),
+        stockItem({ name: 'にんじん', expiryDate: '2026-10-01', useForMeals: false }),
+      ],
+      meals: [
+        meal({ id: mealIdOf(idA), title: 'きんぴら', ingredients: [mainIngredient('にんじん')] }),
+        meal({
+          id: mealIdOf(idB),
+          title: 'オニオンスープ',
+          ingredients: [mainIngredient('たまねぎ')],
+        }),
+      ],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idD],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idB, idA]);
+  });
+
+  it('献立に使わない在庫品を除くと下限を割る日は、在庫が足りないことを名乗る結末を返す', async () => {
+    // FR-43 / prompt-design 8章 / 設計書 7章: 下限は献立に使う在庫品だけで数える。
+    const { suggest } = setUp({
+      stockItems: [
+        stockItem({ name: 'にんじん' }),
+        stockItem({ name: 'ヨーグルト', useForMeals: false }),
+      ],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(output).toEqual({ outcome: 'insufficientStockItems' });
+  });
+
+  it('生成に渡す在庫スナップショットに、献立に使わない在庫品は入らない', async () => {
+    // FR-43 / ADR-037 決定1 / 設計書 規則7: 生成の入力は献立に使う在庫品だけで組む。
+    const { suggest, mealGenerator } = setUp({
+      stockItems: [
+        stockItem({ name: 'にんじん' }),
+        stockItem({ name: 'ヨーグルト', useForMeals: false }),
+        stockItem({ name: 'たまねぎ' }),
+      ],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(
+      mealGenerator.receivedInput?.pantrySnapshot.stockItems.map((stockItem) => stockItem.name),
+    ).toEqual(['にんじん', 'たまねぎ']);
+  });
+
+  it('再利用だけで組んだ提案の在庫スナップショットにも、献立に使わない在庫品は入らない', async () => {
+    // FR-43 / ADR-037 決定1 / 設計書 規則7: 写しは1つであり、保存する提案も同じものを抱える。
+    const { suggest, suggestionRepository } = setUp({
+      stockItems: [
+        stockItem({ name: 'にんじん' }),
+        stockItem({ name: 'ヨーグルト', useForMeals: false }),
+      ],
+      meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idD],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    const fetched = (await suggestionRepository.findRecentByHousehold(ourHousehold, 3))[0];
+    expect(fetched?.pantrySnapshot.stockItems.map((stockItem) => stockItem.name)).toEqual([
+      'にんじん',
+    ]);
+  });
+
+  it('明示操作でも、生成に渡す在庫スナップショットに献立に使わない在庫品は入らない', async () => {
+    // FR-36 / FR-43 / 設計書 規則7: 2つの入口は同じ本体を通り、同じように外す。
+    const { suggestNew, mealGenerator } = setUp({
+      stockItems: [
+        stockItem({ name: 'にんじん' }),
+        stockItem({ name: 'ヨーグルト', useForMeals: false }),
+        stockItem({ name: 'たまねぎ' }),
+      ],
+      meals: [],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    await suggestNew(ourHousehold, asOf);
+
+    expect(
+      mealGenerator.receivedInput?.pantrySnapshot.stockItems.map((stockItem) => stockItem.name),
+    ).toEqual(['にんじん', 'たまねぎ']);
+  });
+
+  it('最新の提案の在庫と比べて献立に使わない在庫品が増えただけなら、保存済みの提案の識別子をそのまま返す', async () => {
+    // C-7 / ADR-086 / 設計書 規則8: 比べる現在の在庫は献立に使う在庫品だけである。
+    const priorSuggestion = storedSuggestion({
+      mealIds: [idA],
+      pantrySnapshot: [
+        mealStockItem({ name: 'にんじん', amount: '1本', expiryDate: '2026-09-20' }),
+      ],
+    });
+    const { suggest } = setUp({
+      stockItems: [
+        stockItem({ name: 'にんじん', amount: '1本', expiryDate: '2026-09-20' }),
+        stockItem({ name: 'ヨーグルト', useForMeals: false }),
+      ],
+      meals: [uncookableMeal({ id: idA, title: '肉じゃが' })],
+      recentSuggestions: [priorSuggestion],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idD],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(suggestionOf(output).id).toBe(priorSuggestion.id);
+  });
+
+  it('最新の提案のときに使っていた在庫品を献立に使わないに切り替えた日は、短絡せず新しい提案を返す', async () => {
+    // C-7 / ADR-086 / 設計書 規則8: 切り替えれば献立に使う在庫品が変わるので一致しない。
+    const { suggest } = setUp({
+      stockItems: [
+        stockItem({ name: 'にんじん' }),
+        stockItem({ name: 'じゃがいも' }),
+        stockItem({ name: 'たまねぎ', useForMeals: false }),
+      ],
+      meals: [meal({ id: mealIdOf(idA), ingredients: [mainIngredient('にんじん')] })],
+      recentSuggestions: [
+        storedSuggestion({
+          mealIds: [idA],
+          pantrySnapshot: [
+            mealStockItem({ name: 'にんじん' }),
+            mealStockItem({ name: 'じゃがいも' }),
+            mealStockItem({ name: 'たまねぎ' }),
+          ],
+        }),
+      ],
+      generatedMeals: [generatedMeal()],
+      mealIdsToIssue: [idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(suggestionOf(output).id).toBe(suggestionId);
   });
 });

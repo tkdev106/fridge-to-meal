@@ -1,6 +1,6 @@
 import type { StockItemDto, UpdateStockItemInput } from '@fridge-to-meal/contract';
 import type { HouseholdId } from '../../../shared/domain/HouseholdId.js';
-import { withAmountAndExpiryDate } from '../domain/entity/StockItem.js';
+import { withEditedValues } from '../domain/entity/StockItem.js';
 import { PantryRuleViolation } from '../domain/error/PantryRuleViolation.js';
 import type { StockItemRepository } from '../domain/repository/StockItemRepository.js';
 import { amountOf } from '../domain/value/Amount.js';
@@ -9,7 +9,7 @@ import type { StockItemId } from '../domain/value/StockItemId.js';
 import { stockItemDtoOf } from './StockItemDto.js';
 
 /**
- * 在庫品の分量と期限を置き換える（FR-05）。世帯は第1引数で受け取る（C-9）。
+ * 在庫品の分量・期限・献立に使うかどうかを置き換える（FR-05）。世帯は第1引数で受け取る（C-9）。
  * 入力は常に置き換えであり、`null` は「消す」を表す（B-06 規則3 / FR-13）。
  */
 export type UpdateStockItem = (
@@ -38,9 +38,10 @@ export function updateStockItem(deps: {
 
     // 検証はすべて保存の前に済ませる（規則12）。期限の書式違反はこの組み立てで
     // 例外になり、保存済みの在庫品は元のまま残る。
-    const updatedStockItem = withAmountAndExpiryDate(storedStockItem, {
+    const updatedStockItem = withEditedValues(storedStockItem, {
       amount: amountOf(input.amount),
       expiryDate: expiryDateOf(input.expiryDate),
+      useForMeals: input.useForMeals,
     });
 
     // 値が今と同じでも保存する（規則6）。差分の判定はもう1つの規則になり、

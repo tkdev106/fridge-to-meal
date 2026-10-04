@@ -33,6 +33,7 @@ function app() {
     ingredientId: null,
     amount: null,
     expiryDate: null,
+    useForMeals: true,
   };
 
   return createApp({

@@ -24,6 +24,7 @@ const itemA: StockItemDto = {
   ingredientId: null,
   amount: '300g',
   expiryDate: null,
+  useForMeals: true,
 };
 
 const itemB: StockItemDto = {
@@ -32,6 +33,7 @@ const itemB: StockItemDto = {
   ingredientId: null,
   amount: null,
   expiryDate: null,
+  useForMeals: true,
 };
 
 function revealed(stockItemId: string): RowOperations {

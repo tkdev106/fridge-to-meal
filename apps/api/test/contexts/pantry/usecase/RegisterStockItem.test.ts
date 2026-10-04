@@ -44,6 +44,7 @@ describe('在庫品を登録する RegisterStockItem', () => {
       name: 'にんじん',
       amount: '2本',
       expiryDate: '2026-10-01',
+      useForMeals: true,
     });
 
     expect(registeredStockItem.name).toBe('にんじん');
@@ -51,11 +52,42 @@ describe('在庫品を登録する RegisterStockItem', () => {
     expect(registeredStockItem.expiryDate).toBe('2026-10-01');
   });
 
+  it.each([true, false])(
+    '献立に使うかどうかに %s を渡すと、その値のまま在庫品が返る',
+    async (useForMeals) => {
+      // FR-01 / ADR-086 / 設計書 規則2: 入力の値をそのまま写し、返す在庫品にも載せる。
+      const { register } = setUp();
+
+      const registeredStockItem = await register(ourHousehold, { name: 'にんじん', useForMeals });
+
+      expect(registeredStockItem.useForMeals).toBe(useForMeals);
+    },
+  );
+
+  it('献立に使わないとして登録した在庫品は、同じ世帯からリポジトリで取り出しても献立に使わないまま', async () => {
+    // FR-43 / 設計書 規則2: 保存の確認は取得を通して行う。
+    const { register, stockItemRepository } = setUp();
+
+    const registeredStockItem = await register(ourHousehold, {
+      name: 'にんじん',
+      useForMeals: false,
+    });
+
+    const found = await stockItemRepository.findById(
+      ourHousehold,
+      stockItemIdOf(registeredStockItem.id),
+    );
+    expect(found?.useForMeals).toBe(false);
+  });
+
   it('登録した在庫品は、同じ世帯からリポジトリで取り出せる', async () => {
     // 規則1・規則6: 保存できたものだけを返す。保存の確認は取得を通して行う。
     const { register, stockItemRepository } = setUp();
 
-    const registeredStockItem = await register(ourHousehold, { name: 'にんじん' });
+    const registeredStockItem = await register(ourHousehold, {
+      name: 'にんじん',
+      useForMeals: true,
+    });
 
     const found = await stockItemRepository.findById(
       ourHousehold,
@@ -68,7 +100,10 @@ describe('在庫品を登録する RegisterStockItem', () => {
     // C-9 / NFR-09: 世帯は第1引数の値だけで決まり、入力からは読まない。
     const { register, stockItemRepository } = setUp();
 
-    const registeredStockItem = await register(ourHousehold, { name: 'にんじん' });
+    const registeredStockItem = await register(ourHousehold, {
+      name: 'にんじん',
+      useForMeals: true,
+    });
 
     expect(
       await stockItemRepository.findById(neighborHousehold, stockItemIdOf(registeredStockItem.id)),
@@ -79,7 +114,10 @@ describe('在庫品を登録する RegisterStockItem', () => {
     // 規則7 / 規則3: 正規化はドメインの仕事で、戻り値は保存した値を写す。
     const { register } = setUp();
 
-    const registeredStockItem = await register(ourHousehold, { name: '  にんじん  ' });
+    const registeredStockItem = await register(ourHousehold, {
+      name: '  にんじん  ',
+      useForMeals: true,
+    });
 
     expect(registeredStockItem.name).toBe('にんじん');
   });
@@ -88,7 +126,10 @@ describe('在庫品を登録する RegisterStockItem', () => {
     // 規則2 / FR-01: 採番はサーバの責務。
     const { register } = setUp([idA]);
 
-    const registeredStockItem = await register(ourHousehold, { name: 'にんじん' });
+    const registeredStockItem = await register(ourHousehold, {
+      name: 'にんじん',
+      useForMeals: true,
+    });
 
     expect(registeredStockItem.id).toBe('22222222-2222-4222-8222-222222222222');
   });
@@ -97,8 +138,8 @@ describe('在庫品を登録する RegisterStockItem', () => {
     // ADR-007 / 規則8: 買った日が違えば期限が違う。統合も拒否もしない。
     const { register, stockItemRepository } = setUp([idA, idB]);
 
-    const first = await register(ourHousehold, { name: 'にんじん' });
-    const second = await register(ourHousehold, { name: 'にんじん' });
+    const first = await register(ourHousehold, { name: 'にんじん', useForMeals: true });
+    const second = await register(ourHousehold, { name: 'にんじん', useForMeals: true });
 
     expect(await stockItemRepository.findByHousehold(ourHousehold)).toHaveLength(2);
     expect(first.id).not.toBe(second.id);
@@ -108,7 +149,10 @@ describe('在庫品を登録する RegisterStockItem', () => {
     // FR-03 / 規則4: カタログに無い食材名でも登録が止まらない。
     const { register, stockItemRepository } = setUp();
 
-    const registeredStockItem = await register(ourHousehold, { name: '母のぬか床' });
+    const registeredStockItem = await register(ourHousehold, {
+      name: '母のぬか床',
+      useForMeals: true,
+    });
 
     expect(registeredStockItem.ingredientId).toBeNull();
     const found = await stockItemRepository.findById(
@@ -125,6 +169,7 @@ describe('在庫品を登録する RegisterStockItem', () => {
     const registeredStockItem = await register(ourHousehold, {
       name: 'にんじん',
       ingredientId: null,
+      useForMeals: true,
     });
 
     expect(registeredStockItem.ingredientId).toBeNull();
@@ -137,6 +182,7 @@ describe('在庫品を登録する RegisterStockItem', () => {
     const registeredStockItem = await register(ourHousehold, {
       name: 'にんじん',
       ingredientId: '',
+      useForMeals: true,
     });
 
     expect(registeredStockItem.ingredientId).toBeNull();
@@ -149,6 +195,7 @@ describe('在庫品を登録する RegisterStockItem', () => {
     const registeredStockItem = await register(ourHousehold, {
       name: 'にんじん',
       ingredientId: '   ',
+      useForMeals: true,
     });
 
     expect(registeredStockItem.ingredientId).toBeNull();
@@ -161,6 +208,7 @@ describe('在庫品を登録する RegisterStockItem', () => {
     const registeredStockItem = await register(ourHousehold, {
       name: 'にんじん',
       ingredientId: '44444444-4444-4444-8444-444444444444',
+      useForMeals: true,
     });
 
     expect(registeredStockItem.ingredientId).toBe('44444444-4444-4444-8444-444444444444');
@@ -175,7 +223,10 @@ describe('在庫品を登録する RegisterStockItem', () => {
     // 規則5 / FR-13: 分量は任意入力。
     const { register } = setUp();
 
-    const registeredStockItem = await register(ourHousehold, { name: 'にんじん' });
+    const registeredStockItem = await register(ourHousehold, {
+      name: 'にんじん',
+      useForMeals: true,
+    });
 
     expect(registeredStockItem.amount).toBeNull();
   });
@@ -184,7 +235,10 @@ describe('在庫品を登録する RegisterStockItem', () => {
     // FR-13 / 規則5: 期限が未設定の在庫品は、期限による警告・優先の対象外。
     const { register } = setUp();
 
-    const registeredStockItem = await register(ourHousehold, { name: 'にんじん' });
+    const registeredStockItem = await register(ourHousehold, {
+      name: 'にんじん',
+      useForMeals: true,
+    });
 
     expect(registeredStockItem.expiryDate).toBeNull();
   });
@@ -197,6 +251,7 @@ describe('在庫品を登録する RegisterStockItem', () => {
       name: 'にんじん',
       amount: null,
       expiryDate: null,
+      useForMeals: true,
     });
 
     expect(registeredStockItem.amount).toBeNull();
@@ -207,7 +262,11 @@ describe('在庫品を登録する RegisterStockItem', () => {
     // 規則3 / ADR-010: 正規化は amountOf が持つ。ユースケースは書き直さない。
     const { register } = setUp();
 
-    const registeredStockItem = await register(ourHousehold, { name: 'にんじん', amount: '   ' });
+    const registeredStockItem = await register(ourHousehold, {
+      name: 'にんじん',
+      amount: '   ',
+      useForMeals: true,
+    });
 
     expect(registeredStockItem.amount).toBeNull();
   });
@@ -219,6 +278,7 @@ describe('在庫品を登録する RegisterStockItem', () => {
     const registeredStockItem = await register(ourHousehold, {
       name: 'にんじん',
       expiryDate: '   ',
+      useForMeals: true,
     });
 
     expect(registeredStockItem.expiryDate).toBeNull();
@@ -228,7 +288,7 @@ describe('在庫品を登録する RegisterStockItem', () => {
     // domain-model 4章: 名前だけが在庫品を在庫品たらしめている。規則10 によりそのまま伝わる。
     const { register } = setUp();
 
-    const execution = register(ourHousehold, { name: '   ' });
+    const execution = register(ourHousehold, { name: '   ', useForMeals: true });
 
     await expect(execution).rejects.toThrow(PantryRuleViolation);
     await expect(execution).rejects.toHaveProperty('rule', 'name.empty');
@@ -238,7 +298,11 @@ describe('在庫品を登録する RegisterStockItem', () => {
     // FR-13: 期限は日付として並べ替えられる形でだけ受け取る。
     const { register } = setUp();
 
-    const execution = register(ourHousehold, { name: 'にんじん', expiryDate: '2026/10/01' });
+    const execution = register(ourHousehold, {
+      name: 'にんじん',
+      expiryDate: '2026/10/01',
+      useForMeals: true,
+    });
 
     await expect(execution).rejects.toThrow(PantryRuleViolation);
     await expect(execution).rejects.toHaveProperty('rule', 'expiryDate.format');
@@ -248,7 +312,11 @@ describe('在庫品を登録する RegisterStockItem', () => {
     // FR-13: 書式だけでは 2026-02-30 が通ってしまう。
     const { register } = setUp();
 
-    const execution = register(ourHousehold, { name: 'にんじん', expiryDate: '2026-02-30' });
+    const execution = register(ourHousehold, {
+      name: 'にんじん',
+      expiryDate: '2026-02-30',
+      useForMeals: true,
+    });
 
     await expect(execution).rejects.toThrow(PantryRuleViolation);
     await expect(execution).rejects.toHaveProperty('rule', 'expiryDate.notACalendarDate');
@@ -259,7 +327,7 @@ describe('在庫品を登録する RegisterStockItem', () => {
     const { register, stockItemRepository } = setUp();
 
     await expect(
-      register(ourHousehold, { name: 'にんじん', expiryDate: '2026/10/01' }),
+      register(ourHousehold, { name: 'にんじん', expiryDate: '2026/10/01', useForMeals: true }),
     ).rejects.toThrow(PantryRuleViolation);
 
     expect(await stockItemRepository.findByHousehold(ourHousehold)).toHaveLength(0);
@@ -272,6 +340,8 @@ describe('在庫品を登録する RegisterStockItem', () => {
       generateStockItemId: fixedStockItemIdGenerator([idA]),
     });
 
-    await expect(register(ourHousehold, { name: 'にんじん' })).rejects.toThrow(SaveFailure);
+    await expect(register(ourHousehold, { name: 'にんじん', useForMeals: true })).rejects.toThrow(
+      SaveFailure,
+    );
   });
 });

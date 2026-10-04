@@ -74,6 +74,19 @@ export function toMealStockItem(stockItem: StockItemDto): StockItem {
   });
 }
 /**
+ * 在庫の一覧が返した在庫品のうち、**献立に使う在庫品だけ**を残す（FR-43 / ADR-086 決定3）。
+ * 並びは受け取ったまま保つ。
+ *
+ * 提案の在庫スナップショット・作れる献立の選定・在庫の下限・生成への入力・C-7 の比較は
+ * この列から組む。**充足の表示には使わない** — 充足は献立に使わない在庫品も含めた全件で算出する
+ * （FR-21 / FR-32）。受け取るのは DTO の真偽値だけで、献立側の在庫品と在庫スナップショットには
+ * 項目を持ち込まない（ADR-033）。
+ */
+export function stockItemsUsedForMealsOf(stockItems: readonly StockItemDto[]): StockItemDto[] {
+  return stockItems.filter((stockItem) => stockItem.useForMeals);
+}
+
+/**
  * 献立を識別子で引けるようにする（B-48a 規則5・11）。受け取った列は読むだけである（ADR-009）。
  * 渡すのは世帯で引いた献立だけであり、他世帯の献立を指す識別子は引けない（C-9）。
  */

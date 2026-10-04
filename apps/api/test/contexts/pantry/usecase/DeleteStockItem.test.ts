@@ -33,6 +33,7 @@ function stockItem(props: {
     ingredientId: null,
     amount: props.amount === undefined ? null : amountOf(props.amount),
     expiryDate: expiryDateOf(props.expiryDate ?? null),
+    useForMeals: true,
   });
 }
 

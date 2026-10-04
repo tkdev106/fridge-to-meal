@@ -48,7 +48,7 @@ const neverEdit = (): never => {
 };
 
 function stockItem(overrides: Partial<StockItemDto> & { id: string; name: string }): StockItemDto {
-  return { ingredientId: null, amount: null, expiryDate: null, ...overrides };
+  return { ingredientId: null, amount: null, expiryDate: null, useForMeals: true, ...overrides };
 }
 
 /** 並びを位置で見るための取り出し。件数は呼ぶ側が先に確かめている。 */

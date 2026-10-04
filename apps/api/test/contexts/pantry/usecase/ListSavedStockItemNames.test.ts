@@ -34,6 +34,7 @@ function stockItem(props: { id?: string; householdId?: HouseholdId; name: string
     ingredientId: null,
     amount: null,
     expiryDate: null,
+    useForMeals: true,
   });
 }
 
@@ -134,7 +135,7 @@ describe('保存したことのある在庫品の名称を返す ListSavedStockI
       generateStockItemId: fixedStockItemIdGenerator([idA]),
     });
     const runDelete = deleteStockItem({ stockItemRepository });
-    await register(ourHousehold, { name: 'にんじん' });
+    await register(ourHousehold, { name: 'にんじん', useForMeals: true });
 
     await runDelete(ourHousehold, stockItemIdOf(idA));
 
@@ -149,8 +150,8 @@ describe('保存したことのある在庫品の名称を返す ListSavedStockI
       generateStockItemId: fixedStockItemIdGenerator([idA, idB]),
     });
     const runDelete = deleteStockItem({ stockItemRepository });
-    await register(ourHousehold, { name: 'にんじん' });
-    await register(ourHousehold, { name: 'たまねぎ' });
+    await register(ourHousehold, { name: 'にんじん', useForMeals: true });
+    await register(ourHousehold, { name: 'たまねぎ', useForMeals: true });
 
     await runDelete(ourHousehold, stockItemIdOf(idA));
 

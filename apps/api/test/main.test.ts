@@ -78,6 +78,7 @@ function stockItemDto(overrides: Partial<StockItemDto> = {}): StockItemDto {
     ingredientId: null,
     amount: null,
     expiryDate: null,
+    useForMeals: true,
     ...overrides,
   };
 }
@@ -240,7 +241,7 @@ describe('composition root main', () => {
 
       const response = await app.request(
         '/stock-items',
-        jsonRequest('POST', { name: 'にんじん' }, bearerHeaders('x')),
+        jsonRequest('POST', { name: 'にんじん', useForMeals: true }, bearerHeaders('x')),
       );
 
       expect(response.status).toBe(201);
@@ -267,6 +268,7 @@ describe('composition root main', () => {
             ingredientId: null,
             amount: '2本',
             expiryDate: '2026-10-01',
+            useForMeals: true,
           },
         ],
       });
@@ -278,7 +280,11 @@ describe('composition root main', () => {
 
       const response = await app.request(
         '/stock-items/s-1',
-        jsonRequest('PUT', { amount: '1本', expiryDate: null }, bearerHeaders('x')),
+        jsonRequest(
+          'PUT',
+          { amount: '1本', expiryDate: null, useForMeals: true },
+          bearerHeaders('x'),
+        ),
       );
 
       expect(response.status).toBe(200);

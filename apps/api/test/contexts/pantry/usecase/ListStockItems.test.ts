@@ -37,6 +37,7 @@ function stockItem(props: {
   ingredientId?: string;
   amount?: string;
   expiryDate?: string | null;
+  useForMeals?: boolean;
 }): StockItem {
   return createStockItem({
     id: stockItemIdOf(props.id ?? nextId()),
@@ -45,6 +46,7 @@ function stockItem(props: {
     ingredientId: props.ingredientId === undefined ? null : ingredientIdOf(props.ingredientId),
     amount: props.amount === undefined ? null : amountOf(props.amount),
     expiryDate: expiryDateOf(props.expiryDate ?? null),
+    useForMeals: props.useForMeals ?? true,
   });
 }
 
@@ -140,6 +142,31 @@ describe('在庫品を一覧する ListStockItems', () => {
     const output = await list(ourHousehold);
 
     expect(namesOf(output)).toEqual(['もち', 'にんじん', 'たまねぎ', 'じゃがいも']);
+  });
+
+  it('献立に使わない在庫品も、献立に使わないまま一覧に載る', async () => {
+    // FR-43 / 設計書 規則4: 一覧の在庫品は保存されている献立に使うかどうかをそのまま載せる。
+    const { stockItemRepository, list } = setUp();
+    await store(stockItemRepository, stockItem({ name: 'にんじん', useForMeals: false }));
+
+    const output = await list(ourHousehold);
+
+    expect(output.stockItems[0]?.useForMeals).toBe(false);
+  });
+
+  it('献立に使わない在庫品も一覧から外さず、期限の近い順の並びに入れる', async () => {
+    // FR-04 / FR-43 / 設計書 規則4: 一覧の並びと件数は献立に使うかどうかで変えない。
+    const { stockItemRepository, list } = setUp();
+    await store(
+      stockItemRepository,
+      stockItem({ name: 'にんじん', expiryDate: '2026-10-01', useForMeals: false }),
+      stockItem({ name: 'たまねぎ', expiryDate: '2026-10-05', useForMeals: true }),
+      stockItem({ name: 'じゃがいも', expiryDate: '2026-10-03', useForMeals: true }),
+    );
+
+    const output = await list(ourHousehold);
+
+    expect(namesOf(output)).toEqual(['にんじん', 'じゃがいも', 'たまねぎ']);
   });
 
   it('別の世帯の在庫品は1件も返らない', async () => {
@@ -279,6 +306,7 @@ describe('在庫品を一覧する ListStockItems', () => {
       'id',
       'ingredientId',
       'name',
+      'useForMeals',
     ]);
   });
 
@@ -305,6 +333,7 @@ describe('在庫品を一覧する ListStockItems', () => {
         ingredientId: '44444444-4444-4444-8444-444444444444',
         amount: '2本',
         expiryDate: '2026-01-02',
+        useForMeals: true,
       },
     ]);
   });

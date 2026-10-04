@@ -26,6 +26,11 @@ export type StockItem = {
   readonly ingredientId: IngredientId | null;
   readonly amount: Amount | null;
   readonly expiryDate: ExpiryDate | null;
+  /**
+   * 献立に使うかどうか（FR-43）。`false` の在庫品は献立の生成と再利用の判定に使わない。
+   * 在庫一覧と充足の表示には残る。既定値を置かない — 登録と編集が必ず渡す。
+   */
+  readonly useForMeals: boolean;
 };
 
 /**
@@ -35,7 +40,7 @@ export type StockItem = {
  * 返す値は凍結する。在庫品そのものは編集できる（FR-05 / FR-06）が、**編集は
  * 書き換えではなく作り直しで表す** — 可変にすると不変条件を通らない書き換えが
  * 可能になる。これは実装上の取り決めであり、設計文書に根拠を持たない。
- * 作り直しの入口は `withAmountAndExpiryDate` の1つだけで、そこを通ると不変条件を
+ * 作り直しの入口は `withEditedValues` の1つだけで、そこを通ると不変条件を
  * 通り直す（B-06 規則2）。
  *
  * @throws {PantryRuleViolation} 名称が空のとき
@@ -47,6 +52,7 @@ export function createStockItem(props: {
   ingredientId: IngredientId | null;
   amount: Amount | null;
   expiryDate: ExpiryDate | null;
+  useForMeals: boolean;
 }): StockItem {
   const name = props.name.trim();
   if (name === '') {
@@ -64,19 +70,20 @@ export function createStockItem(props: {
     ingredientId: props.ingredientId,
     amount: props.amount,
     expiryDate: props.expiryDate,
+    useForMeals: props.useForMeals,
   });
 }
 
 /**
- * 分量と期限だけが違う同じ在庫品を作る（B-06 規則2 / FR-05）。
+ * 分量・期限・献立に使うかどうかを置き換えた同じ在庫品を作る（B-06 規則2 / FR-05）。
  *
  * `id` / `householdId` / `name` / `ingredientId` は引数に取らず、元の在庫品から引き継ぐ。
  *
  * @throws {PantryRuleViolation} 引き継いだ値が不変条件に反するとき
  */
-export function withAmountAndExpiryDate(
+export function withEditedValues(
   stockItem: StockItem,
-  props: { amount: Amount | null; expiryDate: ExpiryDate | null },
+  props: { amount: Amount | null; expiryDate: ExpiryDate | null; useForMeals: boolean },
 ): StockItem {
   // createStockItem を通すことで、作り直したものも同じ不変条件を通る。
   return createStockItem({
@@ -86,5 +93,6 @@ export function withAmountAndExpiryDate(
     ingredientId: stockItem.ingredientId,
     amount: props.amount,
     expiryDate: props.expiryDate,
+    useForMeals: props.useForMeals,
   });
 }

@@ -13,6 +13,8 @@ export type StockItemDto = {
   amount: string | null;
   /** YYYY-MM-DD。未設定は null */
   expiryDate: string | null;
+  /** 献立に使うかどうか（FR-43） */
+  useForMeals: boolean;
 };
 
 /** 登録の入力（FR-01）。識別子はサーバが採番するため含まない。省略と null は同義。 */
@@ -21,6 +23,8 @@ export type RegisterStockItemInput = {
   ingredientId?: string | null;
   amount?: string | null;
   expiryDate?: string | null;
+  /** 献立に使うかどうか。省略を許さない（FR-01 / ADR-086） */
+  useForMeals: boolean;
 };
 
 /**
@@ -30,6 +34,8 @@ export type RegisterStockItemInput = {
 export type UpdateStockItemInput = {
   amount: string | null;
   expiryDate: string | null;
+  /** 献立に使うかどうか。省略を許さない（FR-05 / ADR-086） */
+  useForMeals: boolean;
 };
 
 /** 一覧の出力（FR-04）。並び順に意味があるので配列で包んで返す。 */

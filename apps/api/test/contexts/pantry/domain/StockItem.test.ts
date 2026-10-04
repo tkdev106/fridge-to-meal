@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createStockItem,
-  withAmountAndExpiryDate,
+  withEditedValues,
 } from '../../../../src/contexts/pantry/domain/entity/StockItem.js';
 import { PantryRuleViolation } from '../../../../src/contexts/pantry/domain/error/PantryRuleViolation.js';
 import { stockItemIdOf } from '../../../../src/contexts/pantry/domain/value/StockItemId.js';
@@ -22,6 +22,7 @@ function stockItem(overrides: Partial<Parameters<typeof createStockItem>[0]> = {
     ingredientId: null,
     amount: null,
     expiryDate: null,
+    useForMeals: true,
     ...overrides,
   });
 }
@@ -45,6 +46,11 @@ describe('在庫品 StockItem', () => {
     // （充足判定は名称の突き合わせで行う。C-6）。
     expect(() => stockItem({ name: '' })).toThrow(PantryRuleViolation);
     expect(() => stockItem({ name: '   ' })).toThrow(PantryRuleViolation);
+  });
+
+  it('献立に使わないことを持てる', () => {
+    // FR-43 / ADR-086: 献立に使うかどうかは真偽値で持ち、渡した値をそのまま持つ。
+    expect(stockItem({ useForMeals: false }).useForMeals).toBe(false);
   });
 
   it('数量と期限は未設定を許す', () => {
@@ -78,7 +84,7 @@ describe('在庫品 StockItem', () => {
     expect(boughtLastWeek.expiryDate).not.toBe(boughtToday.expiryDate);
   });
 
-  it('分量と期限だけを置き換え、識別子・世帯・名称・食材の指定は元の在庫品から引き継ぐ', () => {
+  it('分量・期限・献立に使うかどうかを置き換え、識別子・世帯・名称・食材の指定は元の在庫品から引き継ぐ', () => {
     // B-06 規則2 / FR-05: 更新は書き換えではなく作り直しで表す。引き継ぐ4つを引数に
     // 取らないので、名称の変更が型として起こせない。
     const carrotIngredientId = ingredientIdOf('33333333-3333-4333-8333-333333333333');
@@ -88,9 +94,10 @@ describe('在庫品 StockItem', () => {
       expiryDate: expiryDateOf('2026-10-01'),
     });
 
-    const recreatedStockItem = withAmountAndExpiryDate(originalStockItem, {
+    const recreatedStockItem = withEditedValues(originalStockItem, {
       amount: amountOf('5本'),
       expiryDate: expiryDateOf('2026-12-31'),
+      useForMeals: true,
     });
 
     expect(recreatedStockItem.amount).toBe('5本');
@@ -99,6 +106,19 @@ describe('在庫品 StockItem', () => {
     expect(recreatedStockItem.householdId).toBe(householdId);
     expect(recreatedStockItem.name).toBe('にんじん');
     expect(recreatedStockItem.ingredientId).toBe(carrotIngredientId);
+  });
+
+  it('編集の作り直しで、献立に使うかどうかも渡した値に置き換える', () => {
+    // FR-05 / ADR-086: 編集で変えられるのは分量・期限・献立に使うかどうかの3つ。
+    const originalStockItem = stockItem({ useForMeals: true });
+
+    const recreatedStockItem = withEditedValues(originalStockItem, {
+      amount: null,
+      expiryDate: null,
+      useForMeals: false,
+    });
+
+    expect(recreatedStockItem.useForMeals).toBe(false);
   });
 
   it('作ったあとに書き換えられない', () => {

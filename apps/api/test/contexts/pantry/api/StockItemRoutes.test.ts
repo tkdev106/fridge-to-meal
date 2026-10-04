@@ -32,6 +32,7 @@ function stockItemDto(overrides: Partial<StockItemDto> = {}): StockItemDto {
     ingredientId: null,
     amount: null,
     expiryDate: null,
+    useForMeals: true,
     ...overrides,
   };
 }
@@ -224,7 +225,11 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       await routes.request(
         '/stock-items',
-        jsonRequest('POST', { name: 'にんじん', householdId: neighborHousehold }),
+        jsonRequest('POST', {
+          name: 'にんじん',
+          householdId: neighborHousehold,
+          useForMeals: true,
+        }),
       );
 
       expect(registerStockItem.receivedHouseholdId).toBe(ourHousehold);
@@ -238,7 +243,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items',
-        jsonRequest('POST', { name: 'にんじん' }),
+        jsonRequest('POST', { name: 'にんじん', useForMeals: true }),
       );
 
       expect(response.status).toBe(201);
@@ -258,7 +263,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items',
-        jsonRequest('POST', { name: 'にんじん' }),
+        jsonRequest('POST', { name: 'にんじん', useForMeals: true }),
       );
 
       await expect(response.json()).resolves.toEqual({
@@ -267,6 +272,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
         ingredientId: 'i-1',
         amount: '2本',
         expiryDate: '2026-10-01',
+        useForMeals: true,
       });
     });
 
@@ -276,7 +282,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items',
-        jsonRequest('POST', { name: 'にんじん' }),
+        jsonRequest('POST', { name: 'にんじん', useForMeals: true }),
       );
 
       const body = (await response.json()) as Record<string, unknown>;
@@ -287,7 +293,10 @@ describe('在庫品の経路 StockItemRoutes', () => {
       // C-9: `householdId` は必ず第1引数。
       const { routes, registerStockItem } = setUp();
 
-      await routes.request('/stock-items', jsonRequest('POST', { name: 'にんじん' }));
+      await routes.request(
+        '/stock-items',
+        jsonRequest('POST', { name: 'にんじん', useForMeals: true }),
+      );
 
       expect(registerStockItem.receivedHouseholdId).toBe(ourHousehold);
     });
@@ -303,6 +312,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
           ingredientId: 'i-1',
           amount: '2本',
           expiryDate: '2026-10-01',
+          useForMeals: true,
         }),
       );
 
@@ -311,6 +321,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
         ingredientId: 'i-1',
         amount: '2本',
         expiryDate: '2026-10-01',
+        useForMeals: true,
       });
     });
 
@@ -320,11 +331,11 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items',
-        jsonRequest('POST', { name: 'にんじん' }),
+        jsonRequest('POST', { name: 'にんじん', useForMeals: true }),
       );
 
       expect(response.status).toBe(201);
-      expect(registerStockItem.receivedInput).toEqual({ name: 'にんじん' });
+      expect(registerStockItem.receivedInput).toEqual({ name: 'にんじん', useForMeals: true });
     });
 
     it('ingredientId と amount と expiryDate が null でも登録できる', async () => {
@@ -338,6 +349,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
           ingredientId: null,
           amount: null,
           expiryDate: null,
+          useForMeals: true,
         }),
       );
 
@@ -347,7 +359,21 @@ describe('在庫品の経路 StockItemRoutes', () => {
         ingredientId: null,
         amount: null,
         expiryDate: null,
+        useForMeals: true,
       });
+    });
+
+    it('useForMeals が false でも断らず、false のままユースケースに渡す', async () => {
+      // FR-43 / ADR-086: 献立に使わないことは正当な入力である。
+      const { routes, registerStockItem } = setUp();
+
+      const response = await routes.request(
+        '/stock-items',
+        jsonRequest('POST', { name: 'にんじん', useForMeals: false }),
+      );
+
+      expect(response.status).toBe(201);
+      expect(registerStockItem.receivedInput).toEqual({ name: 'にんじん', useForMeals: false });
     });
 
     it('知らない項目が本体にあっても断らずに登録する', async () => {
@@ -356,7 +382,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items',
-        jsonRequest('POST', { name: 'にんじん', memo: '半分使った' }),
+        jsonRequest('POST', { name: 'にんじん', memo: '半分使った', useForMeals: true }),
       );
 
       expect(response.status).toBe(201);
@@ -393,6 +419,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
             ingredientId: null,
             amount: '2本',
             expiryDate: '2026-10-01',
+            useForMeals: true,
           },
         ],
       });
@@ -443,7 +470,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items/s-1',
-        jsonRequest('PUT', { amount: '1本', expiryDate: '2026-10-02' }),
+        jsonRequest('PUT', { amount: '1本', expiryDate: '2026-10-02', useForMeals: true }),
       );
 
       expect(response.status).toBe(200);
@@ -463,7 +490,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items/s-1',
-        jsonRequest('PUT', { amount: '1本', expiryDate: '2026-10-02' }),
+        jsonRequest('PUT', { amount: '1本', expiryDate: '2026-10-02', useForMeals: true }),
       );
 
       await expect(response.json()).resolves.toEqual({
@@ -472,6 +499,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
         ingredientId: 'i-1',
         amount: '1本',
         expiryDate: '2026-10-02',
+        useForMeals: true,
       });
     });
 
@@ -481,7 +509,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       await routes.request(
         '/stock-items/s-1',
-        jsonRequest('PUT', { amount: '1本', expiryDate: '2026-10-02' }),
+        jsonRequest('PUT', { amount: '1本', expiryDate: '2026-10-02', useForMeals: true }),
       );
 
       expect(updateStockItem.receivedHouseholdId).toBe(ourHousehold);
@@ -493,7 +521,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       await routes.request(
         '/stock-items/s-1',
-        jsonRequest('PUT', { amount: '1本', expiryDate: '2026-10-02' }),
+        jsonRequest('PUT', { amount: '1本', expiryDate: '2026-10-02', useForMeals: true }),
       );
 
       expect(updateStockItem.receivedStockItemId).toBe(stockItemIdOf('s-1'));
@@ -505,12 +533,13 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       await routes.request(
         '/stock-items/s-1',
-        jsonRequest('PUT', { amount: '  1本  ', expiryDate: '2026-10-02' }),
+        jsonRequest('PUT', { amount: '  1本  ', expiryDate: '2026-10-02', useForMeals: true }),
       );
 
       expect(updateStockItem.receivedInput).toEqual({
         amount: '  1本  ',
         expiryDate: '2026-10-02',
+        useForMeals: true,
       });
     });
 
@@ -520,11 +549,32 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items/s-1',
-        jsonRequest('PUT', { amount: null, expiryDate: null }),
+        jsonRequest('PUT', { amount: null, expiryDate: null, useForMeals: true }),
       );
 
       expect(response.status).toBe(200);
-      expect(updateStockItem.receivedInput).toEqual({ amount: null, expiryDate: null });
+      expect(updateStockItem.receivedInput).toEqual({
+        amount: null,
+        expiryDate: null,
+        useForMeals: true,
+      });
+    });
+
+    it('useForMeals が false でも断らず、false のままユースケースに渡す', async () => {
+      // FR-05 / FR-43 / ADR-086: 献立に使わないに切り替えることは正当な入力である。
+      const { routes, updateStockItem } = setUp();
+
+      const response = await routes.request(
+        '/stock-items/s-1',
+        jsonRequest('PUT', { amount: null, expiryDate: null, useForMeals: false }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(updateStockItem.receivedInput).toEqual({
+        amount: null,
+        expiryDate: null,
+        useForMeals: false,
+      });
     });
   });
 
@@ -585,7 +635,10 @@ describe('在庫品の経路 StockItemRoutes', () => {
         registerThrows: new PantryRuleViolation('name.empty', '名称が空である'),
       });
 
-      const response = await routes.request('/stock-items', jsonRequest('POST', { name: '' }));
+      const response = await routes.request(
+        '/stock-items',
+        jsonRequest('POST', { name: '', useForMeals: true }),
+      );
 
       expect(response.status).toBe(400);
       await expect(failureBody(response)).resolves.toEqual({ rule: 'name.empty' });
@@ -599,7 +652,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items',
-        jsonRequest('POST', { name: 'にんじん', expiryDate: '2026/10/01' }),
+        jsonRequest('POST', { name: 'にんじん', expiryDate: '2026/10/01', useForMeals: true }),
       );
 
       expect(response.status).toBe(400);
@@ -613,7 +666,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items/s-1',
-        jsonRequest('PUT', { amount: '1本', expiryDate: '2026-02-30' }),
+        jsonRequest('PUT', { amount: '1本', expiryDate: '2026-02-30', useForMeals: true }),
       );
 
       expect(response.status).toBe(400);
@@ -627,7 +680,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items/s-1',
-        jsonRequest('PUT', { amount: '1本', expiryDate: null }),
+        jsonRequest('PUT', { amount: '1本', expiryDate: null, useForMeals: true }),
       );
 
       expect(response.status).toBe(404);
@@ -657,7 +710,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items',
-        jsonRequest('POST', { name: 'にんじん' }),
+        jsonRequest('POST', { name: 'にんじん', useForMeals: true }),
       );
 
       expect(response.status).toBe(500);
@@ -674,7 +727,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items',
-        jsonRequest('POST', { name: 'にんじん' }),
+        jsonRequest('POST', { name: 'にんじん', useForMeals: true }),
       );
 
       expect(response.status).toBe(400);
@@ -785,7 +838,10 @@ describe('在庫品の経路 StockItemRoutes', () => {
       // 規則8 / `RegisterStockItemInput`: `name` は文字列で必ず要る。
       const { routes } = setUp();
 
-      const response = await routes.request('/stock-items', jsonRequest('POST', { amount: '2本' }));
+      const response = await routes.request(
+        '/stock-items',
+        jsonRequest('POST', { amount: '2本', useForMeals: true }),
+      );
 
       expect(response.status).toBe(400);
     });
@@ -794,7 +850,10 @@ describe('在庫品の経路 StockItemRoutes', () => {
       // 規則8: 見るのは**型の形だけ**である（空かどうかはドメインが見る＝規則7）。
       const { routes } = setUp();
 
-      const response = await routes.request('/stock-items', jsonRequest('POST', { name: 123 }));
+      const response = await routes.request(
+        '/stock-items',
+        jsonRequest('POST', { name: 123, useForMeals: true }),
+      );
 
       expect(response.status).toBe(400);
     });
@@ -805,11 +864,69 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items',
-        jsonRequest('POST', { name: 'にんじん', ingredientId: 1 }),
+        jsonRequest('POST', { name: 'にんじん', ingredientId: 1, useForMeals: true }),
       );
 
       expect(response.status).toBe(400);
     });
+
+    it('登録の本体に useForMeals が無いときは 400 を返す', async () => {
+      // ADR-086 / 設計書 7章: 献立に使うかどうかは必須。既定値を api で補わない。
+      const { routes } = setUp();
+
+      const response = await routes.request(
+        '/stock-items',
+        jsonRequest('POST', { name: 'にんじん' }),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'request.invalidBody' });
+    });
+
+    it.each([null, 'true', 1])(
+      '登録の useForMeals が真偽値でない %j のときは 400 を返す',
+      async (useForMeals) => {
+        // ADR-086 / 設計書 7章: 真偽値以外を真偽値に直して通さない。
+        const { routes } = setUp();
+
+        const response = await routes.request(
+          '/stock-items',
+          jsonRequest('POST', { name: 'にんじん', useForMeals }),
+        );
+
+        expect(response.status).toBe(400);
+        await expect(failureBody(response)).resolves.toEqual({ rule: 'request.invalidBody' });
+      },
+    );
+
+    it('更新の本体に useForMeals が無いときは 400 を返す', async () => {
+      // ADR-086 / 設計書 7章: 更新は常に置き換えであり、省略を許さない。
+      const { routes } = setUp();
+
+      const response = await routes.request(
+        '/stock-items/s-1',
+        jsonRequest('PUT', { amount: '1本', expiryDate: null }),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'request.invalidBody' });
+    });
+
+    it.each([null, 'true', 1])(
+      '更新の useForMeals が真偽値でない %j のときは 400 を返す',
+      async (useForMeals) => {
+        // ADR-086 / 設計書 7章: 真偽値以外を真偽値に直して通さない。
+        const { routes } = setUp();
+
+        const response = await routes.request(
+          '/stock-items/s-1',
+          jsonRequest('PUT', { amount: '1本', expiryDate: null, useForMeals }),
+        );
+
+        expect(response.status).toBe(400);
+        await expect(failureBody(response)).resolves.toEqual({ rule: 'request.invalidBody' });
+      },
+    );
 
     it('更新の本体から amount が省略されていたら 400 を返す', async () => {
       // 規則9 / `UpdateStockItemInput`: 更新は常に置き換えであり、省略を許さない。
@@ -817,7 +934,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items/s-1',
-        jsonRequest('PUT', { expiryDate: null }),
+        jsonRequest('PUT', { expiryDate: null, useForMeals: true }),
       );
 
       expect(response.status).toBe(400);
@@ -829,7 +946,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items/s-1',
-        jsonRequest('PUT', { amount: '1本' }),
+        jsonRequest('PUT', { amount: '1本', useForMeals: true }),
       );
 
       expect(response.status).toBe(400);
@@ -841,7 +958,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items/s-1',
-        jsonRequest('PUT', { amount: 1, expiryDate: null }),
+        jsonRequest('PUT', { amount: 1, expiryDate: null, useForMeals: true }),
       );
 
       expect(response.status).toBe(400);
@@ -862,7 +979,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items/s-1',
-        jsonRequest('PUT', { amount: '1本', expiryDate: null, memo: '半分' }),
+        jsonRequest('PUT', { amount: '1本', expiryDate: null, memo: '半分', useForMeals: true }),
       );
 
       expect(response.status).toBe(200);
@@ -887,7 +1004,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items/s-1',
-        jsonRequest('PUT', { amount: '1本', expiryDate: null }),
+        jsonRequest('PUT', { amount: '1本', expiryDate: null, useForMeals: true }),
       );
 
       expect(response.status).toBe(500);
@@ -986,7 +1103,10 @@ describe('在庫品の経路 StockItemRoutes', () => {
         registerThrows: new PantryRuleViolation('name.empty', '名称が空である'),
       });
 
-      const response = await routes.request('/stock-items', jsonRequest('POST', { name: '' }));
+      const response = await routes.request(
+        '/stock-items',
+        jsonRequest('POST', { name: '', useForMeals: true }),
+      );
 
       const body = (await failureBody(response)) as Record<string, unknown>;
       expect(Object.keys(body)).toEqual(['rule']);
@@ -1013,7 +1133,7 @@ describe('在庫品の経路 StockItemRoutes', () => {
 
       const response = await routes.request(
         '/stock-items/s-1',
-        jsonRequest('PUT', { amount: '1本', expiryDate: null }),
+        jsonRequest('PUT', { amount: '1本', expiryDate: null, useForMeals: true }),
       );
 
       const text = await response.text();

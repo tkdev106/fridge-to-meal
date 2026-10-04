@@ -62,7 +62,7 @@ installPointerCapture();
 const today = '2026-09-20';
 
 function stockItemOf(name: string, id: string): StockItemDto {
-  return { id, name, ingredientId: null, amount: null, expiryDate: null };
+  return { id, name, ingredientId: null, amount: null, expiryDate: null, useForMeals: true };
 }
 
 /** 一覧が出ていることを観るための標本。**当てるのはこの名称だけである。** */
@@ -762,6 +762,7 @@ const porkWithAmount: StockItemDto = {
   ingredientId: null,
   amount: '300g',
   expiryDate: null,
+  useForMeals: true,
 };
 const cabbageWithAmount: StockItemDto = {
   id: '2',
@@ -769,6 +770,7 @@ const cabbageWithAmount: StockItemDto = {
   ingredientId: null,
   amount: '1玉',
   expiryDate: null,
+  useForMeals: true,
 };
 
 function renderWithUpdate(

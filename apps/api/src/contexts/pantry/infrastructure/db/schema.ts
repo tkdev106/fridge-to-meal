@@ -1,4 +1,4 @@
-import { check, date, index, pgTable, primaryKey, text, uuid } from 'drizzle-orm/pg-core';
+import { boolean, check, date, index, pgTable, primaryKey, text, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -43,6 +43,12 @@ export const stockItems = pgTable(
      * 時刻とタイムゾーンが入ると、文字列比較による並びが実行環境で揺れる。
      */
     expiryDate: date('expiry_date'),
+
+    /**
+     * 献立に使うかどうか（FR-43 / ADR-086）。既定値は移行で既存の行を `true` に埋める
+     * ためだけにあり、アプリは常に値を書く。
+     */
+    useForMeals: boolean('use_for_meals').notNull().default(true),
   },
   (t) => [
     // 一覧は必ず世帯で絞る（C-9）。期限順の並べ替えはユースケースが行うため、

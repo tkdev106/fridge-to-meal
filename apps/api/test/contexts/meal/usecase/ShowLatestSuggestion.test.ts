@@ -42,6 +42,7 @@ function stockItem(props: {
   name: string;
   amount?: string | null;
   expiryDate?: string | null;
+  useForMeals?: boolean;
 }): StockItemDto {
   stockItemSequence += 1;
   return {
@@ -50,6 +51,7 @@ function stockItem(props: {
     ingredientId: null,
     amount: props.amount ?? null,
     expiryDate: props.expiryDate ?? null,
+    useForMeals: props.useForMeals ?? true,
   };
 }
 
@@ -249,6 +251,22 @@ describe('保存済みの提案を返す ShowLatestSuggestion', () => {
       });
     });
 
+    it('献立に使わない在庫品の名称の主材料も、充足では賄える材料に載る', async () => {
+      // FR-32 / FR-43 / 設計書 規則10: 充足は献立に使うかどうかで濾す前の在庫の全件で算出する。
+      const { show } = await setUp({
+        suggestions: [storedSuggestion({ mealIds: [idA] })],
+        meals: [meal({ ingredients: [mainIngredient('にんじん')] })],
+        stockItems: [stockItem({ name: 'にんじん', useForMeals: false })],
+      });
+
+      const output = await show(ourHousehold);
+
+      if (output.outcome !== 'suggested') throw new Error('提案が返らなかった');
+      expect(
+        output.suggestion.entries[0]?.coverage.covered.map((ingredient) => ingredient.name),
+      ).toEqual(['にんじん']);
+    });
+
     it('提案を1件も足さない', async () => {
       // 読み取り専用の経路である。呼んだだけで提案が増えれば、次に引く最新が入れ替わる。
       const { show, suggestionRepository } = await setUp({
@@ -311,6 +329,53 @@ describe('保存済みの提案を返す ShowLatestSuggestion', () => {
         stockItems: [
           stockItem({ name: 'にんじん', amount: '1本' }),
           stockItem({ name: 'たまねぎ' }),
+        ],
+      });
+
+      const output = await show(ourHousehold);
+
+      if (output.outcome !== 'suggested') throw new Error('提案が返らなかった');
+      expect(output.pantryChanged).toBe(true);
+    });
+
+    it('献立に使わない在庫品が増えただけなら変わっていないと読む', async () => {
+      // C-7 / ADR-086 / 設計書 規則10: 比べる現在の在庫は献立に使う在庫品だけである。
+      const { show } = await setUp({
+        suggestions: [
+          storedSuggestion({
+            mealIds: [idA],
+            pantrySnapshot: [mealStockItem({ name: 'にんじん', amount: '1本' })],
+          }),
+        ],
+        meals: [meal()],
+        stockItems: [
+          stockItem({ name: 'にんじん', amount: '1本' }),
+          stockItem({ name: 'ヨーグルト', useForMeals: false }),
+        ],
+      });
+
+      const output = await show(ourHousehold);
+
+      if (output.outcome !== 'suggested') throw new Error('提案が返らなかった');
+      expect(output.pantryChanged).toBe(false);
+    });
+
+    it('提案のときに使っていた在庫品を献立に使わないに切り替えたら変わったと読む', async () => {
+      // C-7 / ADR-086 / 設計書 規則10: 切り替えれば献立に使う在庫品が変わる。
+      const { show } = await setUp({
+        suggestions: [
+          storedSuggestion({
+            mealIds: [idA],
+            pantrySnapshot: [
+              mealStockItem({ name: 'にんじん', amount: '1本' }),
+              mealStockItem({ name: 'たまねぎ' }),
+            ],
+          }),
+        ],
+        meals: [meal()],
+        stockItems: [
+          stockItem({ name: 'にんじん', amount: '1本' }),
+          stockItem({ name: 'たまねぎ', useForMeals: false }),
         ],
       });
 

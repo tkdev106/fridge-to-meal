@@ -4,7 +4,12 @@ import type { ListStockItems } from '../../pantry/usecase/ListStockItems.js';
 import type { MealRepository } from '../domain/repository/MealRepository.js';
 import type { SuggestionRepository } from '../domain/repository/SuggestionRepository.js';
 import { createPantrySnapshot, pantrySnapshotEquals } from '../domain/value/PantrySnapshot.js';
-import { mealByIdOf, suggestionOutputOf, toMealStockItem } from './MealOutputs.js';
+import {
+  mealByIdOf,
+  stockItemsUsedForMealsOf,
+  suggestionOutputOf,
+  toMealStockItem,
+} from './MealOutputs.js';
 
 /**
  * 保存済みの提案をそのまま返す（B-58 / FR-21 / NFR-03）。世帯は第1引数で受け取る（C-9）。
@@ -49,11 +54,15 @@ export function showLatestSuggestion(deps: {
     return {
       outcome: 'suggested',
       suggestion: suggestionOutputOf(latestSuggestion, mealByIdOf(meals), mealStockItems),
-      // **C-7 と同じ比較である**（`SuggestMeals` の短絡）。真なら、押せば違う献立が出る
-      // 見込みがあるということであり、**ここでは何も起こさない** — 見せ方は画面が決める。
+      // **C-7 と同じ比較である**（`SuggestMeals` の短絡）。比べるのは献立に使う在庫品だけで
+      // 組んだスナップショットであり、充足は全件のまま算出する（FR-43 / ADR-086 決定3）。
+      // 真なら、押せば違う献立が出る見込みがあるということであり、**ここでは何も起こさない** —
+      // 見せ方は画面が決める。
       pantryChanged: !pantrySnapshotEquals(
         latestSuggestion.pantrySnapshot,
-        createPantrySnapshot({ stockItems: mealStockItems }),
+        createPantrySnapshot({
+          stockItems: stockItemsUsedForMealsOf(stockItems).map(toMealStockItem),
+        }),
       ),
     };
   };

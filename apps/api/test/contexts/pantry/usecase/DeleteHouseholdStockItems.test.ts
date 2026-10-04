@@ -25,6 +25,7 @@ function stockItem(props: { id: string; householdId?: HouseholdId; name?: string
     ingredientId: null,
     amount: null,
     expiryDate: expiryDateOf(null),
+    useForMeals: true,
   });
 }
 

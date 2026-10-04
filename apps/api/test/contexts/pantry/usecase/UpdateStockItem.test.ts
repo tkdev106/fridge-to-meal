@@ -27,6 +27,7 @@ function stockItem(props: {
   ingredientId?: string;
   amount?: string;
   expiryDate?: string;
+  useForMeals?: boolean;
 }): StockItem {
   return createStockItem({
     id: stockItemIdOf(props.id ?? idA),
@@ -35,6 +36,7 @@ function stockItem(props: {
     ingredientId: props.ingredientId === undefined ? null : ingredientIdOf(props.ingredientId),
     amount: props.amount === undefined ? null : amountOf(props.amount),
     expiryDate: expiryDateOf(props.expiryDate ?? null),
+    useForMeals: props.useForMeals ?? true,
   });
 }
 
@@ -89,6 +91,7 @@ describe('在庫品を更新する UpdateStockItem', () => {
     const updatedStockItem = await update(ourHousehold, stockItemIdOf(idA), {
       amount: '5本',
       expiryDate: '2026-12-31',
+      useForMeals: true,
     });
 
     expect(updatedStockItem.amount).toBe('5本');
@@ -100,7 +103,11 @@ describe('在庫品を更新する UpdateStockItem', () => {
     const { stockItemRepository, update } = setUp();
     await store(stockItemRepository, stockItem({ amount: '2本', expiryDate: '2026-10-01' }));
 
-    await update(ourHousehold, stockItemIdOf(idA), { amount: '5本', expiryDate: '2026-12-31' });
+    await update(ourHousehold, stockItemIdOf(idA), {
+      amount: '5本',
+      expiryDate: '2026-12-31',
+      useForMeals: true,
+    });
 
     const found = await stockItemRepository.findById(ourHousehold, stockItemIdOf(idA));
     expect(found?.amount).toBe('5本');
@@ -118,6 +125,7 @@ describe('在庫品を更新する UpdateStockItem', () => {
     const updatedStockItem = await update(ourHousehold, stockItemIdOf(idA), {
       amount: '5本',
       expiryDate: null,
+      useForMeals: true,
     });
 
     expect(updatedStockItem.id).toBe('22222222-2222-4222-8222-222222222222');
@@ -133,6 +141,7 @@ describe('在庫品を更新する UpdateStockItem', () => {
     const updatedStockItem = await update(ourHousehold, stockItemIdOf(idA), {
       amount: null,
       expiryDate: '2026-10-01',
+      useForMeals: true,
     });
 
     expect(updatedStockItem.amount).toBeNull();
@@ -148,6 +157,7 @@ describe('在庫品を更新する UpdateStockItem', () => {
     const updatedStockItem = await update(ourHousehold, stockItemIdOf(idA), {
       amount: '2本',
       expiryDate: null,
+      useForMeals: true,
     });
 
     expect(updatedStockItem.expiryDate).toBeNull();
@@ -163,6 +173,7 @@ describe('在庫品を更新する UpdateStockItem', () => {
     const updatedStockItem = await update(ourHousehold, stockItemIdOf(idA), {
       amount: '   ',
       expiryDate: null,
+      useForMeals: true,
     });
 
     expect(updatedStockItem.amount).toBeNull();
@@ -176,12 +187,48 @@ describe('在庫品を更新する UpdateStockItem', () => {
     const updatedStockItem = await update(ourHousehold, stockItemIdOf(idA), {
       amount: null,
       expiryDate: '   ',
+      useForMeals: true,
     });
 
     expect(updatedStockItem.expiryDate).toBeNull();
   });
 
-  it('今と同じ分量・期限で更新しても断らず、同じ値の在庫品を返す', async () => {
+  it.each([
+    [true, false],
+    [false, true],
+  ])(
+    '献立に使うかどうかが %s の在庫品に %s を渡すと、その値に置き換えた在庫品が返る',
+    async (storedUseForMeals, useForMeals) => {
+      // FR-05 / ADR-086 / 設計書 規則3: 献立に使うかどうかも置き換える。
+      const { stockItemRepository, update } = setUp();
+      await store(stockItemRepository, stockItem({ useForMeals: storedUseForMeals }));
+
+      const updatedStockItem = await update(ourHousehold, stockItemIdOf(idA), {
+        amount: null,
+        expiryDate: null,
+        useForMeals,
+      });
+
+      expect(updatedStockItem.useForMeals).toBe(useForMeals);
+    },
+  );
+
+  it('献立に使わないに切り替えた在庫品は、同じ世帯からリポジトリで取り出しても献立に使わないまま', async () => {
+    // FR-43 / 設計書 規則3: 保存の確認は取得を通して行う。
+    const { stockItemRepository, update } = setUp();
+    await store(stockItemRepository, stockItem({ useForMeals: true }));
+
+    await update(ourHousehold, stockItemIdOf(idA), {
+      amount: null,
+      expiryDate: null,
+      useForMeals: false,
+    });
+
+    const found = await stockItemRepository.findById(ourHousehold, stockItemIdOf(idA));
+    expect(found?.useForMeals).toBe(false);
+  });
+
+  it('今と同じ分量・期限・献立に使うかどうかで更新しても断らず、同じ値の在庫品を返す', async () => {
     // 規則6: 差分を見て保存を省かない。判定がもう1つの規則になるうえ、外から見える違いが無い。
     const { stockItemRepository, update } = setUp();
     await store(stockItemRepository, stockItem({ amount: '2本', expiryDate: '2026-10-01' }));
@@ -189,10 +236,12 @@ describe('在庫品を更新する UpdateStockItem', () => {
     const updatedStockItem = await update(ourHousehold, stockItemIdOf(idA), {
       amount: '2本',
       expiryDate: '2026-10-01',
+      useForMeals: true,
     });
 
     expect(updatedStockItem.amount).toBe('2本');
     expect(updatedStockItem.expiryDate).toBe('2026-10-01');
+    expect(updatedStockItem.useForMeals).toBe(true);
   });
 
   it('存在しない識別子の更新を断る', async () => {
@@ -202,6 +251,7 @@ describe('在庫品を更新する UpdateStockItem', () => {
     const execution = update(ourHousehold, stockItemIdOf(unsavedId), {
       amount: '5本',
       expiryDate: null,
+      useForMeals: true,
     });
 
     await expect(execution).rejects.toThrow(PantryRuleViolation);
@@ -213,7 +263,11 @@ describe('在庫品を更新する UpdateStockItem', () => {
     const { stockItemRepository, update } = setUp();
     await store(stockItemRepository, stockItem({ householdId: neighborHousehold, amount: '2本' }));
 
-    const execution = update(ourHousehold, stockItemIdOf(idA), { amount: '5本', expiryDate: null });
+    const execution = update(ourHousehold, stockItemIdOf(idA), {
+      amount: '5本',
+      expiryDate: null,
+      useForMeals: true,
+    });
 
     await expect(execution).rejects.toThrow(PantryRuleViolation);
     await expect(execution).rejects.toHaveProperty('rule', 'update.notFound');
@@ -226,10 +280,18 @@ describe('在庫品を更新する UpdateStockItem', () => {
     await store(stockItemRepository, stockItem({ householdId: neighborHousehold, amount: '2本' }));
 
     const thrownForMissingId = await thrownBy(
-      update(ourHousehold, stockItemIdOf(unsavedId), { amount: '5本', expiryDate: null }),
+      update(ourHousehold, stockItemIdOf(unsavedId), {
+        amount: '5本',
+        expiryDate: null,
+        useForMeals: true,
+      }),
     );
     const thrownForNeighborHouseholdId = await thrownBy(
-      update(ourHousehold, stockItemIdOf(idA), { amount: '5本', expiryDate: null }),
+      update(ourHousehold, stockItemIdOf(idA), {
+        amount: '5本',
+        expiryDate: null,
+        useForMeals: true,
+      }),
     );
 
     expect(thrownForMissingId).toBeInstanceOf(PantryRuleViolation);
@@ -251,7 +313,11 @@ describe('在庫品を更新する UpdateStockItem', () => {
     );
 
     await expect(
-      update(ourHousehold, stockItemIdOf(idA), { amount: '5本', expiryDate: '2026-12-31' }),
+      update(ourHousehold, stockItemIdOf(idA), {
+        amount: '5本',
+        expiryDate: '2026-12-31',
+        useForMeals: true,
+      }),
     ).rejects.toThrow(PantryRuleViolation);
 
     const found = await stockItemRepository.findById(neighborHousehold, stockItemIdOf(idA));
@@ -267,6 +333,7 @@ describe('在庫品を更新する UpdateStockItem', () => {
     const execution = update(ourHousehold, stockItemIdOf(idA), {
       amount: '5本',
       expiryDate: '2026/10/01',
+      useForMeals: true,
     });
 
     await expect(execution).rejects.toThrow(PantryRuleViolation);
@@ -279,7 +346,11 @@ describe('在庫品を更新する UpdateStockItem', () => {
     await store(stockItemRepository, stockItem({ amount: '2本', expiryDate: '2026-10-01' }));
 
     await expect(
-      update(ourHousehold, stockItemIdOf(idA), { amount: '5本', expiryDate: '2026/10/01' }),
+      update(ourHousehold, stockItemIdOf(idA), {
+        amount: '5本',
+        expiryDate: '2026/10/01',
+        useForMeals: true,
+      }),
     ).rejects.toThrow(PantryRuleViolation);
 
     const found = await stockItemRepository.findById(ourHousehold, stockItemIdOf(idA));
@@ -294,7 +365,11 @@ describe('在庫品を更新する UpdateStockItem', () => {
     const update = updateStockItem({ stockItemRepository });
 
     await expect(
-      update(ourHousehold, stockItemIdOf(idA), { amount: '5本', expiryDate: null }),
+      update(ourHousehold, stockItemIdOf(idA), {
+        amount: '5本',
+        expiryDate: null,
+        useForMeals: true,
+      }),
     ).rejects.toThrow(SaveFailure);
   });
 });

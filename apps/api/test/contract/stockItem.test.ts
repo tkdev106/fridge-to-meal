@@ -16,23 +16,25 @@ const ingredientId = '33333333-3333-4333-8333-333333333333';
 
 /** 一覧に並べる在庫品を作る。本題でない値をここに隠す。 */
 function stockItemDto(id: string, name: string, expiryDate: string | null): StockItemDto {
-  return { id, name, ingredientId: null, amount: null, expiryDate };
+  return { id, name, ingredientId: null, amount: null, expiryDate, useForMeals: true };
 }
 
 describe('在庫品の表現 StockItemDto', () => {
-  it('在庫品は識別子・名称・食材・分量・期限を持つ', () => {
-    // FR-04: 一覧に出すのに要る5つ（設計書 5章）。
+  it('在庫品は識別子・名称・食材・分量・期限・献立に使うかどうかを持つ', () => {
+    // FR-04 / FR-43: 一覧に出すのに要る6つ（設計書 5章）。
     const dto: StockItemDto = {
       id: stockItemId,
       name: 'にんじん',
       ingredientId: ingredientId,
       amount: '2本',
       expiryDate: '2026-09-30',
+      useForMeals: false,
     };
 
     expect(dto.name).toBe('にんじん');
     expect(dto.amount).toBe('2本');
     expect(dto.expiryDate).toBe('2026-09-30');
+    expect(dto.useForMeals).toBe(false);
   });
 
   it('カタログにない食材・分量なし・期限なしを null で表せる', () => {
@@ -43,6 +45,7 @@ describe('在庫品の表現 StockItemDto', () => {
       ingredientId: null,
       amount: null,
       expiryDate: null,
+      useForMeals: true,
     };
 
     expect(dto.ingredientId).toBeNull();
@@ -58,6 +61,21 @@ describe('在庫品の表現 StockItemDto', () => {
       name: 'にんじん',
       ingredientId: null,
       amount: null,
+      useForMeals: true,
+    };
+
+    expect(dto).toBeDefined();
+  });
+
+  it('返す在庫品では献立に使うかどうかを省略できない', () => {
+    // ADR-086: 返す在庫品は献立に使うかどうかを必ず載せる。
+    // @ts-expect-error 献立に使うかどうかのキーが無い値は在庫品の表現ではない
+    const dto: StockItemDto = {
+      id: stockItemId,
+      name: 'にんじん',
+      ingredientId: null,
+      amount: null,
+      expiryDate: null,
     };
 
     expect(dto).toBeDefined();
@@ -72,6 +90,7 @@ describe('在庫品の表現 StockItemDto', () => {
       amount: null,
       // @ts-expect-error Date は契約に無い
       expiryDate: new Date('2026-09-30'),
+      useForMeals: true,
     };
 
     expect(dto).toBeDefined();
@@ -86,6 +105,7 @@ describe('在庫品の表現 StockItemDto', () => {
       // @ts-expect-error 数値は契約に無い
       amount: 200,
       expiryDate: null,
+      useForMeals: true,
     };
 
     expect(dto).toBeDefined();
@@ -99,6 +119,7 @@ describe('在庫品の表現 StockItemDto', () => {
       ingredientId: null,
       amount: null,
       expiryDate: null,
+      useForMeals: true,
       // @ts-expect-error 世帯は契約に無い
       householdId: '11111111-1111-4111-8111-111111111111',
     };
@@ -108,9 +129,9 @@ describe('在庫品の表現 StockItemDto', () => {
 });
 
 describe('登録の入力 RegisterStockItemInput', () => {
-  it('名称だけで登録の入力を組み立てられる', () => {
-    // FR-01 / FR-13 / 規則3: 省略と null は同義。名称だけで登録できる。
-    const input: RegisterStockItemInput = { name: 'にんじん' };
+  it('名称と献立に使うかどうかだけで登録の入力を組み立てられる', () => {
+    // FR-01 / FR-13 / 規則3: 省略と null は同義。名称と献立に使うかどうかだけで登録できる。
+    const input: RegisterStockItemInput = { name: 'にんじん', useForMeals: true };
 
     expect(input.name).toBe('にんじん');
   });
@@ -122,6 +143,7 @@ describe('登録の入力 RegisterStockItemInput', () => {
       ingredientId: null,
       amount: null,
       expiryDate: null,
+      useForMeals: true,
     };
 
     expect(input.ingredientId).toBeNull();
@@ -132,7 +154,7 @@ describe('登録の入力 RegisterStockItemInput', () => {
   it('名称を省いた登録の入力は組み立てられない', () => {
     // 規則2 / FR-01: 名称は必須。
     // @ts-expect-error 名称の無い登録の入力は契約に無い
-    const input: RegisterStockItemInput = { amount: '2本' };
+    const input: RegisterStockItemInput = { amount: '2本', useForMeals: true };
 
     expect(input).toBeDefined();
   });
@@ -140,14 +162,14 @@ describe('登録の入力 RegisterStockItemInput', () => {
   it('名称に null を渡せない', () => {
     // 規則2: 名称だけは「無し」を表せない。
     // @ts-expect-error 名称は string
-    const input: RegisterStockItemInput = { name: null };
+    const input: RegisterStockItemInput = { name: null, useForMeals: true };
 
     expect(input).toBeDefined();
   });
 
   it('空文字の名称は契約では拒まない', () => {
     // 規則2 / domain-model 4章: 空の名称を断るのはドメインの createStockItem であって、型ではない。
-    const input: RegisterStockItemInput = { name: '' };
+    const input: RegisterStockItemInput = { name: '', useForMeals: true };
 
     expect(input.name).toBe('');
   });
@@ -156,6 +178,7 @@ describe('登録の入力 RegisterStockItemInput', () => {
     // 規則1 / ADR-028: 世帯は認証された利用者から定まる。
     const input: RegisterStockItemInput = {
       name: 'にんじん',
+      useForMeals: true,
       // @ts-expect-error 世帯は契約に無い
       householdId: '11111111-1111-4111-8111-111111111111',
     };
@@ -167,9 +190,26 @@ describe('登録の入力 RegisterStockItemInput', () => {
     // 設計書 5章 / FR-01: 識別子はサーバが採番する。
     const input: RegisterStockItemInput = {
       name: 'にんじん',
+      useForMeals: true,
       // @ts-expect-error 識別子は契約に無い
       id: stockItemId,
     };
+
+    expect(input).toBeDefined();
+  });
+
+  it('登録の入力で献立に使うかどうかを省略できない', () => {
+    // FR-01 / ADR-086: 献立に使うかどうかは必須。既定値を契約に置かない。
+    // @ts-expect-error 献立に使うかどうかの無い登録の入力は契約に無い
+    const input: RegisterStockItemInput = { name: 'にんじん' };
+
+    expect(input).toBeDefined();
+  });
+
+  it('登録の入力の献立に使うかどうかに null を渡せない', () => {
+    // ADR-086: 献立に使うかどうかは「無し」を表せない。
+    // @ts-expect-error 献立に使うかどうかは boolean
+    const input: RegisterStockItemInput = { name: 'にんじん', useForMeals: null };
 
     expect(input).toBeDefined();
   });
@@ -178,7 +218,11 @@ describe('登録の入力 RegisterStockItemInput', () => {
 describe('更新の入力 UpdateStockItemInput', () => {
   it('分量と期限を置き換える更新の入力を組み立てられる', () => {
     // FR-05: 編集できるのは分量と期限。
-    const input: UpdateStockItemInput = { amount: '1本', expiryDate: '2026-10-01' };
+    const input: UpdateStockItemInput = {
+      amount: '1本',
+      expiryDate: '2026-10-01',
+      useForMeals: true,
+    };
 
     expect(input.amount).toBe('1本');
     expect(input.expiryDate).toBe('2026-10-01');
@@ -186,7 +230,7 @@ describe('更新の入力 UpdateStockItemInput', () => {
 
   it('期限を null にして消すことを表せる', () => {
     // 規則4 / FR-13: 常に置き換えとして扱うので、null が「消す」を表す。
-    const input: UpdateStockItemInput = { amount: null, expiryDate: null };
+    const input: UpdateStockItemInput = { amount: null, expiryDate: null, useForMeals: true };
 
     expect(input.amount).toBeNull();
     expect(input.expiryDate).toBeNull();
@@ -195,7 +239,7 @@ describe('更新の入力 UpdateStockItemInput', () => {
   it('更新の入力で分量を省略できない', () => {
     // 規則4: 省略を許すと「触っていない」と「消す」が区別できない。
     // @ts-expect-error 分量の無い更新の入力は契約に無い
-    const input: UpdateStockItemInput = { expiryDate: '2026-10-01' };
+    const input: UpdateStockItemInput = { expiryDate: '2026-10-01', useForMeals: true };
 
     expect(input).toBeDefined();
   });
@@ -203,7 +247,7 @@ describe('更新の入力 UpdateStockItemInput', () => {
   it('更新の入力で期限を省略できない', () => {
     // 規則4: 同上。期限を消す操作を表せなくなる。
     // @ts-expect-error 期限の無い更新の入力は契約に無い
-    const input: UpdateStockItemInput = { amount: '1本' };
+    const input: UpdateStockItemInput = { amount: '1本', useForMeals: true };
 
     expect(input).toBeDefined();
   });
@@ -213,8 +257,29 @@ describe('更新の入力 UpdateStockItemInput', () => {
     const input: UpdateStockItemInput = {
       amount: '1本',
       expiryDate: '2026-10-01',
+      useForMeals: true,
       // @ts-expect-error 名称は契約に無い
       name: 'たまねぎ',
+    };
+
+    expect(input).toBeDefined();
+  });
+
+  it('更新の入力で献立に使うかどうかを省略できない', () => {
+    // FR-05 / ADR-086: 常に置き換えとして扱うので省略を許さない。
+    // @ts-expect-error 献立に使うかどうかの無い更新の入力は契約に無い
+    const input: UpdateStockItemInput = { amount: '1本', expiryDate: '2026-10-01' };
+
+    expect(input).toBeDefined();
+  });
+
+  it('更新の入力の献立に使うかどうかに null を渡せない', () => {
+    // ADR-086: 献立に使うかどうかは「無し」を表せない。
+    const input: UpdateStockItemInput = {
+      amount: '1本',
+      expiryDate: '2026-10-01',
+      // @ts-expect-error 献立に使うかどうかは boolean
+      useForMeals: null,
     };
 
     expect(input).toBeDefined();

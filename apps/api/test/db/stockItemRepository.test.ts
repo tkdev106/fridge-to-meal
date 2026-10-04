@@ -15,6 +15,7 @@ import { withHouseholdTransaction } from '../../src/shared/infrastructure/db/Hou
 import type { HouseholdId } from '../../src/shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../src/shared/domain/HouseholdId.js';
 import { APP_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
+import { withTransaction } from '../support/db/WithTransaction.js';
 
 /**
  * ローカル Postgres に対する `StockItemRepositoryImpl` の1周目
@@ -72,6 +73,7 @@ function stockItem(props: {
   ingredientId?: string | null;
   amount?: string | null;
   expiryDate?: string | null;
+  useForMeals?: boolean;
 }) {
   const ingredientId = props.ingredientId ?? null;
 
@@ -82,6 +84,7 @@ function stockItem(props: {
     ingredientId: ingredientId === null ? null : ingredientIdOf(ingredientId),
     amount: amountOf(props.amount ?? null),
     expiryDate: expiryDateOf(props.expiryDate ?? null),
+    useForMeals: props.useForMeals ?? true,
   });
 }
 
@@ -1336,5 +1339,139 @@ describe('在庫品リポジトリの実装（世帯のデータを消す）', (
 
     // B-56a 規則7: 2度目の呼び出しも同じ結末。
     await expect(secondDeletion).resolves.toBeUndefined();
+  });
+});
+
+// ここから下は B-76（献立に使うかどうか）。世帯 ID はここだけで使う固定値。
+const useForMealsTrueHouseholdId = householdIdOf('b7600000-0000-4000-8000-000000000001');
+const useForMealsTrueStockItemId = stockItemIdOf('b7600000-0000-4000-8000-0000000000f1');
+
+const useForMealsFalseHouseholdId = householdIdOf('b7600000-0000-4000-8000-000000000002');
+const useForMealsFalseStockItemId = stockItemIdOf('b7600000-0000-4000-8000-0000000000f2');
+
+const useForMealsListingHouseholdId = householdIdOf('b7600000-0000-4000-8000-000000000003');
+const useForMealsListingStockItemId = stockItemIdOf('b7600000-0000-4000-8000-0000000000f3');
+
+const useForMealsOverwriteHouseholdId = householdIdOf('b7600000-0000-4000-8000-000000000004');
+const useForMealsOverwriteStockItemId = stockItemIdOf('b7600000-0000-4000-8000-0000000000f4');
+
+const useForMealsDefaultHouseholdId = householdIdOf('b7600000-0000-4000-8000-000000000005');
+const useForMealsDefaultStockItemId = stockItemIdOf('b7600000-0000-4000-8000-0000000000f5');
+
+const useForMealsNullHouseholdId = 'b7600000-0000-4000-8000-000000000006';
+const useForMealsNullStockItemId = 'b7600000-0000-4000-8000-0000000000f6';
+
+describe('在庫品リポジトリの実装（献立に使うかどうか）', () => {
+  it.each([
+    [true, useForMealsTrueHouseholdId, useForMealsTrueStockItemId],
+    [false, useForMealsFalseHouseholdId, useForMealsFalseStockItemId],
+  ])(
+    '献立に使うかどうかに %s を持つ在庫品を保存すると、findById で同じ値が読み戻せる',
+    async (useForMeals, householdId, stockItemId) => {
+      const readBackStockItem = await withHouseholdTransaction(db, householdId, async (tx) => {
+        const repository = new StockItemRepositoryImpl(tx);
+        await repository.save(
+          householdId,
+          stockItem({ id: stockItemId, householdId, name: 'にんじん', useForMeals }),
+        );
+        return repository.findById(householdId, stockItemId);
+      });
+
+      // ADR-086 / 設計書 規則5: 挿入側に use_for_meals を書き、行から組むときは列の値をそのまま渡す。
+      expect(readBackStockItem?.useForMeals).toBe(useForMeals);
+    },
+  );
+
+  it('献立に使わない在庫品は、findByHousehold でも献立に使わないまま読み戻せる', async () => {
+    const foundStockItems = await withHouseholdTransaction(
+      db,
+      useForMealsListingHouseholdId,
+      async (tx) => {
+        const repository = new StockItemRepositoryImpl(tx);
+        await repository.save(
+          useForMealsListingHouseholdId,
+          stockItem({
+            id: useForMealsListingStockItemId,
+            householdId: useForMealsListingHouseholdId,
+            name: 'ヨーグルト',
+            useForMeals: false,
+          }),
+        );
+        return repository.findByHousehold(useForMealsListingHouseholdId);
+      },
+    );
+
+    // FR-43 / 設計書 規則5: 一覧の経路でも列の値をそのまま渡す。
+    expect(foundStockItems.map((foundStockItem) => foundStockItem.useForMeals)).toEqual([false]);
+  });
+
+  it('同じ ID で献立に使うから使わないに変えて2度 save すると、献立に使わないが読み戻せる', async () => {
+    const readBackStockItem = await withHouseholdTransaction(
+      db,
+      useForMealsOverwriteHouseholdId,
+      async (tx) => {
+        const repository = new StockItemRepositoryImpl(tx);
+        await repository.save(
+          useForMealsOverwriteHouseholdId,
+          stockItem({
+            id: useForMealsOverwriteStockItemId,
+            householdId: useForMealsOverwriteHouseholdId,
+            name: 'にんじん',
+            useForMeals: true,
+          }),
+        );
+        await repository.save(
+          useForMealsOverwriteHouseholdId,
+          stockItem({
+            id: useForMealsOverwriteStockItemId,
+            householdId: useForMealsOverwriteHouseholdId,
+            name: 'にんじん',
+            useForMeals: false,
+          }),
+        );
+        return repository.findById(
+          useForMealsOverwriteHouseholdId,
+          useForMealsOverwriteStockItemId,
+        );
+      },
+    );
+
+    // FR-05 / 設計書 規則5: upsert の更新側にも use_for_meals を書く。
+    expect(readBackStockItem?.useForMeals).toBe(false);
+  });
+
+  it('use_for_meals を書かずに入れた行は、献立に使う在庫品として読み戻せる', async () => {
+    const readBackStockItem = await withHouseholdTransaction(
+      db,
+      useForMealsDefaultHouseholdId,
+      async (tx) => {
+        // 列の既定値を見るため、リポジトリの save を通さず行を直接差し込む。**クレームを張った
+        // 単位の中で、authenticator のまま**行う（所有者の接続を使うと RLS が素通りする）。
+        await tx.execute(sql`
+        insert into stock_items (id, household_id, name)
+        values (${useForMealsDefaultStockItemId}, ${useForMealsDefaultHouseholdId}, 'にんじん')
+      `);
+
+        return new StockItemRepositoryImpl(tx).findById(
+          useForMealsDefaultHouseholdId,
+          useForMealsDefaultStockItemId,
+        );
+      },
+    );
+
+    // ADR-086 / 設計書 規則6: 既定値は既存行を献立に使うものにするためにある。
+    expect(readBackStockItem?.useForMeals).toBe(true);
+  });
+
+  it('use_for_meals が null の行は DB が拒む', async () => {
+    // ADR-086 / 設計書 規則6: 列は NOT NULL。「無し」を表せない。
+    await expect(
+      withTransaction(connection, useForMealsNullHouseholdId, (tx) => {
+        return tx`
+          insert into stock_items (id, household_id, name, use_for_meals)
+          values (${useForMealsNullStockItemId}, ${useForMealsNullHouseholdId}, 'にんじん', null)
+        `;
+      }),
+    ).rejects.toMatchObject({ code: '23502' });
   });
 });
