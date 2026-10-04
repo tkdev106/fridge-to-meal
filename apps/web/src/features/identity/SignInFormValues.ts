@@ -9,7 +9,7 @@
  * 2か所が別々にずれていく（先行 B-12 規則4）。
  */
 
-/** ログイン／サインアップの画面が持つ2欄の値。世帯は持たない（C-9 / ADR-028）。 */
+/** ログイン／サインアップの画面が持つ2欄の値。世帯は持たない（C-9 / ADR-087 決定2）。 */
 export type SignInFormValues = {
   readonly email: string;
   readonly password: string;

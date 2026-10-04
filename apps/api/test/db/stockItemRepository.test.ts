@@ -19,7 +19,7 @@ import { withTransaction } from '../support/db/WithTransaction.js';
 
 /**
  * ローカル Postgres に対する `StockItemRepositoryImpl` の1周目
- * （B-07 設計 規則1・2・3・4・13 / ADR-029 / ADR-028 / C-9 / NFR-09 / FR-01）。
+ * （B-07 設計 規則1・2・3・4・13 / ADR-029 / ADR-087 決定2 / C-9 / NFR-09 / FR-01）。
  * **`pnpm test:db` でだけ走る** — `pnpm test` は `apps/api/test/db/**` を除外する。
  *
  * 繋ぐのは `authenticator` だけ。所有者（`postgres`）の接続を使うと行レベルセキュリティが

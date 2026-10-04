@@ -5,7 +5,7 @@ import { withTransaction } from '../support/db/WithTransaction.js';
 
 /**
  * ローカル Postgres に対する行レベルセキュリティの回帰（B-07b 設計 規則1〜16 /
- * ADR-029 決定3(a)(b)(c)・理由(1)(4) / ADR-028 / NFR-09 / C-9）。
+ * ADR-029 決定3(a)(b)(c)・理由(1)(4) / ADR-087 決定2 / NFR-09 / C-9）。
  * **`pnpm test:db` でだけ走る** — `pnpm test` は `apps/api/test/db/**` を除外する。
  *
  * 繋ぐのは `authenticator` だけ。所有者（`postgres`）の接続を使うと行レベルセキュリティが

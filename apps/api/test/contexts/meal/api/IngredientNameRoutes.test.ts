@@ -125,7 +125,7 @@ describe('食材名の経路 IngredientNameRoutes', () => {
     });
 
     it('クエリの householdId を見ず、認証から定まった世帯だけを渡す', async () => {
-      // 規則3 / C-9 / ADR-028: 世帯を利用者の入力から受け取らない。
+      // 規則3 / C-9 / ADR-087 決定2: 世帯を利用者の入力から受け取らない。
       const { routes, listIngredientNames } = setUp();
 
       await routes.request(`/ingredient-names?householdId=${neighborHousehold}`, {
