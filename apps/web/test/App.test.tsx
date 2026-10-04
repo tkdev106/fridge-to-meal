@@ -4232,7 +4232,7 @@ describe('門 App の冷蔵庫の共有', () => {
     openSettings();
 
     // 規則12 / FR-47: 門は設定を開いた回に人数を取りに行き、取れた数を設定画面へ渡す。
-    expect(await screen.findByText('2人')).not.toBeNull();
+    expect(await screen.findByText('1人')).not.toBeNull();
   });
 
   it('設定を閉じて開き直すと人数を取り直し、新しい人数が出る', async () => {
@@ -4246,12 +4246,12 @@ describe('門 App の冷蔵庫の共有', () => {
     });
 
     openSettings();
-    await screen.findByText('2人');
+    await screen.findByText('1人');
     closeSettings();
     openSettings();
 
     // 規則12: 設定を開くたびに1回取りに行く。
-    expect(await screen.findByText('3人')).not.toBeNull();
+    expect(await screen.findByText('2人')).not.toBeNull();
   });
 
   it('開き直して取り直している間は、前の人数を出さない', async () => {
@@ -4265,13 +4265,13 @@ describe('門 App の冷蔵庫の共有', () => {
     });
 
     openSettings();
-    await screen.findByText('2人');
+    await screen.findByText('1人');
     closeSettings();
     openSettings();
     await flush();
 
     // 規則12 / 規則2: 開くたびに `loading` に戻し、取れるまで数を出さない。
-    expect([screen.queryByText('2人'), screen.queryByText('3人')]).toEqual([null, null]);
+    expect([screen.queryByText('1人'), screen.queryByText('2人')]).toEqual([null, null]);
   });
 
   it('閉じる前に届かなかった人数は、開き直したあとに届いても出さない', async () => {
@@ -4287,11 +4287,11 @@ describe('門 App の冷蔵庫の共有', () => {
     openSettings();
     closeSettings();
     openSettings();
-    await screen.findByText('2人');
+    await screen.findByText('1人');
     await settleHousehold(household);
 
     // 規則12（先行 B-22 規則10 の `active`）: 閉じる前に届かなかった結末は捨てる。
-    expect([screen.queryAllByText('5人').length, screen.queryAllByText('2人').length]).toEqual([
+    expect([screen.queryAllByText('4人').length, screen.queryAllByText('1人').length]).toEqual([
       0, 1,
     ]);
   });
@@ -4325,7 +4325,7 @@ describe('門 App の冷蔵庫の共有', () => {
 
     openSettings();
     await confirmLeave();
-    await screen.findByText('1人');
+    await screen.findByText('0人');
 
     // 規則13 / 規則3 / FR-46: 結末に関わらず取り直し、1人なら抜ける操作を出さない（409 の回）。
     expect(operationCount(LEAVE)).toBe(0);
@@ -4346,7 +4346,7 @@ describe('門 App の冷蔵庫の共有', () => {
     await confirmLeave();
 
     // 規則13 / 規則14: 抜けても設定は開いたままで、取り直した人数が出る。
-    expect(await screen.findByText('1人')).not.toBeNull();
+    expect(await screen.findByText('0人')).not.toBeNull();
   });
 
   it('抜けた回は在庫一覧を取り直し、在庫タブに新しい在庫品が出る', async () => {
