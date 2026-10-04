@@ -365,6 +365,8 @@ export function createApp(deps: AppDependencies): Hono {
       origin: ALLOWED_WEB_ORIGINS,
       allowMethods: ALLOWED_METHODS,
       allowHeaders: ALLOWED_HEADERS,
+      // preflight の結果を1時間覚えさせ、要求のたびに往復させない（ADR-085 決定1）。
+      maxAge: 3600,
     }),
   );
 

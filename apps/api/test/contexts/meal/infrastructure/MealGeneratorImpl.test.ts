@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MealGeneratorImpl } from '../../../../src/contexts/meal/infrastructure/MealGeneratorImpl.js';
 import type { MealGeneratorSettings } from '../../../../src/contexts/meal/infrastructure/MealGeneratorImpl.js';
 import type { MealGenerationInput } from '../../../../src/contexts/meal/domain/port/MealGenerator.js';
@@ -951,6 +951,44 @@ describe('MealGeneratorImpl', () => {
       );
 
       expect(rejection).toBe(unreadable);
+    });
+  });
+
+  describe('時間の上限', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('応答が30秒以内に届かなければ、生成の規則違反に化けさせずに断る', async () => {
+      // ADR-085 決定2 / ADR-079 決定5: 時間切れは「応答が届かない」失敗であり 500 になる。
+      vi.useFakeTimers();
+      const generation = rejectionOf(
+        generator(FixedFetchGenerateContent.delivering({ hangs: true })).generate(
+          input(someStockItems),
+        ),
+      );
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      const rejection = await generation;
+
+      expect(rejection).toBeInstanceOf(Error);
+      expect(rejection).not.toBeInstanceOf(MealRuleViolation);
+    });
+
+    it('30秒に満たないうちは断らない', async () => {
+      // ADR-085 決定2: 上限は30秒ちょうどであり、それより前に切らない。
+      vi.useFakeTimers();
+      let settled = false;
+      void generator(FixedFetchGenerateContent.delivering({ hangs: true }))
+        .generate(input(someStockItems))
+        .catch(() => undefined)
+        .finally(() => {
+          settled = true;
+        });
+
+      await vi.advanceTimersByTimeAsync(29_999);
+
+      expect(settled).toBe(false);
     });
   });
 });
