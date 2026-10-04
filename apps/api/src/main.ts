@@ -3,8 +3,8 @@
 // **実装クラスを new してよいのはこのファイルだけである**（ADR-002 / CLAUDE.md）。
 // ここでリポジトリとポートの実装を組み立て、ユースケースに注入し、api 層に渡す。
 //
-// 結線するのは在庫（pantry）の4経路と献立（meal）の提案の3経路・食材名の1経路・調理記録の1経路・献立詳細の1経路・献立の一覧の1経路・世帯のデータを消す1経路、その前に立つ
-// 世帯の認証（identity）である。コンテキストをまたいで全層を import してよいのは、依存表の `main.ts` の
+// 結線するのは在庫（pantry）の4経路と献立（meal）の提案の3経路・食材名の1経路・調理記録の1経路・献立詳細の1経路・献立の一覧の1経路・世帯のデータを消す1経路・
+// 招待で参加する1経路、世帯（identity）の人数・抜ける・招待を作る3経路と、その前に立つ世帯の認証である。コンテキストをまたいで全層を import してよいのは、依存表の `main.ts` の
 // 行だけ（CLAUDE.md「依存は外から内へ」）。
 
 import { drizzle } from 'drizzle-orm/postgres-js';
@@ -19,15 +19,21 @@ import type {
 import { HouseholdAuthenticatorImpl } from './contexts/identity/infrastructure/HouseholdAuthenticatorImpl.js';
 import type { HouseholdRoutesDeps } from './contexts/identity/api/HouseholdRoutes.js';
 import { createHouseholdRoutes } from './contexts/identity/api/HouseholdRoutes.js';
+import { HouseholdInvitationCreatorImpl } from './contexts/identity/infrastructure/HouseholdInvitationCreatorImpl.js';
+import { HouseholdJoinerImpl } from './contexts/identity/infrastructure/HouseholdJoinerImpl.js';
 import { HouseholdLeaverImpl } from './contexts/identity/infrastructure/HouseholdLeaverImpl.js';
 import { HouseholdMemberCounterImpl } from './contexts/identity/infrastructure/HouseholdMemberCounterImpl.js';
 import { countHouseholdMembers } from './contexts/identity/usecase/CountHouseholdMembers.js';
+import { createHouseholdInvitation } from './contexts/identity/usecase/CreateHouseholdInvitation.js';
 import { identifyHousehold } from './contexts/identity/usecase/IdentifyHousehold.js';
+import { joinHousehold } from './contexts/identity/usecase/JoinHousehold.js';
 import { leaveHousehold } from './contexts/identity/usecase/LeaveHousehold.js';
 import type { CookingRecordRoutesDeps } from './contexts/meal/api/CookingRecordRoutes.js';
 import { createCookingRecordRoutes } from './contexts/meal/api/CookingRecordRoutes.js';
 import type { HouseholdDataRoutesDeps } from './contexts/meal/api/HouseholdDataRoutes.js';
 import { createHouseholdDataRoutes } from './contexts/meal/api/HouseholdDataRoutes.js';
+import type { HouseholdJoinRoutesDeps } from './contexts/meal/api/HouseholdJoinRoutes.js';
+import { createHouseholdJoinRoutes } from './contexts/meal/api/HouseholdJoinRoutes.js';
 import type { IngredientNameRoutesDeps } from './contexts/meal/api/IngredientNameRoutes.js';
 import { createIngredientNameRoutes } from './contexts/meal/api/IngredientNameRoutes.js';
 import type { MealListRoutesDeps } from './contexts/meal/api/MealListRoutes.js';
@@ -51,6 +57,7 @@ import { showMeal } from './contexts/meal/usecase/ShowMeal.js';
 import { listMeals } from './contexts/meal/usecase/ListMeals.js';
 import { listIngredientNames } from './contexts/meal/usecase/ListIngredientNames.js';
 import { deleteHouseholdData } from './contexts/meal/usecase/DeleteHouseholdData.js';
+import { acceptHouseholdInvitation } from './contexts/meal/usecase/AcceptHouseholdInvitation.js';
 import { UserDeleterImpl } from './contexts/identity/infrastructure/UserDeleterImpl.js';
 import { deleteUser } from './contexts/identity/usecase/DeleteUser.js';
 import { createStockItemRoutes } from './contexts/pantry/api/StockItemRoutes.js';
@@ -120,7 +127,8 @@ export type AppDependencies = Parameters<typeof createStockItemRoutes>[0] &
   MealRoutesDeps &
   MealListRoutesDeps &
   HouseholdDataRoutesDeps &
-  HouseholdRoutesDeps;
+  HouseholdRoutesDeps &
+  HouseholdJoinRoutesDeps;
 
 /** 差し替えられる出口。既定は実行環境の `fetch`。テストは `FixedFetchJwks` を渡す。 */
 export type CompositionPorts = {
@@ -315,6 +323,27 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
     leaveHousehold: transactionPerRequest(env, (tx) =>
       leaveHousehold({ householdLeaver: new HouseholdLeaverImpl(tx) }),
     ),
+    createHouseholdInvitation: transactionPerRequest(env, (tx) =>
+      createHouseholdInvitation({
+        householdInvitationCreator: new HouseholdInvitationCreatorImpl(tx),
+      }),
+    ),
+    // 招待で参加する口も同じ1要求1トランザクションで包む（B-74 設計書 規則11 / ADR-029 決定3(a)）。
+    // 人数・データを消す口・参加の口をすべて**同じ `tx`** から作る — 参加が断られたら、先に消した
+    // データも巻き戻しで戻る。
+    acceptHouseholdInvitation: transactionPerRequest(env, (tx) =>
+      acceptHouseholdInvitation({
+        countHouseholdMembers: countHouseholdMembers({
+          householdMemberCounter: new HouseholdMemberCounterImpl(tx),
+        }),
+        deleteHouseholdStockItems: deleteHouseholdStockItems({
+          stockItemRepository: new StockItemRepositoryImpl(tx),
+        }),
+        joinHousehold: joinHousehold({ householdJoiner: new HouseholdJoinerImpl(tx) }),
+        mealRepository: new MealRepositoryImpl(tx),
+        suggestionRepository: new SuggestionRepositoryImpl(tx),
+      }),
+    ),
     now,
   };
 }
@@ -399,6 +428,7 @@ export function createApp(deps: AppDependencies): Hono {
   app.route('/', createMealListRoutes(deps));
   app.route('/', createHouseholdDataRoutes(deps));
   app.route('/', createHouseholdRoutes(deps));
+  app.route('/', createHouseholdJoinRoutes(deps));
 
   return app;
 }

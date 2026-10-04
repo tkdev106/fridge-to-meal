@@ -28,7 +28,15 @@ const MEAL_RULE_VIOLATION_STATUSES: Readonly<Record<string, ContentfulStatusCode
 /** 表に無い献立の規則違反。入力を受け取らない経路なので、サーバ側の誤りとして扱う。 */
 const MEAL_DEFAULT_STATUS = 500;
 
-/** 認証の規則違反は**すべて 401**（先行 表2 / ADR-032）。表に無い `rule` も同じ。 */
+/** 認証の規則違反のうち 401 でないもの（B-74 設計書 7章）。**ここに無い `rule` は 401 に落ちる**。 */
+const IDENTITY_RULE_VIOLATION_STATUSES: Readonly<Record<string, ContentfulStatusCode>> = {
+  // 無い・切れた・使用済みの招待を区別しない（ADR-087 決定4）。
+  'joinHousehold.invalidInvitation': 404,
+  // 既に招待の世帯に居る。状態の衝突である（先行 `leaveHousehold.alone`）。
+  'joinHousehold.alreadyMember': 409,
+};
+
+/** 認証の規則違反は、上の表に無ければ**すべて 401**（先行 表2 / ADR-032）。 */
 const IDENTITY_DEFAULT_STATUS = 401;
 
 /**
@@ -46,7 +54,7 @@ export function statusOfThrown(
   const status =
     ruleViolation.name === 'MealRuleViolation'
       ? (MEAL_RULE_VIOLATION_STATUSES[ruleViolation.rule] ?? MEAL_DEFAULT_STATUS)
-      : IDENTITY_DEFAULT_STATUS;
+      : (IDENTITY_RULE_VIOLATION_STATUSES[ruleViolation.rule] ?? IDENTITY_DEFAULT_STATUS);
 
   return { status, body: { rule: ruleViolation.rule } };
 }

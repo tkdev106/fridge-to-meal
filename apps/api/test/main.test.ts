@@ -13,9 +13,11 @@ import { householdIdOf } from '../src/shared/domain/HouseholdId.js';
 import type { AccessTokenClaims } from './support/identity/AccessSigning.js';
 import { accessTokenOf, publicAccessTokenKey } from './support/identity/AccessSigning.js';
 import { FixedCountHouseholdMembers } from './support/identity/FixedCountHouseholdMembers.js';
+import { FixedCreateHouseholdInvitation } from './support/identity/FixedCreateHouseholdInvitation.js';
 import { FixedFetchJwks } from './support/identity/FixedFetchJwks.js';
 import { FixedIdentifyHousehold } from './support/identity/FixedIdentifyHousehold.js';
 import { FixedLeaveHousehold } from './support/identity/FixedLeaveHousehold.js';
+import { FixedAcceptHouseholdInvitation } from './support/meal/FixedAcceptHouseholdInvitation.js';
 import { FixedAddCookingRecord } from './support/meal/FixedAddCookingRecord.js';
 import { FixedDeleteHouseholdData } from './support/meal/FixedDeleteHouseholdData.js';
 import { FixedListIngredientNames } from './support/meal/FixedListIngredientNames.js';
@@ -153,6 +155,8 @@ function appWithFixedDependencies(
     deleteHouseholdData?: FixedDeleteHouseholdData;
     countHouseholdMembers?: FixedCountHouseholdMembers;
     leaveHousehold?: FixedLeaveHousehold;
+    createHouseholdInvitation?: FixedCreateHouseholdInvitation;
+    acceptHouseholdInvitation?: FixedAcceptHouseholdInvitation;
   } = {},
 ) {
   const suggestMeals =
@@ -174,6 +178,11 @@ function appWithFixedDependencies(
   const countHouseholdMembers =
     overrides.countHouseholdMembers ?? new FixedCountHouseholdMembers({ returns: 2 });
   const leaveHousehold = overrides.leaveHousehold ?? new FixedLeaveHousehold({ succeeds: true });
+  const createHouseholdInvitation =
+    overrides.createHouseholdInvitation ??
+    new FixedCreateHouseholdInvitation({ returns: 'invitation-created-by-port' });
+  const acceptHouseholdInvitation =
+    overrides.acceptHouseholdInvitation ?? new FixedAcceptHouseholdInvitation({ succeeds: true });
 
   return createApp({
     identifyHousehold: new FixedIdentifyHousehold({ returns: ourHousehold }).identify,
@@ -193,6 +202,8 @@ function appWithFixedDependencies(
     deleteHouseholdData: deleteHouseholdData.delete,
     countHouseholdMembers: countHouseholdMembers.count,
     leaveHousehold: leaveHousehold.leave,
+    createHouseholdInvitation: createHouseholdInvitation.create,
+    acceptHouseholdInvitation: acceptHouseholdInvitation.accept,
     now: () => fixedNow,
   });
 }
@@ -1077,6 +1088,86 @@ describe('composition root main', () => {
         method: 'POST',
         headers: bearerHeaders(await accessTokenOf(validClaims())),
       });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+    });
+  });
+
+  describe('招待と参加の経路の配置', () => {
+    // B-74 5周目。代役の deps で組み、経路がどこに置かれるかだけを見る。
+    it('招待を作る経路を接頭辞なしの POST /household/invitations に置く', async () => {
+      // B-74 設計書 規則14 / ADR-048 決定4: `createHouseholdRoutes` の経路をそのまま根にマウントする。
+      const app = appWithFixedDependencies({
+        createHouseholdInvitation: new FixedCreateHouseholdInvitation({
+          returns: 'invitation-created-by-port',
+        }),
+      });
+
+      const response = await app.request('/household/invitations', {
+        method: 'POST',
+        headers: bearerHeaders('x'),
+      });
+
+      expect(response.status).toBe(201);
+      await expect(response.json()).resolves.toEqual({ token: 'invitation-created-by-port' });
+    });
+
+    it('参加する経路を接頭辞なしの POST /household/join に置く', async () => {
+      // B-74 設計書 規則15 / ADR-048 決定4: `createHouseholdJoinRoutes` の経路を根にマウントする。
+      const acceptHouseholdInvitation = new FixedAcceptHouseholdInvitation({ succeeds: true });
+      const app = appWithFixedDependencies({ acceptHouseholdInvitation });
+
+      const response = await app.request(
+        '/household/join',
+        jsonRequest('POST', { token: 'invitation-from-link' }, bearerHeaders('x')),
+      );
+
+      expect(response.status).toBe(204);
+      expect(acceptHouseholdInvitation.receivedToken).toBe('invitation-from-link');
+    });
+  });
+
+  describe('招待と参加の経路の結線', () => {
+    // B-74 5周目。composeDependencies の本物の結線で、差し替えるのは JWKS を取りに行く口だけ。
+    it('アクセストークンが無い参加の要求は結線後も 401 accessToken.missing になる', async () => {
+      // B-74 設計書 規則13・7章1行目 / ADR-032: 世帯を定めるのが常に先。認証を通らない要求は DB に触れない。
+      const { app } = composedApp(envWithoutHyperdrive);
+
+      const response = await app.request(
+        '/household/join',
+        jsonRequest('POST', { token: 'invitation-from-link' }, {}),
+      );
+
+      expect(response.status).toBe(401);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'accessToken.missing' });
+    });
+
+    it('SUPABASE_URL が空の環境で招待を求めると 500 unexpected になり 401 にならない', async () => {
+      // B-74 設計書 7章6行目 / ADR-045 決定3: サーバ側の不備を利用者のアクセストークンのせいにしない。
+      const { app } = composedApp({ ...env, SUPABASE_URL: '' });
+
+      const response = await app.request('/household/invitations', {
+        method: 'POST',
+        headers: bearerHeaders(await accessTokenOf(validClaims())),
+      });
+
+      expect(response.status).toBe(500);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+    });
+
+    it('認証を通ったあと HYPERDRIVE の binding が無ければ参加の要求は 500 unexpected になる', async () => {
+      // B-74 設計書 規則13 / ADR-029 決定3(a) / ADR-045: 接続文字列が読めないのはサーバ側の不備である。
+      const { app } = composedApp(envWithoutHyperdrive);
+
+      const response = await app.request(
+        '/household/join',
+        jsonRequest(
+          'POST',
+          { token: 'invitation-from-link' },
+          bearerHeaders(await accessTokenOf(validClaims())),
+        ),
+      );
 
       expect(response.status).toBe(500);
       await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });

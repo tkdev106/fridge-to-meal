@@ -1,6 +1,12 @@
+import { drizzle } from 'drizzle-orm/postgres-js';
 import type { Sql, TransactionSql } from 'postgres';
 import postgres from 'postgres';
 import { afterAll, describe, expect, it } from 'vitest';
+import type { JoinOutcome } from '../../src/contexts/identity/domain/port/HouseholdJoiner.js';
+import { HouseholdInvitationCreatorImpl } from '../../src/contexts/identity/infrastructure/HouseholdInvitationCreatorImpl.js';
+import { HouseholdJoinerImpl } from '../../src/contexts/identity/infrastructure/HouseholdJoinerImpl.js';
+import { householdIdOf } from '../../src/shared/domain/HouseholdId.js';
+import { withHouseholdTransaction } from '../../src/shared/infrastructure/db/HouseholdTransaction.js';
 import { insertUser } from '../support/db/AuthUsers.js';
 import { APP_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
 import { insertHouseholdInvitation, selectExpiresIn } from '../support/db/HouseholdInvitations.js';
@@ -52,6 +58,11 @@ function rowIdOf(caseNumber: number, kind: 'a' | 'b' | 'c'): string {
 // 1本の接続で複数のトランザクションを張る（先行 `householdMembership.test.ts`）。
 const connection = postgres(APP_CONNECTION_STRING, { max: 1 });
 
+// 出口の実装に渡す drizzle の handle（先行 `householdMembership.test.ts`）。**接続を上と分ける** —
+// drizzle は渡された接続の型の変換を書き換えるため、共有すると上のケースの引数が通らなくなる。
+const implConnection = postgres(APP_CONNECTION_STRING, { max: 1 });
+const db = drizzle(implConnection);
+
 // 行を直接置く接続。役を切り替えずに `authenticator` のまま使う。
 const rowConnection = postgres(APP_CONNECTION_STRING, { max: 1 });
 
@@ -62,6 +73,7 @@ const observerConnection = postgres(APP_CONNECTION_STRING, { max: 1 });
 
 afterAll(async () => {
   await connection.end();
+  await implConnection.end();
   await rowConnection.end();
   await firstJoinConnection.end();
   await secondJoinConnection.end();
@@ -813,5 +825,126 @@ describe('2関数の置き場所と権限', () => {
 
     // 設計 5章 / ADR-071 理由(4): `security definer` なので検索経路に頼らない。
     expect(['', '""']).toContain(value);
+  });
+});
+
+/**
+ * 出口の実装のケース（B-74 3周目）の利用者の識別子。先頭の並び（`b74b1000`）で上の関数のケースと分ける。
+ */
+function implUserIdOf(caseNumber: number, index: number): string {
+  const caseSegment = String(caseNumber).padStart(4, '0');
+  const indexSegment = String(index).padStart(12, '0');
+  return `b74b1000-${caseSegment}-4000-8000-${indexSegment}`;
+}
+
+/** 出口の実装のケースで直接置く招待のトークン。先頭の並び（`b74b9000`）で分ける。 */
+function implInvitationTokenOf(caseNumber: number): string {
+  const caseSegment = String(caseNumber).padStart(4, '0');
+  return `b74b9000-${caseSegment}-4000-8000-000000000001`;
+}
+
+/**
+ * 出口の実装を、本物の `withHouseholdTransaction` が張ったトランザクションで呼ぶ（B-74 3周目 /
+ * 設計書 規則12）。第2引数（参加は第3引数）を渡せば、それをクレームの世帯の代わりに出口の引数として
+ * 渡す — 引数の世帯を SQL に渡さないことを見るため（先行 `householdMembership.test.ts`）。
+ */
+function createWithImpl(userId: string, argumentHousehold?: string): Promise<string> {
+  return withHouseholdTransaction(db, householdIdOf(userId), (tx, householdId) =>
+    new HouseholdInvitationCreatorImpl(tx).create(
+      argumentHousehold === undefined ? householdId : householdIdOf(argumentHousehold),
+    ),
+  );
+}
+
+function joinWithImpl(
+  userId: string,
+  token: string,
+  argumentHousehold?: string,
+): Promise<JoinOutcome> {
+  return withHouseholdTransaction(db, householdIdOf(userId), (tx, householdId) =>
+    new HouseholdJoinerImpl(tx).join(
+      argumentHousehold === undefined ? householdId : householdIdOf(argumentHousehold),
+      token,
+    ),
+  );
+}
+
+describe('招待を作る出口の実装 HouseholdInvitationCreatorImpl', () => {
+  it('HouseholdInvitationCreatorImpl が返したトークンで、他の世帯の利用者が作った人の世帯に参加できる', async () => {
+    const creator = implUserIdOf(1, 1);
+    const joiner = implUserIdOf(1, 2);
+    const household = await placeHousehold(creator, []);
+    await placeHousehold(joiner, []);
+
+    const token = await createWithImpl(creator);
+    await joinHouseholdOf(joiner, token);
+
+    // 設計書 規則1・12 / FR-44: 実装は関数が作ったトークンをそのまま返す。
+    await expect(currentHouseholdIdOf(joiner)).resolves.toBe(household);
+  });
+
+  it('HouseholdInvitationCreatorImpl は引数に他の世帯を渡しても、クレームの世帯の招待を作る', async () => {
+    const creator = implUserIdOf(2, 1);
+    const otherCreator = implUserIdOf(2, 2);
+    const joiner = implUserIdOf(2, 3);
+    const household = await placeHousehold(creator, []);
+    const otherHousehold = await placeHousehold(otherCreator, []);
+    await placeHousehold(joiner, []);
+
+    const token = await createWithImpl(creator, otherHousehold);
+    await joinHouseholdOf(joiner, token);
+
+    // 設計書 規則12 / C-9: 引数の世帯は口の形のためにあり、招待の世帯はクレームが決める。
+    await expect(currentHouseholdIdOf(joiner)).resolves.toBe(household);
+  });
+});
+
+describe('参加する出口の実装 HouseholdJoinerImpl', () => {
+  it('HouseholdJoinerImpl は使える招待で joined を返す', async () => {
+    const creator = implUserIdOf(3, 1);
+    const joiner = implUserIdOf(3, 2);
+    const household = await placeHousehold(creator, []);
+    await placeHousehold(joiner, []);
+    const token = await placeInvitation(implInvitationTokenOf(3), household);
+
+    // 設計書 規則6・12: DB の 'joined' を口の `JoinOutcome` に写す。
+    await expect(joinWithImpl(joiner, token)).resolves.toBe('joined');
+  });
+
+  it('HouseholdJoinerImpl は存在しないトークンで invalidInvitation を返す', async () => {
+    const joiner = implUserIdOf(4, 1);
+    await placeHousehold(joiner, []);
+
+    // 設計書 規則4・12: DB の 'invalid_invitation' を口の 'invalidInvitation' に写す。
+    await expect(joinWithImpl(joiner, implInvitationTokenOf(4))).resolves.toBe('invalidInvitation');
+  });
+
+  it('HouseholdJoinerImpl は今居る世帯の招待で alreadyMember を返す', async () => {
+    const creator = implUserIdOf(5, 1);
+    const household = await placeHousehold(creator, []);
+    const token = await placeInvitation(implInvitationTokenOf(5), household);
+
+    // 設計書 規則5・12: DB の 'already_member' を口の 'alreadyMember' に写す。
+    await expect(joinWithImpl(creator, token)).resolves.toBe('alreadyMember');
+  });
+
+  it('HouseholdJoinerImpl は引数に他の世帯を渡しても、クレームの利用者が招待の世帯へ移り、引数の世帯の人数は変わらない', async () => {
+    const creator = implUserIdOf(6, 1);
+    const joiner = implUserIdOf(6, 2);
+    const otherCreator = implUserIdOf(6, 3);
+    const otherMember = implUserIdOf(6, 4);
+    const household = await placeHousehold(creator, []);
+    await placeHousehold(joiner, []);
+    const otherHousehold = await placeHousehold(otherCreator, [otherMember]);
+    const token = await placeInvitation(implInvitationTokenOf(6), household);
+
+    await joinWithImpl(joiner, token, otherHousehold);
+
+    // 設計書 規則12 / C-9: 参加するのはクレームの利用者で、引数の世帯は動かない。
+    const outcome = {
+      joinerHousehold: await currentHouseholdIdOf(joiner),
+      otherMemberCount: await memberCountOf(otherCreator),
+    };
+    expect(outcome).toEqual({ joinerHousehold: household, otherMemberCount: 2 });
   });
 });
