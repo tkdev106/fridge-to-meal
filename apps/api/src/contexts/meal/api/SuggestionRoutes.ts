@@ -26,6 +26,11 @@ export type SuggestionRoutesDeps = {
   showLatestSuggestion: ShowLatestSuggestion;
   /** 要求の基準日時。main.ts（B-48c）が時計から組む。本体では時計を読まない（testing.md 5章） */
   now: () => AsOfParam;
+  /**
+   * 断った結末（在庫が足りない・上限に達した）を1行残す先。省けば `console.info`。
+   * 載せるのは結末の名前だけで、世帯も在庫の値も載せない（ADR-080 結果1 と同じ規律）。
+   */
+  writeLog?: (line: string) => void;
 };
 
 /**
@@ -41,6 +46,11 @@ export type SuggestionRoutesDeps = {
 export function createSuggestionRoutes(deps: SuggestionRoutesDeps): Hono {
   // `new` してよいのは Hono だけである（ADR-002）。
   const routes = new Hono();
+  const writeLog =
+    deps.writeLog ??
+    ((line: string) => {
+      console.info(line);
+    });
 
   /**
    * 1つの経路の中身。世帯を定めるのが常に先で（規則2 / NFR-09）、認証を通らない要求では
@@ -59,6 +69,9 @@ export function createSuggestionRoutes(deps: SuggestionRoutesDeps): Hono {
 
       // 世帯は必ず第1引数（C-9）。
       const output = await suggest(household, asOf);
+
+      // 200 で返す結末でも、断った回は数えられるようにログに残す（Workers Observability で数える）。
+      if (output.outcome !== 'suggested') writeLog(`api.suggestion.declined ${output.outcome}`);
 
       return c.json(output, 200);
     } catch (thrown) {
