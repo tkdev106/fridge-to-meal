@@ -60,7 +60,7 @@ git ls-files --others --exclude-standard -- apps/api/test apps/web/test '*.test.
 | 1 | **用語表にない語を書かない** | 禁止語（`Recipe` / `Menu` 等）は `pnpm lint:code` が止める。設定の除外ではなく**語の言い換え**で直す |
 | 2 | **依存は外から内へ** | `usecase/` は `domain/` の兄弟。ユースケースの引数・戻り値に `Request` / `Response` / `Context` を入れない（ADR-003）。実装クラスの生成は `main.ts` だけ。**ドメイン層に LLM・プロンプト・JSON・モデル名・SQL の語を出さない**（ADR-005） |
 | 3 | **確定事項 C-1〜C-16 を変えない** | 破る必要が出たら**止まる** |
-| 4 | **未決事項を決めない** | 一覧は `CLAUDE.md`「未決事項を勝手に決めない」の表が正。ここに写さない |
+| 4 | **未決事項を決めない** | 一覧は `CLAUDE.md`「未決事項を勝手に決めない」が正。ここに写さない |
 
 加えて:
 
