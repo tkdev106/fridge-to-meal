@@ -1,4 +1,5 @@
 import type {
+  HouseholdInvitationOutput,
   ListStockItemsOutput,
   StockItemDto,
   SuggestMealsOutput,
@@ -95,6 +96,16 @@ const leavingMember = householdIdOf('b75b3000-0002-4000-8000-000000000002');
 const loneUser = householdIdOf('b75b3000-0003-4000-8000-000000000001');
 const sharedDataCreator = householdIdOf('b75b3000-0004-4000-8000-000000000001');
 const deletingAccountMember = householdIdOf('b75b3000-0004-4000-8000-000000000002');
+
+// B-74: 招待と参加の経路。先頭の並び（`b74d3000`）で分けてある。
+// 作った人（参加の行なし）の利用者 ID がそのまま世帯 ID である（ADR-087 決定1）。
+const invitingCreator = householdIdOf('b74d3000-0001-4000-8000-000000000001');
+const invitedJoiner = householdIdOf('b74d3000-0001-4000-8000-000000000002');
+const sharingCreator = householdIdOf('b74d3000-0002-4000-8000-000000000001');
+const sharingJoiner = householdIdOf('b74d3000-0002-4000-8000-000000000002');
+const reusedCreator = householdIdOf('b74d3000-0003-4000-8000-000000000001');
+const firstReusingJoiner = householdIdOf('b74d3000-0003-4000-8000-000000000002');
+const secondReusingJoiner = householdIdOf('b74d3000-0003-4000-8000-000000000003');
 
 /** どの世帯も保存していない在庫品の識別子（#15）。 */
 const unsavedStockItemId = 'b9990000-0000-4000-8000-0000000000ff';
@@ -287,6 +298,28 @@ async function seedHouseholdData(household: HouseholdId): Promise<void> {
 async function joinHousehold(userId: HouseholdId, householdId: HouseholdId): Promise<void> {
   await insertUser(rowConnection, userId);
   await insertHouseholdMember(rowConnection, { userId, householdId });
+}
+
+/**
+ * 与えた利用者のトークンで `POST /household/invitations` を叩き、201 で通ったことを確かめてから
+ * 作った招待のトークンを返す（B-74）。本題でないところで黙って失敗すると、続きの `expect` が
+ * 別の理由で落ちて読めなくなるため。
+ */
+async function createdInvitation(userId: HouseholdId): Promise<string> {
+  const response = await app.request('/household/invitations', {
+    method: 'POST',
+    headers: bearerHeaders(await accessTokenFor(userId)),
+  });
+  expect(response.status).toBe(201);
+  return ((await response.json()) as HouseholdInvitationOutput).token;
+}
+
+/** 与えた利用者のトークンで `POST /household/join` を叩く（B-74）。 */
+async function joinRequest(userId: HouseholdId, token: string) {
+  return app.request(
+    '/household/join',
+    jsonRequest('POST', { token }, bearerHeaders(await accessTokenFor(userId))),
+  );
 }
 
 /** その世帯の9表の行数を、クレームを張った別のトランザクションで読む。 */
@@ -752,6 +785,52 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
       expect(response.status).toBe(204);
 
       await expect(rowCountsOf(sharedDataCreator)).resolves.toEqual(seededRows);
+    });
+  });
+  describe('招待と参加の経路が DB まで通る（B-74）', () => {
+    it('招待の経路で作ったトークンで、他の世帯の利用者が参加すると 204 が返る', async () => {
+      // B-74 設計書 規則14・15 / FR-44 / FR-45: 2経路が DB の関数まで通る。
+      await insertUser(rowConnection, invitingCreator);
+      await insertUser(rowConnection, invitedJoiner);
+      const token = await createdInvitation(invitingCreator);
+
+      const response = await joinRequest(invitedJoiner, token);
+
+      expect(response.status).toBe(204);
+    });
+
+    it('参加した利用者には、参加先の持ち主が登録した在庫品が一覧に出る', async () => {
+      // B-74 設計書 規則6 / FR-26 / FR-45: 参加したあとの世帯は参加先である。
+      await insertUser(rowConnection, sharingCreator);
+      await insertUser(rowConnection, sharingJoiner);
+      const registered = await registeredStockItem(sharingCreator, {
+        name: 'れんこん',
+        useForMeals: true,
+      });
+      const token = await createdInvitation(sharingCreator);
+      const joinResponse = await joinRequest(sharingJoiner, token);
+      expect(joinResponse.status).toBe(204);
+
+      const stockItems = await listedStockItems(sharingJoiner);
+
+      expect(stockItems.map((stockItem) => stockItem.id)).toContain(registered.id);
+    });
+
+    it('使ったトークンでもう一度参加すると 404 joinHousehold.invalidInvitation になる', async () => {
+      // B-74 設計書 規則4・6・7章4行目 / ADR-087 決定4: 招待は1回限り。使用済みは無いものと区別しない。
+      await insertUser(rowConnection, reusedCreator);
+      await insertUser(rowConnection, firstReusingJoiner);
+      await insertUser(rowConnection, secondReusingJoiner);
+      const token = await createdInvitation(reusedCreator);
+      const firstResponse = await joinRequest(firstReusingJoiner, token);
+      expect(firstResponse.status).toBe(204);
+
+      const response = await joinRequest(secondReusingJoiner, token);
+
+      expect(response.status).toBe(404);
+      await expect(failureBody(response)).resolves.toEqual({
+        rule: 'joinHousehold.invalidInvitation',
+      });
     });
   });
   describe('参加した利用者の経路は参加先の世帯で動く（B-73）', () => {

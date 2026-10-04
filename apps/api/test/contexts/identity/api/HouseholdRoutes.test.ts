@@ -3,6 +3,7 @@ import { createHouseholdRoutes } from '../../../../src/contexts/identity/api/Hou
 import { IdentityRuleViolation } from '../../../../src/contexts/identity/domain/error/IdentityRuleViolation.js';
 import { householdIdOf } from '../../../../src/shared/domain/HouseholdId.js';
 import { FixedCountHouseholdMembers } from '../../../support/identity/FixedCountHouseholdMembers.js';
+import { FixedCreateHouseholdInvitation } from '../../../support/identity/FixedCreateHouseholdInvitation.js';
 import { FixedIdentifyHousehold } from '../../../support/identity/FixedIdentifyHousehold.js';
 import { FixedLeaveHousehold } from '../../../support/identity/FixedLeaveHousehold.js';
 
@@ -17,6 +18,10 @@ const accessTokenA = 'access-token-a';
 
 const memberCountPath = '/household/member-count';
 const leavePath = '/household/leave';
+const invitationsPath = '/household/invitations';
+
+/** 招待を作る口の代役が返すトークン（B-74）。 */
+const createdInvitation = 'invitation-created-by-port';
 
 /**
  * 世帯の特定・人数・抜ける口を代役で組み、経路を1つ作る。
@@ -30,6 +35,7 @@ function setUp(
     identifyHouseholdThrows?: Error;
     countThrows?: Error;
     leaveThrows?: Error;
+    createInvitationThrows?: Error;
   } = {},
 ) {
   const identifyHousehold = new FixedIdentifyHousehold(
@@ -44,13 +50,26 @@ function setUp(
     overrides.leaveThrows === undefined ? { succeeds: true } : { throws: overrides.leaveThrows },
   );
 
+  const createHouseholdInvitation = new FixedCreateHouseholdInvitation(
+    overrides.createInvitationThrows === undefined
+      ? { returns: createdInvitation }
+      : { throws: overrides.createInvitationThrows },
+  );
+
   const routes = createHouseholdRoutes({
     identifyHousehold: identifyHousehold.identify,
     countHouseholdMembers: countHouseholdMembers.count,
     leaveHousehold: leaveHousehold.leave,
+    createHouseholdInvitation: createHouseholdInvitation.create,
   });
 
-  return { routes, identifyHousehold, countHouseholdMembers, leaveHousehold };
+  return {
+    routes,
+    identifyHousehold,
+    countHouseholdMembers,
+    leaveHousehold,
+    createHouseholdInvitation,
+  };
 }
 
 /** 認証ヘッダ1つ。方式名と値の組み立てが本題のときだけ引数で上書きする。 */
@@ -74,6 +93,29 @@ function jsonLeaveRequest(body: unknown, headers = authorizationHeaders()) {
     method: 'POST',
     headers: { ...headers, 'content-type': 'application/json' },
     body: JSON.stringify(body),
+  };
+}
+
+/** 本体を持たない招待を作る要求。経路が本体を読まないことを確かめる既定の形である（規則14）。 */
+function invitationRequest(headers = authorizationHeaders()) {
+  return { method: 'POST', headers };
+}
+
+/** 本体を JSON で送る招待を作る要求。**経路がそれを読まないこと**を確かめるために使う。 */
+function jsonInvitationRequest(body: unknown, headers = authorizationHeaders()) {
+  return {
+    method: 'POST',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  };
+}
+
+/** 本体を文字列のまま送る招待を作る要求。**JSON として読めない本体**を渡すときに使う。 */
+function rawBodyInvitationRequest(body: string, headers = authorizationHeaders()) {
+  return {
+    method: 'POST',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body,
   };
 }
 
@@ -178,6 +220,73 @@ describe('世帯の経路 HouseholdRoutes', () => {
 
       expect(response.status).toBe(409);
       await expect(responseBody(response)).resolves.toEqual({ rule: 'leaveHousehold.alone' });
+    });
+  });
+
+  describe('招待を作る経路 POST /household/invitations', () => {
+    it('POST /household/invitations は 201 と作った招待のトークンを返す', async () => {
+      // B-74 設計書 規則14 / FR-44: 本体は `HouseholdInvitationOutput`。URL は web が組み立てる。
+      const { routes } = setUp();
+
+      const response = await routes.request(invitationsPath, invitationRequest());
+
+      expect(response.status).toBe(201);
+      await expect(responseBody(response)).resolves.toEqual({ token: createdInvitation });
+    });
+
+    it('招待を作る経路は認証で定まった世帯をユースケースに渡す', async () => {
+      // C-9 / B-74 設計書 規則13: 世帯はアクセストークンからだけ定まる。
+      const { routes, createHouseholdInvitation } = setUp();
+
+      await routes.request(invitationsPath, invitationRequest());
+
+      expect(createHouseholdInvitation.receivedHouseholdId).toBe(ourHousehold);
+    });
+
+    it('招待を作る経路は本体の householdId を見ず、認証から定まった世帯だけを渡す', async () => {
+      // C-9 / B-74 設計書 規則13・14 / NFR-09: 本体を1つも読まない。
+      const { routes, createHouseholdInvitation } = setUp();
+
+      await routes.request(
+        invitationsPath,
+        jsonInvitationRequest({ householdId: neighborHousehold }),
+      );
+
+      expect(createHouseholdInvitation.receivedHouseholdId).toBe(ourHousehold);
+    });
+
+    it('本体が JSON として読めなくても招待を作って 201 を返す', async () => {
+      // B-74 設計書 規則14: 本体を読まないので、読めない本体に断りが無い。
+      const { routes } = setUp();
+
+      const response = await routes.request(invitationsPath, rawBodyInvitationRequest('{'));
+
+      expect(response.status).toBe(201);
+    });
+
+    it('認証を通らない招待の要求は 401 と rule を返し、招待を作る口に世帯が届かない', async () => {
+      // B-74 設計書 規則13・7章1行目 / ADR-032: 世帯を定めるのが常に先。通らなければ DB に触れない。
+      const { routes, createHouseholdInvitation } = setUp({
+        identifyHouseholdThrows: invalidAccessTokenViolation(),
+      });
+
+      const response = await routes.request(invitationsPath, invitationRequest());
+
+      expect({
+        status: response.status,
+        body: await responseBody(response),
+        receivedHouseholdId: createHouseholdInvitation.receivedHouseholdId,
+      }).toEqual({ status: 401, body: { rule: 'accessToken.invalid' }, receivedHouseholdId: null });
+    });
+
+    it('招待を作る途中で規則違反でない失敗が起きたら 500 unexpected を返す', async () => {
+      // B-74 設計書 7章6行目 / ADR-045 決定3: 関数が無い・権限が無いは 500 の unexpected に畳む。
+      const { routes } = setUp({ createInvitationThrows: new Error('関数が無かった') });
+
+      const response = await routes.request(invitationsPath, invitationRequest());
+
+      expect(response.status).toBe(500);
+      await expect(responseBody(response)).resolves.toEqual({ rule: 'unexpected' });
     });
   });
 

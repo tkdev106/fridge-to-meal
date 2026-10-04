@@ -5,3 +5,9 @@
 
 /** 世帯の人数（FR-47）。`HouseholdMember` の数であり、キーは省略しない。 */
 export type HouseholdMemberCountOutput = { memberCount: number };
+
+/** 作った招待（FR-44）。リンクの URL は web が組み立て、api はトークンだけを返す。 */
+export type HouseholdInvitationOutput = { token: string };
+
+/** 招待で参加する要求の本体（FR-45）。 */
+export type AcceptHouseholdInvitationInput = { token: string };
