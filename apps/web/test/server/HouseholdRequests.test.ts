@@ -1,6 +1,7 @@
 /**
  * 世帯の人数・招待の作成・抜けるの3つの口（B-76 1周目 / 設計 6章 規則15 / 7章。先行
- * `HouseholdDataRequests.test.ts` の `deleteHouseholdData`）。
+ * `HouseholdDataRequests.test.ts` の `deleteHouseholdData`）と、参加する口（B-77 1周目 /
+ * 設計 6章 規則7 / 7章）。
  *
  * **観るのは戻り値と、出口が受け取った要求だけ**である（`docs/testing.md` 2章）。
  * `vi.fn()` で呼び出し回数を数えず、差し替えは `FixedHttpFetch` を渡す。
@@ -11,6 +12,7 @@ import { FixedHttpFetch } from '../support/server/FixedHttpFetch.js';
 import type { HttpDelivery } from '../support/server/FixedHttpFetch.js';
 import {
   createHouseholdInvitation,
+  joinHousehold,
   leaveHousehold,
   showHouseholdMemberCount,
 } from '../../src/server/HouseholdRequests.js';
@@ -305,5 +307,117 @@ describe('世帯を抜ける継ぎ目 leaveHousehold', () => {
     const { request } = requestWith(leaveHousehold, left, throwingToken);
 
     await expect(request()).resolves.toEqual({ outcome: 'failed' });
+  });
+});
+
+describe('世帯に参加する継ぎ目 joinHousehold', () => {
+  /** 通った応答1つぶん（204 を写した本体なしの応答）。 */
+  const joined: HttpDelivery = { ok: true, body: undefined };
+  /** 招待が使えない断り（404）。 */
+  const invalidInvitation: HttpDelivery = {
+    ok: false,
+    body: { rule: 'joinHousehold.invalidInvitation' },
+  };
+
+  it('応答が通れば、参加した結末を返す', async () => {
+    // 規則7 / FR-45: 通った回は 204 で本体なしである。
+    const { request } = requestWith(joinHousehold, joined);
+
+    await expect(request('invite-token')).resolves.toEqual({ outcome: 'joined' });
+  });
+
+  it('通った応答の本体を読まないので、読めない本体でも参加した結末を返す', async () => {
+    // 規則7: 2xx は本体を読まない（先行 `leaveHousehold`）。
+    const { request } = requestWith(joinHousehold, { ok: true, unreadableBody: true });
+
+    await expect(request('invite-token')).resolves.toEqual({ outcome: 'joined' });
+  });
+
+  it('基点に /household/join を足した先を POST で叩き、世帯を1つも載せない', async () => {
+    // ADR-048 決定4 / C-9 / NFR-09: URL の完全一致で、足されたものが無いことまで見る。
+    const { httpFetch, request } = requestWith(joinHousehold, joined);
+
+    await request('invite-token');
+
+    expect(httpFetch.receivedRequests[0]?.url).toBe(`${BASE_URL}/household/join`);
+    expect(httpFetch.receivedRequests[0]?.method).toBe('POST');
+  });
+
+  it('渡されたトークンを JSON にして本体に載せる', async () => {
+    // 規則7: 本体は `{ token }`（contract `AcceptHouseholdInvitationInput`）。期待値は literal で置く。
+    const { httpFetch, request } = requestWith(joinHousehold, joined);
+
+    await request('invite-token');
+
+    expect(httpFetch.receivedRequests[0]?.body).toBe('{"token":"invite-token"}');
+  });
+
+  it('アクセストークンを Bearer で載せ、本体を持つので Content-Type に application/json を付ける', async () => {
+    // 規則7 / ADR-048: 本体を持つ要求には `Content-Type` を付ける（先行 `registerStockItem`）。
+    // 完全一致で、ほかのヘッダが無いことまで見る。
+    const { httpFetch, request } = requestWith(joinHousehold, joined);
+
+    await request('invite-token');
+
+    expect(httpFetch.receivedRequests[0]?.headers).toEqual({
+      Authorization: `Bearer ${TOKEN}`,
+      'Content-Type': 'application/json',
+    });
+  });
+
+  it('断りの rule をそのまま断られた結末に載せる', async () => {
+    // 規則7 / ADR-032 決定3 / 7章 行1: 案内を選ぶのは画面の側なので、`rule` を読み替えない。
+    const { request } = requestWith(joinHousehold, invalidInvitation);
+
+    await expect(request('invite-token')).resolves.toEqual({
+      outcome: 'rejected',
+      rule: 'joinHousehold.invalidInvitation',
+    });
+  });
+
+  it('断りの本体に rule が無ければ、失敗の結末を返す', async () => {
+    // 規則7 / 7章 行4: `rule` の無い断り（5xx など）は失敗に畳む。
+    const { request } = requestWith(joinHousehold, { ok: false, body: {} });
+
+    await expect(request('invite-token')).resolves.toEqual({ outcome: 'failed' });
+  });
+
+  it('断りの本体が JSON として読めなければ、失敗の結末を返す', async () => {
+    // 規則7 / 7章 行4: 本体なしの断りも失敗に畳む。
+    const { request } = requestWith(joinHousehold, { ok: false, unreadableBody: true });
+
+    await expect(request('invite-token')).resolves.toEqual({ outcome: 'failed' });
+  });
+
+  it('出口が投げても、例外を外に出さず失敗の結末を返す', async () => {
+    // 規則7 / 7章 行4 / FR-41: 通信の失敗も失敗に畳み、外へ出さない。
+    const { request } = requestWith(joinHousehold, { throws: new Error('到達できない') });
+
+    await expect(request('invite-token')).resolves.toEqual({ outcome: 'failed' });
+  });
+
+  it('アクセストークンが取れなければ、失敗の結末を返す', async () => {
+    // 規則7 / 7章 行4
+    const { request } = requestWith(joinHousehold, joined, missingToken);
+
+    await expect(request('invite-token')).resolves.toEqual({ outcome: 'failed' });
+  });
+
+  it('アクセストークンが取れなければ、要求を1つも出さない', async () => {
+    // 規則7: `accessToken` が `null` なら要求を出さない（起きないことが要件。`docs/testing.md` 2章）。
+    const { httpFetch, request } = requestWith(joinHousehold, joined, missingToken);
+
+    await request('invite-token');
+
+    expect(httpFetch.receivedRequests).toEqual([]);
+  });
+
+  it('1度断られても、自分では送り直さない', async () => {
+    // 規則7: 呼ばれた1回で1往復だけする。送り直すかを決めるのは利用者である。
+    const { httpFetch, request } = requestWith(joinHousehold, invalidInvitation);
+
+    await request('invite-token');
+
+    expect(httpFetch.receivedRequests).toHaveLength(1);
   });
 });

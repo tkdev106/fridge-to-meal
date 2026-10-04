@@ -2,8 +2,10 @@
  * 端末の「戻る」の継ぎ目の実装（B-75 設計 5章 / 6章 規則4・8・9 / ADR-084）。
  *
  * 窓は構造型 `BackNavigationSource` で受ける（先行 `connectivity/ConnectivityImpl.ts`）。
- * **URL は変えない** — `pushState` の第3引数を渡さず、項目の state に深さの印
- * `{ fridgeToMealBack: 深さ }` だけを持たせる。
+ * **画面の状態を URL に書かない** — `pushState` の第3引数を渡さず、項目の state に深さの印
+ * `{ fridgeToMealBack: 深さ }` だけを持たせる。読み込み時の URL にクエリ（招待リンクの `?invite=`）が
+ * あれば、構築時に `replaceState` で外す（state とハッシュは保ち、項目は増やさない）。読むのは
+ * `main.tsx` で、この継ぎ目を作る前に読む。
  *
  * 持つのは「積んだ項目の数 A」と「登録されている口の列（数 D）」である。
  *
@@ -24,9 +26,11 @@ import type { BackHandlerRank, BackNavigation } from './BackNavigation.js';
 
 /** 窓のうち、ここが使うものだけを見る形。`pushState` の第3引数（URL）は渡さない。 */
 export type BackNavigationSource = {
+  readonly location: { readonly search: string; readonly pathname: string; readonly hash: string };
   readonly history: {
     readonly state: unknown;
     pushState(state: unknown, unused: string): void;
+    replaceState(state: unknown, unused: string, url: string): void;
     back(): void;
     go(delta: number): void;
   };
@@ -63,6 +67,12 @@ export class BackNavigationImpl implements BackNavigation {
     this.#source.addEventListener('popstate', () => {
       this.#handlePopState();
     });
+
+    // 再読み込みでクエリをもう一度読まないよう、URL から外す。
+    const { search, pathname, hash } = this.#source.location;
+    if (search !== '') {
+      this.#source.history.replaceState(this.#source.history.state, '', `${pathname}${hash}`);
+    }
 
     // 再読み込みは既定の画面から始まる。印つきの項目に居残ると、戻るが空振りする（規則9）。
     const depth = depthOf(this.#source.history.state);

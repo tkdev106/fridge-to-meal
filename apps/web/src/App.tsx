@@ -13,6 +13,8 @@
 import { useEffect, useState } from 'react';
 import { SignedOutScreen } from './features/identity/SignedOutScreen.js';
 import { SettingsScreen } from './features/identity/SettingsScreen.js';
+import { HouseholdJoinScreen } from './features/identity/HouseholdJoinScreen.js';
+import { householdJoinNoticeOf } from './features/identity/HouseholdJoinNotice.js';
 import type { HouseholdMemberCountState } from './features/identity/SettingsScreen.js';
 import { HistoryTab } from './features/meal/HistoryTab.js';
 import type { HistoryTabState } from './features/meal/HistoryTab.js';
@@ -46,10 +48,13 @@ import type { AddCookingRecord, ListMeals, ShowMeal } from './server/MealRequest
 import type { DeleteHouseholdData } from './server/HouseholdDataRequests.js';
 import type {
   CreateHouseholdInvitation,
+  JoinHousehold,
+  JoinHouseholdOutcome,
   LeaveHousehold,
   ShowHouseholdMemberCount,
 } from './server/HouseholdRequests.js';
 import type { ClipboardWriter } from './clipboard/ClipboardWriter.js';
+import type { PendingHouseholdInvitation } from './householdInvitation/PendingHouseholdInvitation.js';
 
 export type AppProps = {
   /** セッションの継ぎ目。画面はこの型だけを見る（ADR-046 決定3）。 */
@@ -123,6 +128,10 @@ export type AppProps = {
   clipboard: ClipboardWriter;
   /** 招待リンクの基点（B-76 規則6）。末尾の `/` を持たない値（`location.origin`）を `main.tsx` が渡す。 */
   webOrigin: string;
+  /** 招待のトークンで世帯に参加する口（B-77 / FR-45）。組み立てるのはやはり `main.tsx` だけである。 */
+  joinHousehold: JoinHousehold;
+  /** 持ち越し中の招待のトークンの継ぎ目（B-77 / ADR-087 決定4）。`new` するのは `main.tsx` だけである。 */
+  pendingHouseholdInvitation: PendingHouseholdInvitation;
 };
 
 /** 開いている献立と、その出どころのタブ（B-54b 設計 規則9。門の内部の形で export しない）。 */
@@ -147,6 +156,8 @@ export function App({
   leaveHousehold,
   clipboard,
   webOrigin,
+  joinHousehold,
+  pendingHouseholdInvitation,
 }: AppProps) {
   // 購読を始めた時点の状態は subscribe が1度目に渡す（`Session.ts` 規則5）ので、
   // ここで先に決めない。最初の描画は購読が始まるまでの一瞬だけ 'unknown' でよい。
@@ -214,6 +225,17 @@ export function App({
 
   // 人数を取り直した回数。抜けるの要求が終わるたびに1つ増やす（B-76 規則13）。
   const [memberCountReloadCount, setMemberCountReloadCount] = useState(0);
+
+  /**
+   * **参加の確認に出している招待のトークン**（B-77 規則6・9 / FR-45）。`null` なら確認を出さない。
+   *
+   * 読み込んだ時点で持ち越していたトークンから始める。継ぎ目（端末に残る写し）とは別に持つ —
+   * 断られた回は継ぎ目をその時点で消すが、確認は `閉じる` まで残すため。サインインしていない間は
+   * 確認を出さず、トークンは持ち越したままにする。
+   */
+  const [invitationToken, setInvitationToken] = useState<string | null>(() =>
+    pendingHouseholdInvitation.read(),
+  );
 
   // 開いた献立の取得の結末。**開くまでは「読み込み中」ですらない**（詳細を出していない）。
   const [mealDetail, setMealDetail] = useState<MealDetailState>({ outcome: 'loading' });
@@ -602,6 +624,35 @@ export function App({
   };
 
   /**
+   * 招待のトークンで参加する配線（FR-45 / B-77 規則9 / ADR-087 決定4・5）。
+   *
+   * 読みは `householdJoinNoticeOf` の1つだけを使う（先行 `deleteAndReload`）。**参加できた回**は
+   * 継ぎ目を消して確認を閉じ、招待した人の冷蔵庫のものを取り直す — 在庫・提案・食材名
+   * （`reloadCount`）と履歴（`mealListReloadCount`）。**使えない招待・すでに共有している断り**は
+   * その時点で継ぎ目を消すが（再読み込みで確認が戻らない）、確認は `閉じる` まで残す。それ以外の
+   * 失敗は継ぎ目を残し、確認に留まる。結末はそのまま画面へ返し、案内を出すのは画面である。
+   */
+  const joinWithInvitation = async (token: string): Promise<JoinHouseholdOutcome> => {
+    const outcome = await joinHousehold(token);
+    const notice = householdJoinNoticeOf(outcome);
+
+    if (notice !== 'unavailable') pendingHouseholdInvitation.clear();
+    if (notice === null) {
+      setInvitationToken(null);
+      setReloadCount((count) => count + 1);
+      setMealListReloadCount((count) => count + 1);
+    }
+
+    return outcome;
+  };
+
+  /** 参加しない（B-77 規則9）。トークンを捨てて確認を閉じる。 */
+  const declineInvitation = () => {
+    pendingHouseholdInvitation.clear();
+    setInvitationToken(null);
+  };
+
+  /**
    * 「これを作った」の配線（FR-22 / C-8 / B-51 の経路）。
    *
    * **送っている間は2度目を送らない** — 同じ記録が2件入る（先行 `handleRequestNewMeals`）。
@@ -714,6 +765,23 @@ export function App({
         <SignedOutScreen
           onSignIn={(email, password) => session.signIn(email, password)}
           onSignUp={(email, password) => session.signUp(email, password)}
+        />
+      </main>
+    );
+  }
+
+  // **サインイン済みで招待のトークンを持ち越していれば、タブの器の代わりに参加の確認だけを出す**
+  // （B-77 規則6 / FR-45）。帯は確認にも出す（B-70 規則5）。確認は「戻る」の口を登録しない
+  // — 戻るはアプリを離れ、トークンは残るので開き直せば確認が出る（同 規則15）。
+  if (invitationToken !== null) {
+    return (
+      <main>
+        {offline && <OfflineBanner />}
+        <HouseholdJoinScreen
+          onJoin={() => joinWithInvitation(invitationToken)}
+          onDecline={declineInvitation}
+          onClose={() => setInvitationToken(null)}
+          offline={offline}
         />
       </main>
     );

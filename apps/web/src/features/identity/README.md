@@ -2,7 +2,8 @@
 
 世帯コンテキストに対応する画面。`docs/screen-design.md` の第8章（設定・認証）の
 「ログイン」（`SignInForm`）と「アカウント作成」（`SignUpForm`。B-73 / ADR-081）、その出し分け
-（`SignedOutScreen`。門は描くだけで、どちらが出ているかを知らない）、設定画面（`SettingsScreen`。B-56c）がここに来る。
+（`SignedOutScreen`。門は描くだけで、どちらが出ているかを知らない）、設定画面（`SettingsScreen`。B-56c）、
+「冷蔵庫の共有に参加」（`HouseholdJoinScreen`。B-77）がここに来る。
 作成画面の検証は `SignUpFormValues.ts`（書式と長さ。ログインの `SignInFormValues.ts` とは別の判断）。設定画面には帯
 `アカウント`（ログアウト）・`冷蔵庫の共有`（人数・招待リンクを作る・コピー・メンバーが2人以上なら抜ける。FR-44 / FR-46 / FR-47。B-76）・
 `データ`（アカウントとデータを削除。FR-27）がこの順に並ぶ。削除と抜けるは画面の中の確認を経て送り（確認は同時に1つだけ）、
@@ -14,3 +15,7 @@ web の origin とトークンから組む。写すのは `コピー` を押し�
 選んでいたタブの中身の代わりに描き、どのタブを押しても閉じる（B-60 設計 6章 規則7・8）。
 設定画面の見た目と文言はデザイン 13 / 13b と `docs/design/README.md` の「冷蔵庫の共有」に揃えてある
 （値は `SettingsScreen.module.css`）— 題 `設定`（`h1`）の下に帯（`h2`）を置く。画面に「世帯」は出さない（ADR-087 決定7）。
+参加の確認（`HouseholdJoinScreen`）は、招待リンクで開いて持ち越したトークンがあるあいだ、サインインの後で門がタブの代わりに
+描く（FR-45 / ADR-087 決定4）。結末の読み分けは `HouseholdJoinNotice.ts`、トークンを持ち越すのと消すのは門と継ぎ目
+`householdInvitation/` で、画面はトークンを知らない。見た目はログインの画面に揃え、値は `SignInForm.module.css` の class を
+共有して足りない値だけ `HouseholdJoinScreen.module.css` に置く。クエリからトークンを読むのは `HouseholdInvitationLink.ts`。

@@ -21,10 +21,13 @@ import { addCookingRecord, listMeals, showMeal } from './server/MealRequests.js'
 import { deleteHouseholdData } from './server/HouseholdDataRequests.js';
 import {
   createHouseholdInvitation,
+  joinHousehold,
   leaveHousehold,
   showHouseholdMemberCount,
 } from './server/HouseholdRequests.js';
 import { ClipboardWriterImpl } from './clipboard/ClipboardWriterImpl.js';
+import { PendingHouseholdInvitationImpl } from './householdInvitation/PendingHouseholdInvitationImpl.js';
+import { invitationTokenOf } from './features/identity/HouseholdInvitationLink.js';
 
 // 継ぎ目の実装を `new` するのはここだけ（`SessionImpl.ts` 規則2 / B-35 設計 6章 規則3）。
 // 設定が欠けていれば `sessionConfigOf` の `Error` を**包まずそのまま外へ**出す（規則12 / ADR-045）
@@ -71,17 +74,34 @@ const requestMealList = listMeals(stockItemRequests);
 // 世帯のデータを消す口も**同じ基点・同じトークンの組**で作る（B-56f 設計 規則10）。
 // `HouseholdDataRequestsDeps` も同じ3項目なので、そのまま渡せる。
 const requestHouseholdDataDeletion = deleteHouseholdData(stockItemRequests);
-// 冷蔵庫の共有の3つの口も**同じ基点・同じトークンの組**で作る（B-76 設計 5章）。
+// 冷蔵庫の共有の口（人数・招待・抜ける・参加する）も**同じ基点・同じトークンの組**で作る（B-76 設計 5章 / B-77）。
 // `HouseholdRequestsDeps` も同じ3項目なので、そのまま渡せる。
 const requestHouseholdMemberCount = showHouseholdMemberCount(stockItemRequests);
 const sendHouseholdInvitation = createHouseholdInvitation(stockItemRequests);
 const sendHouseholdLeave = leaveHousehold(stockItemRequests);
+const sendHouseholdJoin = joinHousehold(stockItemRequests);
 
 // 文字を写す継ぎ目を `new` するのもここだけ（B-76 設計 4章）。`navigator` は構造型で渡す。
 const clipboard = new ClipboardWriterImpl(navigator);
 
 // 接続状態の継ぎ目を `new` するのもここだけ（B-70 設計 4章）。窓は構造型で渡す（設計 5章）。
 const connectivity = new ConnectivityImpl(window);
+
+// 持ち越し中の招待のトークンの継ぎ目を `new` するのもここだけ（B-77 / ADR-087 決定4）。
+// 招待リンクで開いた回は、クエリのトークンを保存する（前に持ち越したものは上書きする）。
+// **「戻る」の継ぎ目より先に読む** — あちらは構築時に URL からクエリを外す。
+// `localStorage` は使うたびに引く — 引くこと自体が投げるブラウザでも、継ぎ目の中で握りつぶせる。
+const pendingHouseholdInvitation = new PendingHouseholdInvitationImpl({
+  getItem: (key) => localStorage.getItem(key),
+  setItem: (key, value) => {
+    localStorage.setItem(key, value);
+  },
+  removeItem: (key) => {
+    localStorage.removeItem(key);
+  },
+});
+const invitationToken = invitationTokenOf(location.search);
+if (invitationToken !== null) pendingHouseholdInvitation.save(invitationToken);
 
 // 端末の「戻る」の継ぎ目を `new` するのもここだけ（B-75 設計 4章 / ADR-084）。窓は構造型で渡す。
 // 画面へは provider で配り、`features/` は hook だけを見る。
@@ -113,6 +133,8 @@ createRoot(container).render(
         clipboard={clipboard}
         // 招待リンクの基点（B-76 規則6）。時計や乱数と同じく、環境を読むのはここだけである。
         webOrigin={location.origin}
+        joinHousehold={sendHouseholdJoin}
+        pendingHouseholdInvitation={pendingHouseholdInvitation}
       />
     </BackNavigationProvider>
   </StrictMode>,

@@ -1,0 +1,14 @@
+/*
+ * 参加の確認の画面（B-77 / `docs/design/README.md` の行「冷蔵庫の共有に参加」）。
+ *
+ * **ログインの画面（`SignInForm.module.css`）にある値はそちらを引き、ここには足りない値だけを置く**
+ * （ADR-055 決定1・2）。色と文字の大きさはトークンから引き、新しい色を作らない。
+ */
+
+/* 本文（確認の文・断りの案内）。見出しから 24px 下。 */
+.sentence {
+  margin: 24px 0 0;
+  font-size: var(--font-size-16);
+  line-height: 1.75;
+  text-wrap: pretty;
+}

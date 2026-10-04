@@ -7,3 +7,12 @@
 export function householdInvitationLink(webOrigin: string, token: string): string {
   return `${webOrigin}/?invite=${encodeURIComponent(token)}`;
 }
+
+/**
+ * クエリ（`location.search`）から招待のトークンを読む。無い・空文字なら `null`。
+ * 使えるトークンかどうかは確かめない（決めるのはサーバ）。
+ */
+export function invitationTokenOf(search: string): string | null {
+  const token = new URLSearchParams(search).get('invite');
+  return token === null || token === '' ? null : token;
+}
