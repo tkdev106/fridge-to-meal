@@ -1,5 +1,6 @@
 /*
- * 設定画面（原本 `docs/design/src/index.dc.html` 13 / 13b / 設計 B-67 6章 規則11〜21）。
+ * 設定画面（原本 `docs/design/src/index.dc.html` 13 / 13b / 設計 B-67 6章 規則11〜21 /
+ * `docs/design/README.md` の「冷蔵庫の共有」）。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1・2）。`SettingsScreen.tsx` は class 名しか書かない。
  * 色・文字の大きさ・太さ・操作の高さはトークン（`src/global.css` の `:root`）から `var(--…)` で
@@ -68,7 +69,7 @@
   letter-spacing: 0.12em;
 }
 
-/* `データ` の帯（上を 24px 空ける。規則12）。 */
+/* ログアウトの行の下の帯（上を 24px 空ける。規則12）。 */
 .bandSpaced {
   margin-top: 24px;
 }
@@ -167,8 +168,8 @@
   cursor: default;
 }
 
-/* `やめる`。 */
-.cancel {
+/* 副の操作（`やめる`・`招待リンクを作る`・`コピー`・`この冷蔵庫から抜ける`）。文字色の枠・地なし。 */
+.secondary {
   width: 100%;
   height: var(--control-height-secondary);
   border: 1px solid var(--color-text);
@@ -180,15 +181,81 @@
   cursor: pointer;
 }
 
-.cancel:disabled {
+.secondary:disabled {
   border-color: var(--color-border-strong);
   color: var(--color-text-muted);
   cursor: default;
 }
 
-/* 失敗の案内（規則17。文言は暫定）。 */
-.failure {
+/* 案内（失敗・写した結末。B-67 規則17 / B-76 規則7・17）。 */
+.notice {
   margin: 0;
+}
+
+/* 人数の行（B-76 規則2）。名札と人数を横に並べ、人数を右に寄せる。行の寸法はログアウトの行に揃える。 */
+.memberRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: var(--control-height-primary);
+  padding: 0 16px;
+  border-bottom: 1px solid var(--color-border);
+  letter-spacing: 0.02em;
+}
+
+/* 人数を取れなかった案内は人数の置き場に出す。 */
+.memberCountFailure {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-14);
+  text-align: right;
+}
+
+/* 招待と抜けるの置き場（削除の置き場に揃える）。招待のかたまりと抜けるの間 24px。 */
+.sharingArea {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px 16px;
+}
+
+/* 招待のかたまり。操作・補助の文字・リンクの行・案内の間 12px（確認の操作群に揃える）。 */
+.invitation {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* `招待リンクを作る` の下の補助の文字。 */
+.hint {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-14);
+  line-height: 1.6;
+}
+
+/* リンクの文字と `コピー` の行。 */
+.linkRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* リンクの文字。長い URL を欄の中で折り返す。 */
+.link {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-14);
+  line-height: 1.6;
+}
+
+/* `コピー` は文字の幅だけ取る。 */
+.copy {
+  flex: none;
+  width: auto;
+  padding: 0 16px;
 }
 
 /*

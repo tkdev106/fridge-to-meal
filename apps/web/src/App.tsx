@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import { SignedOutScreen } from './features/identity/SignedOutScreen.js';
 import { SettingsScreen } from './features/identity/SettingsScreen.js';
+import type { HouseholdMemberCountState } from './features/identity/SettingsScreen.js';
 import { HistoryTab } from './features/meal/HistoryTab.js';
 import type { HistoryTabState } from './features/meal/HistoryTab.js';
 import { cookingRecordFailureNoticeOf } from './features/meal/CookingRecordFailureNotice.js';
@@ -43,6 +44,12 @@ import type { ListIngredientNames } from './server/IngredientNameRequests.js';
 import type { RequestNewMeals, ShowLatestSuggestion } from './server/SuggestionRequests.js';
 import type { AddCookingRecord, ListMeals, ShowMeal } from './server/MealRequests.js';
 import type { DeleteHouseholdData } from './server/HouseholdDataRequests.js';
+import type {
+  CreateHouseholdInvitation,
+  LeaveHousehold,
+  ShowHouseholdMemberCount,
+} from './server/HouseholdRequests.js';
+import type { ClipboardWriter } from './clipboard/ClipboardWriter.js';
 
 export type AppProps = {
   /** セッションの継ぎ目。画面はこの型だけを見る（ADR-046 決定3）。 */
@@ -106,6 +113,16 @@ export type AppProps = {
   deleteHouseholdData: DeleteHouseholdData;
   /** 接続状態の継ぎ目（B-70 設計 5章）。**必須**であり、組み立てるのは `main.tsx` だけである。 */
   connectivity: Connectivity;
+  /** 世帯の人数を取りに行く口（B-76 / FR-47）。組み立てるのはやはり `main.tsx` だけである。 */
+  showHouseholdMemberCount: ShowHouseholdMemberCount;
+  /** 招待を作る口（B-76 / FR-44）。組み立てるのはやはり `main.tsx` だけである。 */
+  createHouseholdInvitation: CreateHouseholdInvitation;
+  /** 世帯を抜ける口（B-76 / FR-46）。組み立てるのはやはり `main.tsx` だけである。 */
+  leaveHousehold: LeaveHousehold;
+  /** 文字を写す継ぎ目（B-76）。`new` するのは `main.tsx` だけである。 */
+  clipboard: ClipboardWriter;
+  /** 招待リンクの基点（B-76 規則6）。末尾の `/` を持たない値（`location.origin`）を `main.tsx` が渡す。 */
+  webOrigin: string;
 };
 
 /** 開いている献立と、その出どころのタブ（B-54b 設計 規則9。門の内部の形で export しない）。 */
@@ -125,6 +142,11 @@ export function App({
   listMeals,
   deleteHouseholdData,
   connectivity,
+  showHouseholdMemberCount,
+  createHouseholdInvitation,
+  leaveHousehold,
+  clipboard,
+  webOrigin,
 }: AppProps) {
   // 購読を始めた時点の状態は subscribe が1度目に渡す（`Session.ts` 規則5）ので、
   // ここで先に決めない。最初の描画は購読が始まるまでの一瞬だけ 'unknown' でよい。
@@ -175,7 +197,7 @@ export function App({
    * サイドナビの下端の「設定」である**（B-60 規則4・12）。閉じるのは設定画面の「閉じる」、**タブを押した回**
    * （B-60 規則8。B-56c 規則9「タブを移っても閉じない」はここで置き換わった）、サインイン済みで
    * なくなった回（B-56c 規則10）である。開閉で `selectedTab` も `openMeal` も変えない
-   * （B-60 規則9）。開いても閉じても何も取りに行かない（B-56c 規則11）。
+   * （B-60 規則9）。開いた回に取りに行くのは世帯の人数だけである（B-76 規則12）。
    */
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -186,6 +208,12 @@ export function App({
    * `deleting` とは別に持つ（二重に持つ。設定画面の口と状態は変えない）。
    */
   const [deletingHouseholdData, setDeletingHouseholdData] = useState(false);
+
+  // 世帯の人数（B-76 / FR-47）。設定を開くまでは取りに行かないので「読み込み中」のままである。
+  const [memberCount, setMemberCount] = useState<HouseholdMemberCountState>({ outcome: 'loading' });
+
+  // 人数を取り直した回数。抜けるの要求が終わるたびに1つ増やす（B-76 規則13）。
+  const [memberCountReloadCount, setMemberCountReloadCount] = useState(0);
 
   // 開いた献立の取得の結末。**開くまでは「読み込み中」ですらない**（詳細を出していない）。
   const [mealDetail, setMealDetail] = useState<MealDetailState>({ outcome: 'loading' });
@@ -364,6 +392,28 @@ export function App({
   }, [state, listMeals, mealListReloadCount]);
 
   /**
+   * **設定を開くたびに世帯の人数を1回取りに行く**（B-76 規則12 / FR-47）。
+   *
+   * 在庫の一覧と同じ構えである — サインイン済みで設定を開いているときだけ取りに行き、効果の
+   * 頭で「読み込み中」に戻して前の人数を出さない。**閉じる前に届かなかった結末は捨てる**
+   * （先行 B-22 設計 規則10 の `active`）。抜けるの要求が終わった回にも取り直す（規則13）。
+   */
+  useEffect(() => {
+    if (state !== 'signedIn' || !settingsOpen) return;
+
+    let active = true;
+    setMemberCount({ outcome: 'loading' });
+
+    void showHouseholdMemberCount().then((outcome) => {
+      if (active) setMemberCount(outcome);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [state, settingsOpen, showHouseholdMemberCount, memberCountReloadCount]);
+
+  /**
    * **サインイン済みでなくなったら、開いている詳細も閉じる**（NFR-09）。
    *
    * 閉じないと**前の世帯の献立が残る** — 別の世帯で入り直したとき、識別子は前の世帯のもので
@@ -528,6 +578,27 @@ export function App({
     setRecordFailureNotice(null);
     setCookingRecorded(false);
     setOpenMeal(null);
+  };
+
+  /**
+   * 世帯を抜ける配線（FR-46 / B-76 規則13・14）。
+   *
+   * **結末に関わらず人数を取り直す** — 断られた回（409 で1人と分かった回）も、取り直した人数で
+   * 抜ける操作が消える（規則3）。**抜けた回は空の世帯から始まる**ので、開いている献立を閉じ、
+   * 在庫・提案・食材名（`reloadCount`）と履歴（`mealListReloadCount`）を取り直す。設定は開いたまま
+   * にする。結末はそのまま設定画面へ返し、案内を出すのは設定画面である。
+   */
+  const leaveHouseholdAndReload: LeaveHousehold = async () => {
+    const outcome = await leaveHousehold();
+    setMemberCountReloadCount((count) => count + 1);
+
+    if (outcome.outcome === 'left') {
+      handleCloseMeal();
+      setReloadCount((count) => count + 1);
+      setMealListReloadCount((count) => count + 1);
+    }
+
+    return outcome;
   };
 
   /**
@@ -710,6 +781,11 @@ export function App({
               onClose={() => setSettingsOpen(false)}
               onDeleteHouseholdData={deleteHouseholdDataAndSignOut}
               offline={offline}
+              memberCount={memberCount}
+              webOrigin={webOrigin}
+              onCreateHouseholdInvitation={createHouseholdInvitation}
+              onLeaveHousehold={leaveHouseholdAndReload}
+              clipboard={clipboard}
             />
           ) : null
         }
