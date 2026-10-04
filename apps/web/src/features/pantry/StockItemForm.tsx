@@ -44,12 +44,13 @@ const HEADING = '食材を登録';
 /**
  * 欄の名前。**分量と期限には必須の印を付けない**（B-12 設計 規則11 / FR-13）— 空のまま
  * 保存できる。任意であることは名前の横の札 `任意`（`OPTIONAL_LABEL`）の文字で伝える
- * （B-65 規則3）。食材名には札を付けない。
+ * （B-65 規則3）。食材名と献立に使う（B-76 規則16）には札を付けない。
  */
 const FIELD_LABELS: Record<keyof StockItemFormValues, string> = {
   name: '食材名',
   amount: '分量',
   expiryDate: '期限',
+  useForMeals: '献立に使う',
 };
 
 /** 任意の欄に添える札（B-65 規則3）。欄の名前の一部として読まれてよい。 */
@@ -173,7 +174,7 @@ export function StockItemForm({
     if (!sending) onClose();
   });
 
-  function changeField(field: keyof StockItemFormValues) {
+  function changeField(field: 'amount' | 'expiryDate') {
     return (event: ChangeEvent<HTMLInputElement>) => {
       setValues((previous) => ({ ...previous, [field]: event.target.value }));
     };
@@ -204,7 +205,7 @@ export function StockItemForm({
       // 断られた回と失敗した回はどちらも閉じず、入力も消さない（規則10 / NFR-15 / ADR-007）。
       if (selectedNotice !== null) return;
 
-      // 通ったときだけ分かれる（規則9 / FR-08）。「もう1件」は3欄を空に戻して留まり、
+      // 通ったときだけ分かれる（規則9 / FR-08）。「もう1件」は欄を開いた直後の値に戻して留まり、
       // 「閉じる」は一覧へ戻す。**一覧を取り直すのは門である**（規則12 / B-24）。
       if (afterSave === 'close') onClose();
       else setValues(EMPTY_STOCK_ITEM_FORM);
@@ -329,6 +330,21 @@ export function StockItemForm({
               onClick={openDatePicker}
             />
           </span>
+        </label>
+
+        {/* 献立に使うかどうか（B-76 規則13〜16）。欄群の最後に置き、`<label>` で包んで行全体を
+            押せる範囲にする。**札 `任意` を付けない** — 真偽値なので空という状態が無い。 */}
+        <label className={styles.checkboxField}>
+          <input
+            type="checkbox"
+            className={styles.checkbox}
+            checked={values.useForMeals}
+            onChange={(event) => {
+              const useForMeals = event.target.checked;
+              setValues((previous) => ({ ...previous, useForMeals }));
+            }}
+          />
+          <span>{FIELD_LABELS.useForMeals}</span>
         </label>
       </div>
 

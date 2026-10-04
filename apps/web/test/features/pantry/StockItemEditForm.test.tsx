@@ -43,6 +43,7 @@ function stockItemOf(overrides: Partial<StockItemDto> = {}): StockItemDto {
     ingredientId: null,
     amount: '2本',
     expiryDate: '2026-09-25',
+    useForMeals: true,
     ...overrides,
   };
 }
@@ -220,7 +221,7 @@ describe('編集の画面 StockItemEditForm の保存', () => {
     // 規則1・13 / FR-05: 送るのは分量と期限だけで、**名称のキーを持たない**
     // （`UpdateStockItemInput` に名称が無い）。世帯は運ばない（C-9）。
     expect(requests.receivedUpdates).toEqual([
-      { id: '1', input: { amount: '300g', expiryDate: '2026-09-30' } },
+      { id: '1', input: { amount: '300g', expiryDate: '2026-09-30', useForMeals: true } },
     ]);
   });
 
@@ -235,7 +236,7 @@ describe('編集の画面 StockItemEditForm の保存', () => {
     // 規則3 / FR-13 / B-06 規則3: 空欄は「消す」を表し、**キーを省略せず `null` を送る** —
     // 省略に読み替えると、消したい回に今の値が残る。
     expect(requests.receivedUpdates).toEqual([
-      { id: '1', input: { amount: null, expiryDate: null } },
+      { id: '1', input: { amount: null, expiryDate: null, useForMeals: true } },
     ]);
   });
 
@@ -248,7 +249,7 @@ describe('編集の画面 StockItemEditForm の保存', () => {
 
     // 規則6: **差分を見て止めない** — 送るかどうかの判断が画面とサーバの2か所に増える。
     expect(requests.receivedUpdates).toEqual([
-      { id: '1', input: { amount: '2本', expiryDate: '2026-09-25' } },
+      { id: '1', input: { amount: '2本', expiryDate: '2026-09-25', useForMeals: true } },
     ]);
   });
 
@@ -278,7 +279,7 @@ describe('編集の画面 StockItemEditForm の保存', () => {
     // 規則7: 送っている間は保存が効かない。二重に送ると往復を1つ無駄にし、2度目の結末で
     // 画面の読みが上書きされる。
     expect(requests.receivedUpdates).toEqual([
-      { id: '1', input: { amount: '300g', expiryDate: '2026-09-30' } },
+      { id: '1', input: { amount: '300g', expiryDate: '2026-09-30', useForMeals: true } },
     ]);
 
     // 保留を解いてから終える — 届いた更新を `act` の中で起こすためである。
@@ -605,7 +606,7 @@ describe('編集の画面 StockItemEditForm の見た目と文言', () => {
 
     // B-65 規則6・13: 投げる環境では素の振る舞いに任せ、送る中身は変えない。
     expect(requests.receivedUpdates).toEqual([
-      { id: '1', input: { amount: '2本', expiryDate: '2026-09-30' } },
+      { id: '1', input: { amount: '2本', expiryDate: '2026-09-30', useForMeals: true } },
     ]);
   });
 
@@ -777,5 +778,52 @@ describe('編集の画面 StockItemEditForm の端末の戻る', () => {
     await act(async () => {
       requests.settle();
     });
+  });
+});
+
+/**
+ * 「献立に使う」のチェックボックス（B-76 設計 6章 規則14・15 / FR-05）。
+ *
+ * 文言は確定している（ADR-074）ので名前で引く。並びは**文書順**で観る（`precedes`）。
+ * 送った値は更新の口へ届いた入力の配列で観る（`docs/testing.md` 2章）。
+ */
+describe('編集の画面 StockItemEditForm の献立に使う', () => {
+  function useForMealsCheckbox(): HTMLInputElement {
+    return screen.getByRole('checkbox', { name: '献立に使う' }) as HTMLInputElement;
+  }
+
+  it.each([true, false])(
+    '開いた直後の「献立に使う」のチェックは在庫品の今の値（%s）である',
+    (useForMeals) => {
+      renderEditForm(stockItemOf({ useForMeals }));
+
+      // B-76 規則14: 初期値は対象の在庫品の現在の値。
+      expect(useForMealsCheckbox().checked).toBe(useForMeals);
+    },
+  );
+
+  it('チェックを外して保存すると、献立に使わないとして更新の口へ届く', () => {
+    const requests = renderEditForm(
+      stockItemOf({ id: '1', amount: '2本', expiryDate: '2026-09-25', useForMeals: true }),
+      { update: [{ outcome: 'updated' }] },
+    );
+
+    fireEvent.click(useForMealsCheckbox());
+    fireEvent.click(saveOperation());
+
+    // B-76 規則3・15 / FR-05: 切り替えた値が真偽値で届く。
+    expect(requests.receivedUpdates).toEqual([
+      { id: '1', input: { amount: '2本', expiryDate: '2026-09-25', useForMeals: false } },
+    ]);
+  });
+
+  it('「献立に使う」は期限の欄の後、「保存」の前に並ぶ', () => {
+    renderEditForm();
+
+    // B-76 規則14: 登録の画面と同じ位置。
+    expect([
+      precedes(namedExpiryDateField(), useForMealsCheckbox()),
+      precedes(useForMealsCheckbox(), screen.getByRole('button', { name: '保存' })),
+    ]).toEqual([true, true]);
   });
 });

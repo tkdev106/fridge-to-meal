@@ -34,6 +34,7 @@ const carrot: StockItemDto = {
   ingredientId: 'ingredient-carrot',
   amount: '2本',
   expiryDate: '2026-09-21',
+  useForMeals: true,
 };
 const pork: StockItemDto = {
   id: 'stock-item-pork',
@@ -41,6 +42,7 @@ const pork: StockItemDto = {
   ingredientId: null,
   amount: null,
   expiryDate: null,
+  useForMeals: true,
 };
 
 /** 通る応答。本題が応答の形でないケースはこれを届ける。 */
@@ -98,6 +100,7 @@ describe('在庫一覧の取得 listStockItems', () => {
           ingredientId: 'ingredient-carrot',
           amount: '2本',
           expiryDate: '2026-09-21',
+          useForMeals: true,
         },
         {
           id: 'stock-item-pork',
@@ -105,6 +108,7 @@ describe('在庫一覧の取得 listStockItems', () => {
           ingredientId: null,
           amount: null,
           expiryDate: null,
+          useForMeals: true,
         },
       ],
     });
@@ -270,8 +274,14 @@ const carrotInput: RegisterStockItemInput = {
   name: 'にんじん',
   amount: '2本',
   expiryDate: '2026-09-21',
+  useForMeals: true,
 };
-const porkInput: RegisterStockItemInput = { name: 'ぶたにく', amount: null, expiryDate: null };
+const porkInput: RegisterStockItemInput = {
+  name: 'ぶたにく',
+  amount: null,
+  expiryDate: null,
+  useForMeals: true,
+};
 
 /** 通る応答。**登録の成功は 201 だが、継ぎ目が読むのは `ok` だけである**（設計 5章 `HttpResponse`）。 */
 const registered = { ok: true, body: {} } as const;
@@ -330,7 +340,9 @@ describe('在庫の登録 registerStockItem', () => {
 
     await registering(httpFetch)(porkInput);
 
-    expect(onlyRequest(httpFetch).body).toBe('{"name":"ぶたにく","amount":null,"expiryDate":null}');
+    expect(onlyRequest(httpFetch).body).toBe(
+      '{"name":"ぶたにく","amount":null,"expiryDate":null,"useForMeals":true}',
+    );
   });
 
   it('取り出したアクセストークンを Authorization の Bearer に載せる', async () => {
@@ -658,7 +670,7 @@ describe('在庫の削除 deleteStockItem', () => {
  * 更新の入力の標本。**任意の2欄のうち一方を `null` にする** — 継ぎ目が欄を落としたり
  * `null` を省略に読み替えたりしないことを見るため（B-22 設計 規則2 / B-55 規則12・14）。
  */
-const carrotUpdate: UpdateStockItemInput = { amount: '3本', expiryDate: null };
+const carrotUpdate: UpdateStockItemInput = { amount: '3本', expiryDate: null, useForMeals: true };
 
 /** 通る応答。**更新の成功は 200 だが、継ぎ目が読むのは `ok` だけである**（B-55 規則14）。 */
 const updated = { ok: true, body: {} } as const;
@@ -724,7 +736,9 @@ describe('在庫の更新 updateStockItem', () => {
 
     await updating(httpFetch)(carrotId, carrotUpdate);
 
-    expect(onlyRequest(httpFetch).body).toBe('{"amount":"3本","expiryDate":null}');
+    expect(onlyRequest(httpFetch).body).toBe(
+      '{"amount":"3本","expiryDate":null,"useForMeals":true}',
+    );
   });
 
   it('取り出したアクセストークンを Authorization の Bearer に載せる', async () => {

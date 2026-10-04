@@ -78,7 +78,7 @@ export class StockItemRepositoryImpl implements StockItemRepository {
    * 登録（FR-01）と更新（FR-05）を兼ねる**1文の upsert**（設計 規則7）。`findById` して
    * から分岐しない — 同じ id の同時保存を取りこぼす。
    *
-   * 上書きするのは `name` / `ingredient_id` / `amount` / `expiry_date` の4列すべてで、
+   * 上書きするのは `name` / `ingredient_id` / `amount` / `expiry_date` / `use_for_meals` の5列すべてで、
    * `null` もそのまま書く（分量や期限を**消す**更新が FR-05 の主役）。
    * **`household_id` は上書きしない** — 世帯は移らない（設計 規則8 / ADR-028）。
    *
@@ -108,6 +108,7 @@ export class StockItemRepositoryImpl implements StockItemRepository {
         ingredientId: stockItem.ingredientId,
         amount: stockItem.amount,
         expiryDate: stockItem.expiryDate,
+        useForMeals: stockItem.useForMeals,
       })
       .onConflictDoUpdate({
         target: stockItems.id,
@@ -116,6 +117,7 @@ export class StockItemRepositoryImpl implements StockItemRepository {
           ingredientId: stockItem.ingredientId,
           amount: stockItem.amount,
           expiryDate: stockItem.expiryDate,
+          useForMeals: stockItem.useForMeals,
         },
       });
 
@@ -165,5 +167,6 @@ function toStockItem(row: StockItemRow): StockItem {
     ingredientId: row.ingredientId === null ? null : ingredientIdOf(row.ingredientId),
     amount: amountOf(row.amount),
     expiryDate: expiryDateOf(row.expiryDate),
+    useForMeals: row.useForMeals,
   });
 }

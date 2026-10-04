@@ -22,6 +22,7 @@ const porkWithAmount: StockItemDto = {
   ingredientId: null,
   amount: '300g',
   expiryDate: null,
+  useForMeals: true,
 };
 
 const cabbageWithoutAmount: StockItemDto = {
@@ -30,6 +31,7 @@ const cabbageWithoutAmount: StockItemDto = {
   ingredientId: null,
   amount: null,
   expiryDate: null,
+  useForMeals: true,
 };
 
 function renderConfirmation(stockItem: StockItemDto = porkWithAmount, received: string[] = []) {

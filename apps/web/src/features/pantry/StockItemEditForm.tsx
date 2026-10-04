@@ -48,12 +48,14 @@ const HEADING = '食材を編集';
 const NAME_LABEL = '食材名';
 
 /**
- * 欄の名前。**どちらにも必須の印を付けない**（設計 規則3 / FR-13）— 空にして保存すれば
+ * 欄の名前。**分量と期限には必須の印を付けない**（設計 規則3 / FR-13）— 空にして保存すれば
  * 「消す」を表す。任意であることは札 `任意`（`OPTIONAL_LABEL`）の文字で伝える（B-65 規則3）。
+ * 献立に使うには札を付けない（B-76 規則16）。
  */
 const FIELD_LABELS: Record<keyof StockItemEditValues, string> = {
   amount: '分量',
   expiryDate: '期限',
+  useForMeals: '献立に使う',
 };
 
 /** 任意の欄に添える札（B-65 規則3）。欄の名前の一部として読まれてよい。 */
@@ -142,7 +144,7 @@ export function StockItemEditForm({
     if (!sending) onClose();
   });
 
-  function changeField(field: keyof StockItemEditValues) {
+  function changeField(field: 'amount' | 'expiryDate') {
     return (event: ChangeEvent<HTMLInputElement>) => {
       setValues((previous) => ({ ...previous, [field]: event.target.value }));
     };
@@ -270,6 +272,21 @@ export function StockItemEditForm({
               onClick={openDatePicker}
             />
           </span>
+        </label>
+
+        {/* 献立に使うかどうか（B-76 規則13〜16）。欄群の最後に置き、`<label>` で包んで行全体を
+            押せる範囲にする。**札 `任意` を付けない** — 真偽値なので空という状態が無い。 */}
+        <label className={styles.checkboxField}>
+          <input
+            type="checkbox"
+            className={styles.checkbox}
+            checked={values.useForMeals}
+            onChange={(event) => {
+              const useForMeals = event.target.checked;
+              setValues((previous) => ({ ...previous, useForMeals }));
+            }}
+          />
+          <span>{FIELD_LABELS.useForMeals}</span>
         </label>
       </div>
 

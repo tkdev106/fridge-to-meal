@@ -212,6 +212,57 @@
   opacity: 1;
 }
 
+/*
+ * 献立に使う（B-76 規則13・17）。行の高さ 48px（NFR-16）、箱と文字の間 12px、文字 16px。
+ * 押せる範囲は `<label>` の行全体である。
+ */
+.checkboxField {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: var(--control-height-secondary);
+  font-size: var(--font-size-16);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+/*
+ * チェックの箱。20px 四方・角 0。素の見た目を `appearance: none` で消して描き直す。
+ * オフは面の地に入力欄と同じ 1px の枠。
+ */
+.checkbox {
+  flex: none;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0;
+  background: var(--color-surface);
+  appearance: none;
+  cursor: pointer;
+}
+
+/*
+ * オンは地と枠を文字色にし、`check` のアイコン（`src/icons/Icon.tsx` と同じ path・16px 相当・
+ * 線 1.5px 相当）を地の色で置く。data URL の中では `var(--…)` を引けないので、線の色だけは
+ * `--color-background` の値（#FAF9F6）を直に書く。
+ */
+.checkbox:checked {
+  border-color: var(--color-text);
+  background-color: var(--color-text);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FAF9F6' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 16px 16px;
+}
+
+/* 焦点の輪郭は箱の外に引く。20px の箱の内側に引くとチェックの印に重なる。 */
+.checkbox:focus-visible {
+  outline: var(--focus-outline);
+  outline-offset: var(--focus-outline-offset);
+}
+
 /* 断り（規則10）。14px・赤。 */
 .notice {
   margin: 0;

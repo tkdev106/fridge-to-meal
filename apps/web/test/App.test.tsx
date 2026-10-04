@@ -64,7 +64,7 @@ import type {
 installPointerCapture();
 
 function stockItemOf(name: string, id: string): StockItemDto {
-  return { id, name, ingredientId: null, amount: null, expiryDate: null };
+  return { id, name, ingredientId: null, amount: null, expiryDate: null, useForMeals: true };
 }
 
 /** 一覧に出ていることを観るための標本。**当てるのはこの名称だけである**（設計 規則6）。 */

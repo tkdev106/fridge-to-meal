@@ -235,8 +235,8 @@ async function deleteHouseholdDataRequest(household: HouseholdId) {
  */
 async function seedHouseholdData(household: HouseholdId): Promise<void> {
   await insertUser(rowConnection, household);
-  await registeredStockItem(household, { name: 'にんじん' });
-  await registeredStockItem(household, { name: 'たまねぎ' });
+  await registeredStockItem(household, { name: 'にんじん', useForMeals: true });
+  await registeredStockItem(household, { name: 'たまねぎ', useForMeals: true });
 
   const suggestResponse = await app.request('/suggestions/new-meals', {
     method: 'POST',
@@ -297,6 +297,7 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
         name: 'にんじん',
         amount: '2本',
         expiryDate: '2026-10-01',
+        useForMeals: true,
       });
 
       expect(response.status).toBe(201);
@@ -312,7 +313,10 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
 
     it('登録した在庫品が同じ世帯の一覧に出る', async () => {
       // 規則7 / FR-04: 登録のトランザクションが確定し、次の要求の別のトランザクションから読める。
-      const registered = await registeredStockItem(registerHousehold, { name: 'にんじん' });
+      const registered = await registeredStockItem(registerHousehold, {
+        name: 'にんじん',
+        useForMeals: true,
+      });
 
       const response = await getStockItems(registerHousehold);
 
@@ -325,8 +329,14 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
 
     it('同じ世帯で2件登録すると別々の id で一覧に2件出る', async () => {
       // 規則10 / ADR-026: 識別子は要求ごとに発行され、衝突しない。
-      const first = await registeredStockItem(twoItemsHousehold, { name: 'にんじん' });
-      const second = await registeredStockItem(twoItemsHousehold, { name: 'たまねぎ' });
+      const first = await registeredStockItem(twoItemsHousehold, {
+        name: 'にんじん',
+        useForMeals: true,
+      });
+      const second = await registeredStockItem(twoItemsHousehold, {
+        name: 'たまねぎ',
+        useForMeals: true,
+      });
 
       const stockItems = await listedStockItems(twoItemsHousehold);
 
@@ -343,11 +353,13 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
         name: 'にんじん',
         amount: '2本',
         expiryDate: '2026-10-01',
+        useForMeals: true,
       });
 
       const response = await putStockItem(updateHousehold, registered.id, {
         amount: '1本',
         expiryDate: '2026-10-02',
+        useForMeals: true,
       });
 
       expect(response.status).toBe(200);
@@ -362,10 +374,12 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
         name: 'たまねぎ',
         amount: '2本',
         expiryDate: '2026-10-01',
+        useForMeals: true,
       });
       const updateResponse = await putStockItem(updateHousehold, registered.id, {
         amount: '1本',
         expiryDate: '2026-10-02',
+        useForMeals: true,
       });
       expect(updateResponse.status).toBe(200);
 
@@ -377,7 +391,10 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
 
     it('結線した経路で在庫品を削除できる', async () => {
       // 規則2・7 / FR-06: 204 は本体を持たない。
-      const registered = await registeredStockItem(deleteHousehold, { name: 'にんじん' });
+      const registered = await registeredStockItem(deleteHousehold, {
+        name: 'にんじん',
+        useForMeals: true,
+      });
 
       const response = await deleteStockItemRequest(deleteHousehold, registered.id);
 
@@ -387,7 +404,10 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
 
     it('削除した在庫品は次の一覧に出ない', async () => {
       // 規則7 / FR-06。
-      const registered = await registeredStockItem(deleteHousehold, { name: 'たまねぎ' });
+      const registered = await registeredStockItem(deleteHousehold, {
+        name: 'たまねぎ',
+        useForMeals: true,
+      });
       const deleteResponse = await deleteStockItemRequest(deleteHousehold, registered.id);
       expect(deleteResponse.status).toBe(204);
 
@@ -400,7 +420,10 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
   describe('世帯の分離は結線後も保たれる', () => {
     it('世帯 A で登録した在庫品は世帯 B のトークンの一覧に出ない', async () => {
       // C-9 / NFR-09 / ADR-029 決定3(a): クレームはアクセストークンの世帯で張られ、他世帯の行は見えない。
-      const registered = await registeredStockItem(ownerOfListedHousehold, { name: 'にんじん' });
+      const registered = await registeredStockItem(ownerOfListedHousehold, {
+        name: 'にんじん',
+        useForMeals: true,
+      });
 
       const neighborResponse = await getStockItems(emptyNeighborHousehold);
 
@@ -416,11 +439,13 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
       const registered = await registeredStockItem(ownerOfUpdatedHousehold, {
         name: 'にんじん',
         amount: '2本',
+        useForMeals: true,
       });
 
       const response = await putStockItem(updatingNeighborHousehold, registered.id, {
         amount: '9本',
         expiryDate: null,
+        useForMeals: true,
       });
 
       expect(response.status).toBe(404);
@@ -432,10 +457,12 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
       const registered = await registeredStockItem(ownerOfUpdatedHousehold, {
         name: 'たまねぎ',
         amount: '2本',
+        useForMeals: true,
       });
       const neighborResponse = await putStockItem(updatingNeighborHousehold, registered.id, {
         amount: '9本',
         expiryDate: null,
+        useForMeals: true,
       });
       expect(neighborResponse.status).toBe(404);
 
@@ -447,7 +474,10 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
 
     it('他世帯の在庫品を指した削除は 404 delete.notFound になる', async () => {
       // C-9 / ADR-027。
-      const registered = await registeredStockItem(ownerOfDeletedHousehold, { name: 'にんじん' });
+      const registered = await registeredStockItem(ownerOfDeletedHousehold, {
+        name: 'にんじん',
+        useForMeals: true,
+      });
 
       const response = await deleteStockItemRequest(deletingNeighborHousehold, registered.id);
 
@@ -457,7 +487,10 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
 
     it('他世帯から削除を試みても持ち主の一覧に残る', async () => {
       // C-9 / NFR-09。
-      const registered = await registeredStockItem(ownerOfDeletedHousehold, { name: 'たまねぎ' });
+      const registered = await registeredStockItem(ownerOfDeletedHousehold, {
+        name: 'たまねぎ',
+        useForMeals: true,
+      });
       const neighborResponse = await deleteStockItemRequest(
         deletingNeighborHousehold,
         registered.id,
@@ -473,7 +506,10 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
   describe('規則違反の写像は結線後も変わらない', () => {
     it('名称が空の登録は結線後も 400 name.empty になる', async () => {
       // ADR-032 決定3 / `StockItem` の不変条件: 空白だけの名称はドメインが断り、api が 400 に写す。
-      const response = await postStockItem(rejectedThenRegisterHousehold, { name: '   ' });
+      const response = await postStockItem(rejectedThenRegisterHousehold, {
+        name: '   ',
+        useForMeals: true,
+      });
 
       expect(response.status).toBe(400);
       await expect(failureBody(response)).resolves.toEqual({ rule: 'name.empty' });
@@ -481,10 +517,16 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
 
     it('規則違反で断られた要求のあとも、同じ組み立てで次の登録が通る', async () => {
       // 規則8: 失敗した要求でもクライアントは閉じられ（`finally`）、次の要求は新しい接続で通る。
-      const rejectedResponse = await postStockItem(rejectedThenRegisterHousehold, { name: '   ' });
+      const rejectedResponse = await postStockItem(rejectedThenRegisterHousehold, {
+        name: '   ',
+        useForMeals: true,
+      });
       expect(rejectedResponse.status).toBe(400);
 
-      const response = await postStockItem(rejectedThenRegisterHousehold, { name: 'にんじん' });
+      const response = await postStockItem(rejectedThenRegisterHousehold, {
+        name: 'にんじん',
+        useForMeals: true,
+      });
 
       expect(response.status).toBe(201);
       const stockItems = await listedStockItems(rejectedThenRegisterHousehold);
@@ -496,6 +538,7 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
       const response = await putStockItem(unsavedIdHousehold, unsavedStockItemId, {
         amount: '1本',
         expiryDate: null,
+        useForMeals: true,
       });
 
       expect(response.status).toBe(404);
@@ -517,8 +560,8 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
           },
         ),
       );
-      await registeredStockItem(emptyGeminiKeyHousehold, { name: 'にんじん' });
-      await registeredStockItem(emptyGeminiKeyHousehold, { name: 'たまねぎ' });
+      await registeredStockItem(emptyGeminiKeyHousehold, { name: 'にんじん', useForMeals: true });
+      await registeredStockItem(emptyGeminiKeyHousehold, { name: 'たまねぎ', useForMeals: true });
 
       const response = await emptyKeyApp.request('/suggestions/new-meals', {
         method: 'POST',
@@ -578,6 +621,7 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
       expect(deleteResponse.status).toBe(204);
       const registered = await registeredStockItem(registerAfterDeletionHousehold, {
         name: 'ごぼう',
+        useForMeals: true,
       });
 
       const stockItems = await listedStockItems(registerAfterDeletionHousehold);

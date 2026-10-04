@@ -218,7 +218,9 @@ describe('登録の画面 StockItemForm の2つの保存', () => {
     fireEvent.click(saveAndStay());
 
     // 規則8・9 / FR-08: 保存は2つあり、**どちらも同じ登録の口を同じ入力で呼ぶ**。
-    expect(registrations).toEqual([{ name: 'にんじん', amount: '2本', expiryDate: '2026-09-25' }]);
+    expect(registrations).toEqual([
+      { name: 'にんじん', amount: '2本', expiryDate: '2026-09-25', useForMeals: true },
+    ]);
   });
 
   it('「保存して閉じる」を押しても、同じ3欄の値が同じ登録の口へ届く', () => {
@@ -229,7 +231,9 @@ describe('登録の画面 StockItemForm の2つの保存', () => {
     fireEvent.click(saveAndClose());
 
     // 規則9: 違うのは**通ったあと**だけである（留まるか一覧へ戻るか）。送る中身は同じ。
-    expect(registrations).toEqual([{ name: 'にんじん', amount: '2本', expiryDate: '2026-09-25' }]);
+    expect(registrations).toEqual([
+      { name: 'にんじん', amount: '2本', expiryDate: '2026-09-25', useForMeals: true },
+    ]);
   });
 
   it('「保存してもう1件」が通ったら、打った値はどの欄にも残らない', async () => {
@@ -331,7 +335,9 @@ describe('登録の画面 StockItemForm の2つの保存', () => {
 
     // 規則11 / B-12 設計 規則8 / ADR-007: 送っている間はどちらも効かない。二重に送ると、
     // 同名でも統合されない在庫品が2件残る。
-    expect(registrations).toEqual([{ name: 'にんじん', amount: '2本', expiryDate: '2026-09-25' }]);
+    expect(registrations).toEqual([
+      { name: 'にんじん', amount: '2本', expiryDate: '2026-09-25', useForMeals: true },
+    ]);
 
     // 保留を解いてから終える — 届いた更新を `act` の中で起こすためである。
     settle();
@@ -417,7 +423,7 @@ describe('登録の画面 StockItemForm の3欄と案内', () => {
     // FR-13 / FR-01 / B-12 設計 規則3: 任意の2欄は空のまま保存でき、**空文字ではなく未設定**
     // として届く（contract は省略と `null` を同義と定めている）。
     expect(requests.registeredInputs).toEqual([
-      { name: 'にんじん', amount: null, expiryDate: null },
+      { name: 'にんじん', amount: null, expiryDate: null, useForMeals: true },
     ]);
   });
 
@@ -575,7 +581,9 @@ describe('登録の画面 StockItemForm の食材名の補完', () => {
     fireEvent.change(ingredientNameField(), { target: { value: 'ゴーヤ' } });
     fireEvent.click(saveAndStay());
 
-    expect(registrations).toEqual([{ name: 'ゴーヤ', amount: null, expiryDate: null }]);
+    expect(registrations).toEqual([
+      { name: 'ゴーヤ', amount: null, expiryDate: null, useForMeals: true },
+    ]);
   });
 
   it('補完に無い名前もそのまま登録できる', () => {
@@ -589,7 +597,9 @@ describe('登録の画面 StockItemForm の食材名の補完', () => {
     fireEvent.change(ingredientNameField(), { target: { value: 'ゴーヤ' } });
     fireEvent.click(saveAndStay());
 
-    expect(registrations).toEqual([{ name: 'ゴーヤ', amount: null, expiryDate: null }]);
+    expect(registrations).toEqual([
+      { name: 'ゴーヤ', amount: null, expiryDate: null, useForMeals: true },
+    ]);
   });
 
   it('一覧が出ている間に選ばずに保存しても、打った名前がそのまま届く', () => {
@@ -603,7 +613,9 @@ describe('登録の画面 StockItemForm の食材名の補完', () => {
     fireEvent.change(ingredientNameField(), { target: { value: 'にん' } });
     fireEvent.click(saveAndStay());
 
-    expect(registrations).toEqual([{ name: 'にん', amount: null, expiryDate: null }]);
+    expect(registrations).toEqual([
+      { name: 'にん', amount: null, expiryDate: null, useForMeals: true },
+    ]);
   });
 
   it('一覧から選んだ名称が登録の口へ届く', () => {
@@ -619,7 +631,9 @@ describe('登録の画面 StockItemForm の食材名の補完', () => {
     fireEvent.keyDown(ingredientNameField(), { key: 'Enter' });
     fireEvent.click(saveAndStay());
 
-    expect(registrations).toEqual([{ name: '豚こま肉', amount: null, expiryDate: null }]);
+    expect(registrations).toEqual([
+      { name: '豚こま肉', amount: null, expiryDate: null, useForMeals: true },
+    ]);
   });
 
   it('接続が切れていても、打てば一覧が出る', () => {
@@ -713,7 +727,9 @@ describe('登録の画面 StockItemForm の接続が切れている間', () => {
     fireEvent.click(saveAndStay());
 
     // 規則9（入力は消さない）・規則14（戻れば押せるようになる）。
-    expect(registrations).toEqual([{ name: 'にんじん', amount: '2本', expiryDate: '2026-09-25' }]);
+    expect(registrations).toEqual([
+      { name: 'にんじん', amount: '2本', expiryDate: '2026-09-25', useForMeals: true },
+    ]);
   });
 
   it('接続が切れていても、「戻る」で一覧へ戻せる', () => {
@@ -911,7 +927,9 @@ describe('登録の画面 StockItemForm の見た目と文言', () => {
     fireEvent.click(saveAndStay());
 
     // B-65 規則6・13: 無い環境では素の振る舞いに任せ、送る中身は変えない。
-    expect(registrations).toEqual([{ name: 'にんじん', amount: '2本', expiryDate: '2026-09-25' }]);
+    expect(registrations).toEqual([
+      { name: 'にんじん', amount: '2本', expiryDate: '2026-09-25', useForMeals: true },
+    ]);
   });
 
   it('日付の選択を開く口が投げても、期限の欄で選んだ日付が登録の口へ届く', () => {
@@ -924,7 +942,9 @@ describe('登録の画面 StockItemForm の見た目と文言', () => {
     });
 
     // B-65 規則6・13: 投げる環境でも例外を外へ出さず、送る中身は変えない。
-    expect(registrations).toEqual([{ name: 'にんじん', amount: '2本', expiryDate: '2026-09-25' }]);
+    expect(registrations).toEqual([
+      { name: 'にんじん', amount: '2本', expiryDate: '2026-09-25', useForMeals: true },
+    ]);
   });
 
   it('食材名が空という断りは「! 食材名を入れてください」の段落1つで出る', async () => {
@@ -1153,5 +1173,88 @@ describe('登録の画面 StockItemForm の端末の戻る', () => {
 
     // 規則6・8: 飲み込んだ回も口は登録したまま残り、次の戻るで閉じる。
     expect(closed).toEqual(['close']);
+  });
+});
+
+/**
+ * 「献立に使う」のチェックボックス（B-76 設計 6章 規則13・15・16 / FR-01 / FR-08）。
+ *
+ * 文言は確定している（ADR-074）ので名前で引く。並びは**文書順**で観る（`precedes`）。
+ * 送った値は登録の口へ届いた入力の配列で観る（`docs/testing.md` 2章）。
+ */
+describe('登録の画面 StockItemForm の献立に使う', () => {
+  function useForMealsCheckbox(): HTMLInputElement {
+    return screen.getByRole('checkbox', { name: '献立に使う' }) as HTMLInputElement;
+  }
+
+  it('開いた直後は「献立に使う」のチェックが入っている', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    // B-76 規則13: 開いた直後はオン。
+    expect(useForMealsCheckbox().checked).toBe(true);
+  });
+
+  it('「献立に使う」は期限の欄の後、「保存してもう1件」の前に並ぶ', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    // B-76 規則13: 欄の最後（期限の後、保存の操作の前）。
+    expect([
+      precedes(namedExpiryDateField(), useForMealsCheckbox()),
+      precedes(useForMealsCheckbox(), screen.getByRole('button', { name: '保存してもう1件' })),
+    ]).toEqual([true, true]);
+  });
+
+  it('何も触らずに保存すると、献立に使うとして登録の口へ届く', () => {
+    const registrations: RegisterStockItemInput[] = [];
+    renderForm(recordingRegister(registrations, { outcome: 'registered' }));
+
+    fireEvent.change(namedIngredientNameField(), { target: { value: 'にんじん' } });
+    fireEvent.click(saveAndStay());
+
+    // B-76 規則13・15: 既定のオンが真偽値で届く（省略しない）。
+    expect(registrations).toEqual([
+      { name: 'にんじん', amount: null, expiryDate: null, useForMeals: true },
+    ]);
+  });
+
+  it('チェックを外して保存すると、献立に使わないとして登録の口へ届く', () => {
+    const registrations: RegisterStockItemInput[] = [];
+    renderForm(recordingRegister(registrations, { outcome: 'registered' }));
+
+    fireEvent.change(namedIngredientNameField(), { target: { value: 'にんじん' } });
+    fireEvent.click(useForMealsCheckbox());
+    fireEvent.click(saveAndStay());
+
+    // B-76 規則15 / FR-01。
+    expect(registrations).toEqual([
+      { name: 'にんじん', amount: null, expiryDate: null, useForMeals: false },
+    ]);
+  });
+
+  it('チェックを外して「保存してもう1件」が通ったあと、チェックはまた入っている', async () => {
+    const registrations: RegisterStockItemInput[] = [];
+    renderForm(recordingRegister(registrations, { outcome: 'registered' }));
+
+    fireEvent.change(namedIngredientNameField(), { target: { value: 'にんじん' } });
+    fireEvent.click(useForMealsCheckbox());
+    fireEvent.click(saveAndStay());
+
+    // 結末が届いて欄が空へ戻るのを待つ（打った値の記録で待つ。B-40 設計 規則7）。
+    await waitFor(() => {
+      expect(screen.queryByDisplayValue('にんじん')).toBeNull();
+    });
+
+    // B-76 規則13 / FR-08: 「保存してもう1件」が通った直後もオンに戻す。
+    expect(useForMealsCheckbox().checked).toBe(true);
+  });
+
+  it('「献立に使う」の名前に札「任意」は付かない', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    // B-76 規則16: 名前の頭が「献立に使う」のチェックボックスは、名前がちょうど「献立に使う」
+    // のものと同じである（後ろに札が続いていない）。
+    expect(screen.getByRole('checkbox', { name: /^献立に使う/ })).toBe(
+      screen.queryByRole('checkbox', { name: '献立に使う' }),
+    );
   });
 });

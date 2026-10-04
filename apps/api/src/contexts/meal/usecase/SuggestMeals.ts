@@ -24,7 +24,12 @@ import type { PantrySnapshot } from '../domain/value/PantrySnapshot.js';
 import type { StockItem } from '../domain/value/StockItem.js';
 import { createSuggestionEntry } from '../domain/value/SuggestionEntry.js';
 import type { SuggestionEntry, SuggestionEntryOrigin } from '../domain/value/SuggestionEntry.js';
-import { mealByIdOf, suggestionOutputOf, toMealStockItem } from './MealOutputs.js';
+import {
+  mealByIdOf,
+  stockItemsUsedForMealsOf,
+  suggestionOutputOf,
+  toMealStockItem,
+} from './MealOutputs.js';
 
 /**
  * 在庫で作れる献立から提案を組む（FR-16 / FR-34 / FR-35）。世帯は第1引数で受け取り、
@@ -200,14 +205,17 @@ async function suggest(
   // （7章2行目）。
   const stockItemsOutput = await deps.listStockItems(householdId);
 
-  // 写した在庫は1本だけ作り、作れる献立の判定と在庫スナップショットの両方へ渡す。
-  // 同じ在庫から2種類を組むと、判定に使った在庫と記録に残る在庫がずれる
-  // （B-27 規則4 / ADR-037 決定1）。
-  const mealStockItems = stockItemsOutput.stockItems.map(toMealStockItem);
+  // 献立に使う在庫品だけを写した在庫は1本だけ作り、作れる献立の判定と在庫の下限と在庫
+  // スナップショットのすべてへ渡す（FR-43 / ADR-086 決定3）。同じ在庫から2種類を組むと、
+  // 判定に使った在庫と記録に残る在庫がずれる（B-27 規則4 / ADR-037 決定1）。
+  const mealStockItems = stockItemsUsedForMealsOf(stockItemsOutput.stockItems).map(toMealStockItem);
+  // 出力に載せる充足だけは、献立に使わない在庫品も含めた全件で算出する（FR-21 / FR-32）—
+  // `ShowLatestSuggestion` と同じ値にし、同じ提案が経路によって違う形で出ないようにする。
+  const allMealStockItems = stockItemsOutput.stockItems.map(toMealStockItem);
 
   // 在庫スナップショットも1本だけ作り、C-7 の比較に使うものと生成に渡すものと提案が抱える
   // ものを同じにする（B-28 規則4 / ADR-037 決定1）。在庫スナップショットは呼び出し時点の
-  // 在庫の複製であり、献立が使った分だけではない（B-27 規則13 / C-7）。
+  // 献立に使う在庫品の全件の複製であり、献立が使った分だけではない（B-27 規則13 / C-7）。
   const pantrySnapshot = createPantrySnapshot({ stockItems: mealStockItems });
   // 基準日時の正準化も1度きりにする。生成に渡す瞬間・新しい献立の生成日時・提案の生成日時が
   // 同じ値であることは、この1本から従う（B-28 規則5 / `docs/testing.md` 5章）。
@@ -235,7 +243,7 @@ async function suggest(
       pantrySnapshotEquals(latestSuggestion.pantrySnapshot, pantrySnapshot)
     ) {
       const mealsOfHousehold = await deps.mealRepository.findByHousehold(householdId);
-      return toOutput(latestSuggestion, mealByIdOf(mealsOfHousehold), mealStockItems);
+      return toOutput(latestSuggestion, mealByIdOf(mealsOfHousehold), allMealStockItems);
     }
   }
 
@@ -347,7 +355,7 @@ async function suggest(
   const mealById = new Map(storedMealById);
   for (const savedMeal of savedMeals) mealById.set(savedMeal.id, savedMeal);
 
-  return toOutput(suggestion, mealById, mealStockItems);
+  return toOutput(suggestion, mealById, allMealStockItems);
 }
 
 /**
@@ -603,8 +611,8 @@ function toReusedEntry(cookableMeal: CookableMeal): SuggestionEntry {
  * **この周で組んで保存した提案と、C-7 で短絡して返す保存済みの提案の両方が通る** —
  * どちらも同じ写し方であり、短絡した回だけ識別子や生成日時を作り替えない（B-28 規則1）。
  *
- * 1件ごとに、指す献立の名称・材料・手順と、**現在の在庫**での充足を載せる（FR-17 / FR-19 /
- * B-48a 規則2〜6）。世帯・調理記録・献立の生成日時は載せない（規則12 / NFR-09）。
+ * 1件ごとに、指す献立の名称・材料・手順と、**現在の在庫**（献立に使わない在庫品も含めた全件）
+ * での充足を載せる（FR-17 / FR-19 / B-48a 規則2〜6）。世帯・調理記録・献立の生成日時は載せない（規則12 / NFR-09）。
  *
  * `entries` の並びは**組んだ順そのまま**である — 再利用なら C-12 の順、生成なら生成側が
  * 返した並びであり、ここで並べ替えない（FR-35 / C-2 / C-12 / B-27 規則16 / B-28 規則9）。

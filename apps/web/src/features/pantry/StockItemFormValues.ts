@@ -14,11 +14,12 @@ import type {
   UpdateStockItemInput,
 } from '@fridge-to-meal/contract';
 
-/** 登録の画面が持つ3欄の値。世帯は持たない（C-9）。 */
+/** 登録の画面が持つ4欄の値（文字の3欄と献立に使うかどうか）。世帯は持たない（C-9）。 */
 export type StockItemFormValues = {
   readonly name: string;
   readonly amount: string;
   readonly expiryDate: string;
+  readonly useForMeals: boolean;
 };
 
 /**
@@ -26,11 +27,14 @@ export type StockItemFormValues = {
  *
  * 期限に「今日」のような既定値を入れない。開いた直後に保存できる状態にしないためであり
  * （FR-13 / NFR-15）、この値からは登録の入力が作れない（規則2）。
+ *
+ * 献立に使うかどうかは**オン**から始める（B-76 規則13）。「保存してもう1件」の後もこの値へ戻る。
  */
 export const EMPTY_STOCK_ITEM_FORM: StockItemFormValues = {
   name: '',
   amount: '',
   expiryDate: '',
+  useForMeals: true,
 };
 
 /**
@@ -55,11 +59,20 @@ export function registerStockItemInputOf(
     name: values.name,
     amount: toNullWhenEmpty(values.amount),
     expiryDate: toNullWhenEmpty(values.expiryDate),
+    // 省略も `null` もせず、真偽値のまま載せる（B-76 規則15）。保存の可否には関わらない。
+    useForMeals: values.useForMeals,
   };
 }
 
-/** 編集の画面が持つ2欄の値（B-55 設計 5章 / 規則1）。名称は編集できないので持たない。 */
-export type StockItemEditValues = { readonly amount: string; readonly expiryDate: string };
+/**
+ * 編集の画面が持つ3欄の値（分量・期限・献立に使うかどうか。B-55 設計 5章 / 規則1、B-76）。
+ * 名称は編集できないので持たない。
+ */
+export type StockItemEditValues = {
+  readonly amount: string;
+  readonly expiryDate: string;
+  readonly useForMeals: boolean;
+};
 
 /**
  * 開いた直後の欄の値（B-55 規則2 / NFR-15）。
@@ -70,13 +83,15 @@ export type StockItemEditValues = { readonly amount: string; readonly expiryDate
  * **前後の空白を落とさない**（規則4）。正規化はサーバの1か所（`amountOf` / `expiryDateOf`）に
  * 残す — ここで落とすと、開いてそのまま保存した回に値が黙って変わる。
  *
- * **食材名を持たない**（規則1）。編集できるのは分量と期限だけであり（`UpdateStockItemInput` に
+ * **食材名を持たない**（規則1）。編集できるのは分量・期限・献立に使うかどうかだけであり（`UpdateStockItemInput` に
  * 名称が無い）、欄に持つと送れない値を編集させる形になる。名称を出すのは `.tsx` の役目である。
  */
 export function stockItemEditValuesOf(stockItem: StockItemDto): StockItemEditValues {
   return {
     amount: stockItem.amount ?? '',
     expiryDate: stockItem.expiryDate ?? '',
+    // 献立に使うかどうかも在庫品の今の値から始める（B-76 規則14）。
+    useForMeals: stockItem.useForMeals,
   };
 }
 
@@ -97,5 +112,6 @@ export function updateStockItemInputOf(values: StockItemEditValues): UpdateStock
   return {
     amount: toNullWhenEmpty(values.amount),
     expiryDate: toNullWhenEmpty(values.expiryDate),
+    useForMeals: values.useForMeals,
   };
 }

@@ -19,6 +19,7 @@ function carrot(householdId: HouseholdId, id = '22222222-2222-4222-8222-22222222
     ingredientId: null,
     amount: amountOf('2本'),
     expiryDate: null,
+    useForMeals: true,
   });
 }
 
@@ -35,6 +36,7 @@ function namedStockItem(
     ingredientId: null,
     amount: null,
     expiryDate: null,
+    useForMeals: true,
   });
 }
 

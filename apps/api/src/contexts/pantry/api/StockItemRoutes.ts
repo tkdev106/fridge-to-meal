@@ -180,7 +180,8 @@ function toFields(body: unknown): Record<string, unknown> | null {
  *
  * 空の名称も期限の書式も前後の空白も見ない — それはドメインが持つ規則であり、
  * ここで二重に持つと同じ規則が2か所に増える（規則7 / B-04 規則7）。
- * 知らない項目は断らずに無視する（規則10）。
+ * 知らない項目は断らずに無視する（規則10）。`useForMeals` は省略も `null` も許さず、
+ * 真偽値だけを通す（ADR-086）。
  */
 function toRegisterStockItemInput(
   body: unknown,
@@ -192,7 +193,8 @@ function toRegisterStockItemInput(
   if (
     !optionalNullableString(fields.ingredientId) ||
     !optionalNullableString(fields.amount) ||
-    !optionalNullableString(fields.expiryDate)
+    !optionalNullableString(fields.expiryDate) ||
+    typeof fields.useForMeals !== 'boolean'
   ) {
     return { rejection: { rule: 'request.invalidBody' } };
   }
@@ -205,6 +207,7 @@ function toRegisterStockItemInput(
 /**
  * 更新の本体の形だけを見る（設計書 規則9）。**省略を許さない** —
  * 更新は常に置き換えであり、`null` が「消す」を表す（FR-13 / B-06 規則3）。
+ * `useForMeals` は真偽値だけを通す（ADR-086）。
  */
 function toUpdateStockItemInput(
   body: unknown,
@@ -212,7 +215,11 @@ function toUpdateStockItemInput(
   const fields = toFields(body);
   if (fields === null) return { rejection: { rule: 'request.invalidBody' } };
 
-  if (!nullableString(fields.amount) || !nullableString(fields.expiryDate)) {
+  if (
+    !nullableString(fields.amount) ||
+    !nullableString(fields.expiryDate) ||
+    typeof fields.useForMeals !== 'boolean'
+  ) {
     return { rejection: { rule: 'request.invalidBody' } };
   }
 

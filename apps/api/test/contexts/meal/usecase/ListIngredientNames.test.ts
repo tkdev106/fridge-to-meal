@@ -28,8 +28,12 @@ function nextId() {
 }
 
 /** 在庫の一覧が返す在庫品1件。本題は名称と期限だけである（`docs/testing.md` 6章）。 */
-function stockItem(name: string, expiryDate: string | null = null): StockItemDto {
-  return { id: nextId(), name, ingredientId: null, amount: null, expiryDate };
+function stockItem(
+  name: string,
+  expiryDate: string | null = null,
+  useForMeals = true,
+): StockItemDto {
+  return { id: nextId(), name, ingredientId: null, amount: null, expiryDate, useForMeals };
 }
 
 /** 主材料。補完に出る側（C-16）。 */
@@ -121,6 +125,15 @@ describe('listIngredientNames', () => {
       const output = await list(ourHousehold);
 
       expect(output.ingredientNames).toEqual(['ほうれん草']);
+    });
+
+    it('献立に使わない在庫品の名称も返す', async () => {
+      // FR-02 / FR-43 / 設計書 規則11: 食材名の補完は献立に使うかどうかで変えない。
+      const { list } = setUp({ stockItems: [stockItem('ヨーグルト', null, false)] });
+
+      const output = await list(ourHousehold);
+
+      expect(output.ingredientNames).toEqual(['ヨーグルト']);
     });
   });
 

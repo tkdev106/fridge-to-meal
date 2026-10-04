@@ -14,5 +14,6 @@ export function stockItemDtoOf(stockItem: StockItem): StockItemDto {
     ingredientId: stockItem.ingredientId,
     amount: stockItem.amount,
     expiryDate: stockItem.expiryDate,
+    useForMeals: stockItem.useForMeals,
   };
 }

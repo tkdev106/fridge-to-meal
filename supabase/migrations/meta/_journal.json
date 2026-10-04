@@ -36,6 +36,13 @@
       "when": 1790852532254,
       "tag": "20261001110212_create_delete_own_account",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791095118038,
+      "tag": "20261004062518_add_use_for_meals_to_stock_items",
+      "breakpoints": true
     }
   ]
 }

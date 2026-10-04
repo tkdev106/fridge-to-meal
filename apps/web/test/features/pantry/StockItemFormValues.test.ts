@@ -18,7 +18,7 @@ import {
  * 関係のない12件も一緒に落ちて理由が読めなくなる。
  */
 function formValuesOf(props: Partial<StockItemFormValues> = {}): StockItemFormValues {
-  return { name: 'にんじん', amount: '', expiryDate: '', ...props };
+  return { name: 'にんじん', amount: '', expiryDate: '', useForMeals: true, ...props };
 }
 
 function registerInputOf(props: Partial<StockItemFormValues> = {}) {
@@ -123,7 +123,9 @@ describe('登録の入力 registerStockItemInputOf', () => {
 describe('空のフォーム EMPTY_STOCK_ITEM_FORM', () => {
   it('開いた直後のフォームは3欄とも空である', () => {
     // FR-13 / NFR-15 / B-12 設計 規則6: 期限に「今日」のような既定値を入れない。
-    expect(EMPTY_STOCK_ITEM_FORM).toEqual({ name: '', amount: '', expiryDate: '' });
+    // 献立に使うかどうかは文字の欄ではないので、下の B-76 の it が別に見る。
+    const { name, amount, expiryDate } = EMPTY_STOCK_ITEM_FORM;
+    expect({ name, amount, expiryDate }).toEqual({ name: '', amount: '', expiryDate: '' });
   });
 
   it('開いた直後のフォームからは登録の入力を作らない', () => {
@@ -145,13 +147,14 @@ function stockItemOf(props: Partial<StockItemDto> = {}): StockItemDto {
     ingredientId: 'ingredient-carrot',
     amount: '2本',
     expiryDate: '2026-09-21',
+    useForMeals: true,
     ...props,
   };
 }
 
 /** 編集の欄の標本。本題だけが引数に現れる形にする。 */
 function editValuesOf(props: Partial<StockItemEditValues> = {}): StockItemEditValues {
-  return { amount: '3本', expiryDate: '2026-10-01', ...props };
+  return { amount: '3本', expiryDate: '2026-10-01', useForMeals: true, ...props };
 }
 
 describe('編集の欄の値 stockItemEditValuesOf', () => {
@@ -161,6 +164,7 @@ describe('編集の欄の値 stockItemEditValuesOf', () => {
     expect(stockItemEditValuesOf(stockItemOf())).toStrictEqual({
       amount: '2本',
       expiryDate: '2026-09-21',
+      useForMeals: true,
     });
   });
 
@@ -187,6 +191,7 @@ describe('更新の入力 updateStockItemInputOf', () => {
     expect(updateStockItemInputOf(editValuesOf())).toStrictEqual({
       amount: '3本',
       expiryDate: '2026-10-01',
+      useForMeals: true,
     });
   });
 
@@ -196,6 +201,7 @@ describe('更新の入力 updateStockItemInputOf', () => {
     expect(updateStockItemInputOf(editValuesOf({ amount: '' }))).toStrictEqual({
       amount: null,
       expiryDate: '2026-10-01',
+      useForMeals: true,
     });
   });
 
@@ -204,16 +210,20 @@ describe('更新の入力 updateStockItemInputOf', () => {
     expect(updateStockItemInputOf(editValuesOf({ expiryDate: '' }))).toStrictEqual({
       amount: '3本',
       expiryDate: null,
+      useForMeals: true,
     });
   });
 
   it('2欄とも空欄でも更新の入力を作る', () => {
     // FR-13 / B-55 規則3・6: 「どちらも消す」は正しい編集である。登録（食材名が空なら
     // `null` を返す）と違い、**作れない入力が無い。**
-    expect(updateStockItemInputOf({ amount: '', expiryDate: '' })).toStrictEqual({
-      amount: null,
-      expiryDate: null,
-    });
+    expect(updateStockItemInputOf({ amount: '', expiryDate: '', useForMeals: true })).toStrictEqual(
+      {
+        amount: null,
+        expiryDate: null,
+        useForMeals: true,
+      },
+    );
   });
 
   it('欄の値が在庫品の今の値と同じでも更新の入力を作る', () => {
@@ -221,6 +231,7 @@ describe('更新の入力 updateStockItemInputOf', () => {
     expect(updateStockItemInputOf(stockItemEditValuesOf(stockItemOf()))).toStrictEqual({
       amount: '2本',
       expiryDate: '2026-09-21',
+      useForMeals: true,
     });
   });
 
@@ -242,4 +253,45 @@ describe('更新の入力 updateStockItemInputOf', () => {
       '2026-02-30',
     );
   });
+});
+
+// ---- 献立に使う（B-76）----
+
+describe('献立に使うかどうか useForMeals', () => {
+  it('開いた直後のフォームは献立に使う', () => {
+    // B-76 設計 規則13: 開いた直後はオン。
+    expect(EMPTY_STOCK_ITEM_FORM.useForMeals).toBe(true);
+  });
+
+  it.each([true, false])(
+    '登録の入力にフォームの献立に使うかどうか（%s）をそのまま載せる',
+    (useForMeals) => {
+      // B-76 設計 規則15 / FR-01: 省略せず、null にもせず真偽値で含む。
+      expect(registerInputOf({ useForMeals })?.useForMeals).toBe(useForMeals);
+    },
+  );
+
+  it.each([true, false])(
+    '食材名が空なら献立に使うかどうか（%s）によらず登録の入力を作らない',
+    (useForMeals) => {
+      // B-76 設計 規則15 / B-12 規則2: 保存できない条件は食材名が空のときだけのまま。
+      expect(registerInputOf({ name: '', useForMeals })).toBe(null);
+    },
+  );
+
+  it.each([true, false])(
+    '編集の開いた直後の値は在庫品の今の献立に使うかどうか（%s）を持つ',
+    (useForMeals) => {
+      // B-76 設計 規則14 / FR-05: 初期値は対象の在庫品の現在の値。
+      expect(stockItemEditValuesOf(stockItemOf({ useForMeals })).useForMeals).toBe(useForMeals);
+    },
+  );
+
+  it.each([true, false])(
+    '更新の入力に編集の値の献立に使うかどうか（%s）をそのまま載せる',
+    (useForMeals) => {
+      // B-76 設計 規則3・15: 更新は置き換えであり、真偽値を常に含む。
+      expect(updateStockItemInputOf(editValuesOf({ useForMeals })).useForMeals).toBe(useForMeals);
+    },
+  );
 });

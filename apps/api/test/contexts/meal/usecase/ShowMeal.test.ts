@@ -35,6 +35,7 @@ function stockItem(props: {
   name: string;
   amount?: string | null;
   expiryDate?: string | null;
+  useForMeals?: boolean;
 }): StockItemDto {
   stockItemSequence += 1;
   return {
@@ -43,6 +44,7 @@ function stockItem(props: {
     ingredientId: null,
     amount: props.amount ?? null,
     expiryDate: props.expiryDate ?? null,
+    useForMeals: props.useForMeals ?? true,
   };
 }
 
@@ -301,6 +303,18 @@ describe('献立1件を充足つきで返す ShowMeal', () => {
 
       expect(output.coverage.covered.map((ingredient) => ingredient.name)).toEqual(['にんじん']);
       expect(output.coverage.missing).toEqual([]);
+    });
+
+    it('献立に使わない在庫品の名称の主材料も、献立1件の充足では賄える材料に載る', async () => {
+      // FR-32 / FR-43 / 設計書 規則11: 献立詳細の充足は献立に使うかどうかで変えない。
+      const { show } = await setUp({
+        meals: [meal({ ingredients: [mainIngredient('にんじん')] })],
+        stockItems: [stockItem({ name: 'にんじん', useForMeals: false })],
+      });
+
+      const output = await show(ourHousehold, mealIdOf(idA));
+
+      expect(output.coverage.covered.map((ingredient) => ingredient.name)).toEqual(['にんじん']);
     });
 
     it('在庫に無い主材料は不足になる', async () => {
