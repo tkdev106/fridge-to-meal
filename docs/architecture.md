@@ -66,7 +66,7 @@ apps/api/                  Hono on Cloudflare Workers
     api/
   src/contexts/pantry/     同じ5つのディレクトリ。infrastructure/db/ に Drizzle の schema
   src/contexts/catalog/
-  src/contexts/identity/
+  src/contexts/identity/   infrastructure/db/ に世帯の参加と招待の schema
   src/shared/domain/
   src/shared/api/            HTTP 層が共有する最小限の部品（500 に畳む失敗のログ。ADR-080）
   src/shared/infrastructure/  コンテキストをまたぐインフラ（トランザクションの helper）。infrastructure/ と main.ts だけが引く（ADR-059）

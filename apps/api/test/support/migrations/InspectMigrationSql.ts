@@ -4,8 +4,8 @@
  * （B-07c 設計 規則9・9b / B-44 設計 規則13・14）。
  *
  * 見るのは「表を作るファイルに RLS が同居していること」の1点だけである。ポリシーの
- * 述語が正しいか（`household_id = (select auth.uid())`）は実 DB に対して B-07b と
- * B-44 が見る。
+ * 述語が正しいか（`household_id = (select private.current_household_id())`）は実 DB に対して
+ * 各表の RLS のテストが見る。
  *
  * **判定の単位は表である**（B-44 設計 規則13 / ADR-029 結果8）。ファイル全体への真偽で
  * 読むと、1ファイルに2つ目の表を足したときに2表目が素通りする。
@@ -41,6 +41,11 @@ export type TableInspection = {
   readonly forcesRowLevelSecurity: boolean;
   readonly policies: { readonly [K in Operation]: PolicyInspection | null };
   readonly revokesAllFromAnon: boolean;
+  /**
+   * `authenticated` から `revoke all` されているか。真なら「関数だけを通す表」として
+   * 読む（B-73 設計 規則12 / ADR-087 決定3）。
+   */
+  readonly revokesAllFromAuthenticated: boolean;
   readonly operationsGrantedToAuthenticated: readonly Operation[];
   /** この表に足りない点の名前。空ならこの表の4点が揃っている。 */
   readonly missing: readonly string[];
@@ -103,17 +108,21 @@ function tableNamesBetween(statement: string, head: RegExp, tail: RegExp): reado
     .filter((tableName) => tableName !== '');
 }
 
+/** 語（`to` / `from`）に続くカンマ区切りのロールの並び。 */
+function rolesAfter(statement: string, keyword: RegExp): readonly string[] {
+  const matched = new RegExp(`${keyword.source}\\s+([a-z_]+(?:\\s*,\\s*[a-z_]+)*)`).exec(statement);
+  return matched === null ? [] : (matched[1] ?? '').split(',').map((role) => role.trim());
+}
+
 function readPolicy(statement: string): PolicyInspection | null {
   const operation = OPERATIONS.find((candidate) =>
     new RegExp(`\\bfor\\s+${candidate}\\b`).test(statement),
   );
   if (operation === undefined) return null;
 
-  const rolesMatch = /\bto\s+([a-z_]+(?:\s*,\s*[a-z_]+)*)/.exec(statement);
   return {
     operation,
-    targetRoles:
-      rolesMatch === null ? [] : (rolesMatch[1] ?? '').split(',').map((role) => role.trim()),
+    targetRoles: rolesAfter(statement, /\bto/),
     hasUsing: /\busing\s*\(/.test(statement),
     hasWithCheck: /\bwith\s+check\s*\(/.test(statement),
   };
@@ -125,6 +134,7 @@ type TableReading = {
   forcesRowLevelSecurity: boolean;
   policies: { [K in Operation]: PolicyInspection | null };
   revokesAllFromAnon: boolean;
+  revokesAllFromAuthenticated: boolean;
   grantedOperations: Set<Operation>;
 };
 
@@ -134,12 +144,40 @@ function emptyReading(): TableReading {
     forcesRowLevelSecurity: false,
     policies: { select: null, insert: null, update: null, delete: null },
     revokesAllFromAnon: false,
+    revokesAllFromAuthenticated: false,
     grantedOperations: new Set<Operation>(),
   };
 }
 
+/**
+ * 関数だけを通す表（`authenticated` から `revoke all` された表）に足りない点の名前
+ * （B-73 設計 規則3・12 / ADR-087 決定3）。有効化・`anon` からの取り上げ・ポリシー0本・
+ * `authenticated` への grant 0 を求め、**強制を拒む** — 強制すると所有者である関数自身が
+ * 0行しか読めなくなる。
+ */
+function missingOfFunctionOnlyTable(
+  reading: TableReading,
+  grantedOperations: readonly Operation[],
+): string[] {
+  const missing: string[] = [];
+
+  if (!reading.enablesRowLevelSecurity) missing.push('enable row level security');
+  if (reading.forcesRowLevelSecurity) missing.push('force row level security を置かないこと');
+  for (const operation of OPERATIONS) {
+    if (reading.policies[operation] !== null) missing.push(`${operation} ポリシーを置かないこと`);
+  }
+  if (!reading.revokesAllFromAnon) missing.push('revoke all ... from anon');
+  if (grantedOperations.length > 0) missing.push('grant ... to authenticated を置かないこと');
+
+  return missing;
+}
+
 /** この表に足りない点の名前。空ならこの表の4点が揃っている。 */
 function missingOf(reading: TableReading, grantedOperations: readonly Operation[]): string[] {
+  if (reading.revokesAllFromAuthenticated) {
+    return missingOfFunctionOnlyTable(reading, grantedOperations);
+  }
+
   const missing: string[] = [];
 
   if (!reading.enablesRowLevelSecurity) missing.push('enable row level security');
@@ -208,9 +246,12 @@ export function inspectMigrationSql(sql: string): MigrationInspection {
       }
     }
 
-    if (/\brevoke\s+all\b/.test(statement) && /\bfrom\s+anon\b/.test(statement)) {
+    if (/\brevoke\s+all\b/.test(statement)) {
+      // `from` の後ろがカンマ区切りなら並んだロールすべてに数える（規則14）。
+      const revokedRoles = rolesAfter(statement, /\bfrom/);
       for (const reading of readingsOf(tableNamesBetween(statement, /\brevoke/, /\bfrom/))) {
-        reading.revokesAllFromAnon = true;
+        if (revokedRoles.includes('anon')) reading.revokesAllFromAnon = true;
+        if (revokedRoles.includes('authenticated')) reading.revokesAllFromAuthenticated = true;
       }
     }
 
@@ -237,6 +278,7 @@ export function inspectMigrationSql(sql: string): MigrationInspection {
       forcesRowLevelSecurity: reading.forcesRowLevelSecurity,
       policies: reading.policies,
       revokesAllFromAnon: reading.revokesAllFromAnon,
+      revokesAllFromAuthenticated: reading.revokesAllFromAuthenticated,
       operationsGrantedToAuthenticated: grantedOperations,
       missing: missingOf(reading, grantedOperations),
     };

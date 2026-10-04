@@ -10,7 +10,7 @@ import { OWNER_CONNECTION_STRING } from './ConnectionStrings.js';
  * 行レベルセキュリティを素通りし、**RLS が無くても緑になる**（設計 規則3）。
  *
  * 1ファイル = 1回の**簡易問い合わせ**（`.simple()`）で流す。文ごとに割ると `begin;` が
- * 単独のトランザクションになり、表と RLS が別のトランザクションに割れる（ADR-028）。
+ * 単独のトランザクションになり、表と RLS が別のトランザクションに割れる（ADR-029 決定2）。
  */
 
 /**
@@ -27,6 +27,24 @@ const RESET_SCHEMA_SQL = [
   'drop schema if exists public cascade;',
   'create schema public;',
   'grant usage on schema public to authenticated, anon;',
+].join('\n');
+
+/**
+ * 移行のあとに与える、テストだけの権限（B-73 設計 2章・4章 / ADR-087 決定3）。
+ *
+ * テストが参加の行（`household_members`）を役を切り替える前の `authenticator` で置くため
+ * （`HouseholdMembers.ts`）。`insert` だけを与え、`select` は与えない。`anon` / `authenticated` には
+ * 与えない — 2表は関数だけを通す表である。先行は `supabase/local/init.sql` の `auth.users`。
+ * 本番のログインロールには与えない。
+ *
+ * 表は RLS が有効でポリシーが無いので、`authenticator` の `insert` にだけ効くポリシーもここで置く。
+ * 移行ファイルではないので、表の移行の守り（ポリシー0本）には掛からない。
+ */
+const TEST_ONLY_GRANTS_SQL = [
+  'grant usage on schema public to authenticator;',
+  'grant insert on public.household_members to authenticator;',
+  'create policy "household_members_test_insert" on public.household_members',
+  '  for insert to authenticator with check (true);',
 ].join('\n');
 
 async function assertConnectable(connection: postgres.Sql): Promise<void> {
@@ -68,6 +86,15 @@ export default async function applyMigrations(): Promise<void> {
       } catch (cause) {
         throw new Error(`マイグレーション ${fileName} の適用に失敗した。`, { cause });
       }
+    }
+
+    try {
+      await connection.unsafe(TEST_ONLY_GRANTS_SQL).simple();
+    } catch (cause) {
+      throw new Error(
+        '移行のあとのテストだけの権限の付与に失敗した。移行が household_members を作っているかを見る。',
+        { cause },
+      );
     }
   } finally {
     await connection.end();

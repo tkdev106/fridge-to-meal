@@ -48,12 +48,23 @@ pnpm --filter @fridge-to-meal/api db:generate --custom --name create_delete_own_
 | --- | --- |
 | (a) | `alter table ... enable row level security` |
 | (b) | `alter table ... force row level security` — 所有者ロールで繋がざるをえない場合にも効かせる |
-| (c) | 4つのポリシー（select / insert / update / delete）。`to authenticated`、述語は `household_id = (select auth.uid())` |
+| (c) | 4つのポリシー（select / insert / update / delete）。`to authenticated`、述語は `household_id = (select private.current_household_id())`（ADR-087 決定2） |
 | (d) | `revoke all ... from anon` と `grant select, insert, update, delete ... to authenticated` |
 
 **足し忘れは `pnpm test` が止める** — `apps/api/test/migrations/tableMigrations.test.ts` が、
 表を作るファイルに4点が同居していることを、**そのファイルが作る表ごとに**見る（B-44 設計 規則13）。
 **コメントに書いただけでは通らない。**
+
+### 関数だけを通す表
+
+`household_members` と `household_invitations` は `authenticated` に直接読み書きさせず、`private` の
+`security definer` の関数だけを通す（ADR-087 決定3）。この表には上の4点の代わりに次を置く。
+
+- `enable row level security` だけを書き、**`force` は書かない** — 強制すると、所有者である関数自身が0行しか読めない
+- ポリシーを置かず、`authenticated` に `grant` しない
+- `revoke all ... from anon, authenticated` — Supabase は `public` の新しい表に既定で権限を付ける
+
+`tableMigrations.test.ts` は、`authenticated` から `revoke all` した表をこの形として見る。
 
 ## RLS を書くときに落とさないこと
 

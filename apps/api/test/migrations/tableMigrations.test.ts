@@ -6,14 +6,14 @@ import { migrationSqlFiles, migrationMetaFileNames } from '../support/migrations
 /**
  * 表を作るマイグレーションに、行レベルセキュリティの4点が**同じファイルで**同居して
  * いることの守り（B-07c 設計 規則9 / B-44 設計 規則13・14 / ADR-029 結果8 / NFR-09）。
- * 分けて置くと、片方だけ適用された状態＝RLS の無い表が実在する窓ができる（ADR-028）。
+ * 分けて置くと、片方だけ適用された状態＝RLS の無い表が実在する窓ができる（ADR-029 決定2）。
  *
  * **1ファイルごと、さらにそのファイルが作る1表ごとに判定する。** 全ファイルを連結して
  * から照合すると「表とポリシーが別ファイル」でも緑になり、ファイル全体への真偽で
  * 照合すると**2つ目の表が素通りする**（B-44 設計 規則13）。守りたいものがそのまま抜ける。
  *
- * ここでは**ポリシーが正しいか**を見ない。述語（`household_id = (select auth.uid())`）は
- * 実 DB に対して B-07b と B-44 が見る。
+ * ここでは**ポリシーが正しいか**を見ない。述語（`household_id = (select private.current_household_id())`）は
+ * 実 DB に対して各表の RLS のテストが見る。
  */
 
 /** 4点の揃った表を1つぶん書く SQL。**本題だけが `overrides` に現れる**形にする。 */
@@ -28,7 +28,7 @@ type TableSqlOverrides = {
 };
 
 function policySql(tableName: string, operation: Operation, hasWithCheck: boolean): string {
-  const predicate = `"household_id" = (select auth.uid())`;
+  const predicate = `"household_id" = (select private.current_household_id())`;
   const clauses = [
     operation === 'insert' ? '' : `using (${predicate})`,
     operation === 'insert' || operation === 'update'
@@ -77,6 +77,51 @@ function tableSql(tableName: string, overrides: Partial<TableSqlOverrides> = {})
   return [createTableSql(tableName), guardSql(tableName, overrides)].join('\n');
 }
 
+/**
+ * 関数だけを通す表（B-73 設計 規則3・12 / ADR-087 決定3）を1つぶん書く SQL の部品。
+ * 既定は「足りない点の無い」形 — 有効化・`anon` と `authenticated` からの取り上げ・
+ * ポリシー0本・`authenticated` への grant 0・強制なし。**本題だけが `overrides` に現れる。**
+ */
+type FunctionOnlyTableSqlOverrides = {
+  readonly enablesRowLevelSecurity: boolean;
+  readonly forcesRowLevelSecurity: boolean;
+  readonly revokesAllFromAnon: boolean;
+  readonly revokesAllFromAuthenticated: boolean;
+  readonly policyOperations: readonly Operation[];
+  readonly grantsToAuthenticated: boolean;
+};
+
+function functionOnlyTableSql(
+  tableName: string,
+  overrides: Partial<FunctionOnlyTableSqlOverrides> = {},
+): string {
+  const {
+    enablesRowLevelSecurity = true,
+    forcesRowLevelSecurity = false,
+    revokesAllFromAnon = true,
+    revokesAllFromAuthenticated = true,
+    policyOperations = [],
+    grantsToAuthenticated = false,
+  } = overrides;
+  const revokedRoles = [
+    revokesAllFromAnon ? 'anon' : '',
+    revokesAllFromAuthenticated ? 'authenticated' : '',
+  ].filter((role) => role !== '');
+
+  return [
+    createTableSql(tableName),
+    enablesRowLevelSecurity ? `alter table "${tableName}" enable row level security;` : '',
+    forcesRowLevelSecurity ? `alter table "${tableName}" force row level security;` : '',
+    ...policyOperations.map((operation) => policySql(tableName, operation, true)),
+    revokedRoles.length > 0 ? `revoke all on "${tableName}" from ${revokedRoles.join(', ')};` : '',
+    grantsToAuthenticated
+      ? `grant select, insert, update, delete on "${tableName}" to authenticated;`
+      : '',
+  ]
+    .filter((statement) => statement !== '')
+    .join('\n');
+}
+
 /** **並び順に依存しない。** 設計は `tables` の順序を約束していないので名前で引く。 */
 function tableNamed(sql: string, tableName: string): TableInspection {
   const found = inspectMigrationSql(sql).tables.find((table) => table.tableName === tableName);
@@ -94,7 +139,17 @@ const tableCases: [string, string, TableInspection][] = migrationSqlFiles.flatMa
     ]),
 );
 
-const eachTable = it.each(tableCases);
+/**
+ * 関数だけを通す表（`authenticated` から `revoke all` されている表）と、それ以外の普通の表に
+ * 分ける（B-73 設計 規則12 / ADR-087 決定3）。普通の表への要求（4点）は今のまま。
+ */
+const functionOnlyTableCases = tableCases.filter(
+  ([, , table]) => table.revokesAllFromAuthenticated,
+);
+const regularTableCases = tableCases.filter(([, , table]) => !table.revokesAllFromAuthenticated);
+
+const eachTable = it.each(regularTableCases);
+const eachFunctionOnlyTable = it.each(functionOnlyTableCases);
 
 describe('表を作るマイグレーション', () => {
   it('表を1つも作らない SQL からは表が1件も読み取れない', () => {
@@ -151,7 +206,7 @@ describe('表を作るマイグレーション', () => {
   });
 
   it('2つ目の表の行レベルセキュリティを強制しなければ、その表だけが足りない表になる', () => {
-    // 規則13 / ADR-028: 表の所有者ロールで繋がざるをえない場合にも効かせる重ね掛け。
+    // 規則13 / ADR-029 決定3(b): 表の所有者ロールで繋がざるをえない場合にも効かせる重ね掛け。
     const sql = [tableSql('a'), tableSql('b', { forcesRowLevelSecurity: false })].join('\n');
 
     expect(tableNamed(sql, 'b').forcesRowLevelSecurity).toBe(false);
@@ -260,6 +315,92 @@ describe('表を作るマイグレーション', () => {
     ].join('\n');
 
     expect(tableNamed(commentOnlySql, 'meals').missing).not.toEqual([]);
+  });
+
+  it('有効化・anon と authenticated からの取り上げ・ポリシー0本・grant 0 の揃った表は、関数だけを通す表として足りない点が無い', () => {
+    // B-73 設計 規則3・12 / ADR-087 決定3: 2表は authenticated に直接触らせず、関数だけが読み書きする。
+    const sql = functionOnlyTableSql('a');
+
+    expect(tableNamed(sql, 'a').missing).toEqual([]);
+  });
+
+  it('関数だけを通す表でも、行レベルセキュリティを有効にしなければ足りない表になる', () => {
+    // B-73 設計 規則3・12
+    const sql = functionOnlyTableSql('a', { enablesRowLevelSecurity: false });
+
+    expect(tableNamed(sql, 'a').missing).not.toEqual([]);
+  });
+
+  it('関数だけを通す表でも、anon から取り上げなければ足りない表になる', () => {
+    // B-73 設計 規則3・12 / NFR-09: `revoke all on "a" from authenticated` だけでは足りない。
+    const sql = functionOnlyTableSql('a', { revokesAllFromAnon: false });
+
+    expect(tableNamed(sql, 'a').missing).not.toEqual([]);
+  });
+
+  it('関数だけを通す表にポリシーを1本でも置けば、足りない表になる', () => {
+    // B-73 設計 規則3・12 / ADR-087 決定3: ポリシーを置けば authenticated の読み書きの口が開きうる。
+    const sql = functionOnlyTableSql('a', { policyOperations: ['select'] });
+
+    expect(tableNamed(sql, 'a').missing).not.toEqual([]);
+  });
+
+  it('関数だけを通す表でも、authenticated への grant があれば足りない表になる', () => {
+    // B-73 設計 規則3・12 / ADR-087 決定3
+    const sql = functionOnlyTableSql('a', { grantsToAuthenticated: true });
+
+    expect(tableNamed(sql, 'a').missing).not.toEqual([]);
+  });
+
+  it('authenticated から取り上げていない表にポリシーが無ければ、今のまま足りない表になる', () => {
+    // B-73 設計 規則12: 例外は authenticated から revoke all された表だけに効く。
+    const sql = functionOnlyTableSql('a', { revokesAllFromAuthenticated: false });
+
+    expect(tableNamed(sql, 'a').missing).not.toEqual([]);
+  });
+
+  it('関数だけを通す表を強制すると、足りない表になる', () => {
+    // B-73 設計 規則3・12 / ADR-087 決定3: 強制すると所有者である関数自身が0行しか読めない。
+    // ローカルの postgres は superuser で強制を受けないため、DB の側の振る舞いでは見えない。
+    const sql = functionOnlyTableSql('a', { forcesRowLevelSecurity: true });
+
+    expect(tableNamed(sql, 'a').missing).not.toEqual([]);
+  });
+
+  it('1ファイルに関数だけを通す表と普通の表を並べても、authenticated からの取り上げは名指しした表にだけ効く', () => {
+    // B-73 設計 規則12 / B-44 設計 規則13: 判定は表ごと。b は a と同じ形だが authenticated から
+    // 取り上げていないので、ポリシーも grant も無い表として足りない。
+    const sql = [
+      functionOnlyTableSql('a'),
+      functionOnlyTableSql('b', { revokesAllFromAuthenticated: false }),
+    ].join('\n');
+
+    expect(tableNamed(sql, 'a').missing).toEqual([]);
+    expect(tableNamed(sql, 'b').missing).not.toEqual([]);
+  });
+
+  it('revoke がロールをカンマで並べていれば、authenticated, anon の順でもすべてから取り上げたと数える', () => {
+    // B-73 設計 規則12 / 規則14: `from` の後ろがカンマ区切りなら並んだロールすべてに数える。
+    const sql = [
+      'create table "a" ("id" uuid primary key);',
+      'alter table "a" enable row level security;',
+      'revoke all on "a" from authenticated, anon;',
+    ].join('\n');
+
+    expect(tableNamed(sql, 'a').revokesAllFromAnon).toBe(true);
+    expect(tableNamed(sql, 'a').revokesAllFromAuthenticated).toBe(true);
+  });
+
+  it('実際の移行ファイルで関数だけを通す表と読み取られるのは household_invitations と household_members だけである', () => {
+    // B-73 設計 規則3・12 / ADR-087 決定3: 例外が他の表に広がっていないこと。
+    const tableNames = functionOnlyTableCases.map(([, tableName]) => tableName);
+
+    expect([...tableNames].sort()).toEqual(['household_invitations', 'household_members']);
+  });
+
+  eachFunctionOnlyTable('%s の %s は関数だけを通す表として足りない点が無い', (_f, _t, table) => {
+    // B-73 設計 規則3・12 / ADR-087 決定3
+    expect(table.missing).toEqual([]);
   });
 
   it('表を作るマイグレーションから表が少なくとも1つ見つかる', () => {
