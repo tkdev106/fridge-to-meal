@@ -153,9 +153,9 @@ web のセッションは `claude/<slug>-<識別子>` という枝をハーネ�
 反し、`guard.mjs` と `pre-push` がどちらも断る。両方を満たす進め方:
 
 - **PR は `<type>/<slug>` の枝から出す。** `/next` の手順どおり `git switch -c <type>/<slug>` で切り直し、そちらを push して PR にする
-- 割り当てられた枝は、セッションの指示に従って成果を退避する先としてだけ使う。PR の head ではないのでマージ時の自動削除では消えないが、`.github/workflows/cleanup-assigned-branches.yml` が毎日掃除する（先端が7日より古く、開いている PR の無い `claude/*`）
+- 割り当てられた枝は、セッションの指示に従って成果を退避する先としてだけ使う。PR の head ではないのでマージ時の自動削除では消えないが、`.github/workflows/cleanup-assigned-branches.yml` が毎日掃除する（先端が7日より古く、開いている PR の無い `claude/*`。エージェントが消す必要はない）
 - web のコンテナでは `core.hooksPath` を設定しない（割り当て枝への push が止まる）。`main` は `guard.mjs` が守る
-- コミットの作者は `tkdev106`（`178723293+tkdev106@users.noreply.github.com`）に固定される。`.claude/hooks/session-start.sh` が開始のたびに入れ直す。手元の clone では `docs/workflow.md` 7章の手順で1度だけ入れる
+- コミットの作者は `tkdev106`（`178723293+tkdev106@users.noreply.github.com`）に固定される。ローカルの git 設定はコンテナと一緒に消えるため、`.claude/hooks/session-start.sh` が開始のたびに入れ直す。手元の clone では `docs/workflow.md` 7章の手順で1度だけ入れる
 - web のコンテナには `gh` が無い。PR の作成・CI の結果の確認・squash merge は GitHub の MCP ツール（`mcp__github__*`）で行う
 
 ## 作業の進め方
