@@ -740,15 +740,22 @@ describe('設定画面 SettingsScreen の冷蔵庫の共有の帯の構造', () 
 
 /** 人数の行（B-76 設計 6章 規則2・17 / FR-47）。 */
 describe('設定画面 SettingsScreen の人数の行', () => {
-  it('人数が届いていれば「冷蔵庫を共有しているメンバー」と「N人」を出す', () => {
-    // B-76 規則2 / FR-47
+  it('人数が届いていれば「冷蔵庫を共有しているメンバー」と、自分を除いた「N人」を出す', () => {
+    // B-76 規則2 / FR-47: 届く人数は自分を含む。
     renderSettings({ memberCount: { outcome: 'loaded', memberCount: 3 } });
 
-    expect([textCount(MEMBER_ROW), textCount('3人')]).toEqual([1, 1]);
+    expect([textCount(MEMBER_ROW), textCount('2人')]).toEqual([1, 1]);
   });
 
-  it('人数は補正せず、0人でもそのまま出す', () => {
-    // B-76 規則2: 画面は値を補正しない。
+  it('自分しか居なければ0人と出す', () => {
+    // B-76 規則2
+    renderSettings({ memberCount: alone });
+
+    expect(textCount('0人')).toBe(1);
+  });
+
+  it('届いた人数が0でも、負の数は出さず0人と出す', () => {
+    // B-76 規則2
     renderSettings({ memberCount: { outcome: 'loaded', memberCount: 0 } });
 
     expect(textCount('0人')).toBe(1);

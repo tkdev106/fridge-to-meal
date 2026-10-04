@@ -19,7 +19,7 @@
  * **失敗した回は確認を出したまま、原因を断定しない案内を1つ出す**（B-56f 規則8 / B-76 規則9）—
  * 自分では送り直さず、案内は次に送ったとき・やめたときに消える。
  *
- * 人数は門が取りに行き、ここは受け取った状態を補正せずに出す（B-76 規則2）。抜ける操作は
+ * 人数は門が取りに行き、ここは自分を除いた数で出す（届く人数は自分を含む。B-76 規則2）。抜ける操作は
  * メンバーが2人以上と分かっているときだけ出す（規則3。自分しか居なければ抜けられない）。
  * 招待リンクは押した回に1往復だけ作り、文字で出す。**作った時点では写さず、`コピー` を
  * 押した操作の中で写す**（規則5 — iOS は往復の後の書き込みを断る）。写した結末は1つだけ出し、
@@ -93,7 +93,7 @@ const CREATE_INVITATION_LABEL = '招待リンクを作る';
 
 /** 招待リンクを作る操作の下の補助の文字。 */
 const INVITATION_HINT =
-  'リンクを開いた人と、この冷蔵庫を共有します。リンクは1回だけ使え、24時間で切れます';
+  'この冷蔵庫を共有したい相手に以下の招待リンクを共有してください。1回のみ使用可能で、有効期限は24時間です。';
 
 /** 招待を作れなかった案内。 */
 const INVITATION_FAILURE_NOTICE =
@@ -307,7 +307,9 @@ export function SettingsScreen({
       <h2 className={`${styles.band} ${styles.bandSpaced}`}>{SHARING_BAND}</h2>
       <div className={styles.memberRow}>
         <span>{MEMBER_ROW_LABEL}</span>
-        {memberCount.outcome === 'loaded' && <span>{`${memberCount.memberCount}人`}</span>}
+        {memberCount.outcome === 'loaded' && (
+          <span>{`${Math.max(memberCount.memberCount - 1, 0)}人`}</span>
+        )}
         {memberCount.outcome === 'failed' && (
           <span role="status" className={styles.memberCountFailure}>
             {MEMBER_COUNT_FAILURE_NOTICE}
