@@ -29,7 +29,7 @@ export type HouseholdRoutesDeps = {
  * 人数の経路（`GET /household/member-count`）・抜ける経路（`POST /household/leave`）・
  * 招待を作る経路（`POST /household/invitations`）を持つサブアプリを組み立てる。**接頭辞は付けない** — マウント先は `main.ts` が決める（ADR-048 決定4）。
  *
- * どちらも**世帯を定めるのが常に先で**、認証を通らない要求ではユースケースを呼ばず DB に触れない。
+ * いずれも**世帯を定めるのが常に先で**、認証を通らない要求ではユースケースを呼ばず DB に触れない。
  * **要求の本体もクエリも1つも読まない** — 世帯はアクセストークンからだけ定まる（設計書 規則9 / C-9）。
  */
 export function createHouseholdRoutes(deps: HouseholdRoutesDeps): Hono {
