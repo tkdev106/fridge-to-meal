@@ -11,6 +11,7 @@ import type { HouseholdId } from '../../src/shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../src/shared/domain/HouseholdId.js';
 import { countUser, insertUser } from '../support/db/AuthUsers.js';
 import { APP_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
+import { insertHouseholdMember } from '../support/db/HouseholdMembers.js';
 import type { HouseholdRowCounts } from '../support/db/HouseholdRows.js';
 import { countHouseholdRows } from '../support/db/HouseholdRows.js';
 import { withTransaction } from '../support/db/WithTransaction.js';
@@ -70,6 +71,20 @@ const deletedTwiceHousehold = householdIdOf('b56a1000-0007-4000-8000-00000000000
 const deletedUserHousehold = householdIdOf('b56d3000-0001-4000-8000-000000000001');
 const deletingOwnUserHousehold = householdIdOf('b56d3000-0002-4000-8000-000000000002');
 const untouchedUserHousehold = householdIdOf('b56d3000-0002-4000-8000-000000000012');
+
+// B-73: 参加した利用者（参加の行 U → H がある利用者）。先頭の並び（`b73d`）で他のケースと分けてある。
+// 経路が受け取るトークンの `sub` は利用者だが、型は `HouseholdId` のまま（B-73 設計 10章）。
+const registeringJoinedUser = householdIdOf('b73d0000-0007-4000-8000-000000000001');
+const registeringJoinedHousehold = householdIdOf('b73d0000-0007-4000-8000-000000000002');
+const sharingJoinedUser = householdIdOf('b73d0000-0008-4000-8000-000000000001');
+const sharingJoinedHousehold = householdIdOf('b73d0000-0008-4000-8000-000000000002');
+const readingJoinedUser = householdIdOf('b73d0000-0009-4000-8000-000000000001');
+const readingJoinedHousehold = householdIdOf('b73d0000-0009-4000-8000-000000000002');
+const formerlyLoneUser = householdIdOf('b73d0000-0010-4000-8000-000000000001');
+const formerlyLoneJoinedHousehold = householdIdOf('b73d0000-0010-4000-8000-000000000002');
+const isolatedJoinedUser = householdIdOf('b73d0000-0011-4000-8000-000000000001');
+const isolatedJoinedHousehold = householdIdOf('b73d0000-0011-4000-8000-000000000002');
+const unrelatedHousehold = householdIdOf('b73d0000-0011-4000-8000-000000000003');
 
 /** どの世帯も保存していない在庫品の識別子（#15）。 */
 const unsavedStockItemId = 'b9990000-0000-4000-8000-0000000000ff';
@@ -253,6 +268,15 @@ async function seedHouseholdData(household: HouseholdId): Promise<void> {
     headers: bearerHeaders(await accessTokenFor(household)),
   });
   expect(recordResponse.status).toBe(204);
+}
+
+/**
+ * 利用者を置き、その利用者を世帯に参加させる（B-73）。役を切り替える前の `authenticator` で置く
+ * （`AuthUsers.ts` / `HouseholdMembers.ts`）。本題ではない下ごしらえ。
+ */
+async function joinHousehold(userId: HouseholdId, householdId: HouseholdId): Promise<void> {
+  await insertUser(rowConnection, userId);
+  await insertHouseholdMember(rowConnection, { userId, householdId });
 }
 
 /** その世帯の9表の行数を、クレームを張った別のトランザクションで読む。 */
@@ -668,6 +692,69 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
       expect(response.status).toBe(204);
 
       await expect(countUser(rowConnection, untouchedUserHousehold)).resolves.toBe(1);
+    });
+  });
+  describe('参加した利用者の経路は参加先の世帯で動く（B-73）', () => {
+    it('参加した利用者のトークンで在庫品を登録できる', async () => {
+      // 規則10 / FR-26: 経路が受け取るのは利用者で、ユースケースとリポジトリには参加先の世帯が渡る。
+      await joinHousehold(registeringJoinedUser, registeringJoinedHousehold);
+
+      const response = await postStockItem(registeringJoinedUser, {
+        name: 'にんじん',
+        useForMeals: true,
+      });
+
+      expect(response.status).toBe(201);
+    });
+
+    it('参加した利用者のトークンで登録した在庫品は、参加先の持ち主の一覧に出る', async () => {
+      // 規則10 / C-9: 登録した行は参加先の世帯のものになる。
+      await joinHousehold(sharingJoinedUser, sharingJoinedHousehold);
+      const registered = await registeredStockItem(sharingJoinedUser, {
+        name: 'にんじん',
+        useForMeals: true,
+      });
+
+      const ownerStockItems = await listedStockItems(sharingJoinedHousehold);
+
+      expect(ownerStockItems.map((stockItem) => stockItem.id)).toContain(registered.id);
+    });
+
+    it('参加先の持ち主が登録した在庫品は、参加した利用者の一覧に出る', async () => {
+      // 規則10 / FR-26: 参加した利用者は参加先の世帯の在庫を読む。
+      await joinHousehold(readingJoinedUser, readingJoinedHousehold);
+      const registered = await registeredStockItem(readingJoinedHousehold, {
+        name: 'たまねぎ',
+        useForMeals: true,
+      });
+
+      const joinedUserStockItems = await listedStockItems(readingJoinedUser);
+
+      expect(joinedUserStockItems.map((stockItem) => stockItem.id)).toContain(registered.id);
+    });
+
+    it('参加した利用者には、参加前に自分のトークンで登録した在庫品が一覧に出ない', async () => {
+      // C-9 / ADR-087 決定2: 参加したあとの世帯は参加先であり、自分の ID の世帯の行は見えない。
+      const registeredBeforeJoining = await registeredStockItem(formerlyLoneUser, {
+        name: 'ごぼう',
+        useForMeals: true,
+      });
+      await joinHousehold(formerlyLoneUser, formerlyLoneJoinedHousehold);
+
+      const stockItems = await listedStockItems(formerlyLoneUser);
+
+      expect(stockItems.map((stockItem) => stockItem.id)).not.toContain(registeredBeforeJoining.id);
+    });
+
+    it('参加した利用者のトークンで登録した在庫品は、無関係な世帯のトークンの一覧に出ない', async () => {
+      // C-9 / NFR-09: 参加先の世帯の行は、参加していない世帯からは見えない。
+      await joinHousehold(isolatedJoinedUser, isolatedJoinedHousehold);
+      await registeredStockItem(isolatedJoinedUser, { name: 'にんじん', useForMeals: true });
+
+      const response = await getStockItems(unrelatedHousehold);
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ stockItems: [] });
     });
   });
 });

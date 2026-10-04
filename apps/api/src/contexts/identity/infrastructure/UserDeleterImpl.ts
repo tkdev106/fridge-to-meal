@@ -8,7 +8,7 @@ import type { UserDeleter } from '../domain/port/UserDeleter.js';
  *
  * 移行が置いた `private.delete_own_account()` を、受け取ったトランザクションの中で呼ぶ。
  * **世帯を SQL に渡さない** — 関数は引数を取らず、誰を消すかはトランザクションに張られた
- * クレーム（`auth.uid()`）が決める（設計書 規則8）。呼ぶ側は必ず同じ世帯で
+ * クレーム（`auth.uid()`）が決める（設計書 規則8）。呼ぶ側は必ず本人の利用者で
  * `withHouseholdTransaction` を張った `tx` を渡す。引数の世帯は口の形を C-9 に揃えるためにある。
  *
  * 呼び出しの失敗（関数が無い・権限が無い）は包まずにそのまま伝える。`IdentityRuleViolation` に

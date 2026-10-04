@@ -323,7 +323,7 @@ describe('世帯認証器 HouseholdAuthenticatorImpl', () => {
   });
 
   it('sub の前後の空白を落とした値を世帯とする', async () => {
-    // 規則10 / ADR-028: 落とした結果を世帯とする。空のクレームは0行に化けて黙る（ADR-029 理由(1)）。
+    // 規則10 / ADR-087 決定2: 落とした結果を返す。空のクレームは0行に化けて黙る（ADR-029 理由(1)）。
     const result = await authenticator().authenticate(
       await accessTokenOf({
         ...validClaims(),
