@@ -64,19 +64,19 @@ export type AppProps = {
    * 門は呼ぶだけで、基点も `fetch` もトークンの取り出し方も知らない。
    */
   listStockItems: ListStockItems;
-  /** 在庫を登録しに行く口（B-24）。組み立てるのはやはり `main.tsx` だけである。 */
+  /** 在庫を登録しに行く口（B-24）。組み立てるのは `main.tsx` だけである。 */
   registerStockItem: RegisterStockItem;
   /** 在庫を削除しに行く口（B-23）。同じく組み立てるのは `main.tsx` だけである。 */
   deleteStockItem: DeleteStockItem;
   /**
-   * 在庫品1件を更新しに行く口（FR-05 / B-55）。組み立てるのはやはり `main.tsx` だけである。
+   * 在庫品1件を更新しに行く口（FR-05 / B-55）。組み立てるのは `main.tsx` だけである。
    *
    * **通った回だけ門が一覧を取り直す**（設計 規則9）。結末はそのまま画面へ返し、断りの
    * 文言を選ぶのは `StockItemEditForm` の側である（ADR-032 決定3）。
    */
   updateStockItem: UpdateStockItem;
   /**
-   * 保存済みの提案を取りに行く口（B-49a / B-58）。組み立てるのはやはり `main.tsx` だけである。
+   * 保存済みの提案を取りに行く口（B-49a / B-58）。組み立てるのは `main.tsx` だけである。
    *
    * **在庫の口と同じく、門はサインイン済みになったら1度だけ呼ぶ。** この経路は生成を
    * 呼ばないので（ADR-065 決定1）、開かれるまで待つ理由が無い。
@@ -92,43 +92,43 @@ export type AppProps = {
    */
   listIngredientNames: ListIngredientNames;
   /**
-   * 「新しい献立を求める」操作（B-49b / FR-36）。組み立てるのはやはり `main.tsx` だけである。
+   * 「新しい献立を求める」操作（B-49b / FR-36）。組み立てるのは `main.tsx` だけである。
    *
    * 送信中フラグ・失敗フラグの state、結果の反映、在庫の登録・削除が通った回の取り直しは
    * 下の `handleRequestNewMeals` と `showLatestSuggestion` の効果が持つ。
    */
   requestNewMeals: RequestNewMeals;
   /**
-   * 献立1件を取りに行く口（B-53 / B-52）。組み立てるのはやはり `main.tsx` だけである。
+   * 献立1件を取りに行く口（B-53 / B-52）。組み立てるのは `main.tsx` だけである。
    *
    * **開かれるまで呼ばない** — 充足は開いた時点の在庫で算出されたものでなければならず
    * （FR-32 / ADR-009）、先に取っておくと古い判定を見せることになる。
    */
   showMeal: ShowMeal;
   /**
-   * 調理記録を1件足す口（FR-22 / B-51）。組み立てるのはやはり `main.tsx` だけである。
+   * 調理記録を1件足す口（FR-22 / B-51）。組み立てるのは `main.tsx` だけである。
    *
    * **「作った」を記録しても在庫は減らさない**（C-8）— 記録が通った回に在庫も提案も
    * 取り直さない。
    */
   addCookingRecord: AddCookingRecord;
-  /** 献立の履歴を取りに行く口（B-54b）。組み立てるのはやはり `main.tsx` だけである。 */
+  /** 献立の履歴を取りに行く口（B-54b）。組み立てるのは `main.tsx` だけである。 */
   listMeals: ListMeals;
-  /** 世帯のデータを消す口（B-56f）。組み立てるのはやはり `main.tsx` だけである。 */
+  /** 世帯のデータを消す口（B-56f）。組み立てるのは `main.tsx` だけである。 */
   deleteHouseholdData: DeleteHouseholdData;
   /** 接続状態の継ぎ目（B-70 設計 5章）。**必須**であり、組み立てるのは `main.tsx` だけである。 */
   connectivity: Connectivity;
-  /** 世帯の人数を取りに行く口（B-76 / FR-47）。組み立てるのはやはり `main.tsx` だけである。 */
+  /** 世帯の人数を取りに行く口（B-76 / FR-47）。組み立てるのは `main.tsx` だけである。 */
   showHouseholdMemberCount: ShowHouseholdMemberCount;
-  /** 招待を作る口（B-76 / FR-44）。組み立てるのはやはり `main.tsx` だけである。 */
+  /** 招待を作る口（B-76 / FR-44）。組み立てるのは `main.tsx` だけである。 */
   createHouseholdInvitation: CreateHouseholdInvitation;
-  /** 世帯を抜ける口（B-76 / FR-46）。組み立てるのはやはり `main.tsx` だけである。 */
+  /** 世帯を抜ける口（B-76 / FR-46）。組み立てるのは `main.tsx` だけである。 */
   leaveHousehold: LeaveHousehold;
   /** 文字を写す継ぎ目（B-76）。`new` するのは `main.tsx` だけである。 */
   clipboard: ClipboardWriter;
   /** 招待リンクの基点（B-76 規則6）。末尾の `/` を持たない値（`location.origin`）を `main.tsx` が渡す。 */
   webOrigin: string;
-  /** 招待のトークンで世帯に参加する口（B-77 / FR-45）。組み立てるのはやはり `main.tsx` だけである。 */
+  /** 招待のトークンで世帯に参加する口（B-77 / FR-45）。組み立てるのは `main.tsx` だけである。 */
   joinHousehold: JoinHousehold;
   /** 持ち越し中の招待のトークンの継ぎ目（B-77 / ADR-087 決定4）。`new` するのは `main.tsx` だけである。 */
   pendingHouseholdInvitation: PendingHouseholdInvitation;

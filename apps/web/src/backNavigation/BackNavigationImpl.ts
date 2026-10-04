@@ -4,7 +4,7 @@
  * 窓は構造型 `BackNavigationSource` で受ける（先行 `connectivity/ConnectivityImpl.ts`）。
  * **画面の状態を URL に書かない** — `pushState` の第3引数を渡さず、項目の state に深さの印
  * `{ fridgeToMealBack: 深さ }` だけを持たせる。読み込み時の URL にクエリ（招待リンクの `?invite=`）が
- * あれば、構築時に `replaceState` で外す（state とハッシュは保ち、項目は増やさない）。読むのは
+ * あれば、構築時に `replaceState` で外す（state とハッシュは保ち、項目は増やさない。ADR-088）。読むのは
  * `main.tsx` で、この継ぎ目を作る前に読む。
  *
  * 持つのは「積んだ項目の数 A」と「登録されている口の列（数 D）」である。
