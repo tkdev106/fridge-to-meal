@@ -57,6 +57,13 @@
       "when": 1791113622349,
       "tag": "20261004113342_create_household_member_count_and_leave",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791116410547,
+      "tag": "20261004122010_create_household_invitation_and_join",
+      "breakpoints": true
     }
   ]
 }
