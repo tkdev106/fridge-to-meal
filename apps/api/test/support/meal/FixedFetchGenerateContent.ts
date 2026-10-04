@@ -17,7 +17,9 @@ export type GenerateContentDelivery =
   /** 本体が読めない応答を届ける（`json()` が渡した例外を投げる）。 */
   | { readonly ok: boolean; readonly status: number; readonly jsonThrows: Error }
   /** 送れない。渡した例外をそのまま投げる。 */
-  | { readonly throws: Error };
+  | { readonly throws: Error }
+  /** 応答が届かない。要求の `signal` が中断されたら、その理由で断る（本物の `fetch` と同じ）。 */
+  | { readonly hangs: true };
 
 /** 受け取った要求1件。本体は文字列のまま残し、見るときにテストの側で `JSON.parse` する。 */
 export type ReceivedGenerateContent = {
@@ -124,6 +126,14 @@ export class FixedFetchGenerateContent {
     if ('throws' in delivery) {
       throw delivery.throws;
     }
+    if ('hangs' in delivery) {
+      const { signal } = request;
+      return new Promise<never>((_, reject) => {
+        signal.addEventListener('abort', () => {
+          reject(signal.reason);
+        });
+      });
+    }
 
     return responseOf(delivery);
   };
@@ -131,7 +141,7 @@ export class FixedFetchGenerateContent {
 
 /** 届ける応答を、この層が読む3つだけの形に写す（設計書5章 `GenerateContentResponse`）。 */
 function responseOf(
-  delivery: Exclude<GenerateContentDelivery, { readonly throws: Error }>,
+  delivery: Exclude<GenerateContentDelivery, { readonly throws: Error } | { readonly hangs: true }>,
 ): GenerateContentResponse {
   if ('jsonThrows' in delivery) {
     return {

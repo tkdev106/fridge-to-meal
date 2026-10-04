@@ -14,6 +14,8 @@ export type GenerateContentRequest = {
   readonly method: 'POST';
   readonly headers: Readonly<Record<string, string>>;
   readonly body: string;
+  /** 時間の上限で中断する（ADR-085 決定2）。 */
+  readonly signal: AbortSignal;
 };
 
 /** `Response` を書かない（先行 JwksResponse）。 */
@@ -47,6 +49,9 @@ const MAX_OUTPUT_TOKENS = 8192;
  */
 const THINKING_LEVEL = 'medium';
 
+/** 応答を待つ時間の上限（ADR-085 決定2）。超えたら「応答が届かない」失敗として素の `Error` で断る。 */
+const GENERATE_TIMEOUT_MS = 30_000;
+
 /** 応答が最後まで書き切られたことを示す停止理由。これ以外は本文を読まない（B-72 規則12）。 */
 const COMPLETED_FINISH_REASON = 'STOP';
 
@@ -56,7 +61,7 @@ const COMPLETED_FINISH_REASON = 'STOP';
  *
  * 失敗の境目（ADR-079 決定5）: **応答は届いたが使える献立が無い**ときは `mealGenerator.empty`。
  * **応答が届かない**（送れない・2xx でない）ときと設定が空のときは素の `Error`（ADR-045）。
- * どちらも再試行しない（ADR-005）。
+ * 応答を30秒待っても届かないときも素の `Error`（ADR-085）。どちらも再試行しない（ADR-005）。
  */
 export class MealGeneratorImpl implements MealGenerator {
   constructor(
@@ -77,6 +82,25 @@ export class MealGeneratorImpl implements MealGenerator {
       );
     }
 
+    // 本体を読み終えるまでを上限に含める。中断の理由が素の `Error` なので 500 になる（ADR-079 決定5）。
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      controller.abort(new Error('献立の生成の応答が30秒以内に届きませんでした'));
+    }, GENERATE_TIMEOUT_MS);
+    try {
+      return await this.requestMeals(input, model, apiKey, userMessage, controller.signal);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async requestMeals(
+    input: MealGenerationInput,
+    model: string,
+    apiKey: string,
+    userMessage: string,
+    signal: AbortSignal,
+  ): Promise<readonly GeneratedMeal[]> {
     // 送れなかった失敗は包み直さずにそのまま伝える（ADR-045 決定2）。
     const response = await this.fetchGenerateContent(
       `${GENERATE_CONTENT_BASE_URL}/${encodeURIComponent(model)}:generateContent`,
@@ -95,6 +119,7 @@ export class MealGeneratorImpl implements MealGenerator {
             thinkingConfig: { thinkingLevel: THINKING_LEVEL },
           },
         }),
+        signal,
       },
     );
     if (!response.ok) {

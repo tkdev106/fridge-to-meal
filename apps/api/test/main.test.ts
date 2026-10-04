@@ -1367,6 +1367,15 @@ describe('composition root main', () => {
       expect(allowedHeaders).not.toContain('x-nazo-header');
     });
 
+    it('preflight の結果をブラウザに1時間覚えさせる', async () => {
+      // ADR-085 決定1: 要求のたびに preflight を往復させない。
+      const app = appWithFixedDependencies();
+
+      const response = await app.request('/stock-items', preflightRequest(webOrigin));
+
+      expect(response.headers.get('Access-Control-Max-Age')).toBe('3600');
+    });
+
     it('アクセストークンの無い GET /stock-items の 401 にも許可の origin が付く', async () => {
       // 規則14 / ADR-045 / NFR-09: 付かなければ、サーバが断ったことがブラウザでは CORS の失敗に化け、
       // web の `failed` の理由を誰も読めなくなる。ミドルウェアを経路より前に置くのはこのためである。
