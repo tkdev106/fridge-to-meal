@@ -86,6 +86,16 @@ const isolatedJoinedUser = householdIdOf('b73d0000-0011-4000-8000-000000000001')
 const isolatedJoinedHousehold = householdIdOf('b73d0000-0011-4000-8000-000000000002');
 const unrelatedHousehold = householdIdOf('b73d0000-0011-4000-8000-000000000003');
 
+// B-75b: 世帯の人数・抜ける・他のメンバーが居るアカウント削除。先頭の並び（`b75b3000`）で分けてある。
+// 作った人（参加の行なし）の利用者 ID がそのまま世帯 ID である（ADR-087 決定1）。
+const countedHouseholdCreator = householdIdOf('b75b3000-0001-4000-8000-000000000001');
+const countingMember = householdIdOf('b75b3000-0001-4000-8000-000000000002');
+const leftHouseholdCreator = householdIdOf('b75b3000-0002-4000-8000-000000000001');
+const leavingMember = householdIdOf('b75b3000-0002-4000-8000-000000000002');
+const loneUser = householdIdOf('b75b3000-0003-4000-8000-000000000001');
+const sharedDataCreator = householdIdOf('b75b3000-0004-4000-8000-000000000001');
+const deletingAccountMember = householdIdOf('b75b3000-0004-4000-8000-000000000002');
+
 /** どの世帯も保存していない在庫品の識別子（#15）。 */
 const unsavedStockItemId = 'b9990000-0000-4000-8000-0000000000ff';
 
@@ -692,6 +702,56 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
       expect(response.status).toBe(204);
 
       await expect(countUser(rowConnection, untouchedUserHousehold)).resolves.toBe(1);
+    });
+  });
+  describe('世帯の経路が DB まで通る（B-75b）', () => {
+    it('結線した人数の経路は、2人の世帯の参加者に memberCount 2 を返す', async () => {
+      // 設計書 規則1・9 / FR-47: 作った人（参加の行なし）も数える。
+      await insertUser(rowConnection, countedHouseholdCreator);
+      await joinHousehold(countingMember, countedHouseholdCreator);
+
+      const response = await app.request('/household/member-count', {
+        headers: bearerHeaders(await accessTokenFor(countingMember)),
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual({ memberCount: 2 });
+    });
+
+    it('結線した抜ける経路で抜けると、同じトークンの人数は 1 になる', async () => {
+      // 設計書 規則3・4・9 / FR-46: 抜けた利用者は空の世帯に移る。
+      await insertUser(rowConnection, leftHouseholdCreator);
+      await joinHousehold(leavingMember, leftHouseholdCreator);
+      const headers = bearerHeaders(await accessTokenFor(leavingMember));
+      const leaveResponse = await app.request('/household/leave', { method: 'POST', headers });
+      expect(leaveResponse.status).toBe(204);
+
+      const response = await app.request('/household/member-count', { headers });
+
+      await expect(response.json()).resolves.toEqual({ memberCount: 1 });
+    });
+
+    it('自分しか居ない世帯では、結線した抜ける経路が 409 leaveHousehold.alone を返す', async () => {
+      // 設計書 規則6・7章1行目 / FR-46: 自分しか居ない世帯からは抜けられない。
+      await insertUser(rowConnection, loneUser);
+
+      const response = await app.request('/household/leave', {
+        method: 'POST',
+        headers: bearerHeaders(await accessTokenFor(loneUser)),
+      });
+
+      expect(response.status).toBe(409);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'leaveHousehold.alone' });
+    });
+
+    it('他のメンバーが居る世帯で参加者が世帯のデータを消しても、世帯の行は9表とも1行も消えない', async () => {
+      // 設計書 規則7・10 / FR-27 / ADR-087 決定6: 経路と 204 は変えず、2人以上なら利用者だけを消す。
+      await seedHouseholdData(sharedDataCreator);
+      await joinHousehold(deletingAccountMember, sharedDataCreator);
+      const response = await deleteHouseholdDataRequest(deletingAccountMember);
+      expect(response.status).toBe(204);
+
+      await expect(rowCountsOf(sharedDataCreator)).resolves.toEqual(seededRows);
     });
   });
   describe('参加した利用者の経路は参加先の世帯で動く（B-73）', () => {

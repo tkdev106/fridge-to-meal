@@ -1,6 +1,11 @@
+import { drizzle } from 'drizzle-orm/postgres-js';
 import type { Sql, TransactionSql } from 'postgres';
 import postgres from 'postgres';
 import { afterAll, describe, expect, it } from 'vitest';
+import { HouseholdLeaverImpl } from '../../src/contexts/identity/infrastructure/HouseholdLeaverImpl.js';
+import { HouseholdMemberCounterImpl } from '../../src/contexts/identity/infrastructure/HouseholdMemberCounterImpl.js';
+import { householdIdOf } from '../../src/shared/domain/HouseholdId.js';
+import { withHouseholdTransaction } from '../../src/shared/infrastructure/db/HouseholdTransaction.js';
 import { insertUser } from '../support/db/AuthUsers.js';
 import { APP_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
 import { insertHouseholdMember } from '../support/db/HouseholdMembers.js';
@@ -33,8 +38,22 @@ function userIdOf(caseNumber: number, index: number): string {
   return `b75a0000-${caseSegment}-4000-8000-${indexSegment}`;
 }
 
+/**
+ * 出口の実装のケース（B-75b）の利用者の識別子。先頭の並び（`b75b1000`）で上の関数のケースと分ける。
+ */
+function implUserIdOf(caseNumber: number, index: number): string {
+  const caseSegment = String(caseNumber).padStart(4, '0');
+  const indexSegment = String(index).padStart(12, '0');
+  return `b75b1000-${caseSegment}-4000-8000-${indexSegment}`;
+}
+
 // 1本の接続で複数のトランザクションを張る（先行 `currentHouseholdId.test.ts`）。
 const connection = postgres(APP_CONNECTION_STRING, { max: 1 });
+
+// 出口の実装に渡す drizzle の handle（先行 `userDeleter.test.ts`）。**接続を上と分ける** —
+// drizzle は渡された接続の型の変換を書き換えるため、共有すると上のケースの `Date` の引数が通らなくなる。
+const implConnection = postgres(APP_CONNECTION_STRING, { max: 1 });
+const db = drizzle(implConnection);
 
 // 行を直接置く接続。役を切り替えずに `authenticator` のまま使う。
 const rowConnection = postgres(APP_CONNECTION_STRING, { max: 1 });
@@ -42,6 +61,7 @@ const rowConnection = postgres(APP_CONNECTION_STRING, { max: 1 });
 afterAll(async () => {
   await connection.end();
   await rowConnection.end();
+  await implConnection.end();
 });
 
 /**
@@ -459,5 +479,85 @@ describe('2関数の置き場所と権限', () => {
 
     // 設計 規則5 / ADR-071 理由(4): `security definer` なので検索経路に頼らない。
     expect(['', '""']).toContain(value);
+  });
+});
+
+/**
+ * 出口の実装を、本物の `withHouseholdTransaction` が張ったトランザクションで呼ぶ（B-75b 2周目 /
+ * 設計書 規則11）。第2引数を渡せば、それをクレームの世帯の代わりに出口の引数として渡す —
+ * 引数の世帯を SQL に渡さないことを見るため。
+ */
+function countWithImpl(userId: string, argumentHousehold?: string): Promise<number> {
+  return withHouseholdTransaction(db, householdIdOf(userId), (tx, householdId) =>
+    new HouseholdMemberCounterImpl(tx).count(
+      argumentHousehold === undefined ? householdId : householdIdOf(argumentHousehold),
+    ),
+  );
+}
+
+function leaveWithImpl(userId: string, argumentHousehold?: string): Promise<boolean> {
+  return withHouseholdTransaction(db, householdIdOf(userId), (tx, householdId) =>
+    new HouseholdLeaverImpl(tx).leave(
+      argumentHousehold === undefined ? householdId : householdIdOf(argumentHousehold),
+    ),
+  );
+}
+
+describe('人数の出口の実装 HouseholdMemberCounterImpl', () => {
+  it('HouseholdMemberCounterImpl は2人の世帯の人数を数値の 2 で返す', async () => {
+    const creator = implUserIdOf(1, 1);
+    const member = implUserIdOf(1, 2);
+    await placeHousehold(creator, [member]);
+
+    // 設計書 規則11: 人数は数値で返す（文字列で返る `bigint` にしない）。
+    await expect(countWithImpl(member)).resolves.toBe(2);
+  });
+
+  it('HouseholdMemberCounterImpl は引数に他の世帯を渡しても、クレームの世帯の人数を返す', async () => {
+    const lone = implUserIdOf(2, 1);
+    const otherCreator = implUserIdOf(2, 2);
+    const firstOtherMember = implUserIdOf(2, 3);
+    const secondOtherMember = implUserIdOf(2, 4);
+    await placeHousehold(lone, []);
+    const otherHousehold = await placeHousehold(otherCreator, [
+      firstOtherMember,
+      secondOtherMember,
+    ]);
+
+    // 設計書 規則11 / C-9: 引数の世帯は口の形のためにあり、数える世帯はクレームが決める。
+    await expect(countWithImpl(lone, otherHousehold)).resolves.toBe(1);
+  });
+});
+
+describe('抜ける出口の実装 HouseholdLeaverImpl', () => {
+  it('HouseholdLeaverImpl は他のメンバーが居る世帯で true を返す', async () => {
+    const creator = implUserIdOf(3, 1);
+    const member = implUserIdOf(3, 2);
+    await placeHousehold(creator, [member]);
+
+    // 設計書 5章・規則3: 抜けたら true。
+    await expect(leaveWithImpl(member)).resolves.toBe(true);
+  });
+
+  it('HouseholdLeaverImpl は自分しか居ない世帯で false を返す', async () => {
+    const lone = implUserIdOf(4, 1);
+    await placeHousehold(lone, []);
+
+    // 設計書 5章・規則3: 自分しか居なくて何もしなかったら false。
+    await expect(leaveWithImpl(lone)).resolves.toBe(false);
+  });
+
+  it('HouseholdLeaverImpl は引数に他のメンバーの居る世帯を渡しても、クレームの世帯が1人なら false を返す', async () => {
+    const lone = implUserIdOf(5, 1);
+    const otherCreator = implUserIdOf(5, 2);
+    const otherMember = implUserIdOf(5, 3);
+    await placeHousehold(lone, []);
+    const otherHousehold = await placeHousehold(otherCreator, [otherMember]);
+
+    const left = await leaveWithImpl(lone, otherHousehold);
+
+    // 設計書 規則11 / C-9: 抜けるかどうかはクレームの世帯が決め、引数の世帯は動かない。
+    expect(left).toBe(false);
+    await expect(memberCountOf(otherMember)).resolves.toBe(2);
   });
 });

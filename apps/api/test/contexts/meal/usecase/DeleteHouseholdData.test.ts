@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import type { CountHouseholdMembers } from '../../../../src/contexts/identity/usecase/CountHouseholdMembers.js';
+import { countHouseholdMembers } from '../../../../src/contexts/identity/usecase/CountHouseholdMembers.js';
 import type { DeleteUser } from '../../../../src/contexts/identity/usecase/DeleteUser.js';
 import { deleteUser } from '../../../../src/contexts/identity/usecase/DeleteUser.js';
 import { deleteHouseholdData } from '../../../../src/contexts/meal/usecase/DeleteHouseholdData.js';
@@ -22,6 +24,7 @@ import { stockItemIdOf } from '../../../../src/contexts/pantry/domain/value/Stoc
 import { deleteHouseholdStockItems } from '../../../../src/contexts/pantry/usecase/DeleteHouseholdStockItems.js';
 import type { HouseholdId } from '../../../../src/shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../../../src/shared/domain/HouseholdId.js';
+import { InMemoryHouseholdMembers } from '../../../support/identity/InMemoryHouseholdMembers.js';
 import { InMemoryUserDeleter } from '../../../support/identity/InMemoryUserDeleter.js';
 import { InMemoryMealRepository } from '../../../support/meal/InMemoryMealRepository.js';
 import { InMemorySuggestionRepository } from '../../../support/meal/InMemorySuggestionRepository.js';
@@ -78,8 +81,11 @@ function stockItem(props: { id: string; householdId: HouseholdId; name: string }
  * 2世帯ぶんの献立・提案・在庫品を1件ずつと利用者を置き、ユースケースを1つ組む。在庫の口と
  * 利用者の口は、それぞれ `pantry/usecase` と `identity/usecase` の本物を記憶上の実装で組んで
  * 関数として渡す（ADR-033 決定2 / ADR-072 決定1 / B-56d 設計書 5章）。`empty` なら利用者も置かない。
+ *
+ * 人数の口も `identity/usecase` の本物を記憶上の実装で組んで渡す（B-75 設計書 5章）。
+ * `ourMemberCount` を渡さなければ、こちらの世帯は1人の世帯である。隣の世帯は常に1人。
  */
-async function setUp(props: { empty?: boolean } = {}) {
+async function setUp(props: { empty?: boolean; ourMemberCount?: number } = {}) {
   const mealRepository = new InMemoryMealRepository();
   const suggestionRepository = new InMemorySuggestionRepository();
   const stockItemRepository = new InMemoryStockItemRepository();
@@ -105,7 +111,13 @@ async function setUp(props: { empty?: boolean } = {}) {
     }
   }
 
+  const householdMembers = new InMemoryHouseholdMembers([
+    [ourHousehold, props.ourMemberCount ?? 1],
+    [neighborHousehold, 1],
+  ]);
+
   const runDelete = deleteHouseholdData({
+    countHouseholdMembers: countHouseholdMembers({ householdMemberCounter: householdMembers }),
     deleteHouseholdStockItems: deleteHouseholdStockItems({ stockItemRepository }),
     deleteUser: deleteUser({ userDeleter }),
     mealRepository,
@@ -115,14 +127,23 @@ async function setUp(props: { empty?: boolean } = {}) {
   return { runDelete, mealRepository, suggestionRepository, stockItemRepository, userDeleter };
 }
 
-/** 本題の口だけを差し替え、残りは空の記憶上の実装で組む。失敗の伝え方を見るときに使う。 */
+/**
+ * 本題の口だけを差し替え、残りは空の記憶上の実装で組む。失敗の伝え方を見るときに使う。
+ * 人数の口の既定は、こちらの世帯を1人の世帯として答える。
+ */
 function runDeleteWith(overrides: {
+  countHouseholdMembers?: CountHouseholdMembers;
   deleteHouseholdStockItems?: (householdId: HouseholdId) => Promise<void>;
   deleteUser?: DeleteUser;
   mealRepository?: MealRepository;
   suggestionRepository?: SuggestionRepository;
 }) {
   return deleteHouseholdData({
+    countHouseholdMembers:
+      overrides.countHouseholdMembers ??
+      countHouseholdMembers({
+        householdMemberCounter: new InMemoryHouseholdMembers([[ourHousehold, 1]]),
+      }),
     deleteHouseholdStockItems:
       overrides.deleteHouseholdStockItems ??
       deleteHouseholdStockItems({ stockItemRepository: new InMemoryStockItemRepository() }),
@@ -136,11 +157,15 @@ function runDeleteWith(overrides: {
 type DeleteHouseholdDataDeps = Parameters<typeof deleteHouseholdData>[0];
 
 /**
- * deps のキーが4つだけなら `true`、1つでも他のキーがあれば `never`。
+ * deps のキーが5つだけなら `true`、1つでも他のキーがあれば `never`。
  * `never` になると下の代入が型検査で落ちる（先行 `MealListRoutes.test.ts`）。
  */
 type DepsTakeNeitherClockNorGeneratorNorIdPort = keyof DeleteHouseholdDataDeps extends
-  'deleteHouseholdStockItems' | 'deleteUser' | 'mealRepository' | 'suggestionRepository'
+  | 'countHouseholdMembers'
+  | 'deleteHouseholdStockItems'
+  | 'deleteUser'
+  | 'mealRepository'
+  | 'suggestionRepository'
   ? true
   : never;
 
@@ -221,6 +246,9 @@ describe('deleteHouseholdData', () => {
       const { mealRepository, suggestionRepository, stockItemRepository } = await setUp();
       let observedAtUserDeletion: unknown = 'まだ呼ばれていない';
       const runDelete = deleteHouseholdData({
+        countHouseholdMembers: countHouseholdMembers({
+          householdMemberCounter: new InMemoryHouseholdMembers([[ourHousehold, 1]]),
+        }),
         deleteHouseholdStockItems: deleteHouseholdStockItems({ stockItemRepository }),
         deleteUser: async (householdId) => {
           observedAtUserDeletion = {
@@ -341,6 +369,126 @@ describe('deleteHouseholdData', () => {
       });
 
       await expect(runDelete(ourHousehold)).rejects.toBe(failure);
+    });
+  });
+
+  describe('他のメンバーが居る世帯（B-75 / FR-27 / ADR-087 決定6）', () => {
+    it('世帯に他のメンバーが居れば、その世帯の献立は消えずに残る', async () => {
+      // B-75 設計書 規則7 / ADR-087 決定6: 2人以上なら利用者だけを消し、献立は残ったメンバーのもの。
+      const { runDelete, mealRepository } = await setUp({ ourMemberCount: 2 });
+
+      await runDelete(ourHousehold);
+
+      const ourMeals = await mealRepository.findByHousehold(ourHousehold);
+      expect(ourMeals.map((stored) => stored.id)).toEqual([ourMealId]);
+    });
+
+    it('世帯に他のメンバーが居れば、その世帯の最新の提案は消えずに残る', async () => {
+      // B-75 設計書 規則7。
+      const { runDelete, suggestionRepository } = await setUp({ ourMemberCount: 2 });
+
+      await runDelete(ourHousehold);
+
+      const ourLatest = await suggestionRepository.findLatestByHousehold(ourHousehold);
+      expect(ourLatest?.id).toBe(ourSuggestionId);
+    });
+
+    it('世帯に他のメンバーが居れば、その世帯の在庫品は消えずに残る', async () => {
+      // B-75 設計書 規則7。
+      const { runDelete, stockItemRepository } = await setUp({ ourMemberCount: 2 });
+
+      await runDelete(ourHousehold);
+
+      const ourStockItems = await stockItemRepository.findByHousehold(ourHousehold);
+      expect(ourStockItems.map((stored) => stored.id)).toEqual([ourStockItemId]);
+    });
+
+    it('世帯に他のメンバーが居れば、利用者だけが居なくなる', async () => {
+      // B-75 設計書 規則7 / FR-27: アカウントの削除は利用者を必ず消す。
+      const { runDelete, userDeleter } = await setUp({ ourMemberCount: 2 });
+
+      await runDelete(ourHousehold);
+
+      expect(userDeleter.has(ourHousehold)).toBe(false);
+    });
+
+    it('世帯に他のメンバーが居るアカウント削除では、他の世帯の献立・提案・在庫品と利用者に触れない', async () => {
+      // C-9 / NFR-09: 分岐のどちらでも、動くのは引数の世帯だけである。
+      const { runDelete, mealRepository, suggestionRepository, stockItemRepository, userDeleter } =
+        await setUp({ ourMemberCount: 2 });
+
+      await runDelete(ourHousehold);
+
+      const neighbor = {
+        mealIds: (await mealRepository.findByHousehold(neighborHousehold)).map(
+          (stored) => stored.id,
+        ),
+        latestSuggestionId: (await suggestionRepository.findLatestByHousehold(neighborHousehold))
+          ?.id,
+        stockItemIds: (await stockItemRepository.findByHousehold(neighborHousehold)).map(
+          (stored) => stored.id,
+        ),
+        hasUser: userDeleter.has(neighborHousehold),
+      };
+      expect(neighbor).toEqual({
+        mealIds: [neighborMealId],
+        latestSuggestionId: neighborSuggestionId,
+        stockItemIds: [neighborStockItemId],
+        hasUser: true,
+      });
+    });
+
+    it('人数が 0 と返っても、1人の世帯と同じく世帯のデータと利用者を消す', async () => {
+      // B-75 設計書 規則7: 1 以下なら今の順のまま消す。0 は「利用者の行が無い世帯」で起こりうる。
+      const { runDelete, mealRepository, suggestionRepository, stockItemRepository, userDeleter } =
+        await setUp({ ourMemberCount: 0 });
+
+      await runDelete(ourHousehold);
+
+      const ours = {
+        meals: await mealRepository.findByHousehold(ourHousehold),
+        latestSuggestion: await suggestionRepository.findLatestByHousehold(ourHousehold),
+        stockItems: await stockItemRepository.findByHousehold(ourHousehold),
+        hasUser: userDeleter.has(ourHousehold),
+      };
+      expect(ours).toEqual({ meals: [], latestSuggestion: null, stockItems: [], hasUser: false });
+    });
+  });
+
+  describe('人数を数える口の失敗（B-75 設計書 7章4行目）', () => {
+    it('人数を数える口が投げた例外を包まずにそのまま伝える', async () => {
+      // 設計書 7章4行目 / ADR-045: 包まずに伝え、巻き戻しはトランザクションに任せる。
+      const failure = new Error('人数を数えられなかった');
+      const runDelete = runDeleteWith({
+        countHouseholdMembers: async () => {
+          throw failure;
+        },
+      });
+
+      await expect(runDelete(ourHousehold)).rejects.toBe(failure);
+    });
+
+    it('人数を数える口が投げたら、献立も利用者も消えずに残る', async () => {
+      // 設計書 規則7: 人数は最初に問う。答えが無いまま消し始めない。
+      const failure = new Error('人数を数えられなかった');
+      const mealRepository = new InMemoryMealRepository();
+      await mealRepository.save(ourHousehold, meal({ id: ourMealId, householdId: ourHousehold }));
+      const userDeleter = new InMemoryUserDeleter(ourHousehold);
+      const runDelete = runDeleteWith({
+        countHouseholdMembers: async () => {
+          throw failure;
+        },
+        deleteUser: deleteUser({ userDeleter }),
+        mealRepository,
+      });
+
+      await runDelete(ourHousehold).catch(() => undefined);
+
+      const remaining = {
+        mealIds: (await mealRepository.findByHousehold(ourHousehold)).map((stored) => stored.id),
+        hasUser: userDeleter.has(ourHousehold),
+      };
+      expect(remaining).toEqual({ mealIds: [ourMealId], hasUser: true });
     });
   });
 
