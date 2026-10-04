@@ -30,14 +30,16 @@ const RESET_SCHEMA_SQL = [
 ].join('\n');
 
 /**
- * 移行のあとに与える、テストだけの権限（B-73 設計 2章・4章 / ADR-087 決定3）。
+ * 移行のあとに与える、テストだけの権限（B-73 設計 2章・4章 / B-74 設計 4章 / ADR-087 決定3）。
  *
  * テストが参加の行（`household_members`）を役を切り替える前の `authenticator` で置くため
- * （`HouseholdMembers.ts`）。`insert` だけを与え、`select` は与えない。`anon` / `authenticated` には
+ * （`HouseholdMembers.ts`）。参加の表には `insert` だけを与え、`select` は与えない。
+ * 招待の表（`household_invitations`）には `insert` と `select` を与える — 切れた招待を置き、
+ * 作った招待の期限を読むため（`HouseholdInvitations.ts`）。`anon` / `authenticated` には
  * 与えない — 2表は関数だけを通す表である。先行は `supabase/local/init.sql` の `auth.users`。
  * 本番のログインロールには与えない。
  *
- * 表は RLS が有効でポリシーが無いので、`authenticator` の `insert` にだけ効くポリシーもここで置く。
+ * 表は RLS が有効でポリシーが無いので、`authenticator` にだけ効くポリシーもここで置く。
  * 移行ファイルではないので、表の移行の守り（ポリシー0本）には掛からない。
  */
 const TEST_ONLY_GRANTS_SQL = [
@@ -45,6 +47,11 @@ const TEST_ONLY_GRANTS_SQL = [
   'grant insert on public.household_members to authenticator;',
   'create policy "household_members_test_insert" on public.household_members',
   '  for insert to authenticator with check (true);',
+  'grant insert, select on public.household_invitations to authenticator;',
+  'create policy "household_invitations_test_insert" on public.household_invitations',
+  '  for insert to authenticator with check (true);',
+  'create policy "household_invitations_test_select" on public.household_invitations',
+  '  for select to authenticator using (true);',
 ].join('\n');
 
 async function assertConnectable(connection: postgres.Sql): Promise<void> {
@@ -92,7 +99,7 @@ export default async function applyMigrations(): Promise<void> {
       await connection.unsafe(TEST_ONLY_GRANTS_SQL).simple();
     } catch (cause) {
       throw new Error(
-        '移行のあとのテストだけの権限の付与に失敗した。移行が household_members を作っているかを見る。',
+        '移行のあとのテストだけの権限の付与に失敗した。移行が household_members と household_invitations を作っているかを見る。',
         { cause },
       );
     }
