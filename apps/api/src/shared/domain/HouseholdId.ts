@@ -10,8 +10,8 @@ export type HouseholdId = string & { readonly __brand: 'HouseholdId' };
 /**
  * 文字列を世帯の識別子として扱う。
  *
- * 書式は検査しない。**識別子を発行するのはこのドメインではなく認証基盤である**
- * （ADR-028）ため、ここで形を決めると、決めた側とずれたときに登録が止まる。
+ * 書式は検査しない。**識別子を決めるのはこのドメインではなく DB の関数である**
+ * （ADR-087 決定1・2）ため、ここで形を決めると、決めた側とずれたときに登録が止まる。
  */
 export function householdIdOf(raw: string): HouseholdId {
   return raw as HouseholdId;

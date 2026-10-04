@@ -149,7 +149,8 @@ const now = (): string => new Date().toISOString();
  *
  * ユースケースの工場はリポジトリを構築時に取るため、**工場の呼び出し自体をトランザクションの
  * 中に置く**。`StockItemRepositoryImpl` はその `tx` で生成し、外に持ち出さない。世帯は
- * ユースケースの第1引数と同じものを `withHouseholdTransaction` に渡す（C-9）。
+ * 経路から受け取る第1引数は検証済みの利用者で、`withHouseholdTransaction` がそこから引いた
+ * 世帯をユースケースの第1引数に渡す（C-9 / ADR-087 決定2）。
  *
  * **接続文字列は要求のたびに binding から読み、クライアントは要求ごとに作って閉じる。**
  * Workers は要求をまたいで TCP 接続を使い回せない。閉じるのは成功でも失敗でも（`finally`）。
@@ -163,12 +164,12 @@ function transactionPerRequest<Args extends unknown[], Result>(
   env: Bindings,
   build: (tx: HouseholdTransaction) => (householdId: HouseholdId, ...args: Args) => Promise<Result>,
 ): (householdId: HouseholdId, ...args: Args) => Promise<Result> {
-  return async (householdId, ...args) => {
+  return async (userId, ...args) => {
     const connectionString = env.HYPERDRIVE.connectionString;
     const client = postgres(connectionString, { prepare: false, fetch_types: false });
 
     try {
-      return await withHouseholdTransaction(drizzle(client), householdId, (tx) =>
+      return await withHouseholdTransaction(drizzle(client), userId, (tx, householdId) =>
         build(tx)(householdId, ...args),
       );
     } finally {

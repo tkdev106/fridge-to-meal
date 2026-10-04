@@ -3,8 +3,9 @@ import { IdentityRuleViolation } from '../domain/error/IdentityRuleViolation.js'
 import type { HouseholdAuthenticator } from '../domain/port/HouseholdAuthenticator.js';
 
 /**
- * 提示されたアクセストークン1つから世帯を定める（NFR-09 / ADR-029 結果2）。
- * 返すのは世帯の識別子だけである（B-07e 規則5）。
+ * 提示されたアクセストークン1つから利用者を定める（NFR-09 / ADR-029 結果2）。
+ * 返すのは利用者 ID だけで、型は `HouseholdId` である。世帯は `main.ts` がこの値から
+ * DB の関数で引く（B-07e 規則5 / ADR-087 決定2）。
  */
 export type IdentifyHousehold = (accessToken: string) => Promise<HouseholdId>;
 
