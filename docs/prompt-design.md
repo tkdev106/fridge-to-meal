@@ -448,6 +448,17 @@ ADR-005 の通り、**自動リトライは行わない。** ユーザーに再�
 
 ---
 
+### 6.6 生成のあとの確かめ（ADR-089）
+
+腐敗防止層を通った生成結果は、保存の前に `GeneratedMealChecker` で確かめる。主材料の名前を名称に2回含むものはコードで落とし、残りは Jev（`jev-latest`）に1回の要求で問う。state は名称だけを `{ meals: { m1, … }, avoid: { a1, … } }` で渡し、問いは確率で答える `noul` で、0.5 以上を「はい」とする。
+
+| 鍵 | 問い |
+| --- | --- |
+| `same_m<i>_a<j>` | Is `meals.m<i>` the same dish as `avoid.a<j>`, only written differently? Answer yes when the main ingredients and the cooking method are the same and the names differ only in wording, word order, or adjectives (for example 「鶏むね肉のトマト煮」 and 「鶏むね肉とトマトの煮込み」). Answer no when the main ingredient or the cooking method differs (for example 「鶏むね肉のトマト煮」 and 「鶏むね肉の照り焼き」). |
+| `similar_m<i>_m<j>` | Are `meals.m<i>` and `meals.m<j>` similar dishes? Answer yes when both the main ingredient and the cooking method are the same. Answer no when the main ingredient or the cooking method differs (for example 「鶏むね肉のトマト煮」 and 「鶏むね肉の照り焼き」). |
+
+Jev が3秒で返らない・失敗したときは Jev の問いを飛ばす。落とした分の作り直しはユースケースが1回だけ行う（6.4）。
+
 ## 7. 呼び出しパラメータ
 
 プロバイダ非依存の意図として記す。名称は各社の API に読み替える。
