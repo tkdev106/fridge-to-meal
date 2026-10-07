@@ -52,20 +52,24 @@ function input(
   return { generatedMeals, avoidTitles };
 }
 
-/** 確かめを1つ組み、出した警告を受け取る列と一緒に返す。 */
+/** 確かめを1つ組み、出した警告と記録を受け取る列と一緒に返す。 */
 function checkerWith(
   fetchJevAnswers: FixedFetchJevAnswers = new FixedFetchJevAnswers(),
   key: string = apiKey,
-): { checker: GeneratedMealCheckerImpl; warnings: string[] } {
+): { checker: GeneratedMealCheckerImpl; warnings: string[]; infos: string[] } {
   const warnings: string[] = [];
+  const infos: string[] = [];
   const checker = new GeneratedMealCheckerImpl(
     { apiKey: key },
     fetchJevAnswers.fetchJevAnswers,
     (line) => {
       warnings.push(line);
     },
+    (line) => {
+      infos.push(line);
+    },
   );
-  return { checker, warnings };
+  return { checker, warnings, infos };
 }
 
 function titlesOf(generatedMeals: readonly GeneratedMeal[]): string[] {
@@ -386,6 +390,49 @@ describe('GeneratedMealCheckerImpl', () => {
       );
 
       expect(titlesOf(kept)).toEqual(['A', 'B', 'C']);
+    });
+  });
+
+  describe('落とした献立を記録する', () => {
+    it('名称に主材料の名前を2回含んで落とした献立は、名称を1行記録する', async () => {
+      // ADR-089 決定2(a): しきい値と落とし方を本番で確かめるため
+      const { checker, infos } = checkerWith(new FixedFetchJevAnswers(), '');
+
+      await checker.check(input([repeatedMainMeal()]));
+
+      expect(infos).toEqual([
+        'meal.generatedMealCheck.dropped repeatsMainName title=なすと卵の卵とじ',
+      ]);
+    });
+
+    it('避けたい献立と同じで落とした献立は、相手の名称と確率を添えて1行記録する', async () => {
+      // ADR-089 決定2(b)
+      const { checker, infos } = checkerWith(
+        answering({ same_m1_a1: 0.9, same_m2_a1: 0, similar_m1_m2: 0 }),
+      );
+
+      await checker.check(input([generatedMeal('A'), generatedMeal('B')], ['X']));
+
+      expect(infos).toEqual(['meal.generatedMealCheck.dropped sameAsAvoid title=A avoid=X p=0.9']);
+    });
+
+    it('前の献立と似ていて落とした献立は、相手の名称と確率を添えて1行記録する', async () => {
+      // ADR-089 決定2(c)
+      const { checker, infos } = checkerWith(answering({ similar_m1_m2: 0.6 }));
+
+      await checker.check(input([generatedMeal('A'), generatedMeal('B')]));
+
+      expect(infos).toEqual([
+        'meal.generatedMealCheck.dropped similarToEarlier title=B earlier=A p=0.6',
+      ]);
+    });
+
+    it('落とさなかった回は何も記録しない', async () => {
+      const { checker, infos } = checkerWith(answering({ similar_m1_m2: 0.1 }));
+
+      await checker.check(input([generatedMeal('A'), generatedMeal('B')]));
+
+      expect(infos).toEqual([]);
     });
   });
 
