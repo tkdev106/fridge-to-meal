@@ -49,6 +49,7 @@ import { suggestionIdOf } from './contexts/meal/domain/value/SuggestionId.js';
 import { MealRepositoryImpl } from './contexts/meal/infrastructure/MealRepositoryImpl.js';
 import type { FetchGenerateContent } from './contexts/meal/infrastructure/MealGeneratorImpl.js';
 import { MealGeneratorImpl } from './contexts/meal/infrastructure/MealGeneratorImpl.js';
+import { GeneratedMealCheckerImpl } from './contexts/meal/infrastructure/GeneratedMealCheckerImpl.js';
 import { SuggestionRepositoryImpl } from './contexts/meal/infrastructure/SuggestionRepositoryImpl.js';
 import { addCookingRecord } from './contexts/meal/usecase/AddCookingRecord.js';
 import { suggestMeals, suggestNewMeals } from './contexts/meal/usecase/SuggestMeals.js';
@@ -91,6 +92,8 @@ export type Bindings = {
   readonly GEMINI_MODEL: string;
   /** Gemini API のキー。Secret（`wrangler secret put` / `.dev.vars`）に置く（ADR-079 決定4 / NFR-10）。 */
   readonly GEMINI_API_KEY: string;
+  /** Jev（生成結果の確かめ）のキー。Secret に置く。無ければ確かめは名称の判定だけになる（ADR-089 決定3）。 */
+  readonly TYPESAFE_API_KEY?: string;
 };
 
 /** Supabase Auth の経路。JWKS も `iss` もこの下に居る（ADR-043 決定3。実測は B-07f）。 */
@@ -217,6 +220,7 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
     { model: gemini.GEMINI_MODEL ?? '', apiKey: gemini.GEMINI_API_KEY ?? '' },
     ports?.fetchGenerateContent,
   );
+  const generatedMealChecker = new GeneratedMealCheckerImpl({ apiKey: env.TYPESAFE_API_KEY ?? '' });
 
   /**
    * 提案の依存を1つの `tx` から組む（B-48c）。`listStockItems` は**同じ `tx` の素のもの**を渡す —
@@ -228,6 +232,7 @@ export function composeDependencies(env: Bindings, ports?: CompositionPorts): Ap
     mealRepository: new MealRepositoryImpl(tx),
     suggestionRepository: new SuggestionRepositoryImpl(tx),
     mealGenerator,
+    generatedMealChecker,
     generateMealId,
     generateSuggestionId,
   });

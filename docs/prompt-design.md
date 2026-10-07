@@ -430,7 +430,7 @@ kind は "main" か "seasoning" のどちらかとする。
 | --- | --- |
 | 検証を通った献立が `requiredCount` より多い | **先頭から `requiredCount` 件を採用する。** 余りは捨て、保存もしない。どの件を残すかは応答の並び順で決める — **ACL は充足を判定できない**ため（D-4）、他に決定的な選び方がない |
 | ちょうど `requiredCount` 件 | 採用 |
-| 1件以上だが `requiredCount` 未満 | **その件数で提案を組む。** `Suggestion.entries` は1件以上3件以下なので成立する（C-15）。再試行しない（決定済み。第12章 論点1） |
+| 1件以上だが `requiredCount` 未満 | **その件数で提案を組む。** `Suggestion.entries` は1件以上3件以下なので成立する（C-15）。腐敗防止層は再試行しない（第12章 論点1）。生成のあとの確かめで落ちた分は、ユースケースが1回だけ作り直す（ADR-089） |
 | 0件 | 失敗として扱う |
 
 > **C-2 との関係を明確にしておく。** C-2 は「生成した3件はすべて提示する。生成件数と提示件数は常に等しい」と定めるが、**ここでいう「生成した献立」は検証を通って `Meal` になったものを指す。** ACL が捨てた応答は献立になっていないため、C-2 の対象外である。4件返って3件を提示する場合も、1件しか通らず1件を提示する場合も、**`Meal` になったものはすべて提示されている。**
@@ -447,6 +447,17 @@ ADR-005 の通り、**自動リトライは行わない。** ユーザーに再�
   - **いまは数えていない**（ADR-079 結果3）。NFR-C2 が数えるのは保存した提案であり（ADR-049）、失敗は何も保存しない。無料枠の間は失敗に費用が掛からないため、有料枠へ移る周で見直す
 
 ---
+
+### 6.6 生成のあとの確かめ（ADR-089）
+
+腐敗防止層を通った生成結果は、保存の前に `GeneratedMealChecker` で確かめる。主材料の名前を名称に2回含むものはコードで落とし、残りは Jev（`jev-latest`）に1回の要求で問う。state は名称だけを `{ meals: { m1, … }, avoid: { a1, … } }` で渡し、問いは確率で答える `noul` で、0.5 以上を「はい」とする。
+
+| 鍵 | 問い |
+| --- | --- |
+| `same_m<i>_a<j>` | Is `meals.m<i>` the same dish as `avoid.a<j>`, only written differently? Answer yes when the main ingredients and the cooking method are the same and the names differ only in wording, word order, or adjectives (for example 「鶏むね肉のトマト煮」 and 「鶏むね肉とトマトの煮込み」). Answer no when the main ingredient or the cooking method differs (for example 「鶏むね肉のトマト煮」 and 「鶏むね肉の照り焼き」). |
+| `similar_m<i>_m<j>` | Are `meals.m<i>` and `meals.m<j>` similar dishes? Answer yes when both the main ingredient and the cooking method are the same. Answer no when the main ingredient or the cooking method differs (for example 「鶏むね肉のトマト煮」 and 「鶏むね肉の照り焼き」). |
+
+Jev が3秒で返らない・失敗したときは Jev の問いを飛ばす。落とした分の作り直しはユースケースが1回だけ行う（6.4）。
 
 ## 7. 呼び出しパラメータ
 
@@ -610,7 +621,7 @@ ADR-019 の比較軸の順に埋める。**同じプロンプト・同じ在庫�
 | 案 | 内容 | 判断 |
 | --- | --- | --- |
 | A | 提案の組み立てごと失敗させ、再試行を促す | **不採用（v0.4 で撤回）。** 手元に使える献立があるのに何も出さないのは、利用者にとって最も損な選択である |
-| B | 不足分だけ自動で再生成する | 不採用。待ち時間と費用が増え、ADR-005 の「自動リトライを行わない」と衝突する |
+| B | 不足分だけ自動で再生成する | 腐敗防止層では不採用（ADR-005）。生成のあとの確かめで落ちた分だけは、ユースケースが1回作り直す（ADR-089 決定4） |
 | **C** | 通った件数で提案を組む（1〜3件） | **採用** |
 
 C を採る理由:

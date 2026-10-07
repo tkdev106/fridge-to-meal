@@ -5,6 +5,8 @@ import { createMeal } from '../domain/entity/Meal.js';
 import type { Meal } from '../domain/entity/Meal.js';
 import { createSuggestion } from '../domain/entity/Suggestion.js';
 import type { Suggestion } from '../domain/entity/Suggestion.js';
+import { MealRuleViolation } from '../domain/error/MealRuleViolation.js';
+import type { GeneratedMealChecker } from '../domain/port/GeneratedMealChecker.js';
 import type { MealGenerator } from '../domain/port/MealGenerator.js';
 import type { MealIdGenerator } from '../domain/port/MealIdGenerator.js';
 import type { SuggestionIdGenerator } from '../domain/port/SuggestionIdGenerator.js';
@@ -14,6 +16,7 @@ import { cookableMealsOf } from '../domain/service/CookableMealFinder.js';
 import type { CookableMeal } from '../domain/value/CookableMeal.js';
 import { dateTimeOf, hoursBeforeOf } from '../domain/value/DateTime.js';
 import type { DateTime } from '../domain/value/DateTime.js';
+import type { GeneratedMeal } from '../domain/value/GeneratedMeal.js';
 import type { MealId } from '../domain/value/MealId.js';
 import {
   createPantrySnapshot,
@@ -160,6 +163,7 @@ type MealSuggestionDeps = {
   mealRepository: MealRepository;
   suggestionRepository: SuggestionRepository;
   mealGenerator: MealGenerator;
+  generatedMealChecker: GeneratedMealChecker;
   generateMealId: MealIdGenerator;
   generateSuggestionId: SuggestionIdGenerator;
 };
@@ -385,9 +389,10 @@ function selectCookableMeals(
  * ときだけ通る道**である（規則2 / C-15）。**明示操作は候補を1件も採らないので必ずここを通るが、
  * 通ったあとの振る舞いは入口で変わらない**（FR-36 / B-32 / ADR-051 決定2）。
  *
- * 生成結果は**返ってきた並びのまま**提案の1件に写す。並べ替えも切り捨てもしない — 並びを
- * 決めるのは生成の側であり、C-12 は再利用の並びの規則である（C-2 / 規則9）。求めるのは3件だが、
- * 満たなくても通った件数でそのまま組み、再生成も再試行もしない（規則14 / C-15）。
+ * 生成結果は確かめて残したもの（`checkedGeneratedMealsOf`）を**その並びのまま**提案の1件に
+ * 写す。並べ替えも切り捨てもしない — 並びを決めるのは生成の側であり、C-12 は再利用の並びの
+ * 規則である（C-2 / 規則9）。求めるのは3件だが、作り直しを経ても満たなければ残った件数で組む
+ * （規則14 / C-15 / ADR-089 決定4）。
  *
  * **名称が既存の献立と完全一致した生成結果は、その献立を参照する**（規則10 / C-4）。同じ名称の
  * 献立を二重に持たないための写像であり、参照で済んだものは献立を作らず、保存もせず、識別子も
@@ -399,12 +404,13 @@ function selectCookableMeals(
  * ないのはこの順序による（C-1 / 規則12）。発行の順が生成の並びとずれると、同じ入力でも名称と
  * 識別子の対応が回ごとに変わる（C-12 の決定性）。
  *
- * 1件も生成できなければ出口が `MealRuleViolation` を投げ、それをそのまま伝える。ここで
- * 握って別の提案に埋め合わせない（B-28 7章1行目 / NFR-07）。
+ * 1件も残らなければ `MealRuleViolation` を投げる。ここで握って別の提案に埋め合わせない
+ * （B-28 7章1行目 / NFR-07 / B-78 規則13）。
  */
 async function generateSuggestionEntries(
   deps: {
     mealGenerator: MealGenerator;
+    generatedMealChecker: GeneratedMealChecker;
     generateMealId: MealIdGenerator;
     mealRepository: MealRepository;
   },
@@ -414,14 +420,17 @@ async function generateSuggestionEntries(
   avoidTitles: readonly string[],
   existingMealIdByTitle: ReadonlyMap<string, MealId>,
 ): Promise<{ entries: readonly SuggestionEntry[]; savedMeals: readonly Meal[] }> {
-  // 出口には世帯を渡さない（NFR-11 / B-28 9章）。避けるべき名称は組み終えたものを受け取る
-  // だけで、ここで並べ替えも切り取りもしない（規則6・8 / `buildAvoidTitles`）。
-  const generatedMeals = await deps.mealGenerator.generate({
+  // 確かめは C-4 の参照・識別子の発行・保存より前に済ませる（B-78 規則14）。落としたものは
+  // 献立にならない。
+  const generatedMeals = await checkedGeneratedMealsOf(
+    deps,
     pantrySnapshot,
-    requiredCount: REQUIRED_GENERATED_MEAL_COUNT,
+    asOfDateTime,
     avoidTitles,
-    asOf: asOfDateTime,
-  });
+  );
+  if (generatedMeals.length === 0) {
+    throw new MealRuleViolation('mealGenerator.empty', '確かめを経て残った献立がありません');
+  }
 
   const suggestionEntries: SuggestionEntry[] = [];
   const savedMeals: Meal[] = [];
@@ -463,6 +472,74 @@ async function generateSuggestionEntries(
   }
 
   return { entries: suggestionEntries, savedMeals };
+}
+
+/**
+ * 生成し、確かめて残したものを返す（ADR-089 決定4 / B-78 規則9〜13）。残りが求める件数に
+ * 満たなければ、足りない件数だけ**1回だけ**作り直し、確かめて1回目の残りの後ろに足す。
+ *
+ * 作り直しの避けるべき名称は **1回目に残した名称 → 元の列** であり、1回目に残したものと同じ
+ * 献立を作り直しで返させないためである（規則10）。確かめにも同じ列を渡す。
+ *
+ * 1回目の生成の例外はそのまま伝える。**作り直しの例外は握り、1回目の残りだけを返す** —
+ * 作り直しは足りない分を埋める試みであり、その失敗で1回目に残したものまで捨てない（規則12）。
+ */
+async function checkedGeneratedMealsOf(
+  deps: { mealGenerator: MealGenerator; generatedMealChecker: GeneratedMealChecker },
+  pantrySnapshot: PantrySnapshot,
+  asOfDateTime: DateTime,
+  avoidTitles: readonly string[],
+): Promise<readonly GeneratedMeal[]> {
+  // 出口には世帯を渡さない（NFR-11 / B-28 9章 / B-78 規則15）。避けるべき名称は組み終えたものを
+  // 受け取るだけで、ここで並べ替えも切り取りもしない（規則6・8 / `buildAvoidTitles`）。
+  const firstGeneratedMeals = await deps.mealGenerator.generate({
+    pantrySnapshot,
+    requiredCount: REQUIRED_GENERATED_MEAL_COUNT,
+    avoidTitles,
+    asOf: asOfDateTime,
+  });
+  const firstKeptMeals = await deps.generatedMealChecker.check({
+    generatedMeals: firstGeneratedMeals,
+    avoidTitles,
+  });
+
+  const missingCount = REQUIRED_GENERATED_MEAL_COUNT - firstKeptMeals.length;
+  if (missingCount <= 0) return firstKeptMeals;
+
+  const firstKeptTitles = firstKeptMeals.map((generatedMeal) => generatedMeal.title);
+  const retryAvoidTitles = foldTitles([...firstKeptTitles, ...avoidTitles]).slice(
+    0,
+    MAX_AVOID_TITLES,
+  );
+
+  let retryGeneratedMeals: readonly GeneratedMeal[];
+  try {
+    retryGeneratedMeals = await deps.mealGenerator.generate({
+      pantrySnapshot,
+      requiredCount: missingCount,
+      avoidTitles: retryAvoidTitles,
+      asOf: asOfDateTime,
+    });
+  } catch {
+    return firstKeptMeals;
+  }
+
+  // C-13 / 規則11: 1回目に残した名称と完全一致するものは確かめに渡す前に落とす。確かめが外へ
+  // 問えない回も、同じ献立を2度並べない。
+  const firstKeptTitleSet = new Set(firstKeptTitles);
+  const retryKeptMeals = await deps.generatedMealChecker.check({
+    generatedMeals: retryGeneratedMeals.filter(
+      (generatedMeal) => !firstKeptTitleSet.has(generatedMeal.title),
+    ),
+    avoidTitles: retryAvoidTitles,
+  });
+
+  return [...firstKeptMeals, ...retryKeptMeals];
+}
+
+/** 同じ名称を、先に出たほうを残して1件に畳む（B-28 規則8）。並びは保つ。 */
+function foldTitles(titles: readonly string[]): readonly string[] {
+  return [...new Set(titles)];
 }
 
 /**
@@ -512,16 +589,8 @@ function buildAvoidTitles(
   // 並べ替えるのは複製した配列であって、リポジトリが返した列ではない（B-27 規則17 / ADR-009）。
   const storedMealTitles = [...storedMeals].sort(byNewestFirst).map((meal) => meal.title);
 
-  const seenTitles = new Set<string>();
-  const avoidTitles: string[] = [];
-  for (const title of [...previousSuggestionTitles, ...storedMealTitles]) {
-    if (seenTitles.has(title)) continue;
-    seenTitles.add(title);
-    avoidTitles.push(title);
-  }
-
   // 畳んでから切る（規則8）。逆にすると、重なっていたぶんだけ渡せる名称が減る。
-  return avoidTitles.slice(0, MAX_AVOID_TITLES);
+  return foldTitles([...previousSuggestionTitles, ...storedMealTitles]).slice(0, MAX_AVOID_TITLES);
 }
 
 /**

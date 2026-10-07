@@ -6,6 +6,14 @@ import type { GeneratedMeal } from '../../../src/contexts/meal/domain/value/Gene
 import { MealRuleViolation } from '../../../src/contexts/meal/domain/error/MealRuleViolation.js';
 
 /**
+ * 1回の呼び出しで起きること（B-78 5章）。**返す生成結果の列か、投げる例外のどちらか一方**である
+ * （先行 `FixedStockItemUsecases` の応答）。投げる例外は呼び出し側が作って握る — そのまま
+ * 伝わることを `toBe` で断定できるようにするためである。
+ */
+export type MealGenerationOutcome =
+  { readonly returns: readonly GeneratedMeal[] } | { readonly throws: unknown };
+
+/**
  * あらかじめ決めた生成結果を返す記憶上の献立生成器（B-15 設計書 5章）。
  *
  * 本物は外へ問い合わせる出口であり、そのままでは呼ぶ側のテストが外の都合に縛られる
@@ -21,52 +29,74 @@ import { MealRuleViolation } from '../../../src/contexts/meal/domain/error/MealR
  *   （B-15 規則7 / prompt-design 6.1 段階5 / 6.4 が切るのは「検証を通った」ものだから）
  * - 並べ替えない。用意した並びのまま返す
  *
- * **`receivedInput` を持つのは、生成に何を渡したかを観察する口が他に無いからである**
- * （B-28 規則3〜8）。渡した在庫スナップショット・件数・避けるべき名称・基準日時は出口の
- * 向こうへ行ってしまい、呼ぶ側の返り値からは見えない。持つのは**最後の1件**で、
- * 一度も呼ばれていなければ `null` である（B-28 5章）。
+ * **呼ぶ回ごとに別のことを起こせる**（B-78 5章）。作り直し（ADR-089 決定4）は同じ生成器を
+ * 2回呼ぶので、1回目と2回目で返すものを変えられないと作り直しを確かめられない。
+ * コンストラクタに生成結果を並べる書き方は「どの回も同じ結果を返す」であり、回ごとに
+ * 変えるときは `byCall` を使う。**用意した回を超えて呼ばれたら最後の回と同じことを起こす** —
+ * 投げずに通しておけば、誤って呼ばれた回も最後まで進み、落ちるのは回数の断定だけになる
+ * （`docs/testing.md` 2章）。
+ *
+ * **`receivedInputs` を持つのは、生成に何を渡したかを観察する口が他に無いからである**
+ * （B-28 規則3〜8 / B-78 規則10）。渡した在庫スナップショット・件数・避けるべき名称・基準日時は
+ * 出口の向こうへ行ってしまい、呼ぶ側の返り値からは見えない。**`receivedInput` は1回目の入力**を
+ * 返す — 作り直しが入っても、生成に最初に渡したものを見る既存のテストの意味を変えないためで
+ * ある（B-78 8章）。一度も呼ばれていなければ `null` である。
  *
  * **`callCount` を持つのは、呼ばれないこと自体が要件だからである**（C-7 / C-15）。
  * `vi.fn()` で数えず、**記憶上の実装の状態として観察する**（`docs/testing.md` 2章 /
- * 先行 `FixedHouseholdAuthenticator`）。呼び出しの回数を見てよいのはこの2つの規則のときだけで、
- * それ以外の回数は実装の都合である（同3章）。
+ * 先行 `FixedHouseholdAuthenticator`）。呼び出しの回数を見てよいのはこの2つの規則のときと、
+ * 作り直しを1回に限る規則（ADR-089 決定4）のときだけで、それ以外の回数は実装の都合である（同3章）。
  *
  * **`requiredCount` が1未満のときは契約の外である**（B-15 規則8）。この代役は切った結果が0件になり
  * `mealGenerator.empty` を投げるが、それは契約が定めた振る舞いではない — 呼ぶ側が誤って0を渡すと
- * 「生成できなかった」と区別がつかない。呼ぶ側は常に3を渡す（ADR-022）。
+ * 「生成できなかった」と区別がつかない。
  */
 export class FixedMealGenerator implements MealGenerator {
-  readonly #preparedGeneratedMeals: readonly GeneratedMeal[];
-  #callCount = 0;
-  #receivedInput: MealGenerationInput | null = null;
+  #outcomes: readonly MealGenerationOutcome[];
+  readonly #receivedInputs: MealGenerationInput[] = [];
 
+  /** どの回も同じ生成結果を返す。 */
   constructor(...preparedGeneratedMeals: readonly GeneratedMeal[]) {
-    this.#preparedGeneratedMeals = preparedGeneratedMeals;
+    this.#outcomes = [{ returns: preparedGeneratedMeals }];
+  }
+
+  /** 呼ぶ回ごとに起こすことを並べる。用意した回を超えたら最後の回と同じことを起こす。 */
+  static byCall(...outcomes: readonly MealGenerationOutcome[]): FixedMealGenerator {
+    const mealGenerator = new FixedMealGenerator();
+    mealGenerator.#outcomes = outcomes;
+    return mealGenerator;
   }
 
   /** 何度呼ばれたか。**呼ばれないこと**が要件のときだけ見る（C-7 / C-15 / `docs/testing.md` 2章）。 */
   get callCount(): number {
-    return this.#callCount;
+    return this.#receivedInputs.length;
   }
 
-  /** 最後に受け取った入力。まだ一度も呼ばれていなければ `null`（B-28 5章 / 規則3〜8）。 */
+  /** 1回目に受け取った入力。まだ一度も呼ばれていなければ `null`（B-28 5章 / B-78 8章）。 */
   get receivedInput(): MealGenerationInput | null {
-    return this.#receivedInput;
+    return this.#receivedInputs[0] ?? null;
+  }
+
+  /** 受け取った入力を、呼ばれた順に全回ぶん（B-78 5章）。 */
+  get receivedInputs(): readonly MealGenerationInput[] {
+    return [...this.#receivedInputs];
   }
 
   async generate(input: MealGenerationInput): Promise<readonly GeneratedMeal[]> {
-    // 数えるのは投げるより先である。**呼ばれたことは、投げても事実である**（B-28 規則18 /
-    // 先行 `FixedHouseholdAuthenticator`）。後で数えると、用意した生成結果が0件の回に
-    // 「呼ばれていない」と見えてしまい、C-7 と C-15 の番人が務まらない。
-    this.#callCount += 1;
-    // 受け取った入力も同じ理由で投げるより先に控える。**何を渡したかは、投げても渡した事実で
-    // ある**（B-28 規則18）。後で控えると、投げた回に「何も渡していない」と見えてしまう。
-    this.#receivedInput = input;
+    // 受け取った入力は投げるより先に控える。**呼ばれたことも何を渡したかも、投げても事実である**
+    // （B-28 規則18 / 先行 `FixedHouseholdAuthenticator`）。後で控えると、投げた回に「呼ばれて
+    // いない」「何も渡していない」と見えてしまい、C-7 と C-15 の番人が務まらない。
+    this.#receivedInputs.push(input);
+
+    const outcome = this.#outcomeOf(this.#receivedInputs.length);
+    if ('throws' in outcome) {
+      throw outcome.throws;
+    }
 
     // 読むのは `requiredCount` だけである。在庫スナップショット・避けるべき名称・基準日時は
     // 本物が生成の材料にするものであって、代役が返すものを変える根拠にはならない
     // （B-15 規則9・10。上限50件も在庫0件もここでは拒まない）。
-    const distinctTitleGeneratedMeals = dropDuplicateTitles(this.#preparedGeneratedMeals);
+    const distinctTitleGeneratedMeals = dropDuplicateTitles(outcome.returns);
 
     // 落としてから切る。逆にすると、同名を含む4件を `requiredCount: 3` で渡したときに
     // 先頭3件を採ってから重複が落ちて2件になり、通せたはずの1件を落とす（B-15 規則7）。
@@ -80,6 +110,15 @@ export class FixedMealGenerator implements MealGenerator {
     }
 
     return toReturn;
+  }
+
+  /** `callNumber` 回目（1始まり）に起こすこと。用意した回を超えたら最後の回のものを使う。 */
+  #outcomeOf(callNumber: number): MealGenerationOutcome {
+    const outcome = this.#outcomes[Math.min(callNumber, this.#outcomes.length) - 1];
+    if (outcome === undefined) {
+      throw new Error('生成器に起こすことが1つも用意されていない');
+    }
+    return outcome;
   }
 }
 

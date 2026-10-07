@@ -30,6 +30,8 @@ import { FixedListStockItems } from '../../../support/pantry/FixedStockItemUseca
 import type { SaveFailure } from '../../../support/meal/InMemoryMealRepository.js';
 import { InMemoryMealRepository } from '../../../support/meal/InMemoryMealRepository.js';
 import { InMemorySuggestionRepository } from '../../../support/meal/InMemorySuggestionRepository.js';
+import { FixedGeneratedMealChecker } from '../../../support/meal/FixedGeneratedMealChecker.js';
+import type { MealGenerationOutcome } from '../../../support/meal/FixedMealGenerator.js';
 import { FixedMealGenerator } from '../../../support/meal/FixedMealGenerator.js';
 import { fixedMealIdGenerator } from '../../../support/meal/FixedMealIdGenerator.js';
 import { fixedSuggestionIdGenerator } from '../../../support/meal/FixedSuggestionIdGenerator.js';
@@ -263,6 +265,11 @@ function mealsWithDistinctTitlesAndGeneratedAt(count: number): Meal[] {
  * **既定は「生成結果0件」と「発行できる献立の識別子0件」である。** 生成器は0件なら
  * `mealGenerator.empty` を投げ、発行器は尽きれば投げる。再利用で組めるはずの回に生成へ
  * 回ったり識別子を発行したりすれば、そのテストがその場で落ちる（C-15 / `docs/testing.md` 2章）。
+ *
+ * **生成結果の確かめの既定は全部残す**（B-78 8章）。`generatedMeals` は「どの回も同じ結果」で
+ * あり、3件未満なら作り直しも同じものを返す — 1回目に残した名称と同じなので全部落ち
+ * （B-78 規則11）、確かめが本題でないテストの提案の中身は変わらない。回ごとに変えるときは
+ * `generatedMealsByCall` を渡す（渡せば `generatedMeals` は読まない）。
  */
 function setUp(
   props: {
@@ -270,6 +277,8 @@ function setUp(
     meals?: readonly Meal[];
     recentSuggestions?: readonly Suggestion[];
     generatedMeals?: readonly GeneratedMeal[];
+    generatedMealsByCall?: readonly MealGenerationOutcome[];
+    droppedTitles?: readonly string[];
     mealIdsToIssue?: readonly string[];
     mealSaveFailure?: SaveFailure;
     suggestionIdsToIssue?: readonly string[];
@@ -297,7 +306,13 @@ function setUp(
   for (const suggestion of props.recentSuggestions ?? []) {
     void suggestionRepository.save(suggestion.householdId, suggestion);
   }
-  const mealGenerator = new FixedMealGenerator(...(props.generatedMeals ?? []));
+  const mealGenerator =
+    props.generatedMealsByCall === undefined
+      ? new FixedMealGenerator(...(props.generatedMeals ?? []))
+      : FixedMealGenerator.byCall(...props.generatedMealsByCall);
+  const generatedMealChecker = new FixedGeneratedMealChecker({
+    droppedTitles: props.droppedTitles ?? [],
+  });
   // **2つの入口を同じ結線から作る**（B-32）。既定の提案と明示操作は同じ依存を見ており、
   // 片方だけ別の記憶上の実装に繋ぐと、同じ前提の下で振る舞いを比べられなくなる。
   // **識別子の発行器も1つずつである** — 明示操作を2度呼ぶ回（上限の数に入ることを見る回）が、
@@ -307,13 +322,21 @@ function setUp(
     mealRepository,
     suggestionRepository,
     mealGenerator,
+    generatedMealChecker,
     generateMealId: fixedMealIdGenerator(props.mealIdsToIssue ?? []),
     generateSuggestionId: fixedSuggestionIdGenerator(props.suggestionIdsToIssue ?? [suggestionId]),
   };
   const suggest = suggestMeals(deps);
   const suggestNew = suggestNewMeals(deps);
 
-  return { mealRepository, suggestionRepository, mealGenerator, suggest, suggestNew };
+  return {
+    mealRepository,
+    suggestionRepository,
+    mealGenerator,
+    generatedMealChecker,
+    suggest,
+    suggestNew,
+  };
 }
 
 /**
@@ -845,7 +868,9 @@ describe('献立を提案する SuggestMeals', () => {
   });
 
   it('生成が1件しか返せなくても、その1件で提案を組む', async () => {
-    // B-28 規則14 / C-15: 求めるのは3件だが、通った件数でそのまま組む。再生成も再試行もしない。
+    // B-28 規則14 / C-15 / ADR-089 決定4: 求めるのは3件だが、足りない分の作り直しは1回だけで、
+    // それでも満たなければ通った件数でそのまま組む。ここでは作り直しも同じ1件を返すので、
+    // 1回目と同じ名称として落ちる（B-78 規則11）。
     const { suggest } = setUp({
       stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
       meals: [],
@@ -2398,6 +2423,453 @@ describe('献立を提案する SuggestMeals', () => {
   });
 });
 
+/** 返した提案が並べる献立の名称。並びが本題なので集合にしない。 */
+const titlesOf = (output: SuggestMealsOutput) =>
+  suggestionOf(output).entries.map((entry) => entry.title);
+
+/**
+ * 生成の経路を通る前提（B-78 2周目）。在庫は2件で生成の門（B-31b 規則7）を通り、保持している
+ * 献立は既定で0件なので再利用が0件のまま生成へ回る（C-15）。本題の生成結果・落とす名称・
+ * 保持している献立だけを `overrides` に渡す（`docs/testing.md` 6章）。
+ */
+function generationSetUp(overrides: Parameters<typeof setUp>[0] = {}) {
+  return setUp({
+    stockItems: [stockItem({ name: 'にんじん' }), stockItem({ name: 'ヨーグルト' })],
+    meals: [],
+    ...overrides,
+  });
+}
+
+/** 1回の生成で返す生成結果。名称だけが本題なので、名称から作る。 */
+function returnsTitles(...titles: readonly string[]): MealGenerationOutcome {
+  return { returns: titles.map((title) => generatedMeal({ title })) };
+}
+
+/** 生成結果の列の名称。確かめに渡したものを見るときに使う。 */
+function generatedTitlesOf(generatedMeals: readonly GeneratedMeal[] | undefined) {
+  return (generatedMeals ?? []).map((generated) => generated.title);
+}
+
+describe('生成結果の確かめと作り直し SuggestMeals', () => {
+  // ここから B-78 2周目（ADR-089 決定4 / 設計書 6章 規則9〜15・7章）。**生成のあとに確かめ、
+  // 残りが3件に満たなければ足りない件数だけ1回作り直し、作り直しの結果も確かめて後ろに足す。**
+  //
+  // 確かめの代役は落とす名称を指定でき、その名称は**どの回でも**落とす。生成の代役は回ごとに
+  // 返すものを変え、全回の入力を `receivedInputs` に持つ。どちらも状態として観察し、`vi.fn()` は
+  // 使わない（`docs/testing.md` 2章）。
+  //
+  // **どの回も、在庫は2件・作れる既存の献立なし**で生成の経路を通る（`generationSetUp`）。
+
+  it('確かめで落とした生成結果は、提案に並ばない', async () => {
+    // ADR-089 決定1・4 / B-78 規則9: 確かめが落としたものは保存の前に外れ、提案に載らない。
+    const { suggest } = generationSetUp({
+      generatedMealsByCall: [
+        returnsTitles('肉じゃが', '生姜焼き', 'きんぴら'),
+        returnsTitles('生姜焼き'),
+      ],
+      droppedTitles: ['生姜焼き'],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(titlesOf(output)).toEqual(['肉じゃが', 'きんぴら']);
+  });
+
+  it('作り直しで残った献立は、1回目に残した献立の後ろに並ぶ', async () => {
+    // ADR-089 決定4 / B-78 規則9: 作り直しの結果は1回目の残りの後ろに足す。並べ替えない（C-2）。
+    const { suggest } = generationSetUp({
+      generatedMealsByCall: [
+        returnsTitles('肉じゃが', '生姜焼き', 'きんぴら'),
+        returnsTitles('ポトフ'),
+      ],
+      droppedTitles: ['生姜焼き'],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(titlesOf(output)).toEqual(['肉じゃが', 'きんぴら', 'ポトフ']);
+  });
+
+  it('確かめのあとに3件残れば、作り直さない', async () => {
+    // ADR-089 決定4 / B-78 規則9 / C-15: 作り直すのは足りないときだけである。満ちているのに
+    // 呼べば、その分だけ費用がかかる。**2回目に返すものもわざと用意してある** — 誤って作り直した
+    // 回も最後まで通り、落ちるのは回数の断定だけになる（`docs/testing.md` 2章）。
+    const { suggest, mealGenerator } = generationSetUp({
+      generatedMealsByCall: [
+        returnsTitles('肉じゃが', '生姜焼き', 'きんぴら'),
+        returnsTitles('ポトフ'),
+      ],
+      mealIdsToIssue: [idA, idB, idC, idD],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(mealGenerator.receivedInputs).toHaveLength(1);
+  });
+
+  it('確かめで1件落ちたときは、作り直しに1件を求める', async () => {
+    // ADR-089 決定4 / B-78 規則9: 求めるのは足りない件数である。3件を求め直すと余計な分まで作る。
+    const { suggest, mealGenerator } = generationSetUp({
+      generatedMealsByCall: [
+        returnsTitles('肉じゃが', '生姜焼き', 'きんぴら'),
+        returnsTitles('ポトフ'),
+      ],
+      droppedTitles: ['生姜焼き'],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(mealGenerator.receivedInputs[1]?.requiredCount).toBe(1);
+  });
+
+  it('生成が1件しか返さなかったときは、作り直しに2件を求める', async () => {
+    // ADR-089 決定4 / B-78 規則9: 足りないのは確かめで落ちた分に限らない。生成が返した件数が
+    // 少なかった分も同じく足りない件数に入る。
+    const { suggest, mealGenerator } = generationSetUp({
+      generatedMealsByCall: [returnsTitles('肉じゃが'), returnsTitles('ポトフ', 'グラタン')],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(mealGenerator.receivedInputs[1]?.requiredCount).toBe(2);
+  });
+
+  it('作り直しの結果も確かめにかけ、落ちたものは提案に並ばない', async () => {
+    // ADR-089 決定4 / B-78 規則9: 作り直しの結果も同じ確かめを通す。素通しにすると、
+    // 作り直しの回だけ避けたい献立や似た献立が並ぶ。
+    const { suggest } = generationSetUp({
+      generatedMealsByCall: [returnsTitles('肉じゃが'), returnsTitles('グラタン', 'ポトフ')],
+      droppedTitles: ['グラタン'],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(titlesOf(output)).toEqual(['肉じゃが', 'ポトフ']);
+  });
+
+  it('作り直しても足りなくても、生成を3回目は呼ばない', async () => {
+    // ADR-089 決定4 / B-78 2章「作り直しの2回目以降」は作らない / C-15: 作り直しは1回だけ。
+    // **3回目に返すものもわざと用意してある** — 誤って呼んだ回も最後まで通り、落ちるのは
+    // 回数の断定だけになる（`docs/testing.md` 2章）。
+    const { suggest, mealGenerator } = generationSetUp({
+      generatedMealsByCall: [
+        returnsTitles('肉じゃが'),
+        returnsTitles('ポトフ'),
+        returnsTitles('グラタン'),
+      ],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(mealGenerator.receivedInputs).toHaveLength(2);
+  });
+
+  it('1回目の確かめには、生成結果を生成の並びのまま、生成に渡したのと同じ避けるべき名称と一緒に渡す', async () => {
+    // ADR-089 決定1・2 / FR-42 / B-78 規則9: 確かめが避けたい献立と比べるには、生成に渡したのと
+    // 同じ列が要る。並びは同じ提案の中の前後の比較（決定2(c)）が読む。
+    const preparedGeneratedMeals = [
+      generatedMeal({ title: '肉じゃが' }),
+      generatedMeal({ title: '生姜焼き' }),
+      generatedMeal({ title: 'きんぴら' }),
+    ];
+    const { suggest, generatedMealChecker } = generationSetUp({
+      meals: [uncookableMeal({ id: idD, title: '豚汁' })],
+      generatedMealsByCall: [{ returns: preparedGeneratedMeals }],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(generatedMealChecker.receivedInputs[0]).toEqual({
+      generatedMeals: preparedGeneratedMeals,
+      avoidTitles: ['豚汁'],
+    });
+  });
+
+  it('作り直しの避けるべき名称は、1回目に残した名称を先頭に置き、元の避けるべき名称をその後ろに続ける（落とした名称は入らない）', async () => {
+    // ADR-089 決定4 / FR-42 / B-78 規則10・10章 前提1: 1回目に残したものと同じ献立を作り直しで
+    // 返させない。落とした名称は残していないので、避ける理由が無い。元の列は生成日時の新しい順
+    // （豚汁 が新しい）のまま後ろに続く。
+    const { suggest, mealGenerator } = generationSetUp({
+      meals: [
+        uncookableMeal({ id: idD, title: '豚汁', generatedAt: '2026-09-13T12:00:00Z' }),
+        uncookableMeal({ id: idC, title: '筑前煮', generatedAt: '2026-09-12T12:00:00Z' }),
+      ],
+      generatedMealsByCall: [
+        returnsTitles('肉じゃが', '生姜焼き', 'きんぴら'),
+        returnsTitles('ポトフ'),
+      ],
+      droppedTitles: ['生姜焼き'],
+      mealIdsToIssue: [idA, idB, numberedMealId(1)],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(mealGenerator.receivedInputs[1]?.avoidTitles).toEqual([
+      '肉じゃが',
+      'きんぴら',
+      '豚汁',
+      '筑前煮',
+    ]);
+  });
+
+  it('作り直しの避けるべき名称では、1回目に残した名称と同じ名称を元の列から畳む', async () => {
+    // B-78 規則10 / B-28 規則8: 同じ名称は先に出たほうを残して1件に畳む。2度送っても避ける
+    // 効果は増えず、プロンプトが伸びるだけである。1回目の 肉じゃが は保持している献立を
+    // 参照する（C-4）が、名称として残したことに変わりはない。
+    const { suggest, mealGenerator } = generationSetUp({
+      meals: [
+        uncookableMeal({ id: idD, title: '豚汁', generatedAt: '2026-09-13T12:00:00Z' }),
+        uncookableMeal({ id: idC, title: '肉じゃが', generatedAt: '2026-09-12T12:00:00Z' }),
+      ],
+      generatedMealsByCall: [
+        returnsTitles('肉じゃが', '生姜焼き', 'きんぴら'),
+        returnsTitles('ポトフ'),
+      ],
+      droppedTitles: ['生姜焼き'],
+      mealIdsToIssue: [idA, idB],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(mealGenerator.receivedInputs[1]?.avoidTitles).toEqual(['肉じゃが', 'きんぴら', '豚汁']);
+  });
+
+  it('作り直しの避けるべき名称は、1回目に残した名称を足しても50件で切る', async () => {
+    // B-78 規則10・10章 前提1 / ADR-021 結果2 / B-28 規則8: 上限は費用の上限である。元の列が
+    // ちょうど50件のところへ2件を先頭に足すので、末尾の `献立49` と `献立50` が落ちる。
+    const { suggest, mealGenerator } = generationSetUp({
+      meals: mealsWithDistinctTitlesAndGeneratedAt(50),
+      generatedMealsByCall: [
+        returnsTitles('肉じゃが', '生姜焼き', 'きんぴら'),
+        returnsTitles('ポトフ'),
+      ],
+      droppedTitles: ['生姜焼き'],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    const avoidTitles = mealGenerator.receivedInputs[1]?.avoidTitles ?? [];
+    expect(avoidTitles).toHaveLength(50);
+  });
+
+  it('作り直しの確かめにも、作り直しの生成に渡したのと同じ避けるべき名称を渡す', async () => {
+    // B-78 規則10 / ADR-089 決定2(b): 作り直しの結果が1回目に残した献立と同じ献立かどうかも、
+    // 確かめが見る。元の列だけを渡すと、名称を書き換えただけの同じ献立が後ろに並ぶ。
+    const { suggest, generatedMealChecker } = generationSetUp({
+      meals: [uncookableMeal({ id: idD, title: '豚汁' })],
+      generatedMealsByCall: [
+        returnsTitles('肉じゃが', '生姜焼き', 'きんぴら'),
+        returnsTitles('ポトフ'),
+      ],
+      droppedTitles: ['生姜焼き'],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(generatedMealChecker.receivedInputs[1]?.avoidTitles).toEqual([
+      '肉じゃが',
+      'きんぴら',
+      '豚汁',
+    ]);
+  });
+
+  it('作り直しが1回目に残した献立と同じ名称を返しても、提案に同じ献立は2度並ばない', async () => {
+    // C-13 / B-78 規則11 / `Suggestion` の不変条件: 確かめが外へ問えない回でも、同じ献立を
+    // 2度並べない。名称の突き合わせは完全一致である（C-6）。
+    const { suggest } = generationSetUp({
+      generatedMealsByCall: [returnsTitles('肉じゃが'), returnsTitles('肉じゃが', '生姜焼き')],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(titlesOf(output)).toEqual(['肉じゃが', '生姜焼き']);
+  });
+
+  it('作り直しで1回目と同じ名称になった生成結果は、確かめに渡さない', async () => {
+    // B-78 規則11: 同じ名称を落とすのは確かめに渡す前である。渡すと、外へ問う分の費用を
+    // 落とすと決まっているものに使う。
+    const { suggest, generatedMealChecker } = generationSetUp({
+      generatedMealsByCall: [returnsTitles('肉じゃが'), returnsTitles('肉じゃが', '生姜焼き')],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(generatedTitlesOf(generatedMealChecker.receivedInputs[1]?.generatedMeals)).toEqual([
+      '生姜焼き',
+    ]);
+  });
+
+  it('1回目の生成が投げた例外は、作り直さずにそのまま伝わる', async () => {
+    // ADR-089 決定4 / B-78 規則12・7章2行目 / NFR-07: 1回目の失敗は今と同じく写さず伝える。
+    // **2回目に返すものを用意してある** — 作り直して組んでしまう実装なら、拒否されずに解決する。
+    const preparedError = new Error('生成が落ちた');
+    const { suggest } = generationSetUp({
+      generatedMealsByCall: [{ throws: preparedError }, returnsTitles('ポトフ')],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const execution = suggest(ourHousehold, asOf);
+
+    await expect(execution).rejects.toBe(preparedError);
+  });
+
+  it('作り直しの生成が投げたときは、1回目に残した献立だけで提案を組む', async () => {
+    // ADR-089 決定4 / B-78 規則12: 作り直しは足りない分を埋める試みであり、失敗しても
+    // 1回目に残したものは提案にできる。
+    const { suggest } = generationSetUp({
+      generatedMealsByCall: [returnsTitles('肉じゃが'), { throws: new Error('作り直しが落ちた') }],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(titlesOf(output)).toEqual(['肉じゃが']);
+  });
+
+  it('1回目が確かめで全部落ちても、作り直しで残った献立で提案を組む', async () => {
+    // ADR-089 決定4 / B-78 規則13: 0件で失敗にするのは2回を経たあとである。
+    const { suggest } = generationSetUp({
+      generatedMealsByCall: [returnsTitles('肉じゃが', '生姜焼き'), returnsTitles('ポトフ')],
+      droppedTitles: ['肉じゃが', '生姜焼き'],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(titlesOf(output)).toEqual(['ポトフ']);
+  });
+
+  it('1回目も作り直しも確かめで全部落ちたら、mealGenerator.empty の規則違反を投げる', async () => {
+    // ADR-089 決定4 / B-78 規則13・7章3行目: 生成が1件も返せなかったときと同じ失敗にする
+    // （api 層の既存の写像で 502）。空の提案を組まない。
+    const { suggest } = generationSetUp({
+      generatedMealsByCall: [returnsTitles('肉じゃが'), returnsTitles('生姜焼き')],
+      droppedTitles: ['肉じゃが', '生姜焼き'],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const execution = suggest(ourHousehold, asOf);
+
+    await expect(execution).rejects.toThrow(MealRuleViolation);
+    await expect(execution).rejects.toMatchObject({ rule: 'mealGenerator.empty' });
+  });
+
+  it('1回目が全部落ちて作り直しが投げたときは、作り直しの例外ではなく mealGenerator.empty の規則違反を投げる', async () => {
+    // ADR-089 決定4 / B-78 規則13: 利用者に見えるのは「生成できなかった」であり、作り直しの
+    // 失敗の中身ではない。
+    const { suggest } = generationSetUp({
+      generatedMealsByCall: [returnsTitles('肉じゃが'), { throws: new Error('作り直しが落ちた') }],
+      droppedTitles: ['肉じゃが'],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const execution = suggest(ourHousehold, asOf);
+
+    await expect(execution).rejects.toThrow(MealRuleViolation);
+    await expect(execution).rejects.toMatchObject({ rule: 'mealGenerator.empty' });
+  });
+
+  it('確かめで1件も残らなかった回は、提案を保存しない', async () => {
+    // C-14 の裏 / B-78 規則13: 組めなかった回を記録に残すと C-11 の除外が1回ぶん狂う。
+    const { suggest, suggestionRepository } = generationSetUp({
+      generatedMealsByCall: [returnsTitles('肉じゃが'), returnsTitles('生姜焼き')],
+      droppedTitles: ['肉じゃが', '生姜焼き'],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    // 投げること自体は1つ上の it が見る。ここで受けるのは、未処理の拒否にしないためである。
+    await suggest(ourHousehold, asOf).catch(() => undefined);
+
+    expect(await suggestionRepository.findRecentByHousehold(ourHousehold, 3)).toEqual([]);
+  });
+
+  it('確かめで落とした生成結果は、献立リポジトリに保存されない', async () => {
+    // C-1 / B-78 規則14: 確かめは保存より前である。落としたものを保存すると、提示しない献立が
+    // 次の回の避けるべき名称や再利用に混ざる。`findByHousehold` は並びを約束しないので、
+    // 名称を並べ直して比べる（ADR-038）。
+    const { suggest, mealRepository } = generationSetUp({
+      generatedMealsByCall: [
+        returnsTitles('肉じゃが', '生姜焼き', 'きんぴら'),
+        returnsTitles('生姜焼き'),
+      ],
+      droppedTitles: ['生姜焼き'],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    const storedMeals = await mealRepository.findByHousehold(ourHousehold);
+    expect(storedMeals.map((storedMeal) => storedMeal.title).sort()).toEqual([
+      'きんぴら',
+      '肉じゃが',
+    ]);
+  });
+
+  it('確かめで落とした生成結果には、献立の識別子を発行しない', async () => {
+    // B-78 規則14 / B-28 規則12: 発行するのは保存するぶんだけである。落とした 生姜焼き に
+    // 発行すると、ポトフ が idC を求めて発行器が尽きる。
+    const { suggest, mealRepository } = generationSetUp({
+      generatedMealsByCall: [returnsTitles('肉じゃが', '生姜焼き'), returnsTitles('ポトフ')],
+      droppedTitles: ['生姜焼き'],
+      mealIdsToIssue: [idA, idB],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    const storedMeals = await mealRepository.findByHousehold(ourHousehold);
+    expect(
+      Object.fromEntries(storedMeals.map((storedMeal) => [storedMeal.title, storedMeal.id])),
+    ).toEqual({ 肉じゃが: idA, ポトフ: idB });
+  });
+
+  it('確かめで落とした生成結果は、同じ名称の既存の献立があってもその献立を参照しない', async () => {
+    // B-78 規則14 / C-4: 確かめは既存の参照より前である。落とした名称で既存を参照すると、
+    // 避けたはずの献立が提案に戻る。
+    const { suggest } = generationSetUp({
+      meals: [uncookableMeal({ id: idD, title: '生姜焼き' })],
+      generatedMealsByCall: [
+        returnsTitles('肉じゃが', '生姜焼き', 'きんぴら'),
+        returnsTitles('ポトフ'),
+      ],
+      droppedTitles: ['生姜焼き'],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idA, idB, idC]);
+  });
+
+  it('作り直しで残った生成結果も、保持している献立と名称が完全一致すればその献立を参照する', async () => {
+    // C-4 / B-78 規則14: 残したものの扱いは1回目と同じである。参照せずに新しく保存する実装なら、
+    // ポトフ は idC で並ぶ。
+    const { suggest } = generationSetUp({
+      meals: [uncookableMeal({ id: idD, title: 'ポトフ' })],
+      generatedMealsByCall: [
+        returnsTitles('肉じゃが', '生姜焼き', 'きんぴら'),
+        returnsTitles('ポトフ'),
+      ],
+      droppedTitles: ['生姜焼き'],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(mealIdsOf(output)).toEqual([idA, idB, idD]);
+  });
+});
+
 describe('新しい献立を求める明示操作 SuggestNewMeals', () => {
   // ここから FR-36 の明示操作（B-32）。**既定の提案とは別の入口**であり、C-15 が数える2つの
   // 生成の機会のうち「利用者が新しい献立を明示的に求めたとき」のほうである。
@@ -2810,6 +3282,26 @@ describe('新しい献立を求める明示操作 SuggestNewMeals', () => {
     const output = await suggestNew(ourHousehold, asOf);
 
     expect(output.outcome).toBe('insufficientStockItems');
+  });
+
+  it('明示操作でも、確かめで落とした分を作り直して後ろに足す', async () => {
+    // FR-36 / ADR-089 決定4 / B-78 規則9: 確かめと作り直しは生成の経路に入っており、入口で
+    // 変わらない（B-32 / ADR-051 決定2）。作れる既存の 豚汁 があっても再利用せず生成へ回る。
+    const { suggestNew } = generationSetUp({
+      meals: [
+        meal({ id: mealIdOf(idD), title: '豚汁', ingredients: [mainIngredient('にんじん')] }),
+      ],
+      generatedMealsByCall: [
+        returnsTitles('肉じゃが', '生姜焼き', 'きんぴら'),
+        returnsTitles('ポトフ'),
+      ],
+      droppedTitles: ['生姜焼き'],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const output = await suggestNew(ourHousehold, asOf);
+
+    expect(titlesOf(output)).toEqual(['肉じゃが', 'きんぴら', 'ポトフ']);
   });
 });
 

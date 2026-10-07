@@ -57,6 +57,8 @@ const rejectedThenRegisterHousehold = householdIdOf('b9010000-0000-4000-8000-000
 const unsavedIdHousehold = householdIdOf('b9010000-0000-4000-8000-000000000009');
 // B-72: 生成の設定が空の環境。
 const emptyGeminiKeyHousehold = householdIdOf('b72a1000-0001-4000-8000-000000000001');
+// B-78: 生成結果の確かめの鍵が無い環境。
+const checkedWithoutKeyHousehold = householdIdOf('b78a1000-0001-4000-8000-000000000001');
 
 // B-56a: 世帯のデータを消す。先頭の並び（`b56a1000`）で他のケースと分けてある。
 const deletedDataHousehold = householdIdOf('b56a1000-0001-4000-8000-000000000001');
@@ -637,6 +639,54 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
 
       expect(response.status).toBe(500);
       await expect(failureBody(response)).resolves.toEqual({ rule: 'unexpected' });
+    });
+  });
+
+  describe('生成結果の確かめは結線後に効く（B-78）', () => {
+    it('TYPESAFE_API_KEY の無い環境で新しい献立を求めると、主材料の名前を名称に2度含む献立だけが落ちて提案に並ぶ', async () => {
+      // ADR-089 決定2(a)・決定3 / B-78 規則1・7・9・11 / 10章 前提5: 鍵が無くても名称の判定は
+      // 効き、外へは出ない。`たまごと卵の卵とじ` は主材料 `卵` を名称に2度含むので落ちる。
+      // 足りない分の作り直しも同じ応答を返すので、残った1件は1回目と同じ名称として落ち、
+      // 提案に並ぶのは1件だけである。
+      const checkingApp = createApp(
+        composeDependencies(env, {
+          fetchJwks: new FixedFetchJwks().fetchJwks,
+          fetchGenerateContent: FixedFetchGenerateContent.delivering(
+            okDeliveryOf(
+              envelopeOf([
+                mealsTextOf([
+                  {
+                    title: 'たまごと卵の卵とじ',
+                    ingredients: [{ name: '卵', amount: '2個', kind: 'main' }],
+                    steps: ['卵を溶く', '卵を煮てとじる'],
+                  },
+                  {
+                    title: 'にんじんのきんぴら炒め',
+                    ingredients: [{ name: 'にんじん', amount: '2本', kind: 'main' }],
+                    steps: ['にんじんを細切りにする', 'にんじんを炒めて味を調える'],
+                  },
+                ]),
+              ]),
+            ),
+          ).fetchGenerateContent,
+        }),
+      );
+      await registeredStockItem(checkedWithoutKeyHousehold, {
+        name: 'にんじん',
+        useForMeals: true,
+      });
+      await registeredStockItem(checkedWithoutKeyHousehold, { name: '卵', useForMeals: true });
+
+      const response = await checkingApp.request('/suggestions/new-meals', {
+        method: 'POST',
+        headers: bearerHeaders(await accessTokenFor(checkedWithoutKeyHousehold)),
+      });
+
+      expect(response.status).toBe(200);
+      const output = (await response.json()) as SuggestMealsOutput;
+      expect(
+        output.outcome === 'suggested' ? output.suggestion.entries.map((entry) => entry.title) : [],
+      ).toEqual(['にんじんのきんぴら炒め']);
     });
   });
 
