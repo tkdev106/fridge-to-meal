@@ -111,6 +111,7 @@ docs/                      設計文書
 SUPABASE_URL=...          # 認証（Supabase Auth）用。DB アクセスには使わない
 SUPABASE_ANON_KEY=...     # 同上
 GEMINI_API_KEY=...        # 献立の生成（ADR-079 決定4）。本番は `wrangler secret put GEMINI_API_KEY`
+TYPESAFE_API_KEY=...      # 生成した献立の確かめ（Jev。ADR-089）。任意で、空なら名称の重複だけを落とす。本番は Secret
 ```
 
 **モデル名 `GEMINI_MODEL` は秘密ではないので `.dev.vars` に置かず、`apps/api/wrangler.toml` の `[vars]` に1か所だけ置く**（ADR-079 決定4）。
@@ -121,7 +122,7 @@ GEMINI_API_KEY=...        # 献立の生成（ADR-079 決定4）。本番は `wr
 | --- | --- |
 | **anon key** | **公開される前提の鍵。** RLS が守るので、web のバンドルに焼き込まれてよい。web 側は `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` として持つ（**`VITE_` の付いたものはビルド時にバンドルへ入る**）。**`.dev.vars` には足さない** — あちらはサーバ専用である |
 | **`service_role` キー** | **使わない。** RLS を迂回し、Supabase を選んだ理由が消える（ADR-029 結果1） |
-| **LLM の API キー** | **サーバ側だけ。** クライアントに置くと抽出されて無制限に使われる（NFR-10） |
+| **LLM の API キー** | **サーバ側だけ。** クライアントに置くと抽出されて無制限に使われる（NFR-10）。Jev の鍵 `TYPESAFE_API_KEY` も同じ扱い |
 
 **`apps/web` には鍵でない必須の設定がもう1つある。** `VITE_API_BASE_URL`（api の基点。`https://…` や `http://127.0.0.1:8787`）であり、**既定値を埋め込まない** — 埋め込むと、設定を忘れたビルドが間違った相手を静かに叩く。欠けていれば起動時に `Error` で落ち、message に名前が出る（ADR-048 決定4 / 結果1）。**秘密ではないが、web だけが持つ**（`.dev.vars` はサーバ専用である）。
 

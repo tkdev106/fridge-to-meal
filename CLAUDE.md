@@ -130,7 +130,7 @@ lint の規則を緩めて緑にしない（緩めたくなったら ADR の話�
 
 ### 環境変数
 
-サーバ側は `apps/api/.dev.vars`（gitignore 済み）に `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `GEMINI_API_KEY` を置く。
+サーバ側は `apps/api/.dev.vars`（gitignore 済み）に `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `GEMINI_API_KEY` / `TYPESAFE_API_KEY`（任意。生成した献立の確かめ）を置く。
 モデル名 `GEMINI_MODEL` は `apps/api/wrangler.toml` の `[vars]`。web は `apps/web/.env.local` に
 `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` / `VITE_API_BASE_URL`（無ければ起動時に落ちる）。
 Postgres の接続情報は Hyperdrive が持つ。`.dev.vars` と `.env*` は読まない（`guard.mjs` が止める）。
