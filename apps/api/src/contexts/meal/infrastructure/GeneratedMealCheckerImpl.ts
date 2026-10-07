@@ -130,7 +130,7 @@ export class GeneratedMealCheckerImpl implements GeneratedMealChecker {
     return answersOf(body, Object.keys(questions)) ?? 'unreadable';
   }
 
-  /** 落とした献立の名称と理由を残す。しきい値を本番の結果で確かめるためで、名称のほかは載せない。 */
+  /** 落とした献立を残す（ADR-090）。載せるのは名称・理由・確率だけで、材料・在庫・世帯は載せない。 */
   private dropped(detail: string): void {
     this.info(`meal.generatedMealCheck.dropped ${detail}`);
   }
