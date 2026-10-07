@@ -56,10 +56,17 @@ export class GeneratedMealCheckerImpl implements GeneratedMealChecker {
     private readonly warn: (line: string) => void = (line) => {
       console.warn(line);
     },
+    private readonly info: (line: string) => void = (line) => {
+      console.info(line);
+    },
   ) {}
 
   async check(input: GeneratedMealCheckInput): Promise<readonly GeneratedMeal[]> {
-    const passed = input.generatedMeals.filter((generatedMeal) => !repeatsMainName(generatedMeal));
+    const passed = input.generatedMeals.filter((generatedMeal) => {
+      if (!repeatsMainName(generatedMeal)) return true;
+      this.dropped(`repeatsMainName title=${generatedMeal.title}`);
+      return false;
+    });
     const questions = questionsOf(passed.length, input.avoidTitles.length);
     if (Object.keys(questions).length === 0) return passed;
 
@@ -85,7 +92,9 @@ export class GeneratedMealCheckerImpl implements GeneratedMealChecker {
         controller.signal,
       );
       if (typeof answered === 'string') return this.skipped(passed, answered);
-      return keptBy(passed, input.avoidTitles.length, answered);
+      return keptBy(passed, input.avoidTitles, answered, (line) => {
+        this.dropped(line);
+      });
     } finally {
       clearTimeout(timer);
     }
@@ -119,6 +128,11 @@ export class GeneratedMealCheckerImpl implements GeneratedMealChecker {
       return signal.aborted ? 'timeout' : 'unreadable';
     }
     return answersOf(body, Object.keys(questions)) ?? 'unreadable';
+  }
+
+  /** 落とした献立を残す（ADR-090）。載せるのは名称・理由・確率だけで、材料・在庫・世帯は載せない。 */
+  private dropped(detail: string): void {
+    this.info(`meal.generatedMealCheck.dropped ${detail}`);
   }
 
   private skipped(passed: readonly GeneratedMeal[], reason: SkipReason): readonly GeneratedMeal[] {
@@ -191,17 +205,34 @@ function answersOf(body: unknown, keys: readonly string[]): ReadonlyMap<string, 
  */
 function keptBy(
   passed: readonly GeneratedMeal[],
-  avoidCount: number,
+  avoidTitles: readonly string[],
   noulByKey: ReadonlyMap<string, number>,
+  dropped: (detail: string) => void,
 ): readonly GeneratedMeal[] {
-  const exceeds = (key: string): boolean => (noulByKey.get(key) ?? 0) >= DROP_THRESHOLD;
+  const noulOf = (key: string): number => noulByKey.get(key) ?? 0;
   const keptNumbers: number[] = [];
-  return passed.filter((_, index) => {
+  return passed.filter((generatedMeal, index) => {
     const number = index + 1;
-    for (let avoidNumber = 1; avoidNumber <= avoidCount; avoidNumber++) {
-      if (exceeds(sameKey(number, avoidNumber))) return false;
+    const avoidIndex = avoidTitles.findIndex(
+      (_, i) => noulOf(sameKey(number, i + 1)) >= DROP_THRESHOLD,
+    );
+    if (avoidIndex >= 0) {
+      const p = noulOf(sameKey(number, avoidIndex + 1));
+      dropped(
+        `sameAsAvoid title=${generatedMeal.title} avoid=${String(avoidTitles[avoidIndex])} p=${String(p)}`,
+      );
+      return false;
     }
-    if (keptNumbers.some((keptNumber) => exceeds(similarKey(keptNumber, number)))) return false;
+    const earlierNumber = keptNumbers.find(
+      (keptNumber) => noulOf(similarKey(keptNumber, number)) >= DROP_THRESHOLD,
+    );
+    if (earlierNumber !== undefined) {
+      const p = noulOf(similarKey(earlierNumber, number));
+      dropped(
+        `similarToEarlier title=${generatedMeal.title} earlier=${String(passed[earlierNumber - 1]?.title)} p=${String(p)}`,
+      );
+      return false;
+    }
     keptNumbers.push(number);
     return true;
   });
