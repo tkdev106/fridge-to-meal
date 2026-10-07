@@ -5,7 +5,7 @@
  */
 
 import type { JSX, ReactNode } from 'react';
-import { createContext, useContext, useEffect, useRef } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef } from 'react';
 import type { BackHandlerRank, BackNavigation } from './BackNavigation.js';
 
 /**
@@ -44,7 +44,9 @@ export function useBackHandler(
   // 口の中身は描くたびに差し替える。登録し直さないので、履歴の項目は動かない。
   const latestOnBack = useRef(onBack);
 
-  useEffect(() => {
+  // useEffect にしない — 画面が描き変わってから effect が走るまでの間に戻ると、古い口
+  // （送っている間の「飲み込む」口など）が呼ばれる。
+  useLayoutEffect(() => {
     latestOnBack.current = onBack;
   });
 
