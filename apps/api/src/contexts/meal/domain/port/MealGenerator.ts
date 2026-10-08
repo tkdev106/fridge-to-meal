@@ -47,6 +47,9 @@ export type MealGenerationInput = {
  * 項目を持たず、永続化は呼ぶ側の仕事である（C-1 / ADR-035 / B-15 規則3）。
  */
 export interface MealGenerator {
-  /** @throws {MealRuleViolation} 1件も返せないとき（`rule` は `mealGenerator.empty`） */
+  /**
+   * @throws {MealRuleViolation} 在庫に食材が無いと答えたとき（`rule` は `mealGenerator.noIngredient`。ADR-091）
+   * @throws {MealRuleViolation} それ以外で1件も返せないとき（`rule` は `mealGenerator.empty`）
+   */
   generate(input: MealGenerationInput): Promise<readonly GeneratedMeal[]>;
 }

@@ -72,12 +72,14 @@ export type SuggestionOutput = {
  * 合わせ、union のほうが `SuggestMealsOutput` を名乗る。判別子に `kind` を使わないのは、
  * 材料の `kind`（主材料／調味料。C-16）が同じ語を別の意味で持っているためである。
  *
- * `'generationLimitReached'` が S-7 である（NFR-C2 / ADR-049 結果5）。
+ * `'generationLimitReached'` が S-7 である（NFR-C2 / ADR-049 結果5）。`'noIngredientInPantry'` は
+ * 在庫に食材が無いと生成側が答えた回で、S-9 である（ADR-091 決定3）。
  */
 export type SuggestMealsOutput =
   | { outcome: 'suggested'; suggestion: SuggestionOutput }
   | { outcome: 'insufficientStockItems' }
-  | { outcome: 'generationLimitReached' };
+  | { outcome: 'generationLimitReached' }
+  | { outcome: 'noIngredientInPantry' };
 
 /**
  * 保存済みの提案を読み取り専用で返す結末（B-58）。

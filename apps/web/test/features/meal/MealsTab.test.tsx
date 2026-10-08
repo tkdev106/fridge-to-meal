@@ -679,6 +679,50 @@ describe('献立タブ MealsTab の上限に達した回（S-7）', () => {
   });
 });
 
+/**
+ * 在庫に食材が無い回（S-9 / B-80 規則14・15 / ADR-091 決定4）。
+ *
+ * S-4 と同じ形（`status` の面に主文と補足、その下に主の操作1つ）。文言はユーザー合意で決まった
+ * もので仮ではないため期待値に書く。余白は見ない（ADR-055）。
+ */
+describe('献立タブ MealsTab の在庫に食材が無い回（S-9）', () => {
+  it('在庫に食材が無い回は、主文と補足を案内の中に出し、「冷蔵庫を見る」を出す', () => {
+    // 規則14: 主文は2つの塊、補足と合わせて status 1つ。主の操作は1つ。
+    renderTab({ outcome: 'noIngredientInPantry' });
+
+    const status = screen.getByRole('status');
+    expect(within(status).getByText('冷蔵庫に食材が')).not.toBeNull();
+    expect(within(status).getByText('見つかりませんでした')).not.toBeNull();
+    expect(within(status).getByText('食材の名前をご確認ください')).not.toBeNull();
+    expect(soleContentButton().textContent).toBe('冷蔵庫を見る');
+  });
+
+  it('在庫に食材が無い回は、「新しい献立を見る」も失敗の帯も出さない', () => {
+    // 規則15: 求め直しても同じ結末が返る。200 で届く結末であり失敗（S-6）として扱わない。
+    renderTab({ outcome: 'noIngredientInPantry' }, { newMealsFailed: true });
+
+    expect(screen.queryByRole('button', { name: REQUEST_BUTTON_NAME })).toBeNull();
+    expect(screen.queryByText(REQUEST_FAILED_BAND, { exact: false })).toBeNull();
+  });
+
+  it('「冷蔵庫を見る」を押すと、冷蔵庫タブへ送る口が呼ばれる', () => {
+    // 規則15: S-4 と同じ動き。**回数は数えない**（`docs/testing.md` 2章）。
+    let wentToPantry = false;
+    renderTab(
+      { outcome: 'noIngredientInPantry' },
+      {
+        onGoToPantry: () => {
+          wentToPantry = true;
+        },
+      },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '冷蔵庫を見る' }));
+
+    expect(wentToPantry).toBe(true);
+  });
+});
+
 describe('献立タブ MealsTab の出せない回と他の枝の見分け', () => {
   it('上限に達した回は、まだ提案が無い回と違って操作を1つも出さない', () => {
     // 規則5: S-8 に畳まない。畳まれていれば両方に操作が出る。

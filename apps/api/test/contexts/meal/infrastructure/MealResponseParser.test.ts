@@ -47,6 +47,9 @@ function rejectionOf(text: string, requiredCount = 3): unknown {
 /** 断りの形。引数なしの `toThrow()` は未実装のスタブでも緑になるので、名前と規則を見る（6章）。 */
 const emptyRejection = { name: 'MealRuleViolation', rule: 'mealGenerator.empty' };
 
+/** 在庫に食材が無いという断りの形（ADR-091 決定2）。 */
+const noIngredientRejection = { name: 'MealRuleViolation', rule: 'mealGenerator.noIngredient' };
+
 function titlesOf(generatedMeals: readonly GeneratedMeal[]): string[] {
   return generatedMeals.map((generatedMeal) => generatedMeal.title);
 }
@@ -176,9 +179,26 @@ describe('応答の検証 parseMealResponse', () => {
       expect(rejectionOf(text)).toMatchObject(emptyRejection);
     });
 
-    it('meals が空なら断る', () => {
-      // 6.4: 通った献立が0件
-      expect(rejectionOf(responseOf())).toMatchObject(emptyRejection);
+    it('meals が空の配列なら、在庫に食材が無いとして断る', () => {
+      // ADR-091 決定2: 空の meals は在庫に食材が無いという応答（システムプロンプト規則13）
+      expect(rejectionOf(responseOf())).toMatchObject(noIngredientRejection);
+    });
+
+    it('前置きやコードブロックの記号に包まれていても、meals が空の配列なら在庫に食材が無いとして断る', () => {
+      // ADR-091 決定2 / 6.1 段階1: 抜き出せた JSON の meals が空なら同じ
+      const text = `在庫を確認しました。\n\`\`\`json\n${responseOf()}\n\`\`\``;
+
+      expect(rejectionOf(text)).toMatchObject(noIngredientRejection);
+    });
+
+    it('在庫に食材が無いとして断るときの説明に応答の中身を載せない', () => {
+      // NFR-11 / ADR-045 結果2: message に応答本文を載せない
+      const text = `秘伝の在庫確認によれば食材がありません。\n${responseOf()}`;
+
+      const rejection = rejectionOf(text);
+
+      expect(rejection).toMatchObject(noIngredientRejection);
+      expect((rejection as Error).message).not.toContain('秘伝の在庫確認');
     });
 
     it('献立と材料の余分なキーを無視して通す', () => {

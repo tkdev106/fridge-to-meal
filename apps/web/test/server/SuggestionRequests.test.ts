@@ -248,6 +248,16 @@ describe('「新しい献立を求める」操作 requestNewMeals', () => {
     expect(await request()).toEqual({ outcome: 'generationLimitReached' });
   });
 
+  it('在庫に食材が無い結末を、失敗に畳まずそのまま返す', async () => {
+    // S-9。ADR-091 決定4 — 畳むと「食材の名前を確かめる」案内が「もう一度試す」に化ける。
+    const { request } = requestNewMealsWith({
+      ok: true,
+      body: { outcome: 'noIngredientInPantry' },
+    });
+
+    expect(await request()).toEqual({ outcome: 'noIngredientInPantry' });
+  });
+
   it('応答が ok でなければ失敗を返す', async () => {
     const { request } = requestNewMealsWith({ ok: false, body: { rule: 'someRuleViolation' } });
 

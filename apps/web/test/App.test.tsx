@@ -1064,6 +1064,30 @@ describe('門 App の「新しい献立を求める」操作の配線', () => {
     expect(contentOperations()).toHaveLength(0);
   });
 
+  it('在庫に食材が無い結末は、前の提案を残さずに案内を出し、「冷蔵庫を見る」で冷蔵庫タブへ移る', async () => {
+    // B-80 規則13・15 / ADR-091 決定4: S-4 / S-7 と同じく献立タブの状態を差し替え、失敗に畳まない。
+    // 主文・ボタンの文言は原本から取ったもので仮ではない（ADR-074）。
+    renderApp(
+      { initialState: 'signedIn' },
+      { list: [loaded(carrot)] },
+      {
+        show: [savedSuggestion('meal-old', OLD_MEAL)],
+        requestNewMeals: [{ outcome: 'noIngredientInPantry' }],
+      },
+    );
+
+    await screen.findByText(OLD_MEAL);
+    fireEvent.click(requestNewMealsOperation());
+
+    expect(await screen.findByText('冷蔵庫に食材が')).not.toBeNull();
+    expect(screen.queryByText(OLD_MEAL)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '冷蔵庫を見る' }));
+
+    expect(await screen.findByText(carrot.name)).not.toBeNull();
+    expect(pantryTab().getAttribute('aria-selected')).toBe('true');
+  });
+
   it('押し直すと、前回の失敗の案内は消える', async () => {
     const { suggestions } = renderApp(
       { initialState: 'signedIn' },

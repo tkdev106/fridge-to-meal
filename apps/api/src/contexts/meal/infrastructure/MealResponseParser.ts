@@ -33,6 +33,7 @@ const stapleSeasonings: ReadonlySet<string> = new Set(STAPLE_SEASONINGS);
  * `stockItems` はプロンプトに載せた在庫品で、在庫品の名称に分量が混じった材料名
  * （「たまご 2コ」）を在庫品の名称に直すためだけに使う（6.3 / D-3 の受け皿）。
  *
+ * @throws {MealRuleViolation} 'mealGenerator.noIngredient' — `meals` が空の配列（在庫に食材が無い。ADR-091 決定2）
  * @throws {MealRuleViolation} 'mealGenerator.empty' — 抽出・構文・構造の失敗、または通った献立が0件
  */
 export function parseMealResponse(
@@ -53,6 +54,12 @@ export function parseMealResponse(
 
   const rawMeals = isRecord(parsed) ? parsed.meals : undefined;
   if (!Array.isArray(rawMeals)) throw emptyResponse('応答に献立の列がありません');
+  if (rawMeals.length === 0) {
+    throw new MealRuleViolation(
+      'mealGenerator.noIngredient',
+      '在庫に食材が無いとして空の列が返りました',
+    );
+  }
 
   const correctedNames = correctedNameMap(stockItems);
   const seenTitles = new Set<string>();
