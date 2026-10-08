@@ -34,6 +34,7 @@ import type { StockItemFormValues } from './StockItemFormValues.js';
 import { EMPTY_STOCK_ITEM_FORM, registerStockItemInputOf } from './StockItemFormValues.js';
 import type { RegisterStockItem } from '../../server/StockItemRequests.js';
 import { Icon } from '../../icons/Icon.js';
+import { AmountField } from './AmountField.js';
 import { expiryDateLabelOf } from './ExpiryDateLabel.js';
 import styles from './StockItemForm.module.css';
 import { useBackHandler } from '../../backNavigation/BackHandler.js';
@@ -46,18 +47,14 @@ const HEADING = '食材を登録';
  * 保存できる。任意であることは名前の横の札 `任意`（`OPTIONAL_LABEL`）の文字で伝える
  * （B-65 規則3）。食材名と献立に使う（B-76 規則16）には札を付けない。
  */
-const FIELD_LABELS: Record<keyof StockItemFormValues, string> = {
+const FIELD_LABELS: Record<Exclude<keyof StockItemFormValues, 'amount'>, string> = {
   name: '食材名',
-  amount: '分量',
   expiryDate: '期限',
   useForMeals: '献立に使う',
 };
 
 /** 任意の欄に添える札（B-65 規則3）。欄の名前の一部として読まれてよい。 */
 const OPTIONAL_LABEL = '任意';
-
-/** 分量の置き文字（B-65 規則5）。値は自由文字列のまま（ADR-010）。 */
-const AMOUNT_PLACEHOLDER = '例: 300g';
 
 /** 期限が空のときに箱に出す文字（B-65 規則6）。 */
 const EXPIRY_DATE_PLACEHOLDER = '日付を選ぶ';
@@ -174,7 +171,7 @@ export function StockItemForm({
     if (!sending) onClose();
   });
 
-  function changeField(field: 'amount' | 'expiryDate') {
+  function changeField(field: 'expiryDate') {
     return (event: ChangeEvent<HTMLInputElement>) => {
       setValues((previous) => ({ ...previous, [field]: event.target.value }));
     };
@@ -293,19 +290,10 @@ export function StockItemForm({
           )}
         </div>
 
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>
-            <span>{FIELD_LABELS.amount}</span>
-            <span className={styles.optional}>{OPTIONAL_LABEL}</span>
-          </span>
-          {/* 分量は自由文字列。数値と単位に分けない（ADR-010）。 */}
-          <input
-            className={styles.input}
-            placeholder={AMOUNT_PLACEHOLDER}
-            value={values.amount}
-            onChange={changeField('amount')}
-          />
-        </label>
+        <AmountField
+          values={values.amount}
+          onChange={(amount) => setValues((previous) => ({ ...previous, amount }))}
+        />
 
         <label className={styles.field}>
           <span className={styles.fieldLabel}>

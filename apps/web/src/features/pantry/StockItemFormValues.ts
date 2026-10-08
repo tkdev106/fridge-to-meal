@@ -13,11 +13,13 @@ import type {
   StockItemDto,
   UpdateStockItemInput,
 } from '@fridge-to-meal/contract';
+import type { AmountFieldValues } from './AmountFieldValues.js';
+import { EMPTY_AMOUNT_FIELD, amountFieldValuesOf, amountTextOf } from './AmountFieldValues.js';
 
-/** 登録の画面が持つ4欄の値（文字の3欄と献立に使うかどうか）。世帯は持たない（C-9）。 */
+/** 登録の画面が持つ4欄の値（食材名・分量・期限と献立に使うかどうか）。世帯は持たない（C-9）。 */
 export type StockItemFormValues = {
   readonly name: string;
-  readonly amount: string;
+  readonly amount: AmountFieldValues;
   readonly expiryDate: string;
   readonly useForMeals: boolean;
 };
@@ -32,7 +34,7 @@ export type StockItemFormValues = {
  */
 export const EMPTY_STOCK_ITEM_FORM: StockItemFormValues = {
   name: '',
-  amount: '',
+  amount: EMPTY_AMOUNT_FIELD,
   expiryDate: '',
   useForMeals: true,
 };
@@ -57,7 +59,7 @@ export function registerStockItemInputOf(
   // 食材の指定は項目ごと持たせない（規則1）。カタログに無い名称でも登録が通る（FR-03）。
   return {
     name: values.name,
-    amount: toNullWhenEmpty(values.amount),
+    amount: toNullWhenEmpty(amountTextOf(values.amount)),
     expiryDate: toNullWhenEmpty(values.expiryDate),
     // 省略も `null` もせず、真偽値のまま載せる（B-76 規則15）。保存の可否には関わらない。
     useForMeals: values.useForMeals,
@@ -69,7 +71,7 @@ export function registerStockItemInputOf(
  * 名称は編集できないので持たない。
  */
 export type StockItemEditValues = {
-  readonly amount: string;
+  readonly amount: AmountFieldValues;
   readonly expiryDate: string;
   readonly useForMeals: boolean;
 };
@@ -88,7 +90,7 @@ export type StockItemEditValues = {
  */
 export function stockItemEditValuesOf(stockItem: StockItemDto): StockItemEditValues {
   return {
-    amount: stockItem.amount ?? '',
+    amount: amountFieldValuesOf(stockItem.amount),
     expiryDate: stockItem.expiryDate ?? '',
     // 献立に使うかどうかも在庫品の今の値から始める（B-76 規則14）。
     useForMeals: stockItem.useForMeals,
@@ -110,7 +112,7 @@ export function stockItemEditValuesOf(stockItem: StockItemDto): StockItemEditVal
 export function updateStockItemInputOf(values: StockItemEditValues): UpdateStockItemInput {
   // 空文字だけを `null` にし、空白は落とさずそのまま運ぶ（規則4。登録と同じ関数を使う）。
   return {
-    amount: toNullWhenEmpty(values.amount),
+    amount: toNullWhenEmpty(amountTextOf(values.amount)),
     expiryDate: toNullWhenEmpty(values.expiryDate),
     useForMeals: values.useForMeals,
   };
