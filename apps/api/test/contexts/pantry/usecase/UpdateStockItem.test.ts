@@ -340,6 +340,21 @@ describe('在庫品を更新する UpdateStockItem', () => {
     await expect(execution).rejects.toHaveProperty('rule', 'expiryDate.format');
   });
 
+  it('16字の分量での更新を断る', async () => {
+    // B-79 規則6・規則7 / NFR-19: ドメインが投げた例外をユースケースで捕まえない。
+    const { stockItemRepository, update } = setUp();
+    await store(stockItemRepository, stockItem({ amount: '2本' }));
+
+    const execution = update(ourHousehold, stockItemIdOf(idA), {
+      amount: 'あ'.repeat(16),
+      expiryDate: null,
+      useForMeals: true,
+    });
+
+    await expect(execution).rejects.toThrow(PantryRuleViolation);
+    await expect(execution).rejects.toHaveProperty('rule', 'amount.tooLong');
+  });
+
   it('期限の書式が違って更新が終わったとき、保存済みの在庫品は元のまま', async () => {
     // 規則12: 検証をすべて保存の前に済ませる。分量だけが書き換わって残らない。
     const { stockItemRepository, update } = setUp();

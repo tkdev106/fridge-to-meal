@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PantryRuleViolation } from '../../../../src/contexts/pantry/domain/error/PantryRuleViolation.js';
 import { amountOf } from '../../../../src/contexts/pantry/domain/value/Amount.js';
 
 describe('分量 Amount', () => {
@@ -25,10 +26,34 @@ describe('分量 Amount', () => {
     expect(amountOf(null)).toBeNull();
   });
 
-  it('長さも書式も制限しない', () => {
-    // ADR-010: 分量を使うのは LLM への入力と画面表示だけで、演算をする要件が無い。
-    // 上限は要件に無いので設けない（LLM 応答側の 30 字は腐敗防止層の規則であり、ここではない）。
-    const longAmount = 'よく熟したトマトを湯むきしてから'.repeat(10);
-    expect(amountOf(longAmount)).toBe(longAmount);
+  it('15字ちょうどの分量は受け付ける', () => {
+    // B-79 規則6 / NFR-19: 分量は15字以内。
+    expect(amountOf('あ'.repeat(15))).toBe('あ'.repeat(15));
+  });
+
+  it('16字の分量を断る', () => {
+    // B-79 規則6 / NFR-19: 16字以上は amount.tooLong。
+    expect(() => amountOf('あ'.repeat(16))).toThrow(PantryRuleViolation);
+    expect(() => amountOf('あ'.repeat(16))).toThrow(
+      expect.objectContaining({ rule: 'amount.tooLong' }),
+    );
+  });
+
+  it('分量の途中にタブがあると断る', () => {
+    // B-79 規則4 / NFR-19: 制御文字（Cc）が途中に1つでもあれば amount.controlCharacter。
+    expect(() => amountOf('2\t本')).toThrow(PantryRuleViolation);
+    expect(() => amountOf('2\t本')).toThrow(
+      expect.objectContaining({ rule: 'amount.controlCharacter' }),
+    );
+  });
+
+  it('制御文字を含み15字を超える分量は、制御文字の規則で断る', () => {
+    // B-79 規則6: 判定の順は 制御文字 → 字数。先に当たったものだけを投げる。
+    const amount = 'あ'.repeat(15) + '\nい';
+
+    expect(() => amountOf(amount)).toThrow(PantryRuleViolation);
+    expect(() => amountOf(amount)).toThrow(
+      expect.objectContaining({ rule: 'amount.controlCharacter' }),
+    );
   });
 });

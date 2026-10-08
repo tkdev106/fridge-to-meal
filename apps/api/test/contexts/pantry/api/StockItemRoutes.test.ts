@@ -719,6 +719,21 @@ describe('在庫品の経路 StockItemRoutes', () => {
       await expect(failureBody(response)).resolves.toEqual({ rule: 'save.householdMismatch' });
     });
 
+    it('名称が長すぎると断られた登録は 400 と rule だけを返す', async () => {
+      // B-79 規則8 / ADR-032: 新しい rule も入力の誤りであり、本体は { rule } だけ。
+      const { routes } = setUp({
+        registerThrows: new PantryRuleViolation('name.tooLong', '名称が長すぎる'),
+      });
+
+      const response = await routes.request(
+        '/stock-items',
+        jsonRequest('POST', { name: 'あ'.repeat(31), useForMeals: true }),
+      );
+
+      expect(response.status).toBe(400);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'name.tooLong' });
+    });
+
     it('表に無い規則違反は 400 を返す', async () => {
       // 7章の表の最後の行: 規則違反は入力の誤りが既定である（列挙漏れを 200 に化けさせない）。
       const { routes } = setUp({
