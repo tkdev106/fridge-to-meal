@@ -4,6 +4,8 @@ import type {
   StockItemEditValues,
   StockItemFormValues,
 } from '../../../src/features/pantry/StockItemFormValues.js';
+import type { AmountFieldValues } from '../../../src/features/pantry/AmountFieldValues.js';
+import { EMPTY_AMOUNT_FIELD } from '../../../src/features/pantry/AmountFieldValues.js';
 import {
   EMPTY_STOCK_ITEM_FORM,
   registerStockItemInputOf,
@@ -17,8 +19,19 @@ import {
  * 既定を `EMPTY_STOCK_ITEM_FORM` から取らない — それだと規則6 のテストが落ちたときに、
  * 関係のない12件も一緒に落ちて理由が読めなくなる。
  */
+/** `その他` の自由入力に打った分量。打った文字がそのまま分量になる。 */
+function otherAmount(text: string): AmountFieldValues {
+  return { number: text, unit: 'その他' };
+}
+
 function formValuesOf(props: Partial<StockItemFormValues> = {}): StockItemFormValues {
-  return { name: 'にんじん', amount: '', expiryDate: '', useForMeals: true, ...props };
+  return {
+    name: 'にんじん',
+    amount: EMPTY_AMOUNT_FIELD,
+    expiryDate: '',
+    useForMeals: true,
+    ...props,
+  };
 }
 
 function registerInputOf(props: Partial<StockItemFormValues> = {}) {
@@ -51,7 +64,11 @@ function threeFields(input: RegisterStockItemInput | null) {
 describe('登録の入力 registerStockItemInputOf', () => {
   it('3欄すべてに値があるときその値をそのまま持つ登録の入力を返す', () => {
     // FR-01 / ADR-010 / B-12 設計 規則1・3: 分量は自由文字列のまま運ぶ。
-    const input = registerInputOf({ name: 'にんじん', amount: '200g', expiryDate: '2026-09-30' });
+    const input = registerInputOf({
+      name: 'にんじん',
+      amount: { number: '200', unit: 'g' },
+      expiryDate: '2026-09-30',
+    });
 
     expect(threeFields(input)).toEqual({
       name: 'にんじん',
@@ -69,7 +86,9 @@ describe('登録の入力 registerStockItemInputOf', () => {
 
   it('食材名が空なら登録の入力を作らない', () => {
     // FR-01 / B-12 設計 規則2: 食材名は必須。在庫品の不変条件の手前で止める。
-    expect(registerInputOf({ name: '', amount: '200g', expiryDate: '2026-09-30' })).toBe(null);
+    expect(
+      registerInputOf({ name: '', amount: { number: '200', unit: 'g' }, expiryDate: '2026-09-30' }),
+    ).toBe(null);
   });
 
   it('食材名が空白だけなら登録の入力を作らない', () => {
@@ -89,12 +108,12 @@ describe('登録の入力 registerStockItemInputOf', () => {
 
   it('分量が空欄なら分量なしの登録の入力を返す', () => {
     // FR-13 / B-12 設計 規則3: 空文字は null（未設定）。
-    expect(amountOf(registerInputOf({ name: 'にんじん', amount: '' }))).toBe(null);
+    expect(amountOf(registerInputOf({ name: 'にんじん', amount: EMPTY_AMOUNT_FIELD }))).toBe(null);
   });
 
   it('分量が空白だけならその空白をそのまま分量に置く', () => {
     // B-12 設計 規則3 と規則4: 空にするのは空文字だけで、空白は落とさない。
-    expect(amountOf(registerInputOf({ name: 'にんじん', amount: '   ' }))).toBe('   ');
+    expect(amountOf(registerInputOf({ name: 'にんじん', amount: otherAmount('   ') }))).toBe('   ');
   });
 
   it('期限が空欄なら期限なしの登録の入力を返す', () => {
@@ -125,7 +144,11 @@ describe('空のフォーム EMPTY_STOCK_ITEM_FORM', () => {
     // FR-13 / NFR-15 / B-12 設計 規則6: 期限に「今日」のような既定値を入れない。
     // 献立に使うかどうかは文字の欄ではないので、下の B-76 の it が別に見る。
     const { name, amount, expiryDate } = EMPTY_STOCK_ITEM_FORM;
-    expect({ name, amount, expiryDate }).toEqual({ name: '', amount: '', expiryDate: '' });
+    expect({ name, amount: amount.number, expiryDate }).toEqual({
+      name: '',
+      amount: '',
+      expiryDate: '',
+    });
   });
 
   it('開いた直後のフォームからは登録の入力を作らない', () => {
@@ -154,7 +177,12 @@ function stockItemOf(props: Partial<StockItemDto> = {}): StockItemDto {
 
 /** 編集の欄の標本。本題だけが引数に現れる形にする。 */
 function editValuesOf(props: Partial<StockItemEditValues> = {}): StockItemEditValues {
-  return { amount: '3本', expiryDate: '2026-10-01', useForMeals: true, ...props };
+  return {
+    amount: { number: '3', unit: '本' },
+    expiryDate: '2026-10-01',
+    useForMeals: true,
+    ...props,
+  };
 }
 
 describe('編集の欄の値 stockItemEditValuesOf', () => {
@@ -162,15 +190,17 @@ describe('編集の欄の値 stockItemEditValuesOf', () => {
     // FR-05 / B-55 規則1・2: 名称は出すが変えられないため欄に持たない。**厳密に比べる** —
     // 名称の欄が混ざれば落ちる。
     expect(stockItemEditValuesOf(stockItemOf())).toStrictEqual({
-      amount: '2本',
+      amount: { number: '2', unit: '本' },
       expiryDate: '2026-09-21',
       useForMeals: true,
     });
   });
 
-  it('分量が未設定の在庫品なら分量の欄を空文字にする', () => {
-    // B-55 規則2 / NFR-15: `null` は空文字に倒す（欄に `null` を描かせない）。
-    expect(stockItemEditValuesOf(stockItemOf({ amount: null })).amount).toBe('');
+  it('分量が未設定の在庫品なら分量の欄を空にする', () => {
+    // B-55 規則2 / NFR-15: `null` は空の欄に倒す（欄に `null` を描かせない）。
+    expect(stockItemEditValuesOf(stockItemOf({ amount: null })).amount).toStrictEqual(
+      EMPTY_AMOUNT_FIELD,
+    );
   });
 
   it('期限が未設定の在庫品なら期限の欄を空文字にする', () => {
@@ -180,7 +210,9 @@ describe('編集の欄の値 stockItemEditValuesOf', () => {
 
   it('在庫品の分量の前後の空白を落とさずそのまま欄に置く', () => {
     // B-55 規則4 / 先行 `StockItemFormValues.ts` 規則4: 正規化はサーバの1か所に残す。
-    expect(stockItemEditValuesOf(stockItemOf({ amount: ' 2本 ' })).amount).toBe(' 2本 ');
+    expect(stockItemEditValuesOf(stockItemOf({ amount: ' 2本 ' })).amount).toStrictEqual(
+      otherAmount(' 2本 '),
+    );
   });
 });
 
@@ -198,7 +230,7 @@ describe('更新の入力 updateStockItemInputOf', () => {
   it('分量が空欄なら分量を消す更新の入力を返す', () => {
     // FR-13 / B-55 規則3: 空欄は「消す」を表し `null` を送る。**キーを省略しない** —
     // `UpdateStockItemInput` は常に置き換えとして扱う。
-    expect(updateStockItemInputOf(editValuesOf({ amount: '' }))).toStrictEqual({
+    expect(updateStockItemInputOf(editValuesOf({ amount: EMPTY_AMOUNT_FIELD }))).toStrictEqual({
       amount: null,
       expiryDate: '2026-10-01',
       useForMeals: true,
@@ -217,13 +249,17 @@ describe('更新の入力 updateStockItemInputOf', () => {
   it('2欄とも空欄でも更新の入力を作る', () => {
     // FR-13 / B-55 規則3・6: 「どちらも消す」は正しい編集である。登録（食材名が空なら
     // `null` を返す）と違い、**作れない入力が無い。**
-    expect(updateStockItemInputOf({ amount: '', expiryDate: '', useForMeals: true })).toStrictEqual(
-      {
-        amount: null,
-        expiryDate: null,
+    expect(
+      updateStockItemInputOf({
+        amount: EMPTY_AMOUNT_FIELD,
+        expiryDate: '',
         useForMeals: true,
-      },
-    );
+      }),
+    ).toStrictEqual({
+      amount: null,
+      expiryDate: null,
+      useForMeals: true,
+    });
   });
 
   it('欄の値が在庫品の今の値と同じでも更新の入力を作る', () => {
@@ -237,7 +273,7 @@ describe('更新の入力 updateStockItemInputOf', () => {
 
   it('分量が空白だけならその空白をそのまま更新の入力に置く', () => {
     // B-55 規則3・4: 空にするのは空文字だけで、空白は落とさない。
-    expect(updateStockItemInputOf(editValuesOf({ amount: ' ' })).amount).toBe(' ');
+    expect(updateStockItemInputOf(editValuesOf({ amount: otherAmount(' ') })).amount).toBe(' ');
   });
 
   it('書式が YYYY-MM-DD でない期限もそのまま更新の入力に置く', () => {

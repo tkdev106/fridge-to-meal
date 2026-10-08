@@ -24,6 +24,7 @@
 import { describe, expect, it } from 'vitest';
 import type { StockItemDto } from '@fridge-to-meal/contract';
 import { act, fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
+import { amountNumberField, amountUnitField, typeAmount } from '../../support/dom/typeAmount.js';
 import { FixedBackNavigation } from '../../support/backNavigation/FixedBackNavigation.js';
 import { FixedStockItemRequests } from '../../support/server/FixedStockItemRequests.js';
 import type { FixedStockItemRequestsOptions } from '../../support/server/FixedStockItemRequests.js';
@@ -73,17 +74,6 @@ function renderEditForm(
   );
 
   return requests;
-}
-
-/**
- * 分量の欄。**`textbox` はこれ1つだけである**（設計 規則1・5）— 食材名の欄は無く、期限は
- * `type="date"` なのでこの役割に入らない。
- *
- * **`instanceof HTMLInputElement` で絞らない** — 役割で引いている以上、入力の欄であることは
- * 問い合わせの側が保証している（ADR-052 結果3。先行 `StockItemForm.test.tsx`）。
- */
-function amountField(): HTMLInputElement {
-  return screen.getByRole('textbox') as HTMLInputElement;
 }
 
 /**
@@ -151,7 +141,7 @@ function focused(): HTMLElement {
 
 /** 2つの欄を打つ。期限は**開いた直後の値**で引く（`expiryDateField` の前提）。 */
 function fillTwoFields(stockItem: StockItemDto = stockItemOf()): void {
-  fireEvent.change(amountField(), { target: { value: typedValues.amount } });
+  typeAmount(typedValues.amount);
   fireEvent.change(expiryDateField(stockItem.expiryDate ?? ''), {
     target: { value: typedValues.expiryDate },
   });
@@ -163,7 +153,8 @@ describe('編集の画面 StockItemEditForm の2つの欄', () => {
 
     // 規則2 / NFR-15: その行の値をそのまま置き、空に戻さない — 分量だけ直したい回に期限を
     // 打ち直させない。
-    expect(amountField().value).toBe('2本');
+    expect(amountNumberField().value).toBe('2');
+    expect(amountUnitField().value).toBe('本');
   });
 
   it('開いた直後の期限の欄には、その在庫品の期限が出る', () => {
@@ -178,7 +169,7 @@ describe('編集の画面 StockItemEditForm の2つの欄', () => {
 
     // 規則2 / FR-13: 未設定（`null`）は空文字に倒す — 欄に `null` を描かせない。
     // **値が空の入力が2つである**ことで「どちらも空」を観る（欄は分量と期限の2つだけ。規則1）。
-    expect(amountField().value).toBe('');
+    expect(amountNumberField().value).toBe('');
     expect(screen.getAllByDisplayValue('')).toHaveLength(2);
   });
 
@@ -195,7 +186,7 @@ describe('編集の画面 StockItemEditForm の2つの欄', () => {
     // 規則1 / `UpdateStockItemInput`: 送れない値を編集させない。欄は分量（`textbox`）と期限
     // （`type="date"`）の2つだけで、登録の画面の食材名の欄（`combobox`。B-50c）は無い。
     expect(screen.getAllByRole('textbox')).toHaveLength(1);
-    expect(screen.queryAllByRole('combobox')).toHaveLength(0);
+    expect(screen.queryAllByRole('combobox', { name: '食材名' })).toHaveLength(0);
   });
 });
 
@@ -203,12 +194,13 @@ describe('編集の画面 StockItemEditForm の保存', () => {
   it('開いた直後に打ち始めた文字は、分量として更新の口へ届く', () => {
     const requests = renderEditForm(stockItemOf(), { update: [{ outcome: 'updated' }] });
 
-    fireEvent.change(focused(), { target: { value: '300g' } });
+    fireEvent.change(focused(), { target: { value: '300' } });
     fireEvent.click(saveOperation());
 
     // 規則18 / NFR-15: 開いた直後の焦点は分量の欄である（編集できる先頭の欄）。
     // **どの欄かは「打った文字がどこへ届いたか」で観る**（先行 `StockItemForm.test.tsx`）。
-    expect(requests.receivedUpdates.at(0)?.input.amount).toBe('300g');
+    // 単位は開いた在庫品の分量「2本」から読み戻した `本` のままである。
+    expect(requests.receivedUpdates.at(0)?.input.amount).toBe('300本');
   });
 
   it('保存を押すと、打った分量と期限が、その在庫品の識別子とともに更新の口へ届く', () => {
@@ -229,7 +221,7 @@ describe('編集の画面 StockItemEditForm の保存', () => {
     const stockItem = stockItemOf();
     const requests = renderEditForm(stockItem, { update: [{ outcome: 'updated' }] });
 
-    fireEvent.change(amountField(), { target: { value: '' } });
+    typeAmount('');
     fireEvent.change(expiryDateField(stockItem.expiryDate ?? ''), { target: { value: '' } });
     fireEvent.click(saveOperation());
 
@@ -358,7 +350,8 @@ describe('編集の画面 StockItemEditForm の案内', () => {
     });
 
     // 規則8 / NFR-15 / 7章 行2: 入力を消さない。打ち直しは1件10秒に収まらない。
-    expect(screen.queryByDisplayValue('300g')).not.toBeNull();
+    expect(amountNumberField().value).toBe('300');
+    expect(amountUnitField().value).toBe('g');
   });
 });
 
@@ -410,8 +403,8 @@ describe('編集の画面 StockItemEditForm の接続が切れている間', () 
   it('接続が切れている間は、欄で Enter しても更新の口へ何も届かない', () => {
     const { requests } = renderEditFormWith(true);
 
-    fireEvent.change(amountField(), { target: { value: typedValues.amount } });
-    fireEvent.submit(amountField());
+    typeAmount(typedValues.amount);
+    fireEvent.submit(amountNumberField());
 
     // 規則10 / 7章 行1: 保存の本体で止める（ボタンを押さない経路も塞ぐ）。
     expect(requests.receivedUpdates).toEqual([]);
@@ -420,11 +413,12 @@ describe('編集の画面 StockItemEditForm の接続が切れている間', () 
   it('接続が切れている間に打った分量は、欄に残る', () => {
     const { setOffline } = renderEditFormWith(true);
 
-    fireEvent.change(amountField(), { target: { value: typedValues.amount } });
+    typeAmount(typedValues.amount);
     setOffline(false);
 
     // 規則10（入力は消さない）・規則14（戻っても欄を作り直さない）。
-    expect(amountField().value).toBe('300g');
+    expect(amountNumberField().value).toBe('300');
+    expect(amountUnitField().value).toBe('g');
   });
 
   it('接続が切れていても、保存せずに閉じられる', () => {
@@ -548,11 +542,11 @@ describe('編集の画面 StockItemEditForm の見た目と文言', () => {
     expect(namedExpiryDateField().type).toBe('date');
   });
 
-  it('分量が未設定の在庫品を開くと、分量の欄に置き文字「例: 300g」が出る', () => {
+  it('分量が未設定の在庫品を開くと、分量の欄に置き文字「例: 300」が出る', () => {
     renderEditForm(stockItemOf({ amount: null }));
 
     // B-65 規則5 / ADR-010: 置き文字は分量の欄の `placeholder` である。
-    expect(screen.getByPlaceholderText('例: 300g')).toBe(namedAmountField());
+    expect(screen.getByPlaceholderText('例: 300')).toBe(namedAmountField());
   });
 
   it('期限のある在庫品を開くと、期限が「M月D日（曜）」で出る', () => {
@@ -707,7 +701,7 @@ describe('編集の画面 StockItemEditForm の `閉じる`', () => {
   it('分量を打ってから `閉じる` を押しても、更新の口へは何も届かない', () => {
     const requests = renderEditFormRecordingClose([]);
 
-    fireEvent.change(amountField(), { target: { value: typedValues.amount } });
+    typeAmount(typedValues.amount);
     fireEvent.click(closeButton());
 
     // B-65b 規則9: 閉じるのは捨てることである（`<form>` の送信にならない）。

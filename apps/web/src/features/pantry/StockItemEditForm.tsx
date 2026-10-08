@@ -29,15 +29,12 @@ import type { ChangeEvent, FormEvent, JSX, MouseEvent } from 'react';
 import { useState } from 'react';
 import type { StockItemDto } from '@fridge-to-meal/contract';
 import type { StockItemEditValues } from './StockItemFormValues.js';
-import {
-  AMOUNT_MAX_LENGTH,
-  stockItemEditValuesOf,
-  updateStockItemInputOf,
-} from './StockItemFormValues.js';
+import { stockItemEditValuesOf, updateStockItemInputOf } from './StockItemFormValues.js';
 import type { UpdateFailureNotice } from './UpdateFailureNotice.js';
 import { updateFailureNoticeOf } from './UpdateFailureNotice.js';
 import type { UpdateStockItem } from '../../server/StockItemRequests.js';
 import { Icon } from '../../icons/Icon.js';
+import { AmountField } from './AmountField.js';
 import { expiryDateLabelOf, remainingDaysLabelOf } from './ExpiryDateLabel.js';
 import type { ExpirySection } from './PantrySections.js';
 import { expirySectionOf } from './PantrySections.js';
@@ -56,17 +53,13 @@ const NAME_LABEL = '食材名';
  * 「消す」を表す。任意であることは札 `任意`（`OPTIONAL_LABEL`）の文字で伝える（B-65 規則3）。
  * 献立に使うには札を付けない（B-76 規則16）。
  */
-const FIELD_LABELS: Record<keyof StockItemEditValues, string> = {
-  amount: '分量',
+const FIELD_LABELS: Record<Exclude<keyof StockItemEditValues, 'amount'>, string> = {
   expiryDate: '期限',
   useForMeals: '献立に使う',
 };
 
 /** 任意の欄に添える札（B-65 規則3）。欄の名前の一部として読まれてよい。 */
 const OPTIONAL_LABEL = '任意';
-
-/** 分量の置き文字（B-65 規則5）。値は自由文字列のまま（ADR-010）。 */
-const AMOUNT_PLACEHOLDER = '例: 300g';
 
 /** 期限が空のときに箱に出す文字（B-65 規則6）。 */
 const EXPIRY_DATE_PLACEHOLDER = '日付を選ぶ';
@@ -149,7 +142,7 @@ export function StockItemEditForm({
     if (!sending) onClose();
   });
 
-  function changeField(field: 'amount' | 'expiryDate') {
+  function changeField(field: 'expiryDate') {
     return (event: ChangeEvent<HTMLInputElement>) => {
       setValues((previous) => ({ ...previous, [field]: event.target.value }));
     };
@@ -229,24 +222,14 @@ export function StockItemEditForm({
           <span className={styles.fixedName}>{stockItem.name}</span>
         </div>
 
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>
-            <span>{FIELD_LABELS.amount}</span>
-            <span className={styles.optional}>{OPTIONAL_LABEL}</span>
-          </span>
-          {/* 開いた直後の焦点はこの欄である（設計 規則18 / NFR-15）— 編集できる先頭の欄であり、
-              編集の画面は開くまで木に無い（`PantryTab`）ので mount のときに当てれば足りる。
-              **効果と `ref` を置かない。**
-              分量は自由文字列。数値と単位に分けない（ADR-010）。 */}
-          <input
-            autoFocus
-            className={styles.input}
-            placeholder={AMOUNT_PLACEHOLDER}
-            maxLength={AMOUNT_MAX_LENGTH}
-            value={values.amount}
-            onChange={changeField('amount')}
-          />
-        </label>
+        {/* 開いた直後の焦点は分量の欄である（設計 規則18 / NFR-15）— 編集できる先頭の欄であり、
+            編集の画面は開くまで木に無い（`PantryTab`）ので mount のときに当てれば足りる。
+            **効果と `ref` を置かない。** */}
+        <AmountField
+          autoFocus
+          values={values.amount}
+          onChange={(amount) => setValues((previous) => ({ ...previous, amount }))}
+        />
 
         <label className={styles.field}>
           <span className={styles.fieldLabel}>

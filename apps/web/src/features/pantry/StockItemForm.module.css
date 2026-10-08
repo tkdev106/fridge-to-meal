@@ -149,6 +149,45 @@
   outline: none;
 }
 
+/* 分量の行。数値（または `その他` の自由入力）の欄と単位の選択を横に並べる。 */
+.amountRow {
+  display: flex;
+  gap: 8px;
+}
+
+.amountRow .input {
+  flex: 1;
+  min-width: 0;
+}
+
+/*
+ * 単位の選択。入力欄と同じ箱に、右端の下向きの山形を置く。素の矢印は `appearance: none` で消す。
+ * data URL の中では `var(--…)` を引けないので、山形の色は `--color-text` の値（#1F1E1B）を直に書く。
+ */
+.unitSelect {
+  flex: none;
+  box-sizing: border-box;
+  width: 120px;
+  height: var(--control-height-secondary);
+  padding: 0 40px 0 16px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0;
+  background: var(--color-surface)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231F1E1B' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+    no-repeat right 12px center / 20px 20px;
+  color: var(--color-text);
+  font: inherit;
+  appearance: none;
+  cursor: pointer;
+}
+
+.unitSelect:focus {
+  padding: 0 39px 0 15px;
+  border: 2px solid var(--color-text);
+  outline: none;
+  background-position: right 11px center;
+}
+
 /* 編集の画面の名称。欄の位置に高さ 48px の素の文字で出す（規則9）。 */
 .fixedName {
   display: flex;
