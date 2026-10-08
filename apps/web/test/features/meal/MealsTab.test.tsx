@@ -693,7 +693,7 @@ describe('献立タブ MealsTab の在庫に食材が無い回（S-9）', () => 
     const status = screen.getByRole('status');
     expect(within(status).getByText('冷蔵庫に食材が')).not.toBeNull();
     expect(within(status).getByText('見つかりませんでした')).not.toBeNull();
-    expect(within(status).getByText('食材の名前を確かめてください')).not.toBeNull();
+    expect(within(status).getByText('食材の名前をご確認ください')).not.toBeNull();
     expect(soleContentButton().textContent).toBe('冷蔵庫を見る');
   });
 

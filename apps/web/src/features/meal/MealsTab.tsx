@@ -139,7 +139,7 @@ const GO_TO_PANTRY_LABEL = '食材を登録する';
 const NO_INGREDIENT_IN_PANTRY_LINES = ['冷蔵庫に食材が', '見つかりませんでした'] as const;
 
 /** 在庫に食材が無い回の補足。 */
-const NO_INGREDIENT_IN_PANTRY_NOTE = '食材の名前を確かめてください';
+const NO_INGREDIENT_IN_PANTRY_NOTE = '食材の名前をご確認ください';
 
 /** 在庫に食材が無い回に在庫タブへ送る操作の文言（D-10）。 */
 const SEE_PANTRY_LABEL = '冷蔵庫を見る';
