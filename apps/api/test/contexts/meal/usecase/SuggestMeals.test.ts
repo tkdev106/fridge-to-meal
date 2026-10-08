@@ -2870,6 +2870,126 @@ describe('生成結果の確かめと作り直し SuggestMeals', () => {
   });
 });
 
+/** 生成が在庫に食材が無いとして断った回（ADR-091 決定2）。 */
+function throwsNoIngredient(): MealGenerationOutcome {
+  return {
+    throws: new MealRuleViolation('mealGenerator.noIngredient', '在庫に食材が無い'),
+  };
+}
+
+describe('在庫に食材が無い回 SuggestMeals / SuggestNewMeals', () => {
+  // ここから B-80（ADR-091 決定3・5）。**1回目の生成が在庫に食材が無いとして断ったら、
+  // 投げずに結末 noIngredientInPantry を返す。** 確かめも作り直しも保存もしない。
+  //
+  // 作り直しの回に断られたときは結末にしない（B-80 規則8）。今の作り直しの失敗と同じ扱いである。
+  //
+  // **どの回も2回目の生成にポトフを用意してある** — 作り直して組んでしまう実装なら、
+  // 結末が提案になり、ポトフが保存される。
+
+  it('1回目の生成が在庫に食材が無いとして断ったら、在庫に食材が無いことを名乗る結末を返す', async () => {
+    // ADR-091 決定3 / ADR-041 決定1: 失敗ではなく判別できる結末として返す（200 / S-9）。
+    const { suggest } = generationSetUp({
+      generatedMealsByCall: [throwsNoIngredient(), returnsTitles('ポトフ')],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(output).toEqual({ outcome: 'noIngredientInPantry' });
+  });
+
+  it('在庫に食材が無い結末の回は、提案を保存しない', async () => {
+    // ADR-091 決定3 / C-14 の裏 / C-11: 組まなかった回を記録に残さない。
+    const { suggest, suggestionRepository } = generationSetUp({
+      generatedMealsByCall: [throwsNoIngredient(), returnsTitles('ポトフ')],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(await suggestionRepository.findRecentByHousehold(ourHousehold, 3)).toEqual([]);
+  });
+
+  it('在庫に食材が無い結末の回は、献立を保存しない', async () => {
+    // ADR-091 決定3 / C-1: 献立を1件も得ていない回であり、作り直して得たものも保存しない。
+    const { suggest, mealRepository } = generationSetUp({
+      generatedMealsByCall: [throwsNoIngredient(), returnsTitles('ポトフ')],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(await mealRepository.findByHousehold(ourHousehold)).toEqual([]);
+  });
+
+  it('在庫に食材が無い結末の回は、生成結果の確かめを呼ばない', async () => {
+    // ADR-091 決定3 / B-80 規則7: 確かめるものが無い回であり、確かめは外へ問い合わせうる出口
+    // なので、呼ばないこと自体が要件である（`docs/testing.md` 2章。状態として見る）。
+    const { suggest, generatedMealChecker } = generationSetUp({
+      generatedMealsByCall: [throwsNoIngredient(), returnsTitles('ポトフ')],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+
+    expect(generatedMealChecker.receivedInputs).toEqual([]);
+  });
+
+  it('作り直しの生成が在庫に食材が無いとして断っても、1回目に残した献立で提案を組む', async () => {
+    // ADR-091 決定3 / ADR-089 決定4 / B-80 規則8: 結末にするのは1回目の断りだけである。
+    const { suggest } = generationSetUp({
+      generatedMealsByCall: [returnsTitles('肉じゃが'), throwsNoIngredient()],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(titlesOf(output)).toEqual(['肉じゃが']);
+  });
+
+  it('1回目が確かめで全部落ち、作り直しが在庫に食材が無いとして断ったら、mealGenerator.empty の規則違反を投げる', async () => {
+    // ADR-091 決定3 / ADR-089 決定4 / B-80 規則8: 作り直しの断りは結末にせず、
+    // 1回目に残したものが0件なら今までどおり生成できなかった失敗にする。
+    const { suggest } = generationSetUp({
+      generatedMealsByCall: [returnsTitles('肉じゃが'), throwsNoIngredient()],
+      droppedTitles: ['肉じゃが'],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const execution = suggest(ourHousehold, asOf);
+
+    await expect(execution).rejects.toThrow(MealRuleViolation);
+    await expect(execution).rejects.toMatchObject({ rule: 'mealGenerator.empty' });
+  });
+
+  it('在庫に食材が無い結末の回は、上限の数に入らない', async () => {
+    // ADR-091 決定5 / NFR-C2 / ADR-049: 保存しない回は数えない。**上限まで1回ぶん残した状態で
+    // 2度続けて断らせる** — 枠を食う実装なら、2度目は上限の結末を返してここが赤くなる。
+    const { suggest } = generationSetUp({
+      recentSuggestions: storedGeneratedSuggestions(9),
+      generatedMealsByCall: [throwsNoIngredient()],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    await suggest(ourHousehold, asOf);
+    const output = await suggest(ourHousehold, asOf);
+
+    expect(output).toEqual({ outcome: 'noIngredientInPantry' });
+  });
+
+  it('明示操作でも、1回目の生成が在庫に食材が無いとして断ったら、在庫に食材が無いことを名乗る結末を返す', async () => {
+    // ADR-091 決定3 / ADR-051 決定2: 2つの入口で同じ振る舞いにする。
+    const { suggestNew } = generationSetUp({
+      generatedMealsByCall: [throwsNoIngredient(), returnsTitles('ポトフ')],
+      mealIdsToIssue: [idA, idB, idC],
+    });
+
+    const output = await suggestNew(ourHousehold, asOf);
+
+    expect(output).toEqual({ outcome: 'noIngredientInPantry' });
+  });
+});
+
 describe('新しい献立を求める明示操作 SuggestNewMeals', () => {
   // ここから FR-36 の明示操作（B-32）。**既定の提案とは別の入口**であり、C-15 が数える2つの
   // 生成の機会のうち「利用者が新しい献立を明示的に求めたとき」のほうである。

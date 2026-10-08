@@ -139,12 +139,12 @@ export function showLatestSuggestion(deps: SuggestionRequestsDeps): ShowLatestSu
 }
 
 /**
- * `POST /suggestions/new-meals`（FR-36 の明示操作）の結末。**サーバの3つの結末をそのまま持ち、
+ * `POST /suggestions/new-meals`（FR-36 の明示操作）の結末。**サーバの4つの結末をそのまま持ち、
  * 失敗を1つ足しただけ**である（設計 5章）。
  *
- * **在庫が足りない（S-4）も上限に達した（S-7）も失敗に畳まない** — この経路は必ず生成を試みる
- * ため（ADR-051。C-7 の短絡も通さない）、`showLatestSuggestion` には無いこの2つの結末が起こる
- * （ADR-049 結果7 / NFR-C2）。文言を選ぶのは画面（B-49c）の持ち分で、ここは写すだけである。
+ * **在庫が足りない（S-4）も上限に達した（S-7）も在庫に食材が無い（S-9）も失敗に畳まない** —
+ * この経路は必ず生成を試みるため（ADR-051。C-7 の短絡も通さない）、`showLatestSuggestion` には
+ * 無いこの3つの結末が起こる（ADR-049 結果7 / NFR-C2 / ADR-091）。文言を選ぶのは画面（B-49c）の持ち分で、ここは写すだけである。
  */
 export type RequestNewMealsOutcome = SuggestMealsOutput | { readonly outcome: 'failed' };
 
@@ -181,24 +181,17 @@ function isSuggestedMeals(body: unknown): body is {
   );
 }
 
-/** 在庫が足りない結末（S-4）かどうか。 */
-function isInsufficientStockItems(body: unknown): boolean {
-  return (
-    typeof body === 'object' &&
-    body !== null &&
-    'outcome' in body &&
-    body.outcome === 'insufficientStockItems'
-  );
-}
+/** 提案を持たない結末（S-4 / S-7 / S-9）。 */
+const DECLINED_OUTCOMES = [
+  'insufficientStockItems',
+  'generationLimitReached',
+  'noIngredientInPantry',
+] as const;
 
-/** 生成の上限に達した結末（S-7 / NFR-C2）かどうか。 */
-function isGenerationLimitReached(body: unknown): boolean {
-  return (
-    typeof body === 'object' &&
-    body !== null &&
-    'outcome' in body &&
-    body.outcome === 'generationLimitReached'
-  );
+/** 提案を持たない結末のどれかなら、その結末を返す。 */
+function declinedOutcomeOf(body: unknown): (typeof DECLINED_OUTCOMES)[number] | null {
+  if (typeof body !== 'object' || body === null || !('outcome' in body)) return null;
+  return DECLINED_OUTCOMES.find((outcome) => outcome === body.outcome) ?? null;
 }
 
 /**
@@ -245,12 +238,9 @@ export function requestNewMeals(deps: SuggestionRequestsDeps): RequestNewMeals {
         return { outcome: 'suggested', suggestion: body.suggestion };
       }
 
-      if (isInsufficientStockItems(body)) {
-        return { outcome: 'insufficientStockItems' };
-      }
-
-      if (isGenerationLimitReached(body)) {
-        return { outcome: 'generationLimitReached' };
+      const declinedOutcome = declinedOutcomeOf(body);
+      if (declinedOutcome !== null) {
+        return { outcome: declinedOutcome };
       }
 
       return FAILED;

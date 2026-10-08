@@ -545,6 +545,15 @@ describe('提案の経路 SuggestionRoutes', () => {
       });
     });
 
+    it('在庫に食材が無い結末は 200 を返す', async () => {
+      // ADR-091 決定4 / ADR-041 決定1: S-9 は失敗でも規則違反でもない。
+      const { routes } = setUp({ suggestOutput: { outcome: 'noIngredientInPantry' } });
+
+      const response = await routes.request('/suggestions', postRequest());
+
+      expect(response.status).toBe(200);
+    });
+
     it('新しい献立を求める経路の応答本体はユースケースの出力そのままである', async () => {
       // 規則5 / FR-36: 既定の提案とは別の中身を返させ、どちらの出力かを見分ける。
       const { routes } = setUp({ newMealsOutput });
@@ -616,6 +625,15 @@ describe('提案の経路 SuggestionRoutes', () => {
       await routes.request('/suggestions/new-meals', postRequest());
 
       expect(logLines).toEqual(['api.suggestion.declined generationLimitReached']);
+    });
+
+    it('在庫に食材が無い結末はログに1行残す', async () => {
+      // ADR-091 決定4 / ADR-062 決定2: 在庫品の名称は出さない
+      const { routes, logLines } = setUp({ suggestOutput: { outcome: 'noIngredientInPantry' } });
+
+      await routes.request('/suggestions', postRequest());
+
+      expect(logLines).toEqual(['api.suggestion.declined noIngredientInPantry']);
     });
 
     it('提案できた結末はログに残さない', async () => {
@@ -773,6 +791,21 @@ describe('提案の経路 SuggestionRoutes', () => {
 
       expect(response.status).toBe(500);
       await expect(responseBody(response)).resolves.toEqual({ rule: 'save.contentMismatch' });
+    });
+
+    it('在庫に食材が無いという規則違反が上がってきたら 500 を返し rule を載せる', async () => {
+      // ADR-091 決定3 / ADR-062 決定3: ユースケースが受け止めるはずの規則違反であり、
+      // 上がってきたら写像の表に無いものとして扱う（表に行を足さない）。
+      const { routes } = setUp({
+        suggestThrows: new MealRuleViolation('mealGenerator.noIngredient', '在庫に食材が無い'),
+      });
+
+      const response = await routes.request('/suggestions', postRequest());
+
+      expect(response.status).toBe(500);
+      await expect(responseBody(response)).resolves.toEqual({
+        rule: 'mealGenerator.noIngredient',
+      });
     });
 
     it('表に無い献立の規則違反は 400 ではなく 500 を返し rule を載せる', async () => {
