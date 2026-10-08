@@ -139,7 +139,7 @@ export function showLatestSuggestion(deps: SuggestionRequestsDeps): ShowLatestSu
 }
 
 /**
- * `POST /suggestions/new-meals`（FR-36 の明示操作）の結末。**サーバの3つの結末をそのまま持ち、
+ * `POST /suggestions/new-meals`（FR-36 の明示操作）の結末。**サーバの4つの結末をそのまま持ち、
  * 失敗を1つ足しただけ**である（設計 5章）。
  *
  * **在庫が足りない（S-4）も上限に達した（S-7）も在庫に食材が無い（S-9）も失敗に畳まない** —
