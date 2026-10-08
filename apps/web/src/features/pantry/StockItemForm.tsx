@@ -286,7 +286,7 @@ export function StockItemForm({
             maxLength={NAME_MAX_LENGTH}
           />
 
-          {/* 名前が空の断りは**欄の直下**に出す（B-65 規則10）— どこを直すかが位置で読める。
+          {/* 食材名の断り（空・字数と制御文字）は**欄の直下**に出す（B-65 規則10）— どこを直すかが位置で読める。
               `!` は飾りなので読み上げから外す。 */}
           {nameNotice !== null && (
             <p className={styles.notice}>
