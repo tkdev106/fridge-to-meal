@@ -363,7 +363,7 @@ describe('端末の戻るの継ぎ目 BackNavigationImpl の読み込み', () =>
     new BackNavigationImpl(source);
     await settle(source);
 
-    // 規則9: 再読み込みは既定の画面から始まる。印つきの項目に居残ると、戻るが空振りする。
+    // 規則9: 再読み込みでは印の無い項目まで戻る。印つきの項目に居残ると、戻るが空振りする。
     expect(source.position).toBe(1);
     expect(source.currentState).toBeNull();
   });
@@ -405,7 +405,7 @@ describe('端末の戻るの継ぎ目 BackNavigationImpl の読み込み時の�
     new BackNavigationImpl(source);
     await settle(source);
 
-    // 規則3 / ADR-084 決定1: 画面を URL に書かない。トークンを URL に残さない。
+    // ADR-088: トークンを URL に残さない。
     expect(source.currentUrl).toBe('/');
   });
 
