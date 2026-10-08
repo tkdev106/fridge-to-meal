@@ -25,6 +25,13 @@ export type StockItemFormValues = {
 };
 
 /**
+ * 欄に打てる字数の上限（NFR-19）。api の domain と同じ値を持つ — web から api は import できない。
+ * 断る判定そのものはサーバの1か所に残し、ここは欄の `maxLength` に当てるだけである。
+ */
+export const NAME_MAX_LENGTH = 30;
+export const AMOUNT_MAX_LENGTH = 15;
+
+/**
  * 開いた直後と、保存に成功した直後の値（規則6）。
  *
  * 期限に「今日」のような既定値を入れない。開いた直後に保存できる状態にしないためであり

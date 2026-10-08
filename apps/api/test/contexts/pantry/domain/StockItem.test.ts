@@ -48,6 +48,57 @@ describe('在庫品 StockItem', () => {
     expect(() => stockItem({ name: '   ' })).toThrow(PantryRuleViolation);
   });
 
+  it('30字ちょうどの名称は登録できる', () => {
+    // B-79 規則2 / NFR-19: 名称は30字以内。
+    expect(stockItem({ name: 'あ'.repeat(30) }).name).toBe('あ'.repeat(30));
+  });
+
+  it('31字の名称を断る', () => {
+    // B-79 規則2 / NFR-19: 31字以上は name.tooLong。
+    expect(() => stockItem({ name: 'あ'.repeat(31) })).toThrow(PantryRuleViolation);
+    expect(() => stockItem({ name: 'あ'.repeat(31) })).toThrow(
+      expect.objectContaining({ rule: 'name.tooLong' }),
+    );
+  });
+
+  it('字数はコードポイントで数え、サロゲートペアの1文字を1字とする', () => {
+    // B-79 規則3: UTF-16 の長さで数えると '𩸽' は2字になり、30字が上限を超えてしまう。
+    expect(stockItem({ name: '𩸽'.repeat(30) }).name).toBe('𩸽'.repeat(30));
+  });
+
+  it('字数は前後の空白を落とした後で数える', () => {
+    // B-79 規則1: 判定は落とした後の値に対して行う。
+    expect(stockItem({ name: '  ' + 'あ'.repeat(30) + '  ' }).name).toBe('あ'.repeat(30));
+  });
+
+  it('前後の改行とタブは落として登録する', () => {
+    // B-79 規則1: 前後の改行・タブは trim で落ちるので断らない。
+    expect(stockItem({ name: '\nにんじん\t' }).name).toBe('にんじん');
+  });
+
+  it('名称の途中に改行があると断る', () => {
+    // B-79 規則4 / NFR-19: 制御文字（Cc）が途中に1つでもあれば name.controlCharacter。
+    expect(() => stockItem({ name: 'にん\nじん' })).toThrow(PantryRuleViolation);
+    expect(() => stockItem({ name: 'にん\nじん' })).toThrow(
+      expect.objectContaining({ rule: 'name.controlCharacter' }),
+    );
+  });
+
+  it('全角空白は制御文字として断らない', () => {
+    // B-79 規則4: 全角空白は Cc ではない。
+    expect(stockItem({ name: 'にんじん　大' }).name).toBe('にんじん　大');
+  });
+
+  it('制御文字を含み31字を超える名称は、制御文字の規則で断る', () => {
+    // B-79 規則5: 判定の順は 空 → 制御文字 → 字数。先に当たったものだけを投げる。
+    const name = 'あ'.repeat(30) + '\nい';
+
+    expect(() => stockItem({ name })).toThrow(PantryRuleViolation);
+    expect(() => stockItem({ name })).toThrow(
+      expect.objectContaining({ rule: 'name.controlCharacter' }),
+    );
+  });
+
   it('献立に使わないことを持てる', () => {
     // FR-43 / ADR-086: 献立に使うかどうかは真偽値で持ち、渡した値をそのまま持つ。
     expect(stockItem({ useForMeals: false }).useForMeals).toBe(false);
@@ -119,6 +170,16 @@ describe('在庫品 StockItem', () => {
     });
 
     expect(recreatedStockItem.useForMeals).toBe(false);
+  });
+
+  it('編集の作り直しでも名称の上限が効く', () => {
+    // B-79 規則7 / B-06 規則2: 名称を引き継いで createStockItem を通り直すので、名称の規則も再び効く。
+    const storedStockItem = { ...stockItem(), name: 'あ'.repeat(31) };
+    const edit = () =>
+      withEditedValues(storedStockItem, { amount: null, expiryDate: null, useForMeals: true });
+
+    expect(edit).toThrow(PantryRuleViolation);
+    expect(edit).toThrow(expect.objectContaining({ rule: 'name.tooLong' }));
   });
 
   it('作ったあとに書き換えられない', () => {

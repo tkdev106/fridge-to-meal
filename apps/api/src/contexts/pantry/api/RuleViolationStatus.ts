@@ -17,6 +17,10 @@ import type { ErrorResponseDto } from '@fridge-to-meal/contract';
  */
 const PANTRY_RULE_VIOLATION_STATUSES: Readonly<Record<string, ContentfulStatusCode>> = {
   'name.empty': 400,
+  'name.controlCharacter': 400,
+  'name.tooLong': 400,
+  'amount.controlCharacter': 400,
+  'amount.tooLong': 400,
   'expiryDate.format': 400,
   'expiryDate.notACalendarDate': 400,
   // 見つからない。他の世帯を指したときも同じ扱いである（C-9）。

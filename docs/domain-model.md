@@ -83,7 +83,7 @@ LLM は形式の揺れた出力を返しうる。ACL は「LLM の応答 JSON」
 | **再利用** | `reused` | 既存の献立をそのまま提案に含めること。新規生成と区別して表示する | 献立 |
 | **在庫品** | `StockItem` | 冷蔵庫にある1件の食材。名称・数量・期限と、献立に使うか（`useForMeals`。オフなら提案に使わない。FR-43）を持つ。**集約ルートは在庫コンテキストにあり**、献立コンテキストは同じ語で「**名称・分量・期限だけ**を持つ値」を持つ（規則が見るものだけを渡すため。ADR-033 / ADR-036 / **ADR-037**）。分量を持つのは C-7 の一致比較と、外部へ送る射影（`prompt-design.md` 2.3）が見るためで、充足にも並び順にも効かない | 在庫・献立 |
 | **期限** | `ExpiryDate` | 使い切りたい日。賞味/消費期限は区別しない。未設定を許す。**献立側にも同じ規則で起こす**（ADR-036） | 在庫・献立 |
-| **分量** | `Amount` | 「200g」「1本」など。構造化せず自由文字列として扱う（ADR-010） | 在庫・献立 |
+| **分量** | `Amount` | 「200g」「1本」など。構造化せず自由文字列として扱う（ADR-010）。在庫品の分量は15字以内で、制御文字を含めない（NFR-19） | 在庫・献立 |
 | **食材** | `Ingredient` | 「にんじん」等の種類を表すカタログ上の概念。在庫品とは別物 | 食材カタログ |
 | **世帯** | `Household` | 冷蔵庫を共有する単位。複数の利用者が属しうる。利用者が属する世帯は常に1つ。全データの所有者（ADR-087） | アカウント |
 | **世帯のメンバー** | `HouseholdMember` | 世帯に属する利用者。利用者がどの世帯に属するかを記録する。記録の無い利用者は自分の ID の世帯に属する（ADR-087） | アカウント |
@@ -117,7 +117,7 @@ LLM は形式の揺れた出力を返しうる。ACL は「LLM の応答 JSON」
 
 | 構成 | 不変条件 |
 | --- | --- |
-| `id: StockItemId`<br>`householdId: HouseholdId`<br>`name: string`（自由入力を許す）<br>`ingredientId: IngredientId \| null`<br>`amount: Amount \| null`<br>`expiryDate: ExpiryDate \| null`<br>`useForMeals: boolean`（献立に使うか。FR-43） | `name` は空文字を許さない<br>同じ食材でも**統合しない**。買った日が違えば別の在庫品（ADR-007）<br>`expiryDate` が未設定の在庫品は、期限による警告・優先の対象外<br>削除は物理削除でよい。献立は材料を複製済みで参照を持たない |
+| `id: StockItemId`<br>`householdId: HouseholdId`<br>`name: string`（自由入力を許す）<br>`ingredientId: IngredientId \| null`<br>`amount: Amount \| null`<br>`expiryDate: ExpiryDate \| null`<br>`useForMeals: boolean`（献立に使うか。FR-43） | `name` は空文字を許さない<br>`name` は30字以内で、制御文字を含めない（NFR-19）<br>`amount` は15字以内で、制御文字を含めない（NFR-19）<br>同じ食材でも**統合しない**。買った日が違えば別の在庫品（ADR-007）<br>`expiryDate` が未設定の在庫品は、期限による警告・優先の対象外<br>削除は物理削除でよい。献立は材料を複製済みで参照を持たない |
 
 ### 食材 `Ingredient`（カタログ・集約ルート）
 

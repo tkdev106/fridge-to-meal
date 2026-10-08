@@ -31,7 +31,11 @@ import { IngredientNameCombobox } from './IngredientNameCombobox.js';
 import type { RegisterFailureNotice } from './RegisterFailureNotice.js';
 import { registerFailureNoticeOf } from './RegisterFailureNotice.js';
 import type { StockItemFormValues } from './StockItemFormValues.js';
-import { EMPTY_STOCK_ITEM_FORM, registerStockItemInputOf } from './StockItemFormValues.js';
+import {
+  EMPTY_STOCK_ITEM_FORM,
+  NAME_MAX_LENGTH,
+  registerStockItemInputOf,
+} from './StockItemFormValues.js';
 import type { RegisterStockItem } from '../../server/StockItemRequests.js';
 import { Icon } from '../../icons/Icon.js';
 import { AmountField } from './AmountField.js';
@@ -109,6 +113,8 @@ const SENDING_LABEL = '保存しています…';
  */
 const NOTICES: Record<RegisterFailureNotice, string> = {
   nameEmpty: '食材名を入れてください',
+  nameInvalid: '食材名は30字以内で、改行やタブを含めずに入れてください',
+  amountInvalid: '分量は15字以内で、改行やタブを含めずに入れてください。',
   expiryDateInvalid: '期限を確かめてください。',
   unavailable: '保存できませんでした。入力はそのままです。もう一度お試しください。',
 };
@@ -177,10 +183,11 @@ export function StockItemForm({
     };
   }
 
-  // 名前が空の断りだけは食材名の欄の直下に出し、ほかの断りは欄群の後に出す（B-65 規則10）。
-  // **出す段落は常に1つまで**であることは変えない — 置き場が2つに分かれても、出るのは片方だけ。
-  const nameNotice = notice === 'nameEmpty' ? notice : null;
-  const otherNotice = notice !== null && notice !== 'nameEmpty' ? notice : null;
+  // 食材名の断り（空・字数と制御文字）だけは食材名の欄の直下に出し、ほかの断りは欄群の後に出す
+  // （B-65 規則10 / B-79 規則12）。**出す段落は常に1つまで**であることは変えない — 置き場が
+  // 2つに分かれても、出るのは片方だけ。
+  const nameNotice = notice === 'nameEmpty' || notice === 'nameInvalid' ? notice : null;
+  const otherNotice = notice !== null && nameNotice === null ? notice : null;
 
   /**
    * 保存の本体。**2つの操作が共有する**（規則9）— 送る中身も、通ったかどうかの読みも1か所に
@@ -276,9 +283,10 @@ export function StockItemForm({
             onChange={(name) => setValues((previous) => ({ ...previous, name }))}
             ingredientNames={ingredientNameOptions}
             invalid={nameNotice !== null}
+            maxLength={NAME_MAX_LENGTH}
           />
 
-          {/* 名前が空の断りは**欄の直下**に出す（B-65 規則10）— どこを直すかが位置で読める。
+          {/* 食材名の断り（空・字数と制御文字）は**欄の直下**に出す（B-65 規則10）— どこを直すかが位置で読める。
               `!` は飾りなので読み上げから外す。 */}
           {nameNotice !== null && (
             <p className={styles.notice}>

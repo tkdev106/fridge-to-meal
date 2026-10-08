@@ -4,12 +4,17 @@ import type { Amount } from '../value/Amount.js';
 import type { ExpiryDate } from '../value/ExpiryDate.js';
 import type { IngredientId } from '../value/IngredientId.js';
 import type { StockItemId } from '../value/StockItemId.js';
+import { containsControlCharacter, lengthOf } from '../value/TextRules.js';
+
+/** 名称の上限（NFR-19）。 */
+const NAME_MAX_LENGTH = 30;
 
 /**
  * 在庫品。冷蔵庫にある1件の食材。**集約ルート**（ADR-007）。
  *
  * 不変条件（ドメインモデル 4章）:
  * - `name` は空文字を許さない
+ * - `name` は30字以内で、制御文字を含まない（NFR-19）
  * - 同じ食材でも統合しない。買った日が違えば別の在庫品
  * - `expiryDate` が未設定の在庫品は、期限による警告・優先の対象外
  * - 削除は物理削除でよい。献立は材料を複製済みで参照を持たない（C-5）
@@ -43,7 +48,9 @@ export type StockItem = {
  * 作り直しの入口は `withEditedValues` の1つだけで、そこを通ると不変条件を
  * 通り直す（B-06 規則2）。
  *
- * @throws {PantryRuleViolation} 名称が空のとき
+ * 名称は前後の空白を落とした値で 空 → 制御文字 → 字数 の順に判定し、先に当たった規則だけを投げる。
+ *
+ * @throws {PantryRuleViolation} 名称が空のとき・制御文字を含むとき・30字を超えるとき
  */
 export function createStockItem(props: {
   id: StockItemId;
@@ -60,6 +67,15 @@ export function createStockItem(props: {
     // 行うため（C-6）、空の名前を通すと、その在庫品は献立に対して存在しないのと
     // 同じになる。
     throw new PantryRuleViolation('name.empty', '在庫品の名称が空です');
+  }
+  if (containsControlCharacter(name)) {
+    throw new PantryRuleViolation(
+      'name.controlCharacter',
+      '在庫品の名称に制御文字が含まれています',
+    );
+  }
+  if (lengthOf(name) > NAME_MAX_LENGTH) {
+    throw new PantryRuleViolation('name.tooLong', '在庫品の名称が長すぎます');
   }
 
   return Object.freeze({

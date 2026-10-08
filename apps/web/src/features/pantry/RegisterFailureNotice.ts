@@ -14,10 +14,11 @@ import type { RegisterStockItemOutcome } from '../../server/StockItemRequests.js
 /**
  * 出す案内の種類。
  *
- * **`nameEmpty` と `expiryDateInvalid` は「利用者が直せる」側である** — どの欄を直せばよいかを
- * 伝えられる。それ以外はすべて `unavailable` に倒す（下の既定）。
+ * **`nameEmpty` / `nameInvalid` / `amountInvalid` / `expiryDateInvalid` は「利用者が直せる」側
+ * である** — どの欄を直せばよいかを伝えられる。それ以外はすべて `unavailable` に倒す（下の既定）。
  */
-export type RegisterFailureNotice = 'nameEmpty' | 'expiryDateInvalid' | 'unavailable';
+export type RegisterFailureNotice =
+  'nameEmpty' | 'nameInvalid' | 'amountInvalid' | 'expiryDateInvalid' | 'unavailable';
 
 /**
  * 入力を直せば通る `rule` と、その案内（api 層の写像の表 `RuleViolationStatus.ts` が正）。
@@ -25,9 +26,14 @@ export type RegisterFailureNotice = 'nameEmpty' | 'expiryDateInvalid' | 'unavail
  * **期限の2つを1つの案内に畳む。** `expiryDate.format`（書式が `YYYY-MM-DD` でない）と
  * `expiryDate.notACalendarDate`（暦に存在しない日付）は、利用者から見ればどちらも
  * 「期限を直す」ことで通る。区別は開発者向けである（`ExpiryDate.ts`）。
+ * 名称と分量の字数・制御文字も同じ理由で欄ごとに1つへ畳む（NFR-19）。
  */
 const NOTICES_BY_RULE: Readonly<Record<string, RegisterFailureNotice>> = {
   'name.empty': 'nameEmpty',
+  'name.tooLong': 'nameInvalid',
+  'name.controlCharacter': 'nameInvalid',
+  'amount.tooLong': 'amountInvalid',
+  'amount.controlCharacter': 'amountInvalid',
   'expiryDate.format': 'expiryDateInvalid',
   'expiryDate.notACalendarDate': 'expiryDateInvalid',
 };

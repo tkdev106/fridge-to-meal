@@ -9,6 +9,7 @@
 import { useId } from 'react';
 import type { AmountFieldValues, AmountUnit } from './AmountFieldValues.js';
 import { AMOUNT_UNITS, OTHER_UNIT, numberTextOf, withUnit } from './AmountFieldValues.js';
+import { AMOUNT_MAX_LENGTH } from './StockItemFormValues.js';
 import styles from './StockItemForm.module.css';
 
 const LABEL = '分量';
@@ -44,6 +45,7 @@ export function AmountField({ values, onChange, autoFocus = false }: AmountField
           autoFocus={autoFocus}
           className={styles.input}
           inputMode={other ? 'text' : 'decimal'}
+          maxLength={AMOUNT_MAX_LENGTH}
           placeholder={other ? OTHER_PLACEHOLDER : NUMBER_PLACEHOLDER}
           value={values.number}
           onChange={(event) => {

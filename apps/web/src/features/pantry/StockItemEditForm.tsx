@@ -106,6 +106,7 @@ const SENDING_LABEL = '保存しています…';
  */
 const NOTICES: Record<UpdateFailureNotice, string> = {
   gone: 'この在庫はもう見つかりませんでした。',
+  amountInvalid: '分量は15字以内で、改行やタブを含めずに入れてください。',
   expiryDateInvalid: '期限を確かめてください。',
   unavailable: '保存できませんでした。入力はそのままです。もう一度お試しください。',
 };

@@ -979,6 +979,93 @@ describe('登録の画面 StockItemForm の見た目と文言', () => {
 });
 
 /**
+ * 名称と分量の字数・制御文字（B-79 設計 6章 規則11・12・14 / NFR-19 / ADR-074）。
+ *
+ * 欄の上限は `maxlength` 属性で観る — 打てる字数の上限は、利用者が欄で受ける振る舞いそのもの
+ * である。断りの文言は `docs/design/README.md` の表が正。
+ */
+describe('登録の画面 StockItemForm の字数と制御文字', () => {
+  it('食材名の欄は30字までしか打てない', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    // NFR-19 / B-79 規則14: 食材名は30字以内。
+    expect(namedIngredientNameField().getAttribute('maxlength')).toBe('30');
+  });
+
+  it('分量の欄は15字までしか打てない', () => {
+    renderForm(recordingRegister([], { outcome: 'registered' }));
+
+    // NFR-19 / B-79 規則14: 分量は15字以内。
+    expect(namedAmountField().getAttribute('maxlength')).toBe('15');
+  });
+
+  it('食材名の誤りの断りは「! 食材名は30字以内で、改行やタブを含めずに入れてください」の段落1つで出る', async () => {
+    renderFormWith({ register: [{ outcome: 'rejected', rule: 'name.tooLong' }] });
+
+    fireEvent.change(namedIngredientNameField(), { target: { value: 'にんじん' } });
+    fireEvent.click(saveAndStay());
+
+    // B-79 規則11 / ADR-074: `nameEmpty` と同じく頭に `!` を付け、文末の句点は付けない。
+    expect(await waitForSoleNotice()).toMatch(
+      /^!\s*食材名は30字以内で、改行やタブを含めずに入れてください$/,
+    );
+  });
+
+  it('食材名の誤りの断りは、食材名の欄と分量の欄の間に出る', async () => {
+    renderFormWith({ register: [{ outcome: 'rejected', rule: 'name.tooLong' }] });
+
+    fireEvent.change(namedIngredientNameField(), { target: { value: 'にんじん' } });
+    fireEvent.click(saveAndStay());
+    await waitForSoleNotice();
+    const [notice] = notices();
+
+    // B-79 規則11・12: `nameEmpty` と同じく食材名の欄の直下に出す。
+    expect([
+      precedes(namedIngredientNameField(), notice as HTMLElement),
+      precedes(notice as HTMLElement, namedAmountField()),
+    ]).toEqual([true, true]);
+  });
+
+  it('食材名の誤りの断りでは、食材名の欄が誤りとして読まれる', async () => {
+    renderFormWith({ register: [{ outcome: 'rejected', rule: 'name.tooLong' }] });
+
+    fireEvent.change(namedIngredientNameField(), { target: { value: 'にんじん' } });
+    fireEvent.click(saveAndStay());
+    await waitForSoleNotice();
+
+    // B-79 規則12: `nameEmpty` と同じく欄を `invalid` にする側である。
+    expect(namedIngredientNameField().getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('分量の誤りの断りは「分量は15字以内で、改行やタブを含めずに入れてください。」の段落1つで出る', async () => {
+    renderFormWith({ register: [{ outcome: 'rejected', rule: 'amount.tooLong' }] });
+
+    fireEvent.change(namedIngredientNameField(), { target: { value: 'にんじん' } });
+    fireEvent.click(saveAndStay());
+
+    // B-79 規則11 / ADR-074: 操作の上の案内は句点で終える（`expiryDateInvalid` と同じ）。
+    expect(await waitForSoleNotice()).toBe(
+      '分量は15字以内で、改行やタブを含めずに入れてください。',
+    );
+  });
+
+  it('分量の誤りの断りは、期限の欄と「保存してもう1件」の間に出る', async () => {
+    renderFormWith({ register: [{ outcome: 'rejected', rule: 'amount.tooLong' }] });
+
+    fireEvent.change(namedIngredientNameField(), { target: { value: 'にんじん' } });
+    fireEvent.click(saveAndStay());
+    await waitForSoleNotice();
+    const [notice] = notices();
+
+    // B-79 規則11: `expiryDateInvalid` と同じく欄群の後、保存の操作の前に出す。
+    expect([
+      precedes(namedExpiryDateField(), notice as HTMLElement),
+      precedes(notice as HTMLElement, screen.getByRole('button', { name: '保存してもう1件' })),
+    ]).toEqual([true, true]);
+  });
+});
+
+/**
  * 見出しの行の `閉じる`（B-65b 設計 6章 規則9 / ADR-074 / ADR-076 決定2）。
  *
  * SP は `戻る`（アイコン）、PC は `閉じる`（見える文字）を CSS で出し分けるが、**木には2つとも

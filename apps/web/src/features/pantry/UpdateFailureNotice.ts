@@ -12,10 +12,10 @@ import type { UpdateStockItemOutcome } from '../../server/StockItemRequests.js';
  * 書いた内容を持っており、消えた相手に書き戻せない以上、伝えるべきことがある
  * （**ADR-050 結果5** が後続へ送った読み分けをここで引き取る）。
  *
- * **`expiryDateInvalid` だけが「利用者が直せる」側である** — 直す欄を伝えられる。
- * `nameEmpty` に当たるものは無い（名称を送らないため。規則1・11）。
+ * **`amountInvalid` と `expiryDateInvalid` だけが「利用者が直せる」側である** — 直す欄を伝えられる。
+ * 名称の断りに当たるものは無い（名称を送らないため。規則1・11）。
  */
-export type UpdateFailureNotice = 'gone' | 'expiryDateInvalid' | 'unavailable';
+export type UpdateFailureNotice = 'gone' | 'amountInvalid' | 'expiryDateInvalid' | 'unavailable';
 
 /**
  * 案内を選び分ける `rule`（api 層の写像の表 `RuleViolationStatus.ts` が正）。
@@ -24,11 +24,13 @@ export type UpdateFailureNotice = 'gone' | 'expiryDateInvalid' | 'unavailable';
  * `expiryDate.notACalendarDate`（暦に存在しない日付）は、利用者から見ればどちらも
  * 「期限を直す」ことで通る。区別は開発者向けである（先行 `RegisterFailureNotice.ts`）。
  *
- * **`name.empty` は載せない**（規則11）— 名称は送らないので、この断りが来たとしても
+ * **`name.*` は載せない**（規則11 / NFR-19）— 名称は送らないので、この断りが来たとしても
  * 利用者に直せる欄が無い。載せると、直せない欄を直させる案内になる。
  */
 const NOTICES_BY_RULE: Readonly<Record<string, UpdateFailureNotice>> = {
   'update.notFound': 'gone',
+  'amount.tooLong': 'amountInvalid',
+  'amount.controlCharacter': 'amountInvalid',
   'expiryDate.format': 'expiryDateInvalid',
   'expiryDate.notACalendarDate': 'expiryDateInvalid',
 };

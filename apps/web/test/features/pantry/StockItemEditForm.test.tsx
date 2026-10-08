@@ -613,6 +613,34 @@ describe('編集の画面 StockItemEditForm の見た目と文言', () => {
 });
 
 /**
+ * 分量の字数・制御文字（B-79 設計 6章 規則11・13・14 / NFR-19 / ADR-074）。
+ * 文言は `docs/design/README.md` の表が正で、登録と同じ文である。
+ */
+describe('編集の画面 StockItemEditForm の字数と制御文字', () => {
+  it('分量の欄は15字までしか打てない', () => {
+    renderEditForm();
+
+    // NFR-19 / B-79 規則14: 分量は15字以内（登録と同じ上限）。
+    expect(namedAmountField().getAttribute('maxlength')).toBe('15');
+  });
+
+  it('分量の誤りの断りは「分量は15字以内で、改行やタブを含めずに入れてください。」の段落1つで出る', async () => {
+    renderEditForm(stockItemOf(), {
+      update: [{ outcome: 'rejected', rule: 'amount.controlCharacter' }],
+    });
+
+    fireEvent.click(saveOperation());
+
+    // B-79 規則11・13 / ADR-074: 登録と同じ文で、操作の上の案内1つで伝える。
+    await waitFor(() => {
+      expect(notices().map((notice) => notice.textContent)).toEqual([
+        '分量は15字以内で、改行やタブを含めずに入れてください。',
+      ]);
+    });
+  });
+});
+
+/**
  * 見出しの行の `閉じる`（B-65b 設計 6章 規則9 / ADR-074 / ADR-076 決定2）。
  *
  * **木には `戻る` と `閉じる` の2つとも置く**（10章 前提3）。jsdom ではどちらも見えるので、名前で
