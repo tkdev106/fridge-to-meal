@@ -33,6 +33,26 @@ describe('登録の断りから選ぶ案内 registerFailureNoticeOf', () => {
     );
   });
 
+  it('名称が長すぎる断りは名称の誤りの案内を選ぶ', () => {
+    // NFR-19 / B-79 規則12: 名称の字数は利用者が食材名の欄を直せば通る。
+    expect(registerFailureNoticeOf(rejected('name.tooLong'))).toBe('nameInvalid');
+  });
+
+  it('名称に制御文字がある断りも名称の誤りの案内を選ぶ', () => {
+    // NFR-19 / B-79 規則12: 字数と制御文字は、直す欄が同じなので1つの案内に畳む。
+    expect(registerFailureNoticeOf(rejected('name.controlCharacter'))).toBe('nameInvalid');
+  });
+
+  it('分量が長すぎる断りは分量の誤りの案内を選ぶ', () => {
+    // NFR-19 / B-79 規則12: 分量の字数は利用者が分量の欄を直せば通る。
+    expect(registerFailureNoticeOf(rejected('amount.tooLong'))).toBe('amountInvalid');
+  });
+
+  it('分量に制御文字がある断りも分量の誤りの案内を選ぶ', () => {
+    // NFR-19 / B-79 規則12: 字数と制御文字は、直す欄が同じなので1つの案内に畳む。
+    expect(registerFailureNoticeOf(rejected('amount.controlCharacter'))).toBe('amountInvalid');
+  });
+
   it('表に無い rule は入力の誤りに倒さず使えない旨の案内を選ぶ', () => {
     // ADR-045 結果5 / `RuleViolationStatus.ts`: `unexpected` はサーバ側の不備であり、
     // 入力を直しても通らない。**表に無い rule を入力の誤りに倒さない** — 倒すと、

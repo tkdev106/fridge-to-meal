@@ -29,7 +29,11 @@ import type { ChangeEvent, FormEvent, JSX, MouseEvent } from 'react';
 import { useState } from 'react';
 import type { StockItemDto } from '@fridge-to-meal/contract';
 import type { StockItemEditValues } from './StockItemFormValues.js';
-import { stockItemEditValuesOf, updateStockItemInputOf } from './StockItemFormValues.js';
+import {
+  AMOUNT_MAX_LENGTH,
+  stockItemEditValuesOf,
+  updateStockItemInputOf,
+} from './StockItemFormValues.js';
 import type { UpdateFailureNotice } from './UpdateFailureNotice.js';
 import { updateFailureNoticeOf } from './UpdateFailureNotice.js';
 import type { UpdateStockItem } from '../../server/StockItemRequests.js';
@@ -109,6 +113,7 @@ const SENDING_LABEL = '保存しています…';
  */
 const NOTICES: Record<UpdateFailureNotice, string> = {
   gone: 'この在庫はもう見つかりませんでした。',
+  amountInvalid: '分量は15字以内で、改行やタブを含めずに入れてください。',
   expiryDateInvalid: '期限を確かめてください。',
   unavailable: '保存できませんでした。入力はそのままです。もう一度お試しください。',
 };
@@ -237,6 +242,7 @@ export function StockItemEditForm({
             autoFocus
             className={styles.input}
             placeholder={AMOUNT_PLACEHOLDER}
+            maxLength={AMOUNT_MAX_LENGTH}
             value={values.amount}
             onChange={changeField('amount')}
           />
