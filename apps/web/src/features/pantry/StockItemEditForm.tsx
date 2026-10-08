@@ -53,8 +53,7 @@ const NAME_LABEL = '食材名';
  * 「消す」を表す。任意であることは札 `任意`（`OPTIONAL_LABEL`）の文字で伝える（B-65 規則3）。
  * 献立に使うには札を付けない（B-76 規則16）。
  */
-const FIELD_LABELS: Record<keyof StockItemEditValues, string> = {
-  amount: '分量',
+const FIELD_LABELS: Record<Exclude<keyof StockItemEditValues, 'amount'>, string> = {
   expiryDate: '期限',
   useForMeals: '献立に使う',
 };

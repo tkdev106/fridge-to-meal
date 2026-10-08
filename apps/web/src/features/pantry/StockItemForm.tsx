@@ -47,9 +47,8 @@ const HEADING = '食材を登録';
  * 保存できる。任意であることは名前の横の札 `任意`（`OPTIONAL_LABEL`）の文字で伝える
  * （B-65 規則3）。食材名と献立に使う（B-76 規則16）には札を付けない。
  */
-const FIELD_LABELS: Record<keyof StockItemFormValues, string> = {
+const FIELD_LABELS: Record<Exclude<keyof StockItemFormValues, 'amount'>, string> = {
   name: '食材名',
-  amount: '分量',
   expiryDate: '期限',
   useForMeals: '献立に使う',
 };

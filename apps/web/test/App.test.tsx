@@ -414,7 +414,7 @@ function saveAndCloseOperation(): HTMLElement {
  * B-66 設計 規則13）— 補完が0件の回も欄はこの役割のままである。
  */
 function ingredientNameField(): HTMLElement {
-  return screen.getByRole('combobox');
+  return screen.getByRole('combobox', { name: '食材名' });
 }
 
 /** 一覧の1行。**削除はスワイプで届く**（FR-06 / B-23）ので、行そのものを引く。 */

@@ -22,7 +22,15 @@
 
 import { describe, expect, it } from 'vitest';
 import type { RegisterStockItemInput } from '@fridge-to-meal/contract';
-import { act, fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '../../support/dom/renderComponent.js';
+import { amountNumberField, amountUnitField, typeAmount } from '../../support/dom/typeAmount.js';
 import { FixedBackNavigation } from '../../support/backNavigation/FixedBackNavigation.js';
 import { FixedStockItemRequests } from '../../support/server/FixedStockItemRequests.js';
 import type { FixedStockItemRequestsOptions } from '../../support/server/FixedStockItemRequests.js';
@@ -100,31 +108,11 @@ function renderForm(
 }
 
 /**
- * 欄を役割と文書順で引く。3欄のうち `textbox` になるのは分量だけである — 食材名は補完の
- * 欄として `role="combobox"` を明示しているため役割が `combobox` になり（B-50c / B-66 設計
- * 規則13）、期限は `type="date"` なのでどちらの役割にも入らない。
- *
- * **`instanceof HTMLInputElement` で絞らない** — 役割で引いている以上、入力の欄であることは
- * 問い合わせの側が保証している。**DOM の形を辿らない**（ADR-052 結果3。先行
- * `PantryTab.test.tsx` の `ingredientNameField` と同じ理由）。
- */
-function textboxAt(index: number): HTMLElement {
-  const found = screen.getAllByRole('textbox').at(index);
-  if (found === undefined) throw new Error(`${index} 番目の入力の欄が無い`);
-
-  return found;
-}
-
-/**
  * 食材名の欄。**補完が付いた欄は `combobox` である**（B-50c）— `role="combobox"` を明示して
  * いるため（B-66 設計 規則13）、**補完が0件の回も欄はこの役割のままである**（B-66 設計 10章）。
  */
 function ingredientNameField(): HTMLElement {
-  return screen.getByRole('combobox');
-}
-
-function amountField(): HTMLElement {
-  return textboxAt(0);
+  return screen.getByRole('combobox', { name: '食材名' });
 }
 
 /**
@@ -141,7 +129,7 @@ function expiryDateField(): HTMLElement {
 /** 3欄を打つ。期限は最後に引く（`expiryDateField` の前提）。 */
 function fillThreeFields(): void {
   fireEvent.change(ingredientNameField(), { target: { value: typedValues.name } });
-  fireEvent.change(amountField(), { target: { value: typedValues.amount } });
+  typeAmount(typedValues.amount);
   fireEvent.change(expiryDateField(), { target: { value: typedValues.expiryDate } });
 }
 
@@ -251,7 +239,8 @@ describe('登録の画面 StockItemForm の2つの保存', () => {
 
     // 規則9 / FR-08 / B-12 設計 規則12: 続けてもう1件入れられる状態に戻す。
     expect(screen.queryByDisplayValue('にんじん')).toBeNull();
-    expect(screen.queryByDisplayValue('2本')).toBeNull();
+    expect(amountNumberField().value).toBe('');
+    expect(amountUnitField().value).toBe('g');
     expect(screen.queryByDisplayValue('2026-09-25')).toBeNull();
   });
 
@@ -530,7 +519,9 @@ describe('登録の画面 StockItemForm の3欄と案内', () => {
  * 一覧が出ないことは `completionListbox()` が `null` であることで見る。
  */
 function completionOptions(): readonly string[] {
-  return screen.getAllByRole('option').map((option) => option.textContent ?? '');
+  return within(screen.getByRole('listbox'))
+    .getAllByRole('option')
+    .map((option) => option.textContent ?? '');
 }
 
 /** 一覧が木に無いこと。**隠しているだけでも見つける**ために `hidden: true` で引く。 */
@@ -810,7 +801,7 @@ function withThrowingShowPicker(run: () => void): void {
 /** 3欄を名前で引いて打ち、期限の欄は押してから選ぶ（規則6。押すと日付の選択が開く）。 */
 function fillThreeNamedFieldsByPicking(): void {
   fireEvent.change(namedIngredientNameField(), { target: { value: typedValues.name } });
-  fireEvent.change(namedAmountField(), { target: { value: typedValues.amount } });
+  typeAmount(typedValues.amount);
   fireEvent.click(namedExpiryDateField());
   fireEvent.change(namedExpiryDateField(), { target: { value: typedValues.expiryDate } });
 }
@@ -876,11 +867,10 @@ describe('登録の画面 StockItemForm の見た目と文言', () => {
     expect(namedExpiryDateField().type).toBe('date');
   });
 
-  it('置き文字「例: 300g」は分量の欄に出る', () => {
+  it('置き文字「例: 300」は分量の欄に出る', () => {
     renderForm(recordingRegister([], { outcome: 'registered' }));
 
-    // B-65 規則5 / ADR-010: 置き文字は分量の欄の `placeholder` である。
-    expect(screen.getByPlaceholderText('例: 300g')).toBe(namedAmountField());
+    expect(screen.getByPlaceholderText('例: 300')).toBe(namedAmountField());
   });
 
   it('開いた直後は期限の箱に「日付を選ぶ」が出る', () => {

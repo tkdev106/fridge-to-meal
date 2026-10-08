@@ -72,11 +72,13 @@ export function amountFieldValuesOf(amount: string | null): AmountFieldValues {
 }
 
 /**
- * 単位を選び直した値。`その他` から単位へ戻すときは、自由入力の文字から数字だけを残す。
+ * 単位を選び直した値。`その他` から単位へ戻すとき、自由入力の文字が数値でなければ空にする
+ * — 「1/4個」から数字だけを拾って「14」にすると、打っていない分量が黙って入る。
  */
 export function withUnit(values: AmountFieldValues, unit: AmountUnit): AmountFieldValues {
   if (values.unit === OTHER_UNIT && unit !== OTHER_UNIT) {
-    return { number: numberTextOf(values.number), unit };
+    const number = numberTextOf(values.number);
+    return { number: number === values.number ? number : '', unit };
   }
   return { number: values.number, unit };
 }

@@ -39,6 +39,7 @@ import {
   waitFor,
   within,
 } from '../../support/dom/renderComponent.js';
+import { amountNumberField, amountUnitField, typeAmount } from '../../support/dom/typeAmount.js';
 import { installPointerCapture } from '../../support/dom/pointerCapture.js';
 import { FixedStockItemRequests } from '../../support/server/FixedStockItemRequests.js';
 import type { FixedStockItemRequestsOptions } from '../../support/server/FixedStockItemRequests.js';
@@ -190,12 +191,12 @@ function closeButton(): HTMLElement {
  * 問い合わせの側が保証している。**DOM の形を辿らない**（ADR-052 結果3）。
  */
 function ingredientNameField(): HTMLInputElement {
-  return screen.getByRole('combobox') as HTMLInputElement;
+  return screen.getByRole('combobox', { name: '食材名' }) as HTMLInputElement;
 }
 
 /** 登録のパネルが出ているかの手がかり。**一覧の側は `combobox` を描かない。** */
 function comboboxes(): HTMLElement[] {
-  return screen.queryAllByRole('combobox');
+  return screen.queryAllByRole('combobox', { name: '食材名' });
 }
 
 /** 行をすべて。**`inert` の中にあっても引く**（`hidden: true`）。 */
@@ -556,17 +557,6 @@ describe('在庫タブの中身と下タブの器', () => {
  */
 
 /**
- * 分量の欄。**`textbox` はこれ1つだけである** — 食材名は `role="combobox"` を明示しているため `combobox`（B-50c / B-66）、期限は
- * `type="date"` なので、どちらもこの役割に入らない。一覧の側は `textbox` を描かない。
- */
-function amountField(): HTMLInputElement {
-  const field = screen.getAllByRole('textbox')[0];
-  if (field === undefined) throw new Error('分量の欄が無い');
-
-  return field as HTMLInputElement;
-}
-
-/**
  * 期限の欄。**この観点で唯一もろい引き方である。**
  *
  * `input[type="date"]` は ARIA の役割に写らないため `textbox` で引けない。この観点はラベルの
@@ -580,7 +570,7 @@ function expiryDateField(): HTMLElement {
 /** 登録の3欄を打つ。期限は最後に引く（`expiryDateField` の前提）。 */
 function fillRegisterFields(): void {
   fireEvent.change(ingredientNameField(), { target: { value: 'にんじん' } });
-  fireEvent.change(amountField(), { target: { value: '2本' } });
+  typeAmount('2本');
   fireEvent.change(expiryDateField(), { target: { value: '2026-09-25' } });
 }
 
@@ -707,7 +697,7 @@ describe('在庫タブの中身と2つの保存', () => {
 
     openRegister();
     // 分量だけを埋める。食材名が空のままでは登録の入力が作れない（B-12 設計 規則2）。
-    fireEvent.change(amountField(), { target: { value: '2本' } });
+    typeAmount('2本');
     fireEvent.click(saveAndClose());
 
     // 規則11: 効かない操作で画面が移らない。送っていないので待つものも無い。
@@ -808,7 +798,7 @@ function tapRowAt(index: number, expectedRows: number): void {
  * **`instanceof HTMLInputElement` で絞らない**（ADR-052 結果3。先行 `ingredientNameField`）。
  */
 function editAmountField(): HTMLInputElement {
-  return screen.getByRole('textbox') as HTMLInputElement;
+  return amountNumberField();
 }
 
 /** 編集のパネルが出ているかの手がかり。**一覧の側は `textbox` を描かない。** */
@@ -888,7 +878,7 @@ describe('在庫タブの中身と編集', () => {
     const { requests } = renderWithUpdate({});
 
     tapRowAt(0, 1);
-    fireEvent.change(editAmountField(), { target: { value: '300g' } });
+    typeAmount('300g');
     fireEvent.click(backButton());
 
     // 規則7: 閉じるのは捨てることである。**送った中身を配列で見る**（`vi.fn()` を使わない）。
@@ -899,7 +889,7 @@ describe('在庫タブの中身と編集', () => {
     renderWithUpdate({ update: [{ outcome: 'updated' }] });
 
     tapRowAt(0, 1);
-    fireEvent.change(editAmountField(), { target: { value: '300g' } });
+    typeAmount('300g');
     fireEvent.click(saveEditOperation());
 
     // 規則8: **通った回だけ閉じる。** 待つ手がかりはパネルの欄が消えることである。
@@ -914,7 +904,7 @@ describe('在庫タブの中身と編集', () => {
     });
 
     tapRowAt(0, 1);
-    fireEvent.change(editAmountField(), { target: { value: '300g' } });
+    typeAmount('300g');
     fireEvent.click(saveEditOperation());
 
     await waitFor(() => {
@@ -931,7 +921,7 @@ describe('在庫タブの中身と編集', () => {
     });
 
     tapRowAt(0, 1);
-    fireEvent.change(editAmountField(), { target: { value: '300g' } });
+    typeAmount('300g');
     fireEvent.click(saveEditOperation());
 
     await waitFor(() => {
@@ -947,7 +937,7 @@ describe('在庫タブの中身と編集', () => {
     const { requests } = renderWithUpdate({ update: [{ outcome: 'failed' }] });
 
     tapRowAt(0, 1);
-    fireEvent.change(editAmountField(), { target: { value: '300g' } });
+    typeAmount('300g');
     fireEvent.click(saveEditOperation());
 
     await waitFor(() => {
@@ -964,7 +954,7 @@ describe('在庫タブの中身と編集', () => {
     });
 
     tapRowAt(0, 1);
-    fireEvent.change(editAmountField(), { target: { value: '300g' } });
+    typeAmount('300g');
     fireEvent.click(saveEditOperation());
 
     // 送っている間に閉じようとする。`onClose` は onClick で**同期に**呼ばれるので、効いて
@@ -997,14 +987,15 @@ describe('在庫タブの中身と編集', () => {
     const { requests, rendered } = renderWithUpdate({}, { stockItems: loaded(porkWithAmount) });
 
     tapRowAt(0, 1);
-    fireEvent.change(editAmountField(), { target: { value: '300g' } });
+    typeAmount('300g');
     rendered.rerender(
       pantryTab({ onUpdate: requests.updateStockItem, stockItems: loaded(cabbageWithAmount) }),
     );
 
     // 規則17 / NFR-15: 編集の対象は**行から受け取った1件**である。取り直した一覧で欄が
     // 書き換わると、打ちかけの値が黙って消える。
-    expect(editAmountField().value).toBe('300g');
+    expect(editAmountField().value).toBe('300');
+    expect(amountUnitField().value).toBe('g');
   });
 
   it('一覧へ戻って別の行をタップすると、その行の分量が欄に出る', () => {
@@ -1018,7 +1009,8 @@ describe('在庫タブの中身と編集', () => {
     tapRowAt(1, 2);
 
     // 規則2・17: 開くたびに**その行の値**が出る（前に開いた行の値を持ち回さない）。
-    expect(editAmountField().value).toBe('1玉');
+    expect(editAmountField().value).toBe('1');
+    expect(amountUnitField().value).toBe('玉');
     expect(requests.receivedUpdates).toEqual([]);
   });
 });
