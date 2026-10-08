@@ -460,7 +460,7 @@ describe('応答の検証 parseMealResponse', () => {
       expect(kindOf(parse(text), '豚こま肉')).toBe('main');
     });
 
-    // D-1 の18語。定数を import せず literal で置く（期待値は実装と独立に書く。`docs/testing.md` 6章）
+    // D-1 の19語。定数を import せず literal で置く（期待値は実装と独立に書く。`docs/testing.md` 6章）
     it.each([
       '塩',
       'こしょう',
@@ -472,6 +472,7 @@ describe('応答の検証 parseMealResponse', () => {
       '酒',
       'サラダ油',
       'ごま油',
+      'オリーブオイル',
       '片栗粉',
       '小麦粉',
       'だしの素',
