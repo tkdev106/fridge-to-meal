@@ -2,10 +2,11 @@
  * 端末の「戻る」の継ぎ目の実装（B-75 設計 5章 / 6章 規則4・8・9 / ADR-084）。
  *
  * 窓は構造型 `BackNavigationSource` で受ける（先行 `connectivity/ConnectivityImpl.ts`）。
- * **画面の状態を URL に書かない** — `pushState` の第3引数を渡さず、項目の state に深さの印
+ * **URL を書かない** — `pushState` の第3引数を渡さず、項目の state に深さの印
  * `{ fridgeToMealBack: 深さ }` だけを持たせる。読み込み時の URL にクエリ（招待リンクの `?invite=`）が
  * あれば、構築時に `replaceState` で外す（state とハッシュは保ち、項目は増やさない。ADR-088）。読むのは
- * `main.tsx` で、この継ぎ目を作る前に読む。
+ * `main.tsx` で、この継ぎ目を作る前に読む。画面の行き先をハッシュに書くのは `navigation/ScreenLocationImpl.ts`
+ * である（ADR-092）。
  *
  * 持つのは「積んだ項目の数 A」と「登録されている口の列（数 D）」である。
  *
@@ -74,7 +75,7 @@ export class BackNavigationImpl implements BackNavigation {
       this.#source.history.replaceState(this.#source.history.state, '', `${pathname}${hash}`);
     }
 
-    // 再読み込みは既定の画面から始まる。印つきの項目に居残ると、戻るが空振りする（規則9）。
+    // 読み込み時は印の無い項目まで戻る。印つきの項目に居残ると、戻るが空振りする（規則9）。
     const depth = depthOf(this.#source.history.state);
     if (depth > 0) {
       this.#pendingPops += 1;

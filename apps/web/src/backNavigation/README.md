@@ -14,11 +14,12 @@
 - **`new BackNavigationImpl(window)` を書くのは `main.tsx` だけ。** `main.tsx` が provider で `App` を
   包む。`BackNavigation.ts` と `BackNavigationImpl.ts` を import するのは `main.tsx` と
   `BackHandler.tsx` だけで、**`features/` と `App.tsx` は hook だけを引く**
-- **`window.history` に触るのはここだけである。** 画面は履歴を直接操作しない
-- **URL を渡さない。** `pushState` の第3引数を渡さず、画面の状態を URL にもハッシュにも `localStorage` にも
-  書かない（ADR-066 結果1 / ADR-084）。例外は構築時の1回だけで、読み込み時の URL にクエリ（招待リンクの
-  `?invite=`）があれば `replaceState` で外す（state とハッシュは保ち、項目は増やさない。ADR-088）。項目の state に深さの印 `{ fridgeToMealBack: 深さ }` を持たせるだけで、
-  再読み込みは既定の画面から始まる（読み込み時に印つきの項目に居れば、印の無い項目まで戻る）
+- **`window.history` に触るのはここと `navigation/ScreenLocationImpl.ts` だけである**（ADR-092 結果4）。
+  画面は履歴を直接操作しない。選んでいるタブと設定の開閉をハッシュに書くのはあちらの継ぎ目である
+- **URL を渡さない。** `pushState` の第3引数を渡さない（ADR-084）。例外は構築時の1回だけで、読み込み時の
+  URL にクエリ（招待リンクの `?invite=`）があれば `replaceState` で外す（state とハッシュは保ち、項目は
+  増やさない。ADR-088）。項目の state に深さの印 `{ fridgeToMealBack: 深さ }` を持たせるだけで、
+  読み込み時に印つきの項目に居れば、印の無い項目まで戻る。どの画面から始まるかはハッシュが決める（ADR-092）
 - **開いているものの数だけ項目を積み、戻る1回で最後に開いたもの1つを閉じる。** `'tab'` の口は
   `'screen'` の口がすべて無いときにだけ呼ぶ。何も開いていない献立タブ・ログインの画面・
   冷蔵庫の共有に参加の確認では何も積まず、戻るはアプリを離れる（ADR-088）

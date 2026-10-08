@@ -6,6 +6,7 @@ import { sessionConfigOf } from './session/SessionConfig.js';
 import { SessionImpl } from './session/SessionImpl.js';
 import { ConnectivityImpl } from './connectivity/ConnectivityImpl.js';
 import { BackNavigationImpl } from './backNavigation/BackNavigationImpl.js';
+import { ScreenLocationImpl } from './navigation/ScreenLocationImpl.js';
 import { BackNavigationProvider } from './backNavigation/BackHandler.js';
 import { apiBaseUrlOf } from './server/ApiBaseUrl.js';
 import type { StockItemRequestsDeps } from './server/StockItemRequests.js';
@@ -103,6 +104,10 @@ const pendingHouseholdInvitation = new PendingHouseholdInvitationImpl({
 const invitationToken = invitationTokenOf(location.search);
 if (invitationToken !== null) pendingHouseholdInvitation.save(invitationToken);
 
+// 画面の行き先の継ぎ目を `new` するのもここだけ（B-81 / ADR-092）。窓は構造型で渡す。
+// **「戻る」の継ぎ目より先に読む** — あちらは構築時に履歴を動かしうる（設計 6章 規則11）。
+const screenLocation = new ScreenLocationImpl(window);
+
 // 端末の「戻る」の継ぎ目を `new` するのもここだけ（B-75 設計 4章 / ADR-084）。窓は構造型で渡す。
 // 画面へは provider で配り、`features/` は hook だけを見る。
 const backNavigation = new BackNavigationImpl(window);
@@ -135,6 +140,7 @@ createRoot(container).render(
         webOrigin={location.origin}
         joinHousehold={sendHouseholdJoin}
         pendingHouseholdInvitation={pendingHouseholdInvitation}
+        screenLocation={screenLocation}
       />
     </BackNavigationProvider>
   </StrictMode>,
