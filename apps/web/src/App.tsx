@@ -55,6 +55,7 @@ import type {
 } from './server/HouseholdRequests.js';
 import type { ClipboardWriter } from './clipboard/ClipboardWriter.js';
 import type { PendingHouseholdInvitation } from './householdInvitation/PendingHouseholdInvitation.js';
+import type { ScreenLocation } from './navigation/ScreenLocation.js';
 
 export type AppProps = {
   /** セッションの継ぎ目。画面はこの型だけを見る（ADR-046 決定3）。 */
@@ -132,6 +133,8 @@ export type AppProps = {
   joinHousehold: JoinHousehold;
   /** 持ち越し中の招待のトークンの継ぎ目（B-77 / ADR-087 決定4）。`new` するのは `main.tsx` だけである。 */
   pendingHouseholdInvitation: PendingHouseholdInvitation;
+  /** 画面の行き先の継ぎ目（B-81 / ADR-092）。`new` するのは `main.tsx` だけである。 */
+  screenLocation: ScreenLocation;
 };
 
 /** 開いている献立と、その出どころのタブ（B-54b 設計 規則9。門の内部の形で export しない）。 */
@@ -158,6 +161,7 @@ export function App({
   webOrigin,
   joinHousehold,
   pendingHouseholdInvitation,
+  screenLocation,
 }: AppProps) {
   // 購読を始めた時点の状態は subscribe が1度目に渡す（`Session.ts` 規則5）ので、
   // ここで先に決めない。最初の描画は購読が始まるまでの一瞬だけ 'unknown' でよい。
@@ -182,10 +186,12 @@ export function App({
 
   // **いま選んでいるタブ**（ADR-066 決定2 / B-49c 規則10）。器は自分では持たず、
   // props で受け取るだけである（同 決定1）— そうでないと、画面の側からタブを移す手段が
-  // 1つも無い（`docs/screen-design.md` D-7）。**開くのは既定の献立タブ**（ADR-064）。
-  //
-  // **URL にも `localStorage` にも書かない**（同 結果1）ので、再読み込みは既定に戻る。
-  const [selectedTab, setSelectedTab] = useState<TabId>(DEFAULT_TAB);
+  // 1つも無い（`docs/screen-design.md` D-7）。**開くのは読み込み時の URL のハッシュが指すタブで、
+  // 無ければ既定の献立タブ**（ADR-092 決定3 / ADR-064）。初期値は最初の描画で決め、以後 prop を読み直さない。
+  // ハッシュへ書くのは下の効果である（ADR-092 決定2）。`localStorage` には書かない。
+  const [selectedTab, setSelectedTab] = useState<TabId>(() =>
+    screenLocation.initial === 'settings' ? DEFAULT_TAB : screenLocation.initial,
+  );
 
   /**
    * **開いている献立と、それをどのタブから開いたか**（B-53 設計 規則17 / B-54b 設計 規則9）。
@@ -209,8 +215,20 @@ export function App({
    * （B-60 規則8。B-56c 規則9「タブを移っても閉じない」はここで置き換わった）、サインイン済みで
    * なくなった回（B-56c 規則10）である。開閉で `selectedTab` も `openMeal` も変えない
    * （B-60 規則9）。開いた回に取りに行くのは世帯の人数だけである（B-76 規則12）。
+   * 読み込み時の URL のハッシュが設定を指していれば開いた状態から始め、開く前のタブは既定の
+   * 献立タブとする（ADR-092 決定3）。
    */
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(() => screenLocation.initial === 'settings');
+
+  /**
+   * **選んでいるタブと設定の開閉を URL のハッシュに書く**（B-81 規則7 / ADR-092 決定2・結果3）。
+   *
+   * 初回の描画でも書く — 読めなかったハッシュはここで外れる。セッションの状態では止めない
+   * （`'unknown'` の間に書くのは読み込み時の行き先そのものである）。
+   */
+  useEffect(() => {
+    screenLocation.replace(settingsOpen ? 'settings' : selectedTab);
+  }, [screenLocation, selectedTab, settingsOpen]);
 
   /**
    * 世帯のデータの削除を送っている間か（B-60b 規則1・4・8）。**帯を止めるために門も持つ** —
@@ -448,13 +466,14 @@ export function App({
   }, [state]);
 
   /**
-   * **サインイン済みでなくなったら、設定も閉じる**（B-56c 規則10 / ADR-066 結果1 / NFR-09）。
+   * **サインアウトしたら、設定も閉じる**（B-56c 規則10 / ADR-092 決定4 / NFR-09）。
    *
    * 門は signedOut の間も生き続けるので、mount には頼れない。閉じないと、入り直した回に
-   * タブの中身ではなく設定のまま出る。
+   * タブの中身ではなく設定のまま出る。**`'unknown'` では閉じない** — 読み込み時の URL のハッシュから
+   * 開いた設定を、状態が分かる前に失う（ADR-092 決定4）。
    */
   useEffect(() => {
-    if (state === 'signedIn') return;
+    if (state !== 'signedOut') return;
 
     setSettingsOpen(false);
   }, [state]);
@@ -497,15 +516,15 @@ export function App({
   }, [state]);
 
   /**
-   * **サインイン済みでなくなったら、開いているタブも既定に戻す**（ADR-066 結果1 /
+   * **サインアウトしたら、開いているタブも既定に戻す**（ADR-092 決定4 /
    * B-38 設計 6章 規則9 / `docs/screen-design.md` 2.3 の `login --> meals`）。
    *
-   * 状態が器の中にあったころは、門がサインイン済みの枝でだけ器を mount することで
-   * 自然に戻っていた。**門へ持ち上げた以上、門は signedOut の間も生き続ける**ので、
-   * ここで明示的に戻さないと**前に開いていたタブのまま入り直す**ことになる。
+   * **門は signedOut の間も生き続ける**ので、ここで明示的に戻さないと**前に開いていたタブのまま
+   * 入り直す**ことになる。**`'unknown'` では戻さない** — 読み込み時の URL のハッシュから開いたタブを、
+   * 状態が分かる前に失う（ADR-092 決定4）。ハッシュは上の効果が外す。
    */
   useEffect(() => {
-    if (state === 'signedIn') return;
+    if (state !== 'signedOut') return;
 
     setSelectedTab(DEFAULT_TAB);
   }, [state]);

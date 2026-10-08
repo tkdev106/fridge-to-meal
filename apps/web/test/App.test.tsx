@@ -54,9 +54,11 @@ import { FixedConnectivity } from './support/connectivity/FixedConnectivity.js';
 import { FixedBackNavigation } from './support/backNavigation/FixedBackNavigation.js';
 import { FixedPendingHouseholdInvitation } from './support/householdInvitation/FixedPendingHouseholdInvitation.js';
 import type { FixedConnectivityOptions } from './support/connectivity/FixedConnectivity.js';
+import { FixedScreenLocation } from './support/navigation/FixedScreenLocation.js';
 import { App } from '../src/App.js';
 import { BackNavigationProvider } from '../src/backNavigation/BackHandler.js';
 import type { SessionState } from '../src/session/Session.js';
+import type { ScreenId } from '../src/navigation/ScreenLocation.js';
 import type { ConnectivityState } from '../src/connectivity/Connectivity.js';
 import type { StockItemsOutcome } from '../src/server/StockItemRequests.js';
 import type { MealListOutcome, MealOutcome } from '../src/server/MealRequests.js';
@@ -100,6 +102,7 @@ function renderApp(
   connectivityOptions: FixedConnectivityOptions = {},
   backNavigation?: FixedBackNavigation,
   sharingOptions: SharingRenderOptions = {},
+  screenLocation: FixedScreenLocation = new FixedScreenLocation(),
 ) {
   const session = new FixedSession(sessionOptions);
   const requests = new FixedStockItemRequests(requestOptions);
@@ -169,6 +172,7 @@ function renderApp(
       webOrigin={sharingOptions.webOrigin ?? 'https://fridge.example'}
       joinHousehold={household.joinHousehold}
       pendingHouseholdInvitation={pendingInvitation}
+      screenLocation={screenLocation}
     />
   );
 
@@ -193,6 +197,7 @@ function renderApp(
     household,
     clipboard,
     pendingInvitation,
+    screenLocation,
   };
 }
 
@@ -4798,5 +4803,200 @@ describe('門 App の招待リンクの参加の確認', () => {
     // 規則15 / ADR-084 決定2: 戻るはアプリを離れる。トークンは残るので開き直せば確認が出る。
     // 確認の画面が出ていることも合わせて観る — タブの器が出ている回の「受け取らない」と見分ける。
     expect([confirmationHeadingCount(), received]).toEqual([1, false]);
+  });
+});
+
+/**
+ * 門 `App` の画面の行き先（B-81 設計 6章 規則6〜10 / ADR-092）。
+ *
+ * 継ぎ目は記憶上の `FixedScreenLocation` に差し替え、読み込み時の行き先を `initial` で与える。
+ * **書かれた行き先は最後に書かれたもの（`lastWritten`）で観る** — 回数は約束しないので数えない
+ * （設計 10章 前提5）。開いている画面は**選ばれているタブ**（`aria-selected`）・**テストが渡した
+ * 名称**・設定画面の操作の名前で観る。
+ */
+describe('門 App の画面の行き先', () => {
+  /** 読み込み時の行き先を与えて門を描く。在庫は `carrot` 1件。 */
+  function renderAt(
+    initial: ScreenId,
+    sessionOptions: FixedSessionOptions = { initialState: 'signedIn' },
+    backNavigation?: FixedBackNavigation,
+  ) {
+    return renderApp(
+      sessionOptions,
+      { list: [loaded(carrot)] },
+      {},
+      {},
+      {},
+      {},
+      {},
+      backNavigation,
+      {},
+      new FixedScreenLocation(initial),
+    );
+  }
+
+  /** 描画や状態の変化のあとに届く更新を `act` の中で流す。 */
+  async function flush(): Promise<void> {
+    await act(async () => {});
+  }
+
+  /** 戻るを押す。口が呼ばれたら `true`（`act` で包む。口は画面の状態を変える）。 */
+  function pressBack(backNavigation: FixedBackNavigation): boolean {
+    let received = false;
+    act(() => {
+      received = backNavigation.pressBack();
+    });
+
+    return received;
+  }
+
+  it('読み込み時の行き先が冷蔵庫なら、サインイン済みで冷蔵庫タブの中身が出る', async () => {
+    renderAt('pantry');
+
+    // 規則6 / ADR-092 決定3: 再読み込みで同じタブに戻す。
+    expect(await screen.findByText(carrot.name)).not.toBeNull();
+  });
+
+  it('読み込み時の行き先が設定なら、サインイン済みで設定画面が出る', async () => {
+    renderAt('settings');
+    await flush();
+
+    // 規則6 / ADR-092 決定3: 設定の開閉も戻す。
+    expectSettingsBeforeConfirming();
+  });
+
+  it('設定から始めた回に設定を閉じると、献立タブが選ばれる', async () => {
+    renderAt('settings');
+    await flush();
+
+    fireEvent.click(namedOperation(SETTINGS_CLOSE));
+
+    // 規則6・10 / ADR-092 決定3: 設定から始めた回、開く前のタブは既定の献立である。
+    expect(mealsTab().getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('設定から始めた回に端末の戻るを押すと、戻るを受け取って献立タブが選ばれる', async () => {
+    const backNavigation = new FixedBackNavigation();
+    renderAt('settings', { initialState: 'signedIn' }, backNavigation);
+    await flush();
+
+    const received = pressBack(backNavigation);
+
+    // 規則10 / ADR-084 決定3: 設定画面の口は変えない。閉じた先は既定の献立タブである。
+    expect([received, mealsTab().getAttribute('aria-selected')]).toEqual([true, 'true']);
+  });
+
+  it('冷蔵庫から始めた回に端末の戻るを押すと、戻るを受け取って献立タブが選ばれる', async () => {
+    const backNavigation = new FixedBackNavigation();
+    renderAt('pantry', { initialState: 'signedIn' }, backNavigation);
+    await flush();
+
+    const received = pressBack(backNavigation);
+
+    // 規則10 / ADR-064 / ADR-084 決定3: 既定でないタブ → 献立タブ。
+    expect([received, mealsTab().getAttribute('aria-selected')]).toEqual([true, 'true']);
+  });
+
+  it('献立から始めた回も、最初の描画で献立の行き先を書く', async () => {
+    const { screenLocation } = renderAt('meals');
+    await flush();
+
+    // 規則7 / ADR-092 結果3: 初回の書き込みで読めなかったハッシュを外す。
+    expect(screenLocation.lastWritten).toBe('meals');
+  });
+
+  it('セッションの状態が分かるまでの間も、読み込み時の行き先を書く', async () => {
+    const { screenLocation } = renderAt('history', { initialState: 'unknown' });
+    await flush();
+
+    // 規則7: セッションの状態では止めない。
+    expect(screenLocation.lastWritten).toBe('history');
+  });
+
+  it('タブを選ぶと、その行き先を書く', async () => {
+    const { screenLocation } = renderAt('meals');
+    await flush();
+
+    openPantry();
+
+    // 規則7 / ADR-092 決定2。
+    expect(screenLocation.lastWritten).toBe('pantry');
+  });
+
+  it('設定を開くと、設定の行き先を書く', async () => {
+    const { screenLocation } = renderAt('meals');
+    await flush();
+
+    fireEvent.click(navigationSettings());
+
+    // 規則7 / ADR-092 決定2。
+    expect(screenLocation.lastWritten).toBe('settings');
+  });
+
+  it('在庫タブで開いた設定を閉じると、在庫の行き先を書く', async () => {
+    const { screenLocation } = renderAt('meals');
+    await flush();
+    openPantry();
+    fireEvent.click(navigationSettings());
+
+    fireEvent.click(namedOperation(SETTINGS_CLOSE));
+
+    // 規則7 / B-60 規則9: 閉じると開く前のタブに戻り、その行き先を書く。
+    expect(screenLocation.lastWritten).toBe('pantry');
+  });
+
+  it('読み込み時の行き先が冷蔵庫なら、状態が分かってサインイン済みになっても冷蔵庫タブの中身が出る', async () => {
+    const { session } = renderAt('pantry', { initialState: 'unknown' });
+    await flush();
+
+    emit(session, 'signedIn');
+
+    // 規則8 / ADR-092 決定4: 既定のタブに戻す効果は `'unknown'` では動かない。
+    expect(await screen.findByText(carrot.name)).not.toBeNull();
+  });
+
+  it('読み込み時の行き先が設定なら、状態が分かってサインイン済みになっても設定画面が出る', async () => {
+    const { session } = renderAt('settings', { initialState: 'unknown' });
+    await flush();
+
+    emit(session, 'signedIn');
+    await flush();
+
+    // 規則8 / ADR-092 決定4: 設定を閉じる効果は `'unknown'` では動かない。
+    expectSettingsBeforeConfirming();
+  });
+
+  it('冷蔵庫タブでサインアウトすると、献立の行き先を書く', async () => {
+    const { session, screenLocation } = renderAt('meals');
+    await flush();
+    openPantry();
+
+    emit(session, 'signedOut');
+
+    // 規則8 / ADR-092 決定4: サインアウトで既定のタブに戻し、ハッシュを外す。
+    expect(screenLocation.lastWritten).toBe('meals');
+  });
+
+  it('設定を開いたままサインアウトすると、献立の行き先を書く', async () => {
+    const { session, screenLocation } = renderAt('meals');
+    await flush();
+    fireEvent.click(navigationSettings());
+
+    emit(session, 'signedOut');
+
+    // 規則8 / ADR-092 決定4: サインアウトで設定を閉じ、ハッシュを外す。
+    expect(screenLocation.lastWritten).toBe('meals');
+  });
+
+  it('冷蔵庫から始めても、サインアウトして入り直すと献立タブが選ばれる', async () => {
+    const { session } = renderAt('pantry');
+    await screen.findByText(carrot.name);
+
+    emit(session, 'signedOut');
+    emit(session, 'signedIn');
+    await screen.findByRole('note');
+
+    // 規則8 / ADR-092 決定4 / `docs/screen-design.md` 2.3 の `login --> meals`。
+    expect(mealsTab().getAttribute('aria-selected')).toBe('true');
   });
 });

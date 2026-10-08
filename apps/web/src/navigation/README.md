@@ -15,6 +15,8 @@
 | `TabbedScreen.tsx` | 帯（SP の下タブ・PC のサイドナビ。ロゴ・タブ3つ・帯の「設定」）と、選んだタブの中身または設定の出し分け。**日本語のラベルとタブのアイコンの対応はここだけ** |
 | `TabbedScreen.module.css` | SP / PC の並びと、選んでいる / いないタブの見た目（`.tab` / `.tabSelected`）。**見た目の値はここだけ** |
 | `ScreenHeader.tsx` | 見出しの行（`h1` の題と、その後ろの歯車 `aria-label="設定"`）。献立・在庫（一覧）・履歴の3つの一覧の先頭に置かれる（B-60 設計 6章 規則12〜14） |
+| `ScreenLocation.ts` | 画面の行き先の継ぎ目の型（`ScreenId` / `ScreenLocation`）と、URL のハッシュとの写し（`screenIdOf` / `hashOf`）。門が見るのはこの型だけ |
+| `ScreenLocationImpl.ts` | `replaceState` で今の項目のハッシュを書き、`popstate` で着いた項目に書き直す。窓は構造型 `ScreenLocationSource` で受ける |
 | `ScreenHeader.module.css` | 見出しの行の見た目。余白は SP `16px 16px 24px`・PC `40px 0 32px`、歯車の押せる大きさは 48px で、**PC では歯車を `display: none` にする**（PC の入口はサイドナビの下端の「設定」） |
 
 ## ここで守ること
@@ -63,13 +65,18 @@
   動かない（NFR-14）。色を足す周は WCAG 2.1 AA を確かめてから足し、**そのときも太さと線の
   手がかりを消さない**
 - **タブのアイコンは飾りである**（`icons/README.md`）。タブの名前はラベルの文字だけが持つ
-- **選んでいるタブは web の記憶の中だけに持つ。** URL にも `localStorage` にも書かない
-  （**ルーティングの依存パッケージを足さない**。`CLAUDE.md`）。再読み込みは既定のタブに戻り、
-  サインアウトを挟んでも戻る。**持つのは器ではなく門である**（ADR-066 決定2 / 結果1。B-38 設計
-  6章 規則8 はここで置き換わった）— 器は `selectedTab` / `onSelectTab` を受け取るだけで、
-  **サインアウトを挟んだ回に既定へ戻すのは門の効果**である（門は signedOut の間も生き続けるため、
-  器の mount/unmount には頼れない）。**端末の「戻る」も URL を変えずに受ける** — 受けるのは
-  `backNavigation/` で、印つきの項目を履歴に積むだけで URL もハッシュも書かない（ADR-084 / B-75）
+- **選んでいるタブと設定の開閉は URL のハッシュに書く**（ADR-092 / B-81）。献立はハッシュ無し、
+  冷蔵庫は `#pantry`、履歴は `#history`、設定は `#settings` で、完全一致で読み、それ以外は献立と読む。
+  書くのは `replaceState` だけで履歴の項目を増やさず、項目の state（戻るの深さの印）は保つ。
+  `localStorage` には書かず、**ルーティングの依存パッケージを足さない**（`CLAUDE.md`）。
+  再読み込みは読み込み時のハッシュの画面から始まり、開いている献立・登録と編集・確認は戻らない。
+  **持つのは器ではなく門である**（ADR-066 決定2）— 器は `selectedTab` / `onSelectTab` を受け取るだけで
+  URL を知らない。門は初期値を `ScreenLocation.initial` から作り、変わるたびに `replace` する。
+  **サインアウトした回に既定へ戻すのは門の効果**である（門は signedOut の間も生き続けるため、
+  器の mount/unmount には頼れない。状態を確かめている間 `'unknown'` では戻さない）。
+  `new ScreenLocationImpl(window)` を書くのは `main.tsx` だけで、`BackNavigationImpl` より先に作る
+  （あちらは構築時に履歴を動かしうる）。**端末の「戻る」は `backNavigation/` が受ける** —
+  印つきの項目を履歴に積むだけで、URL は書かない（ADR-084 / B-75）
 - **既定は献立タブである**（2026-09-24 にユーザーが決定。ADR-064 / 要件 第7章 /
   `docs/screen-design.md` 2.2）。**B-49a で `DEFAULT_TAB` を `'meals'` に反転させた** — 献立タブが
   保存済みの提案を出すようになり（B-58 / ADR-065）、仮置きが起動画面になる心配が消えたため
