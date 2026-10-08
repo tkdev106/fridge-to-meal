@@ -16,7 +16,7 @@ import type {
 import type { AmountFieldValues } from './AmountFieldValues.js';
 import { EMPTY_AMOUNT_FIELD, amountFieldValuesOf, amountTextOf } from './AmountFieldValues.js';
 
-/** 登録の画面が持つ4欄の値（文字の3欄と献立に使うかどうか）。世帯は持たない（C-9）。 */
+/** 登録の画面が持つ4欄の値（食材名・分量・期限と献立に使うかどうか）。世帯は持たない（C-9）。 */
 export type StockItemFormValues = {
   readonly name: string;
   readonly amount: AmountFieldValues;

@@ -221,6 +221,9 @@ export function StockItemEditForm({
           <span className={styles.fixedName}>{stockItem.name}</span>
         </div>
 
+        {/* 開いた直後の焦点は分量の欄である（設計 規則18 / NFR-15）— 編集できる先頭の欄であり、
+            編集の画面は開くまで木に無い（`PantryTab`）ので mount のときに当てれば足りる。
+            **効果と `ref` を置かない。** */}
         <AmountField
           autoFocus
           values={values.amount}
