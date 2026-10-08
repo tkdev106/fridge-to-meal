@@ -329,7 +329,7 @@ async function suggest(
   // あとで組むとその回の保存に引きずられる（`buildExistingMealIdByTitle` と同じ構え）。
   const storedMealById = mealByIdOf(storedMeals);
 
-  const { entries: suggestionEntries, savedMeals } = shouldGenerate
+  const generated = shouldGenerate
     ? await generateSuggestionEntries(
         deps,
         householdId,
@@ -339,6 +339,11 @@ async function suggest(
         buildExistingMealIdByTitle(storedMeals),
       )
     : { entries: selectedCookableMeals.map(toReusedEntry), savedMeals: [] };
+
+  // 生成側が在庫に食材が無いと答えた回は、献立も提案も組まず、保存もしない（ADR-091 決定3）。
+  // 失敗ではなく在庫を直せば解ける結末なので、投げずに名乗る。
+  if (generated === null) return { outcome: 'noIngredientInPantry' };
+  const { entries: suggestionEntries, savedMeals } = generated;
 
   // 検証を保存の前に済ませる。規則違反で終わったときに何も残らないのはこの順序による
   // （B-27 規則11 / 先行 `registerStockItem`）。**提案を保存するのはどちらの経路でも同じ**で、
@@ -405,7 +410,8 @@ function selectCookableMeals(
  * 識別子の対応が回ごとに変わる（C-12 の決定性）。
  *
  * 1件も残らなければ `MealRuleViolation` を投げる。ここで握って別の提案に埋め合わせない
- * （B-28 7章1行目 / NFR-07 / B-78 規則13）。
+ * （B-28 7章1行目 / NFR-07 / B-78 規則13）。1回目の生成が在庫に食材が無いと答えたときは
+ * `null` を返す（ADR-091 決定3）。
  */
 async function generateSuggestionEntries(
   deps: {
@@ -419,7 +425,7 @@ async function generateSuggestionEntries(
   asOfDateTime: DateTime,
   avoidTitles: readonly string[],
   existingMealIdByTitle: ReadonlyMap<string, MealId>,
-): Promise<{ entries: readonly SuggestionEntry[]; savedMeals: readonly Meal[] }> {
+): Promise<{ entries: readonly SuggestionEntry[]; savedMeals: readonly Meal[] } | null> {
   // 確かめは C-4 の参照・識別子の発行・保存より前に済ませる（B-78 規則14）。落としたものは
   // 献立にならない。
   const generatedMeals = await checkedGeneratedMealsOf(
@@ -428,6 +434,7 @@ async function generateSuggestionEntries(
     asOfDateTime,
     avoidTitles,
   );
+  if (generatedMeals === null) return null;
   if (generatedMeals.length === 0) {
     throw new MealRuleViolation('mealGenerator.empty', '確かめを経て残った献立がありません');
   }
@@ -481,7 +488,10 @@ async function generateSuggestionEntries(
  * 作り直しの避けるべき名称は **1回目に残した名称 → 元の列** であり、1回目に残したものと同じ
  * 献立を作り直しで返させないためである（規則10）。確かめにも同じ列を渡す。
  *
- * 1回目の生成の例外はそのまま伝える。**作り直しの例外は握り、1回目の残りだけを返す** —
+ * 1回目の生成が在庫に食材が無いと答えたら（`mealGenerator.noIngredient`）、確かめも作り直しも
+ * せずに `null` を返す（ADR-091 決定3）。作り直しでそう答えたときは他の例外と同じに握る。
+ *
+ * 1回目の生成のそれ以外の例外はそのまま伝える。**作り直しの例外は握り、1回目の残りだけを返す** —
  * 作り直しは足りない分を埋める試みであり、その失敗で1回目に残したものまで捨てない（規則12）。
  */
 async function checkedGeneratedMealsOf(
@@ -489,15 +499,23 @@ async function checkedGeneratedMealsOf(
   pantrySnapshot: PantrySnapshot,
   asOfDateTime: DateTime,
   avoidTitles: readonly string[],
-): Promise<readonly GeneratedMeal[]> {
+): Promise<readonly GeneratedMeal[] | null> {
   // 出口には世帯を渡さない（NFR-11 / B-28 9章 / B-78 規則15）。避けるべき名称は組み終えたものを
   // 受け取るだけで、ここで並べ替えも切り取りもしない（規則6・8 / `buildAvoidTitles`）。
-  const firstGeneratedMeals = await deps.mealGenerator.generate({
-    pantrySnapshot,
-    requiredCount: REQUIRED_GENERATED_MEAL_COUNT,
-    avoidTitles,
-    asOf: asOfDateTime,
-  });
+  let firstGeneratedMeals: readonly GeneratedMeal[];
+  try {
+    firstGeneratedMeals = await deps.mealGenerator.generate({
+      pantrySnapshot,
+      requiredCount: REQUIRED_GENERATED_MEAL_COUNT,
+      avoidTitles,
+      asOf: asOfDateTime,
+    });
+  } catch (thrown) {
+    if (thrown instanceof MealRuleViolation && thrown.rule === 'mealGenerator.noIngredient') {
+      return null;
+    }
+    throw thrown;
+  }
   const firstKeptMeals = await deps.generatedMealChecker.check({
     generatedMeals: firstGeneratedMeals,
     avoidTitles,

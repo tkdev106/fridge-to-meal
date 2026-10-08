@@ -82,6 +82,17 @@ describe('提案の結末 SuggestMealsOutput', () => {
 
     expect(output).toBeDefined();
   });
+
+  it('在庫に食材が無い結末に提案を持たせられない', () => {
+    // ADR-091 決定3 / ADR-041 決定1: 在庫に食材が無い回も提案を組まない。
+    const output: SuggestMealsOutput = {
+      outcome: 'noIngredientInPantry',
+      // @ts-expect-error 在庫に食材が無い結末に提案は無い
+      suggestion: { id: suggestionId, entries: [], generatedAt: '2026-09-14T03:00:00.000Z' },
+    };
+
+    expect(output).toBeDefined();
+  });
 });
 
 describe('提案の1件 SuggestionEntryOutput', () => {
