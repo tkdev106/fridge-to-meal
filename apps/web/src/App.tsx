@@ -742,7 +742,8 @@ export function App({
 
       if (
         outcome.outcome === 'insufficientStockItems' ||
-        outcome.outcome === 'generationLimitReached'
+        outcome.outcome === 'generationLimitReached' ||
+        outcome.outcome === 'noIngredientInPantry'
       ) {
         setSuggestion(outcome);
         return;

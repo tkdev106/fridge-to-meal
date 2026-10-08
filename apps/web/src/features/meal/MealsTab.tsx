@@ -133,6 +133,18 @@ const INSUFFICIENT_STOCK_ITEMS_NOTE = '献立は冷蔵庫の食材から考え�
 const GO_TO_PANTRY_LABEL = '食材を登録する';
 
 /**
+ * 在庫に食材が無い回の案内（S-9 / ADR-091 決定4）。形は S-4 と同じで、件数は足りているので
+ * 名前を確かめるよう促す。
+ */
+const NO_INGREDIENT_IN_PANTRY_LINES = ['冷蔵庫に食材が', '見つかりませんでした'] as const;
+
+/** 在庫に食材が無い回の補足。 */
+const NO_INGREDIENT_IN_PANTRY_NOTE = '食材の名前を確かめてください';
+
+/** 在庫に食材が無い回に在庫タブへ送る操作の文言（D-10）。 */
+const SEE_PANTRY_LABEL = '冷蔵庫を見る';
+
+/**
  * 1日の生成回数の上限に達した回の案内（S-7 / NFR-C2 / ADR-049。原本 `MealScreen` の state=limit）。
  *
  * **いつ解けるかも残り回数も告げない** — 24時間の窓は基準日時から遡って定まり（ADR-049 決定2）、
@@ -186,15 +198,19 @@ function UsedIngredients({ ingredients }: { ingredients: readonly MealCardIngred
  * 画面が受け取る結末。取得の結末に「読み込み中」を1つ足しただけのものである
  * （先行 `PantryListState`）。
  *
- * **在庫が足りない（S-4）・上限に達した（S-7）も受け取る**（B-49b / ADR-049 結果7）。
- * どちらも「新しい献立を求める」の結末であって、保存済みの提案の読み取り（`showLatestSuggestion`）
- * には無い — 門が `requestNewMeals` の結末をそのままここへ渡すために両方を型に足す。
+ * **在庫が足りない（S-4）・上限に達した（S-7）・在庫に食材が無い（S-9）も受け取る**（B-49b /
+ * ADR-049 結果7 / ADR-091）。どれも「新しい献立を求める」の結末であって、保存済みの提案の
+ * 読み取り（`showLatestSuggestion`）には無い — 門が `requestNewMeals` の結末をそのままここへ
+ * 渡すために型に足す。
  * **それぞれ専用の枝で描く**（B-49c）。
  */
 export type MealsTabState =
   | { readonly outcome: 'loading' }
   | LatestSuggestionOutcome
-  | Extract<SuggestMealsOutput, { outcome: 'insufficientStockItems' | 'generationLimitReached' }>;
+  | Extract<
+      SuggestMealsOutput,
+      { outcome: 'insufficientStockItems' | 'generationLimitReached' | 'noIngredientInPantry' }
+    >;
 
 export type MealsTabProps = {
   suggestion: MealsTabState;
@@ -401,19 +417,56 @@ function RequestNewMealsControl({
  */
 function InsufficientStockItemsNotice({ onGoToPantry }: { onGoToPantry: () => void }) {
   return (
+    <GoToPantryNotice
+      lines={INSUFFICIENT_STOCK_ITEMS_LINES}
+      note={INSUFFICIENT_STOCK_ITEMS_NOTE}
+      label={GO_TO_PANTRY_LABEL}
+      onGoToPantry={onGoToPantry}
+    />
+  );
+}
+
+/**
+ * 在庫に食材が無い回（S-9 / D-10 / ADR-091 決定4）。S-4 と同じ形で文言だけが違う。
+ * 同じ在庫で求め直しても同じ答えになるので、「新しい献立を見る」を置かない。
+ */
+function NoIngredientInPantryNotice({ onGoToPantry }: { onGoToPantry: () => void }) {
+  return (
+    <GoToPantryNotice
+      lines={NO_INGREDIENT_IN_PANTRY_LINES}
+      note={NO_INGREDIENT_IN_PANTRY_NOTE}
+      label={SEE_PANTRY_LABEL}
+      onGoToPantry={onGoToPantry}
+    />
+  );
+}
+
+/** 案内と在庫タブへ送る操作1つ（S-4 / S-9）。主文と補足を合わせて status 1つにする（設計 規則14）。 */
+function GoToPantryNotice({
+  lines,
+  note,
+  label,
+  onGoToPantry,
+}: {
+  lines: readonly string[];
+  note: string;
+  label: string;
+  onGoToPantry: () => void;
+}) {
+  return (
     <div className={styles.outcome}>
       <div role="status" className={styles.outcomePanel}>
         <p className={styles.outcomeMessage}>
-          {INSUFFICIENT_STOCK_ITEMS_LINES.map((line) => (
+          {lines.map((line) => (
             <span key={line} className={styles.unbreakable}>
               {line}
             </span>
           ))}
         </p>
-        <p className={styles.outcomeNote}>{INSUFFICIENT_STOCK_ITEMS_NOTE}</p>
+        <p className={styles.outcomeNote}>{note}</p>
       </div>
       <button type="button" className={styles.primaryButton} onClick={onGoToPantry}>
-        {GO_TO_PANTRY_LABEL}
+        {label}
       </button>
     </div>
   );
@@ -437,13 +490,14 @@ function GenerationLimitReachedNotice() {
 }
 
 /**
- * 縦の中ほどに置く結末か（S-4 / S-7 / S-8。設計 規則13〜16）。カードのある結末では高さを伸ばさない。
+ * 縦の中ほどに置く結末か（S-4 / S-7 / S-8 / S-9。設計 規則13〜16）。カードのある結末では高さを伸ばさない。
  */
 function isCentered(suggestion: MealsTabState): boolean {
   return (
     suggestion.outcome === 'none' ||
     suggestion.outcome === 'insufficientStockItems' ||
-    suggestion.outcome === 'generationLimitReached'
+    suggestion.outcome === 'generationLimitReached' ||
+    suggestion.outcome === 'noIngredientInPantry'
   );
 }
 
@@ -571,6 +625,15 @@ function MealsTabBody({
       <>
         <div className={styles.spaceAbove} />
         <InsufficientStockItemsNotice onGoToPantry={onGoToPantry} />
+        <div className={styles.spaceBelow} />
+      </>
+    );
+  }
+  if (suggestion.outcome === 'noIngredientInPantry') {
+    return (
+      <>
+        <div className={styles.spaceAbove} />
+        <NoIngredientInPantryNotice onGoToPantry={onGoToPantry} />
         <div className={styles.spaceBelow} />
       </>
     );
