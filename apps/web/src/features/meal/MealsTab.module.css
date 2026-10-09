@@ -456,7 +456,7 @@
 
 /* 生成中・オフラインの無効の見た目（設計 B-62 規則3）。 */
 .primaryButton:disabled {
-  background: var(--color-border);
+  background: var(--color-surface-muted);
   color: var(--color-text-muted);
   cursor: default;
 }

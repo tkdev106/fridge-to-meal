@@ -1,5 +1,5 @@
 /**
- * 書体の読み込み（設計 B-59b / ADR-074 結果3 / ADR-075）。
+ * 書体の読み込み（設計 B-59b / ADR-074 結果3 / ADR-075 / ADR-093）。
  *
  * 観るのは**置いたファイルどうしの整合**である — 書体の一覧 `public/fonts/fonts.css` の
  * `@font-face`、その `src` が指す woff2、各書体の `OFL.txt`、それを読む `index.html`。

@@ -125,10 +125,11 @@
 
 /*
  * 焦点は枠の内側を同じ色で太らせる（規則5）。外に輪郭を離すと枠と輪郭が二重に見える。
- * 枠の色が変わる欄（アカウント作成の `.invalid`）でも、焦点の線は文字色である。
+ * 透明の輪郭は、`box-shadow` を描かない強制配色のときにだけ色が付いて見える（NFR-16）。
  */
 .input:focus {
-  outline: none;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
   box-shadow: inset 0 0 0 2px var(--color-text);
 }
 

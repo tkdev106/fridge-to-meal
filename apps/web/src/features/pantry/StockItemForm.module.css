@@ -133,6 +133,7 @@
 /*
  * 入力欄（規則4）。高さ 48px・明るい面・文字色の 2px の枠・左右 14px。
  * 焦点がある間は枠の内側にもう 2px 重ねて太い1本の枠にする（文字の位置は動かさない。NFR-16）。
+ * 輪郭は透明にし、`box-shadow` を描かない強制配色のときにだけ色が付いて見えるようにする。
  */
 .input,
 .dateBox {
@@ -152,7 +153,8 @@
 
 .input:focus,
 .dateBox:focus-within {
-  outline: none;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
   box-shadow: inset 0 0 0 2px var(--color-text);
 }
 
@@ -189,7 +191,8 @@
 }
 
 .unitSelect:focus {
-  outline: none;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
   box-shadow: inset 0 0 0 2px var(--color-text);
 }
 
@@ -288,8 +291,8 @@
 }
 
 /*
- * オンは地と枠を文字色にし、`check` のアイコン（`src/icons/Icon.tsx` と同じ path・16px 相当・
- * 線 1.5px 相当）を明るい色で置く。data URL の中では `var(--…)` を引けないので、線の色だけは
+ * オンは地と枠を文字色にし、`check` のアイコン（`src/icons/Icon.tsx` と同じ path・16px）を
+ * 線を太くして（viewBox 24 の 2.5 = 描いて約 1.7px）明るい色で置く。data URL の中では `var(--…)` を引けないので、線の色だけは
  * `--color-surface` の値（#FFFAF0）を直に書く。
  */
 .checkbox:checked {
@@ -301,7 +304,7 @@
   background-size: 16px 16px;
 }
 
-/* 焦点の輪郭は箱の外に引く。20px の箱の内側に引くとチェックの印に重なる。 */
+/* 焦点の輪郭は箱の外に引く。22px の箱の内側に引くとチェックの印に重なる。 */
 .checkbox:focus-visible {
   outline: var(--focus-outline);
   outline-offset: var(--focus-outline-offset);

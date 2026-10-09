@@ -50,9 +50,9 @@ apps/web/                  React + Vite（PWA）— API のクライアント
   src/navigation/          下タブの器（B-38）。**ここも画面ではない継ぎ目**で、3コンテキストの画面を並べる
   src/connectivity/       接続状態の継ぎ目とオフラインの帯（B-70）。**ここも画面ではない継ぎ目**で、門と main.tsx だけが引く
   src/backNavigation/      端末の「戻る」の継ぎ目（B-75 / ADR-084）。window.history に触るのはここだけ。features/ は BackHandler.tsx の hook だけを引く
-  src/icons/               アイコンの部品（B-59。原本の11個の SVG）。**ここも画面ではない** — `features/` を横断して引かれる
+  src/icons/               アイコンの部品（B-59。原本の11個の SVG と `forward`。ADR-093）。**ここも画面ではない** — `features/` を横断して引かれる
   src/global.css           `:root` のトークン・リセット・地（B-59 / ADR-055 決定2）。`index.html` が読む
-  public/fonts/            書体（B-59b / ADR-075）。`fonts.css` は `@font-face` だけ。差し替えは版の入ったディレクトリごと
+  public/fonts/            書体（B-59b / ADR-075 / ADR-093）。`fonts.css` は `@font-face` だけ。差し替えは版の入ったディレクトリごと
   src/features/pantry/     画面もコンテキスト単位で切る（PantryTab が一覧と登録を出し分ける / PantryList / PantrySections / RemainingDays）
   src/features/meal/
   test/                    画面ロジックの単体テスト

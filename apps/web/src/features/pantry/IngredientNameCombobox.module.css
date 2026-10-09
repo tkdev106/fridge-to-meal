@@ -28,10 +28,12 @@
 
 /*
  * 焦点の当たった欄は枠の内側にもう 2px 重ねて太い1本の枠にする（`StockItemForm.module.css` の
- * 入力欄と同じ）。輪郭は重ねない — 枠と二重に見える。
+ * 入力欄と同じ）。輪郭は透明にする — 色を付けると枠と二重に見え、透明なら `box-shadow` を
+ * 描かない強制配色のときにだけ色が付いて見える。
  */
 .input:focus {
-  outline: none;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
   box-shadow: inset 0 0 0 2px var(--color-text);
 }
 

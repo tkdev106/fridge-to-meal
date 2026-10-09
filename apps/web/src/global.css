@@ -3,7 +3,7 @@
  * `index.html` が `<link>` で1度だけ読む。**グローバルな CSS はこの1枚だけ**で、画面ごとの
  * 見た目は各画面の `*.module.css` に置く（ADR-055 決定1）。
  *
- * トークンの値は `docs/design/README.md`「トークン」と同じにする。**名前は役割で付け、値は
+ * トークンの値は `docs/design/README.md`「トークン」と同じにする（値の正はそちら。ADR-093）。**名前は役割で付け、値は
  * component の側に書かず `var(--…)` で引く。** ここ1か所を直せば全体が追う形にしておく。
  */
 
@@ -11,10 +11,10 @@
   /* 色（使う色のすべて。これ以外の色を component の側で作らない） */
   --color-background: #f4efe4; /* 地 */
   --color-surface: #fffaf0; /* 入力欄・パネル・札の面。色の面の上の文字 */
-  --color-surface-muted: #e9e1d2; /* 控えめな面（注意表示・案内の帯・設定の帯） */
-  --color-border: #ddd5c6; /* 区切り線・残りの日数の溝 */
-  --color-border-strong: #8c877f; /* 入力欄の枠 */
-  --color-text: #161513; /* 文字・主の操作の地・下タブの地 */
+  --color-surface-muted: #e9e1d2; /* 控えめな面（注意表示・案内の帯・無効の操作） */
+  --color-border: #ddd5c6; /* 区切り線 */
+  --color-border-strong: #8c877f; /* 無効の副の操作の枠 */
+  --color-text: #161513; /* 文字・主の操作の地・下タブとサイドナビの地・入力欄の枠 */
   --color-text-secondary: #5d5850; /* 補助の文字・主の操作を押している間 */
   --color-text-muted: #6e6a63; /* さらに弱い文字（任意・置き文字・無効） */
   --color-text-on-dark: #b9b2a6; /* 文字色の地の上の、選んでいない項目 */
