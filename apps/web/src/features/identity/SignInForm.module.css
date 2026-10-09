@@ -28,21 +28,21 @@
 }
 
 /*
- * ロゴ（規則2）。見出しにも段落にもしない文字1つ。SP では見出しの書体で表紙のように大きく置き、
- * 「fridge」と「to meal」の2行に折る（幅で折る。文字は1つのまま）。食材の3色の点を下に添える
- * （点は飾り）。
+ * ロゴ（規則2）。見出しにも段落にもしない文字1つ。SP では見出しの書体で表紙のように大きく、
+ * **折り返さずに1行で**置く。幅の狭い端末でも1行に収まるよう、幅の 10% を上限に縮める。
+ * 下に添える食材の3色の点はロゴの印である（`docs/design/README.md`「色の規則」）。
  */
 .logo {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 170px;
   padding-top: 24px;
   font-family: var(--font-family-display);
-  font-size: var(--font-size-40);
+  font-size: min(var(--font-size-40), 10vw);
   font-weight: var(--font-weight-display);
   line-height: 1.1;
   letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
 .logo::after {
@@ -62,7 +62,7 @@
   margin-top: auto;
 }
 
-/* 見出し（規則3）。見出しの書体の極太で置き、献立詳細の名称と同じ3色の帯を下に引く（帯は飾り）。 */
+/* 見出し（規則3）。見出しの書体の極太で置く。 */
 .heading {
   margin: 0;
   font-family: var(--font-family-display);
@@ -70,20 +70,6 @@
   font-weight: var(--font-weight-display);
   line-height: 1.3;
   letter-spacing: 0.02em;
-}
-
-.heading::after {
-  display: block;
-  width: 96px;
-  height: 8px;
-  margin-top: 16px;
-  background: linear-gradient(
-    to right,
-    var(--color-fill-tomato) 0 33.3%,
-    var(--color-fill-leaf) 33.3% 66.6%,
-    var(--color-fill-yolk) 66.6% 100%
-  );
-  content: '';
 }
 
 /* 欄の塊（規則4）。見出しから 32px、欄どうしは間 24px。 */
@@ -157,10 +143,10 @@
 
 /*
  * 断りの案内（規則9 / NFR-16 / NFR-17）。色だけで分けないために、文の前に記号を添える
- * （記号は `aria-hidden` で読み上げに出さない）。左端にトマトの太い線を引く（献立の失敗の帯と同じ形）。
+ * （記号は `aria-hidden` で読み上げに出さない）。左端に赤の太い線を引く（献立の失敗の帯と同じ形）。
  */
 .noticeRejected {
-  border-left: 6px solid var(--color-fill-tomato);
+  border-left: 6px solid var(--color-danger);
   background: var(--color-danger-surface);
   color: var(--color-danger);
   font-weight: var(--font-weight-medium);
@@ -251,7 +237,6 @@
   .logo {
     gap: 10px;
     align-self: stretch;
-    max-width: none;
     min-height: 100dvh;
     padding: 40px 24px;
     background: var(--color-text);

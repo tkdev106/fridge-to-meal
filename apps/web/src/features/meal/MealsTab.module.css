@@ -64,7 +64,7 @@
   bottom: 0;
   left: 0;
   width: 32%;
-  background: var(--color-fill-tomato);
+  background: var(--color-text);
   animation: progress-indeterminate 1.8s cubic-bezier(0.45, 0, 0.25, 1) infinite;
 }
 
@@ -364,13 +364,13 @@
   margin-top: 0;
 }
 
-/* 失敗の帯（S-6 / 設計 B-62 規則9）。左端にトマトの太い線を引く。 */
+/* 失敗の帯（S-6 / 設計 B-62 規則9）。左端に赤の太い線を引く。 */
 .failedBand {
   display: flex;
   gap: 8px;
   margin: 0;
   padding: 12px 16px;
-  border-left: 6px solid var(--color-fill-tomato);
+  border-left: 6px solid var(--color-danger);
   background: var(--color-danger-surface);
   color: var(--color-danger);
   font-size: var(--font-size-14);
@@ -412,7 +412,7 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--color-fill-leaf);
+  background: var(--color-positive);
 }
 
 /* 待ち時間の案内と、生成中の「考えています…」。 */
@@ -461,30 +461,9 @@
   cursor: default;
 }
 
-/*
- * 「新しい献立を見る」。文字を左に、食材の3色の点を右に置く（点は飾り）。狭い幅では幅いっぱい
- * （広い幅の 360px は末尾）。
- */
+/* 「新しい献立を見る」。狭い幅では幅いっぱい（広い幅の 360px は末尾）。 */
 .requestButton {
-  display: flex;
   flex: none;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.requestButton::after {
-  flex: none;
-  width: 42px;
-  height: 10px;
-  background:
-    radial-gradient(circle at 5px 5px, var(--color-fill-tomato) 5px, transparent 5.5px),
-    radial-gradient(circle at 21px 5px, var(--color-fill-leaf) 5px, transparent 5.5px),
-    radial-gradient(circle at 37px 5px, var(--color-fill-yolk) 5px, transparent 5.5px);
-  content: '';
-}
-
-.requestButton:disabled::after {
-  opacity: 0.35;
 }
 
 /* 出せない回（S-4 / S-7 / S-9）の置き場。狭い幅は最大幅なし、広い幅は 520px（末尾）。 */
@@ -495,13 +474,17 @@
   width: 100%;
 }
 
-/* 出せない回の面。卵黄の色の面に文字色で置く。 */
+/*
+ * 出せない回の面。食材の色は献立のカードにだけ使うので、ここは面の色に文字色の 2px の枠で置く
+ * （`docs/design/README.md`「色の規則」）。
+ */
 .outcomePanel {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 28px 20px;
-  background: var(--color-fill-yolk);
+  border: 2px solid var(--color-text);
+  background: var(--color-surface);
   color: var(--color-text);
 }
 

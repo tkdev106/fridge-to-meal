@@ -66,8 +66,8 @@
   cursor: pointer;
 }
 
-/* 指を乗せている行と選んでいる行の地は卵黄（文字色との比 9.8）。 */
+/* 指を乗せている行と選んでいる行の地は控えめな面（文字色との比 14.0）。 */
 .option:hover,
 .optionActive {
-  background: var(--color-fill-yolk);
+  background: var(--color-surface-muted);
 }

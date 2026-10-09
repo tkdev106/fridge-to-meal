@@ -145,12 +145,11 @@
 
 /*
  * 1行（規則6・7）。押下の受け口は行全体を覆う button 1つ。高さ 60px・下辺に区切り線。
- * 頭に食材の3色の四角を日ごとに順に置き（飾り。同じ日の行は同じ色）、名称は1行に収めて省略記号で
- * 切り、件数は右寄せ。
+ * 名称は1行に収めて省略記号で切り、件数は右寄せ。
  */
 .row {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   column-gap: 14px;
   align-items: center;
   width: 100%;
@@ -167,21 +166,6 @@
 
 .row:hover {
   background: var(--color-surface);
-}
-
-.row::before {
-  width: 10px;
-  height: 10px;
-  background: var(--color-fill-tomato);
-  content: '';
-}
-
-.days > :nth-child(3n + 2) .row::before {
-  background: var(--color-fill-leaf);
-}
-
-.days > :nth-child(3n) .row::before {
-  background: var(--color-fill-yolk);
 }
 
 /* 名称。DOM の文字は切らず、見た目だけ省略記号で切る（規則6）。 */

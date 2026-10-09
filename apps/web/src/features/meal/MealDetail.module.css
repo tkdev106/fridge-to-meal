@@ -41,9 +41,7 @@
   cursor: default;
 }
 
-/*
- * 献立の名称（第1階層の見出し）。見出しの書体で大きく置き、下に食材の3色の帯を引く（帯は飾り）。
- */
+/* 献立の名称（第1階層の見出し）。見出しの書体で大きく置く。 */
 .title {
   margin: 8px 0 0;
   font-family: var(--font-family-display);
@@ -52,20 +50,6 @@
   line-height: 1.3;
   letter-spacing: 0.02em;
   text-wrap: balance;
-}
-
-.title::after {
-  display: block;
-  width: 96px;
-  height: 8px;
-  margin-top: 16px;
-  background: linear-gradient(
-    to right,
-    var(--color-fill-tomato) 0 33.3%,
-    var(--color-fill-leaf) 33.3% 66.6%,
-    var(--color-fill-yolk) 66.6% 100%
-  );
-  content: '';
 }
 
 /* 材料の欄。名称との間 32px。 */
@@ -198,10 +182,7 @@
   align-items: start;
 }
 
-/*
- * 手順の番号。食材の3色の丸を順に回し、見出しの書体で置く。卵黄の丸だけ文字色で書く
- * （トマト・青菜は地の明るい色。どれも 4.5 以上）。
- */
+/* 手順の番号。文字色の丸に面の色の数字を見出しの書体で置く。 */
 .stepNumber {
   display: flex;
   align-items: center;
@@ -209,22 +190,13 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--color-fill-tomato);
+  background: var(--color-text);
   color: var(--color-surface);
   font-family: var(--font-family-display);
   font-size: var(--font-size-18);
   font-weight: var(--font-weight-display);
   line-height: 1;
   font-variant-numeric: tabular-nums;
-}
-
-.step:nth-child(3n + 2) .stepNumber {
-  background: var(--color-fill-leaf);
-}
-
-.step:nth-child(3n) .stepNumber {
-  background: var(--color-fill-yolk);
-  color: var(--color-text);
 }
 
 /* 手順の文。番号の丸の中ほどに1行目を揃える。 */
