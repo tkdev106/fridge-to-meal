@@ -266,7 +266,7 @@
 /*
  * PC（幅 1024px 以上。値の正は `docs/screen-design.md` 2.1 / ADR-076。CSS 変数はメディアクエリに
  * 使えないので写しを書く）。左右の余白と最大幅はタブの画面で共通のトークン（`global.css`）。
- * 見出しの行は縦の余白を他のタブの見出し（`navigation/ScreenHeader`）と同じ `40px 0 32px` にし、
+ * 見出しの行は縦の余白を他のタブの見出し（`navigation/ScreenHeader`）と同じ `48px 0 32px` にし、
  * 戻るのアイコンの線を画面の欄の左端に揃える（48px 四方の外側の余白ぶん左へ寄せる）。
  */
 @media (min-width: 1024px) {

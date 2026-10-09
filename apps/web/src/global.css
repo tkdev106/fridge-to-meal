@@ -16,14 +16,12 @@
   --color-border-strong: #8c877f; /* 無効の副の操作の枠 */
   --color-text: #161513; /* 文字・主の操作の地・下タブとサイドナビの地・入力欄の枠 */
   --color-text-secondary: #5d5850; /* 補助の文字・主の操作を押している間 */
-  --color-text-muted: #6e6a63; /* さらに弱い文字（任意・置き文字・無効） */
+  --color-text-muted: #6e6a63; /* さらに弱い文字（置き文字・無効） */
   --color-text-on-dark: #b9b2a6; /* 文字色の地の上の、選んでいない項目 */
-  --color-positive: #276b42; /* 緑の文字（賄える・在庫が変わった） */
-  --color-positive-surface: #dde8d6; /* 緑の地 */
-  --color-danger: #b13822; /* 赤の文字（今日まで・不足・削除） */
+  --color-positive: #276b42; /* 緑の文字（賄える・在庫が変わった・作ったことがある） */
+  --color-danger: #b13822; /* 赤の文字（今日まで・不足・失敗・断り・削除） */
   --color-danger-surface: #f6dcd3; /* 赤の地 */
   --color-caution: #8a5a12; /* 黄土の文字（期限が近い） */
-  --color-caution-surface: #f6e6c4; /* 黄土の地 */
 
   /* 文字の大きさと太さ。本文は 400 と 500、見出しの書体は 900 だけ */
   --font-size-12: 12px;
@@ -63,9 +61,10 @@
   --focus-outline: 2px solid var(--color-text);
   --focus-outline-offset: 2px;
   /*
-   * 操作と入力欄の輪郭は内側に引き、枠に重ねて1本にする（外に離すと、枠と輪郭が二重に見える）。
+   * 操作の輪郭は 2px の枠のすぐ内側に引き、枠と合わせて太い1本に見せる（枠に重ねると見えず、
+   * 外に離すと二重に見える）。入力欄とカードが枠の内側を 2px 太らせるのと同じ見え方になる。
    */
-  --focus-outline-offset-inset: -2px;
+  --focus-outline-offset-inset: -4px;
   /*
    * 文字色の地の操作（主の操作）の輪郭。地と同じ色の輪郭は見えないので、地の色の線を
    * 縁から 4px 内側に引く（縁の 2px は文字色のまま残り、線が1本に見える）。
@@ -130,8 +129,8 @@ textarea {
 
 /*
  * 操作と入力欄は輪郭を内側に引く（上の `--focus-outline-offset-inset`）。枠のある部品では
- * 枠に重なって1本になり、枠の無い部品では押せる範囲の内側に1本出る。**輪郭そのものは消さない**
- * （NFR-16）。文字色の地の操作は各画面の module が `--focus-outline-inverse` で上書きする。
+ * 枠の内側に接して枠が太く見え、枠の無い部品では押せる範囲の内側に1本出る。**輪郭そのものは
+ * 消さない**（NFR-16）。文字色の地の操作は各画面の module が `--focus-outline-inverse` で上書きする。
  */
 button:focus-visible,
 input:focus-visible,

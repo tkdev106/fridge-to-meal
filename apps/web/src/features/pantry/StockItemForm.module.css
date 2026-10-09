@@ -395,7 +395,7 @@
 }
 
 .secondary:disabled {
-  border-color: var(--color-text-muted);
+  border-color: var(--color-border-strong);
   color: var(--color-text-muted);
   cursor: default;
 }

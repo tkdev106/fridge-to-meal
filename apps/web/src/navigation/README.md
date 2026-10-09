@@ -14,10 +14,10 @@
 | `Tabs.ts` | タブの識別子（`TabId`）・並び（`TAB_ORDER`）・既定（`DEFAULT_TAB`）。**文言を持たない** |
 | `TabbedScreen.tsx` | 帯（SP の下タブ・PC のサイドナビ。ロゴ・タブ3つ・帯の「設定」）と、選んだタブの中身または設定の出し分け。**日本語のラベルとタブのアイコンの対応はここだけ** |
 | `TabbedScreen.module.css` | SP / PC の並びと、選んでいる / いないタブの見た目（`.tab` / `.tabSelected`）。**見た目の値はここだけ** |
-| `ScreenHeader.tsx` | 見出しの行（`h1` の題と、その後ろの歯車 `aria-label="設定"`）。献立・在庫（一覧）・履歴の3つの一覧の先頭に置かれる（B-60 設計 6章 規則12〜14） |
+| `ScreenHeader.tsx` | 見出しの行（`h1` の題と、その上に添える1行（献立タブの今日の日付）と、その後ろの歯車 `aria-label="設定"`）。献立・在庫（一覧）・履歴の3つの一覧の先頭に置かれる（B-60 設計 6章 規則12〜14） |
 | `ScreenLocation.ts` | 画面の行き先の継ぎ目の型（`ScreenId` / `ScreenLocation`）と、URL のハッシュとの写し（`screenIdOf` / `hashOf`）。門が見るのはこの型だけ |
 | `ScreenLocationImpl.ts` | `replaceState` で今の項目のハッシュを書き、`popstate` で着いた項目に書き直す。窓は構造型 `ScreenLocationSource` で受ける |
-| `ScreenHeader.module.css` | 見出しの行の見た目。余白は SP `16px 16px 24px`・PC `40px 0 32px`、歯車の押せる大きさは 48px で、**PC では歯車を `display: none` にする**（PC の入口はサイドナビの下端の「設定」） |
+| `ScreenHeader.module.css` | 見出しの行の見た目。余白は SP `24px 0 20px`・PC `48px 0 32px`、歯車の押せる大きさは 48px で、**PC では歯車を `display: none` にする**（PC の入口はサイドナビの下端の「設定」） |
 
 ## ここで守ること
 

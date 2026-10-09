@@ -8,7 +8,7 @@
  * 引き、ここで新しい色を作らない（規則11）。余白・字間・行高は生の px / em で書く
  * （先行 `TabbedScreen.module.css`）。
  *
- * 入力欄と操作は冷蔵庫の登録（`StockItemForm.module.css`）と同じ形にそろえる — 文字色の 2px の枠、
+ * 入力欄と操作は食材の登録（`StockItemForm.module.css`）と同じ形にそろえる — 文字色の 2px の枠、
  * 焦点は枠の内側を太らせる、主の操作は見出しの書体。
  */
 
@@ -199,7 +199,7 @@
 }
 
 .secondary:disabled {
-  border-color: var(--color-text-muted);
+  border-color: var(--color-border-strong);
   color: var(--color-text-muted);
   cursor: default;
 }
