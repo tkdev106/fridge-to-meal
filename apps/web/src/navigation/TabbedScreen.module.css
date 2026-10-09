@@ -17,7 +17,7 @@
  *
  * **帯は文字色（`--color-text`）の地に置く。** 選んでいる項目は、文字を明るく（`--color-surface`。
  * 地との比 17.5）・太く（500）し、同じ明るい色の線を添える。選んでいない項目は
- * `--color-text-on-dark`（地との比 8.7）。帯に食材の色を使わない（`docs/design/README.md`「色の規則」）。**色だけで選択を示さない** — 太さと線の
+ * `--color-text-on-dark`（地との比 8.7）。帯に色相を足さない（`docs/design/README.md`「色の規則」）。**色だけで選択を示さない** — 太さと線の
  * 手がかりが残っていることが NFR-17 の構えの側の担保である。比の実測は単体テストに入れない
  * （jsdom はレイアウトも配色の合成も持たない）。
  */
@@ -161,14 +161,9 @@
     padding: 40px 0 32px;
   }
 
-  /*
-   * ロゴ「fridge to meal」（規則16）。見出しの書体で、食材の3色の点を下に添える（点は飾りで、
-   * 文字の名前を変えない）。
-   */
+  /* ロゴ「fridge to meal」（規則16）。見出しの書体で1行に置く。 */
   .logo {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    display: block;
     padding: 0 24px;
     color: var(--color-surface);
     font-family: var(--font-family-display);
@@ -177,16 +172,6 @@
     line-height: 1.2;
     letter-spacing: 0.02em;
     white-space: nowrap;
-  }
-
-  .logo::after {
-    width: 54px;
-    height: 10px;
-    background:
-      radial-gradient(circle at 5px 5px, var(--color-fill-tomato) 5px, transparent 5.5px),
-      radial-gradient(circle at 27px 5px, var(--color-fill-leaf) 5px, transparent 5.5px),
-      radial-gradient(circle at 49px 5px, var(--color-fill-yolk) 5px, transparent 5.5px);
-    content: '';
   }
 
   /* 3項目を縦に並べる（規則3。タブは SP と同じ1組を並べ替えただけ）。 */

@@ -5,7 +5,7 @@
  * 色・文字の大きさ・太さはトークン（`src/global.css` の `:root`）から `var(--…)` で引き、
  * ここで新しい色を作らない。余白・字間・行の高さなどトークンの無い値は直に書く。
  *
- * カードは食材の色の面で、トマト・青菜・卵黄の順に回す。狭い幅は1列・最大幅なし、広い幅は
+ * カードは面の色の地に文字色の 2px の枠。狭い幅は1列・最大幅なし、広い幅は
  * 3列・最大幅 1080px（設計 6章 規則12）。切り替えはこのファイルの末尾の1か所にだけ書く。
  */
 
@@ -90,11 +90,8 @@
   width: 100%;
 }
 
-/* 凡例（D-4 の追記）。頭に黒地の札の見本を置く（見本は飾り）。 */
+/* 凡例（D-4 の追記）。 */
 .legend {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   margin: 12px 0 0;
   color: var(--color-text-secondary);
   font-size: var(--font-size-12);
@@ -102,17 +99,9 @@
   letter-spacing: 0.04em;
 }
 
-.legend::before {
-  flex: none;
-  width: 22px;
-  height: 12px;
-  background: var(--color-text);
-  content: '';
-}
-
 /*
  * カードの一覧。素の `ul` の印と字下げを消す（一覧の役割は `MealsTab.tsx` の `role="list"` が
- * 保つ。設計 B-61 規則13）。カードの番号は CSS の数え上げで描く。
+ * 保つ。設計 B-61 規則13）。
  */
 .cards {
   display: grid;
@@ -121,7 +110,6 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  counter-reset: meal;
   transition: opacity 150ms;
 }
 
@@ -131,76 +119,38 @@
 }
 
 /*
- * カード1枚。トマト・青菜・卵黄の色の面を順に回す。**カード全体が押せる**（設計 B-61 規則9・10）
+ * カード1枚。面の色の地に文字色の 2px の枠。**カード全体が押せる**（設計 B-61 規則9・10）
  * ので指の形を出す — 焦点はカードに当てない（止まり先は中のボタン）。
- *
- * `--card-text` は面の上の文字色で、トマトと青菜は地の明るい色、卵黄は文字色（どれも 4.5 以上）。
  */
 .card {
-  --card-text: var(--color-surface);
-  --card-numeral-opacity: 0.16;
-
-  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
   padding: 18px 18px 4px;
-  overflow: hidden;
-  background: var(--color-fill-tomato);
-  color: var(--card-text);
-  counter-increment: meal;
+  border: 2px solid var(--color-text);
+  background: var(--color-surface);
+  color: var(--color-text);
   cursor: pointer;
 }
 
-.card:nth-child(3n + 2) {
-  background: var(--color-fill-leaf);
-}
-
-.card:nth-child(3n) {
-  --card-text: var(--color-text);
-  --card-numeral-opacity: 0.09;
-
-  background: var(--color-fill-yolk);
-}
-
-/*
- * カードの番号（1〜3）。右上に大きく薄く置く飾りで、読み上げには出さない（`content` の `/ ''`）。
- * 名称より奥に描く。
- */
-.card::before {
-  position: absolute;
-  top: -26px;
-  right: -6px;
-  opacity: var(--card-numeral-opacity);
-  font-family: var(--font-family-display);
-  font-size: var(--font-size-numeral);
-  font-weight: var(--font-weight-display);
-  line-height: 1;
-  pointer-events: none;
-  content: counter(meal) / '';
-}
-
-/* 再利用の札（FR-35 / D-3）。名称の上に、左に寄せて置く。地の明るい色に文字色。 */
+/* 再利用の札（FR-35 / D-3）。名称の上に、左に寄せて置く。文字色の地に面の色の文字。 */
 .reusedMark {
-  position: relative;
   display: flex;
   align-items: center;
   align-self: flex-start;
   height: 22px;
   margin-bottom: 10px;
   padding: 0 8px;
-  background: var(--color-surface);
-  color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-surface);
   font-size: var(--font-size-12);
   font-weight: var(--font-weight-medium);
   line-height: 1.5;
   letter-spacing: 0.12em;
 }
 
-/* 献立の名称。見出しの書体で、番号より手前に描く。 */
+/* 献立の名称。見出しの書体で置く。 */
 .title {
-  position: relative;
-  max-width: 92%;
   margin: 0;
   font-family: var(--font-family-display);
   font-size: var(--font-size-22);
@@ -212,7 +162,6 @@
 
 /* 材料の件数と不足の件数。数字の幅を揃える。 */
 .coverage {
-  position: relative;
   margin: 6px 0 0;
   font-size: var(--font-size-12);
   font-weight: var(--font-weight-medium);
@@ -223,7 +172,6 @@
 
 /* 使う在庫の欄。名称を横に並べ、斜線で区切り、収まらなければ折り返す。 */
 .usedIngredients {
-  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -236,38 +184,35 @@
 }
 
 /*
- * 使う在庫の1件。**期限が今日でないものの太さも明示する**（設計 B-61 規則5）— 片方を既定任せに
- * すると、既定の太さが変わった回に札の差だけが黙って消える。
+ * 使う在庫の1件。補助の文字色・太さ 400。**期限が今日でないものの太さも明示する**（設計 B-61 規則5）
+ * — 片方を既定任せにすると、既定の太さが変わった回に太字の差だけが黙って消える。
  */
 .usedIngredient,
 .usedIngredientExpiringToday {
   position: relative;
+  color: var(--color-text-secondary);
   font-weight: var(--font-weight-regular);
 }
 
-/* 2件目からの頭に斜線を置く（飾り。札の外に、面の文字色で描く）。 */
+/* 2件目からの頭に斜線を置く（飾り）。 */
 .usedIngredient + .usedIngredient::before,
 .usedIngredient + .usedIngredientExpiringToday::before,
 .usedIngredientExpiringToday + .usedIngredient::before,
 .usedIngredientExpiringToday + .usedIngredientExpiringToday::before {
   position: absolute;
   left: -12px;
-  color: var(--card-text);
+  color: var(--color-text-secondary);
   font-weight: var(--font-weight-regular);
-  opacity: 0.6;
   content: '/' / '';
 }
 
-/* 期限が今日の1件は黒地の札（D-4 の追記）。卵黄の面では札の文字を卵黄にする。 */
+/*
+ * 期限が今日の1件は文字色の太字（D-4）。太さ 500 と 400 の差だけでは見分けにくいので、ほかの
+ * 材料を補助の文字色に落として差を付ける（色相は使わない。NFR-17）。
+ */
 .usedIngredientExpiringToday {
-  padding: 0 6px;
-  background: var(--color-text);
-  color: var(--color-surface);
+  color: var(--color-text);
   font-weight: var(--font-weight-medium);
-}
-
-.card:nth-child(3n) .usedIngredientExpiringToday {
-  color: var(--color-fill-yolk);
 }
 
 /*
@@ -289,13 +234,12 @@
 
 /* 「作り方を見る」の置き場。カードの下端に寄せる。 */
 .openMeal {
-  position: relative;
   margin-top: auto;
   padding-top: 14px;
 }
 
 /*
- * 「作り方を見る」。上に面の文字色の太い線を引き、文字を左・丸い矢印を右に置く。素の button の
+ * 「作り方を見る」。上に文字色の太い線を引き、文字を左・丸い矢印を右に置く。素の button の
  * 枠と地はここで消す（リセットでは全体を消さない。設計 B-59 6章 規則3）。押せる高さは 44px 以上。
  */
 .openMealButton {
@@ -316,7 +260,19 @@
   cursor: pointer;
 }
 
-/* 丸い矢印（飾り）。トマトと青菜は明るい地に文字色、卵黄は文字色の地に卵黄。 */
+/*
+ * 焦点は「作り方を見る」に当たるが、押せるのはカード全体なので、カードの枠を内側に 2px 太らせて示す
+ * （入力欄と同じ形）。ボタンの輪郭は透明で残す — 強制色のモードでは影が消え、輪郭が見える（NFR-16）。
+ */
+.openMealButton:focus-visible {
+  outline: 2px solid transparent;
+}
+
+.card:has(.openMealButton:focus-visible) {
+  box-shadow: inset 0 0 0 2px var(--color-text);
+}
+
+/* 丸い矢印（飾り）。文字色の丸に面の色の矢印。 */
 .openMealArrow {
   display: flex;
   align-items: center;
@@ -324,14 +280,9 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: var(--color-surface);
-  color: var(--color-text);
-  transition: transform 150ms ease-out;
-}
-
-.card:nth-child(3n) .openMealArrow {
   background: var(--color-text);
-  color: var(--color-fill-yolk);
+  color: var(--color-surface);
+  transition: transform 150ms ease-out;
 }
 
 /* カードに指を載せると矢印が少し進む。動きを減らす設定では動かさない。 */
@@ -475,8 +426,7 @@
 }
 
 /*
- * 出せない回の面。食材の色は献立のカードにだけ使うので、ここは面の色に文字色の 2px の枠で置く
- * （`docs/design/README.md`「色の規則」）。
+ * 出せない回の面。カードと同じ、面の色の地に文字色の 2px の枠で置く（`docs/design/README.md`「色の規則」）。
  */
 .outcomePanel {
   display: flex;

@@ -10,7 +10,7 @@
 :root {
   /* 色（使う色のすべて。これ以外の色を component の側で作らない） */
   --color-background: #f4efe4; /* 地 */
-  --color-surface: #fffaf0; /* 入力欄・パネル・札の面。色の面の上の文字 */
+  --color-surface: #fffaf0; /* 入力欄・パネル・カードの面。文字色の地の上の文字と線 */
   --color-surface-muted: #e9e1d2; /* 控えめな面（注意表示・案内の帯・無効の操作） */
   --color-border: #ddd5c6; /* 区切り線 */
   --color-border-strong: #8c877f; /* 無効の副の操作の枠 */
@@ -24,13 +24,6 @@
   --color-danger-surface: #f6dcd3; /* 赤の地 */
   --color-caution: #8a5a12; /* 黄土の文字（期限が近い） */
   --color-caution-surface: #f6e6c4; /* 黄土の地 */
-  /*
-   * 食材の色の面（献立のカード・ロゴの点だけ。README「色の規則」）。カードはトマト・青菜・卵黄の3色を順に回す。
-   * 面の上の文字は、トマトと青菜は `--color-surface`、卵黄は `--color-text`（どれも 4.5 以上）。
-   */
-  --color-fill-tomato: #c8412a;
-  --color-fill-leaf: #2d7a4c;
-  --color-fill-yolk: #f3b33d;
 
   /* 文字の大きさと太さ。本文は 400 と 500、見出しの書体は 900 だけ */
   --font-size-12: 12px;
@@ -42,7 +35,6 @@
   --font-size-26: 26px;
   --font-size-32: 32px;
   --font-size-40: 40px;
-  --font-size-numeral: 144px; /* 献立のカードの番号（飾り） */
   --font-weight-regular: 400;
   --font-weight-medium: 500;
   --font-weight-display: 900;

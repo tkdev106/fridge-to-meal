@@ -30,12 +30,8 @@
 /*
  * ロゴ（規則2）。見出しにも段落にもしない文字1つ。SP では見出しの書体で表紙のように大きく、
  * **折り返さずに1行で**置く。幅の狭い端末でも1行に収まるよう、幅の 10% を上限に縮める。
- * 下に添える食材の3色の点はロゴの印である（`docs/design/README.md`「色の規則」）。
  */
 .logo {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
   padding-top: 24px;
   font-family: var(--font-family-display);
   font-size: min(var(--font-size-40), 10vw);
@@ -43,16 +39,6 @@
   line-height: 1.1;
   letter-spacing: 0.01em;
   white-space: nowrap;
-}
-
-.logo::after {
-  width: 74px;
-  height: 14px;
-  background:
-    radial-gradient(circle at 7px 7px, var(--color-fill-tomato) 7px, transparent 7.5px),
-    radial-gradient(circle at 37px 7px, var(--color-fill-leaf) 7px, transparent 7.5px),
-    radial-gradient(circle at 67px 7px, var(--color-fill-yolk) 7px, transparent 7.5px);
-  content: '';
 }
 
 /* フォーム。SP では下寄せにする（規則1）。 */
@@ -233,9 +219,8 @@
     padding: 0;
   }
 
-  /* 左の欄。ロゴの位置と大きさはタブの画面の PC のロゴと同じ（1行・22px・点 10px）。 */
+  /* 左の欄。ロゴの位置と大きさはタブの画面の PC のロゴと同じ（1行・22px）。 */
   .logo {
-    gap: 10px;
     align-self: stretch;
     min-height: 100dvh;
     padding: 40px 24px;
@@ -245,15 +230,6 @@
     line-height: 1.2;
     letter-spacing: 0.02em;
     white-space: nowrap;
-  }
-
-  .logo::after {
-    width: 54px;
-    height: 10px;
-    background:
-      radial-gradient(circle at 5px 5px, var(--color-fill-tomato) 5px, transparent 5.5px),
-      radial-gradient(circle at 27px 5px, var(--color-fill-leaf) 5px, transparent 5.5px),
-      radial-gradient(circle at 49px 5px, var(--color-fill-yolk) 5px, transparent 5.5px);
   }
 
   /* 面。中身の幅 360px に内側の余白を足した幅で留め、上端から画面の高さの 12% 下に置く。 */
