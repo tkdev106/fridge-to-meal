@@ -21,6 +21,7 @@ export type IconName =
   | 'history'
   | 'plus'
   | 'back'
+  | 'forward'
   | 'settings'
   | 'more'
   | 'info'
@@ -33,7 +34,7 @@ export type IconProps = { name: IconName; size?: number };
 /** 原本の既定の大きさ。 */
 const DEFAULT_SIZE = 24;
 
-/** 線で描く10個の中身。`more` だけは塗りなのでここに置かない（下の `MORE_SHAPE`）。 */
+/** 線で描く11個の中身。`more` だけは塗りなのでここに置かない（下の `MORE_SHAPE`）。 */
 const STROKE_SHAPES: Record<Exclude<IconName, 'more'>, ReactNode> = {
   meal: (
     <>
@@ -67,6 +68,12 @@ const STROKE_SHAPES: Record<Exclude<IconName, 'more'>, ReactNode> = {
     <>
       <path d="M19 12H5" />
       <path d="m11 18-6-6 6-6" />
+    </>
+  ),
+  forward: (
+    <>
+      <path d="M5 12h14" />
+      <path d="m13 6 6 6-6 6" />
     </>
   ),
   settings: (

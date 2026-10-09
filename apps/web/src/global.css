@@ -44,6 +44,28 @@
     'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui,
     sans-serif;
 
+  /*
+   * 角の丸み。面（カード・パネル・まとまりの一覧）は 16px、操作と入力欄は 12px、札と
+   * 小さな印は丸めきる。下から出る面は上の2つの角だけを 24px で丸める。
+   */
+  --radius-surface: 16px;
+  --radius-control: 12px;
+  --radius-sheet: 24px;
+  --radius-pill: 999px;
+
+  /*
+   * 面の浮き。色は文字色を薄めたものだけを使い、新しい色相を作らない。`raised` は
+   * 押せるカードを指で触れている間・hover の間、`overlay` は一覧の上に重なる面。
+   */
+  --shadow-surface: 0 1px 2px rgb(31 30 27 / 4%), 0 2px 8px rgb(31 30 27 / 4%);
+  --shadow-raised: 0 2px 4px rgb(31 30 27 / 5%), 0 12px 28px rgb(31 30 27 / 9%);
+  --shadow-overlay: 0 8px 24px rgb(31 30 27 / 12%), 0 24px 64px rgb(31 30 27 / 14%);
+
+  /* 動き。押下・hover の色と浮きは短く、出入りする面は少し長く、終わりを緩める */
+  --duration-quick: 150ms;
+  --duration-enter: 280ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
   /* 操作の高さ。副は 48px、主は 56px。押せる要素はどれも 44px 以上にする */
   --control-height-secondary: 48px;
   --control-height-primary: 56px;
@@ -90,7 +112,7 @@ body {
 
 /*
  * フォーム部品は既定で独自の書体と色を持つ。地の書体と色を継がせる。
- * 角は丸めない（README「トークン」）。
+ * 角は操作の丸み（README「トークン」）。丸めない部品は各画面の module が 0 に戻す。
  */
 button,
 input,
@@ -98,7 +120,14 @@ select,
 textarea {
   font: inherit;
   color: inherit;
-  border-radius: 0;
+  border-radius: var(--radius-control);
+}
+
+/* 押した瞬間にブラウザが重ねる灰色の面を消す。押下の見た目は各画面の `:active` が持つ */
+button,
+a,
+label {
+  -webkit-tap-highlight-color: transparent;
 }
 
 :focus-visible {
@@ -126,4 +155,25 @@ body {
   font-size: var(--font-size-16);
   line-height: 1.75;
   letter-spacing: 0.02em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 選んだ文字の地。緑の地に文字色で、地の比を保つ */
+::selection {
+  background: var(--color-positive-surface);
+  color: var(--color-text);
+}
+
+/*
+ * 動きを減らす設定では、出入りと浮きの動きをすべて止める（NFR-16）。色の変化は残す。
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
 }

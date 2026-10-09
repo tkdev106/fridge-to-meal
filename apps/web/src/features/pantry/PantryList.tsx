@@ -436,7 +436,15 @@ export function PantryList({
   const sections = pantrySectionsOf(stockItems.stockItems, today);
 
   // 在庫品が0件なら帯を1つも出さない（規則11）。行の操作も描かない（B-69 規則16）。
-  if (sections.length === 0) return <p className={styles.notice}>{EMPTY_NOTICE}</p>;
+  if (sections.length === 0)
+    return (
+      <div className={styles.empty}>
+        <span className={styles.emptyIcon}>
+          <Icon name="pantry" size={32} />
+        </span>
+        <p className={styles.emptyNotice}>{EMPTY_NOTICE}</p>
+      </div>
+    );
 
   function showingOf(id: string): RowShowing {
     if (current.kind === 'revealed' && current.stockItemId === id) return 'revealed';

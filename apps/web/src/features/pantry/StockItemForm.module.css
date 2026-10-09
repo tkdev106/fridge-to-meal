@@ -45,9 +45,16 @@
   height: var(--control-height-secondary);
   padding: 0;
   border: 0;
+  border-radius: var(--radius-pill);
   background: none;
   color: var(--color-text);
   cursor: pointer;
+  transition: background-color var(--duration-quick) ease;
+}
+
+.back:hover:not(:disabled),
+.back:active:not(:disabled) {
+  background: var(--color-surface-muted);
 }
 
 /* 送っている間。押せないことを弱い文字色で示す。 */
@@ -89,6 +96,7 @@
   font-size: var(--font-size-20);
   font-weight: var(--font-weight-medium);
   line-height: 1.45;
+  letter-spacing: 0.03em;
 }
 
 /* 欄群。見出しとの間 32px、欄の間 24px（原本）。 */
@@ -96,7 +104,7 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
-  margin-top: 32px;
+  margin-top: 28px;
 }
 
 /* 欄1つ。欄の名前と欄の間 8px（原本）。 */
@@ -111,15 +119,26 @@
 .fieldLabel {
   display: flex;
   gap: 8px;
-  font-size: var(--font-size-12);
-  line-height: 1.5;
-  letter-spacing: 0.12em;
-  color: var(--color-text-secondary);
+  align-items: center;
+  font-size: var(--font-size-14);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+  color: var(--color-text);
 }
 
 /* 札 `任意`（規則3）。 */
 .optional {
-  color: var(--color-text-muted);
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-12);
+  font-weight: var(--font-weight-regular);
+  letter-spacing: 0.04em;
 }
 
 /*
@@ -133,7 +152,9 @@
   height: var(--control-height-secondary);
   padding: 0 16px;
   border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
   background: var(--color-surface);
+  transition: box-shadow var(--duration-quick) ease;
   font-variant-numeric: tabular-nums;
 }
 
@@ -147,6 +168,7 @@
   padding: 0 15px;
   border: 2px solid var(--color-text);
   outline: none;
+  box-shadow: 0 0 0 4px var(--color-surface-muted);
 }
 
 /* 分量の行。数値（または `その他` の自由入力）の欄と単位の選択を横に並べる。 */
@@ -171,7 +193,7 @@
   height: var(--control-height-secondary);
   padding: 0 40px 0 16px;
   border: 1px solid var(--color-border-strong);
-  border-radius: 0;
+  border-radius: var(--radius-control);
   background: var(--color-surface)
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231F1E1B' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
     no-repeat right 12px center / 20px 20px;
@@ -185,6 +207,7 @@
   padding: 0 39px 0 15px;
   border: 2px solid var(--color-text);
   outline: none;
+  box-shadow: 0 0 0 4px var(--color-surface-muted);
   background-position: right 11px center;
 }
 
@@ -216,11 +239,19 @@
 }
 
 .remainingDaysUrgent {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-danger-surface);
   color: var(--color-danger);
+  font-weight: var(--font-weight-medium);
 }
 
 .remainingDaysSoon {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-caution-surface);
   color: var(--color-caution);
+  font-weight: var(--font-weight-medium);
 }
 
 .remainingDaysRest {
@@ -241,6 +272,7 @@
   margin: 0;
   padding: 0 15px;
   border: 0;
+  border-radius: var(--radius-control);
   background: var(--color-surface);
   opacity: 0;
   cursor: pointer;
@@ -276,9 +308,12 @@
   height: 20px;
   margin: 0;
   border: 1px solid var(--color-border-strong);
-  border-radius: 0;
+  border-radius: 6px;
   background: var(--color-surface);
   appearance: none;
+  transition:
+    background-color var(--duration-quick) ease,
+    border-color var(--duration-quick) ease;
   cursor: pointer;
 }
 
@@ -340,11 +375,15 @@
   width: 100%;
   height: var(--control-height-primary);
   border: 0;
+  border-radius: var(--radius-control);
   background: var(--color-text);
   color: var(--color-background);
   font-weight: var(--font-weight-medium);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   cursor: pointer;
+  transition:
+    background-color var(--duration-quick) ease,
+    transform var(--duration-quick) var(--ease-out);
 }
 
 /* 文字色の地。焦点の輪郭は地の色で内側に引く（`global.css` の `--focus-outline-inverse`）。 */
@@ -355,21 +394,27 @@
 
 .primary:active:not(:disabled) {
   background: var(--color-text-secondary);
+  transform: scale(0.98);
 }
 
-/* 登録の `保存して閉じる`（規則11）。文字色の 1px の枠・透明の地。幅は主の保存と同じく横いっぱい。 */
+/* 登録の `保存して閉じる`（規則11）。灰の 1px の枠・白の地。幅は主の保存と同じく横いっぱい。 */
 .secondary {
   width: 100%;
   height: var(--control-height-secondary);
-  border: 1px solid var(--color-text);
-  background: transparent;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
   color: var(--color-text);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   cursor: pointer;
+  transition:
+    background-color var(--duration-quick) ease,
+    transform var(--duration-quick) var(--ease-out);
 }
 
 .secondary:active:not(:disabled) {
   background: var(--color-surface-muted);
+  transform: scale(0.98);
 }
 
 /*
@@ -383,7 +428,8 @@
 }
 
 .secondary:disabled {
-  border-color: var(--color-text-muted);
+  border-color: var(--color-border);
+  background: transparent;
   color: var(--color-text-muted);
   cursor: default;
 }

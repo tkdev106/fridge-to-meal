@@ -295,13 +295,24 @@ function SuggestionBody({
           )}
           {/* 画面の見出し（h1。B-60）の下に入る（B-61 規則2 / 原本 `MealCard`）。 */}
           <h3 className={styles.title}>{card.title}</h3>
-          <p className={styles.coverage}>{coverageText(card.ingredientCount, card.missingCount)}</p>
+          {/* 不足の有無はアイコンと色でも見分けられるようにする。意味は文字が運ぶ（NFR-17）。 */}
+          <p
+            className={
+              card.missingCount === 0
+                ? `${styles.coverage} ${styles.coverageComplete}`
+                : `${styles.coverage} ${styles.coverageShort}`
+            }
+          >
+            <Icon name={card.missingCount === 0 ? 'check' : 'alert'} size={16} />
+            {coverageText(card.ingredientCount, card.missingCount)}
+          </p>
           <UsedIngredients ingredients={card.usedIngredients} />
           {/* 手順と材料の内訳は詳細の持ち分である（FR-19 / B-53）。ボタンは**自分で開かない** —
               押下はカード（`li`）へ伝わってそこで開く（B-61 規則9・10）。 */}
           <div className={styles.openMeal}>
             <button type="button" className={styles.openMealButton}>
               {OPEN_MEAL_LABEL}
+              <Icon name="forward" size={20} />
             </button>
           </div>
         </li>
@@ -385,7 +396,11 @@ function RequestNewMealsControl({
             **接続が切れている間も押せない**（B-70 規則7）。理由は門の帯が示すので、案内は足さない。 */}
         <button
           type="button"
-          className={`${styles.primaryButton} ${styles.requestButton}`}
+          className={
+            requesting
+              ? `${styles.primaryButton} ${styles.requestButton} ${styles.requestButtonBusy}`
+              : `${styles.primaryButton} ${styles.requestButton}`
+          }
           onClick={onRequestNewMeals}
           disabled={requesting || offline}
         >
@@ -394,6 +409,7 @@ function RequestNewMealsControl({
 
         {requesting ? (
           <p className={styles.requestInfo}>
+            <span aria-hidden="true" className={styles.spinner} />
             <span role="status">{REQUESTING_NOTICE}</span>
           </p>
         ) : (
@@ -456,6 +472,9 @@ function GoToPantryNotice({
   return (
     <div className={styles.outcome}>
       <div role="status" className={styles.outcomePanel}>
+        <span className={styles.outcomeIcon}>
+          <Icon name="pantry" size={28} />
+        </span>
         <p className={styles.outcomeMessage}>
           {lines.map((line) => (
             <span key={line} className={styles.unbreakable}>
@@ -482,6 +501,9 @@ function GoToPantryNotice({
 function GenerationLimitReachedNotice() {
   return (
     <div role="status" className={`${styles.outcome} ${styles.outcomePanel}`}>
+      <span className={styles.outcomeIcon}>
+        <Icon name="meal" size={28} />
+      </span>
       <p className={`${styles.outcomeMessage} ${styles.outcomeMessageBalanced}`}>
         {GENERATION_LIMIT_REACHED_NOTICE}
       </p>
@@ -665,6 +687,9 @@ function MealsTabBody({
     return (
       <>
         <div className={styles.spaceAbove} />
+        <span className={styles.firstIcon}>
+          <Icon name="meal" size={40} />
+        </span>
         {control}
         <div className={styles.spaceBelow} />
       </>

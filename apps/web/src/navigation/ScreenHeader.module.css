@@ -20,7 +20,7 @@
   flex-direction: column;
   justify-content: center;
   min-height: 48px;
-  padding: 16px 0 24px;
+  padding: 20px 0 20px;
 }
 
 /* 題と歯車の1行。両端に置く。 */
@@ -31,13 +31,13 @@
   min-height: 48px;
 }
 
-/* 題（原本の `h1`）。 */
+/* 題（`h1`）。画面の入口として一番大きな文字にする。 */
 .title {
   margin: 0;
-  font-size: var(--font-size-20);
+  font-size: var(--font-size-26);
   font-weight: var(--font-weight-medium);
-  line-height: 1.45;
-  letter-spacing: 0.02em;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
 }
 
 /*
@@ -50,7 +50,8 @@
 }
 
 /*
- * 歯車。押せる大きさは 48px（規則13 / NFR-16）。素の button の枠と地はここで消す。
+ * 歯車。押せる大きさは 48px（規則13 / NFR-16）。素の button の枠と地はここで消し、
+ * 丸い面を hover と押下の手がかりにする。
  */
 .settings {
   display: flex;
@@ -60,9 +61,16 @@
   height: 48px;
   padding: 0;
   border: 0;
+  border-radius: var(--radius-pill);
   background: none;
   color: var(--color-text);
   cursor: pointer;
+  transition: background-color var(--duration-quick) ease;
+}
+
+.settings:hover,
+.settings:active {
+  background: var(--color-surface-muted);
 }
 
 /* PC（幅 1024px 以上）。余白は `40px 0 32px`（設計 10章 前提）、歯車は出さない（規則4）。 */

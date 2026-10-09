@@ -4,7 +4,7 @@
  * （切り替え幅の正は `docs/screen-design.md` 2.1。PC の配置の値の正は同 8章）。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1・2）。`SignInForm.tsx` は class 名しか書かない。
- * 色・文字の大きさ・太さ・操作の高さはトークン（`src/global.css` の `:root`）から `var(--…)` で
+ * 色・文字の大きさ・太さ・操作の高さ・丸み・浮きはトークン（`src/global.css` の `:root`）から `var(--…)` で
  * 引き、ここで新しい色を作らない（規則11）。余白・字間・行高は生の px / em で書く
  * （先行 `TabbedScreen.module.css`）。
  *
@@ -12,7 +12,8 @@
  */
 
 /*
- * 根。SP ではロゴを上に、フォームを下寄せに置く（規則1）。フォームの `margin-top: auto` で寄せ、
+ * 根。SP ではロゴを上の空きの中ほどに、フォームを下寄せに置く（規則1）。ロゴとフォームの
+ * `margin-top: auto` で空きを分け、
  * 空の要素を足さない。下の余白には安全域を足す（先行 `TabbedScreen.module.css` `.bar`）。
  * 幅は 390px で留めて中央に寄せる（規則10）。
  */
@@ -26,14 +27,29 @@
   padding: 24px 16px calc(48px + env(safe-area-inset-bottom, 0px));
 }
 
-/* ロゴ（規則2）。見出しにも段落にもしない文字1つ。 */
+/*
+ * ロゴ（規則2）。見出しにも段落にもしない文字1つ。SP では上の空きの中ほどに、アプリのアイコン
+ * （`public/icons/icon.svg`。飾り）を角の丸い白い面に載せて文字の上に置く。
+ */
 .logo {
   display: flex;
+  flex-direction: column;
+  gap: 16px;
   align-items: center;
-  height: 48px;
-  font-size: var(--font-size-14);
+  margin-top: auto;
+  font-size: var(--font-size-18);
   font-weight: var(--font-weight-medium);
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
+}
+
+.logo::before {
+  width: 72px;
+  height: 72px;
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  background: var(--color-surface) url('/icons/icon.svg') center / 60px 60px no-repeat;
+  box-shadow: var(--shadow-raised);
+  content: '';
 }
 
 /* フォーム。SP では下寄せにする（規則1）。 */
@@ -46,9 +62,10 @@
 /* 見出し（規則3）。 */
 .heading {
   margin: 0;
-  font-size: var(--font-size-20);
+  font-size: var(--font-size-26);
   font-weight: var(--font-weight-medium);
-  line-height: 1.45;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
 }
 
 /* 欄の塊（規則4）。見出しから 32px、欄どうしは間 24px。 */
@@ -68,20 +85,21 @@
 
 /* 欄の見出しの文字（規則4）。 */
 .fieldLabel {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-12);
-  line-height: 1.5;
-  letter-spacing: 0.12em;
+  color: var(--color-text);
+  font-size: var(--font-size-14);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.6;
+  letter-spacing: 0.04em;
 }
 
-/* 入力欄（規則5）。角なし。 */
+/* 入力欄（規則5）。 */
 .input {
   box-sizing: border-box;
   width: 100%;
   height: var(--control-height-secondary);
   padding: 0 16px;
   border: 1px solid var(--color-border-strong);
-  border-radius: 0;
+  border-radius: var(--radius-control);
   background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
@@ -99,6 +117,7 @@
 .notice {
   margin: 24px 0 0;
   padding: 12px 16px;
+  border-radius: var(--radius-control);
   font-size: var(--font-size-14);
   line-height: 1.6;
 }
@@ -131,12 +150,16 @@
   margin-top: 40px;
   padding: 0 16px;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--radius-control);
   background: var(--color-text);
   color: var(--color-background);
   font: inherit;
   font-weight: var(--font-weight-medium);
+  letter-spacing: 0.04em;
   cursor: pointer;
+  transition:
+    background-color var(--duration-quick) ease,
+    transform var(--duration-quick) var(--ease-out);
 }
 
 /* 文字色の地。焦点の輪郭は地の色で内側に引く（`global.css` の `--focus-outline-inverse`）。 */
@@ -147,6 +170,7 @@
 
 .primary:active:not(:disabled) {
   background: var(--color-text-secondary);
+  transform: scale(0.98);
 }
 
 .primary:disabled {
@@ -161,9 +185,9 @@
   height: var(--control-height-secondary);
   margin-top: 16px;
   padding: 0 16px;
-  border: 1px solid var(--color-text);
-  border-radius: 0;
-  background: transparent;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
   font-weight: var(--font-weight-regular);
@@ -189,9 +213,22 @@
 
   /* 上端の帯。左右の余白は他の画面の PC の余白（`--screen-inset-wide`）に揃える。 */
   .logo {
+    flex-direction: row;
+    gap: 12px;
     height: 64px;
+    margin-top: 0;
     padding: 0 var(--screen-inset-wide);
     border-bottom: 1px solid var(--color-border);
+    font-size: var(--font-size-14);
+    letter-spacing: 0.12em;
+  }
+
+  .logo::before {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    background-size: 26px 26px;
+    box-shadow: none;
   }
 
   /* 面。中身の幅 360px に内側の余白を足した幅で留め、帯から画面の高さの 10% 下に置く。 */
@@ -201,6 +238,8 @@
     margin: 10vh auto 0;
     padding: 40px;
     border: 1px solid var(--color-border);
+    border-radius: var(--radius-surface);
     background: var(--color-surface);
+    box-shadow: var(--shadow-raised);
   }
 }

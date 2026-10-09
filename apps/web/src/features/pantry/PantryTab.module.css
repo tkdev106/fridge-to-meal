@@ -41,9 +41,16 @@
   height: var(--control-height-secondary);
   padding: 0;
   border: 0;
+  border-radius: var(--radius-pill);
   background: none;
   color: var(--color-text);
   cursor: pointer;
+  transition: background-color var(--duration-quick) ease;
+}
+
+.iconButton:hover,
+.iconButton:active {
+  background: var(--color-surface-muted);
 }
 
 /*
@@ -90,5 +97,17 @@
     overflow-y: auto;
     border-left: 1px solid var(--color-border);
     background: var(--color-surface);
+    /* 後ろの一覧を暗くし、開いている間は押せないことを見た目でも示す。 */
+    box-shadow:
+      var(--shadow-overlay),
+      0 0 0 100vmax color-mix(in srgb, var(--color-text) 24%, transparent);
+    animation: panel-enter var(--duration-enter) var(--ease-out);
+  }
+}
+
+@keyframes panel-enter {
+  from {
+    transform: translateX(40px);
+    opacity: 0;
   }
 }

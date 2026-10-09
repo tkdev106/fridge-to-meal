@@ -2,20 +2,23 @@
  * 在庫一覧の帯と行の見た目（設計 B-64 6章 規則3〜8・14 / 原本 `docs/design/src/PantryScreen.dc.html`
  * と部品一覧の「スマホ・横スワイプ中」「PC・行末の操作を開いた」）。
  *
- * **見た目の値はここにだけ置く**（ADR-055 決定1）。色・文字の大きさ・太さ・操作の高さは
+ * **見た目の値はここにだけ置く**（ADR-055 決定1）。色・文字の大きさ・太さ・操作の高さ・丸み・浮きは
  * トークン（`src/global.css` の `:root`）から `var(--…)` で引き、ここで新しい色を作らない。
- * トークンに無い寸法（行の高さ 56px・列の幅 72px・ずらし 96px・開いた中身の幅 160px・余白）は
- * 原本の値を直に書く（規則12）。
+ * トークンに無い寸法（行の高さ 56px・列の幅 80px・ずらし 96px・開いた中身の幅 160px・余白）は
+ * ここに直に書く（規則12）。
+ *
+ * 帯ごとの行は、角を丸めた白い面に1つのまとまりとして載せる。開いた中身（`.operations`）が
+ * 面の外へはみ出せるよう、面ははみ出しを切らず、丸みは最初と最後の行が持つ。
  *
  * **動きを付けない**（規則8）— ずらしも開閉も即時である。
  * SP（幅 1024px 未満）は3列の行で `…` を見た目からだけ隠し、PC は `…` を4列目に置く（末尾のメディアクエリ。B-60 / ADR-076）。
  */
 
-/* 帯・行の包み（確認の間は `inert`。規則9）。帯の間は 24px（規則14）。 */
+/* 帯・行の包み（確認の間は `inert`。規則9）。帯の間は 28px（規則14）。 */
 .sections {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 28px;
 }
 
 /*
@@ -27,18 +30,49 @@
   padding: 0 16px;
 }
 
-/* 帯の見出し（原本の帯。高さ 32px・小さく字間を空けた文字）。地と文字色は帯ごとに下で当てる。 */
+/* 0件の案内。丸い面のアイコンの下に文を置き、画面の中ほどに揃える。アイコンは飾りである。 */
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  align-items: center;
+  padding: 64px 32px 0;
+  text-align: center;
+}
+
+.emptyIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+.emptyNotice {
+  max-width: 320px;
+  margin: 0;
+  color: var(--color-text-secondary);
+  text-wrap: balance;
+}
+
+/* 帯の見出し。丸めきった札（高さ 28px）を面の左上に置く。地と文字色は帯ごとに下で当てる。 */
 .band {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 32px;
-  margin: 0;
-  padding: 0 16px;
+  align-self: flex-start;
+  gap: 6px;
+  width: fit-content;
+  height: 28px;
+  margin: 0 16px 10px;
+  padding: 0 12px;
+  border-radius: var(--radius-pill);
   font-size: var(--font-size-12);
-  font-weight: var(--font-weight-regular);
+  font-weight: var(--font-weight-medium);
   line-height: 1.5;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.08em;
 }
 
 .bandUrgent {
@@ -63,27 +97,48 @@
 }
 
 .rows {
-  margin: 0;
+  margin: 0 16px;
   padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-surface);
   list-style: none;
 }
 
 /*
- * 1行。高さ 56px・下に区切り線（原本）。開いた中身（`.operations`）を行の直下へ重ねるため
+ * 1行。高さ 56px・行と行の間に区切り線。開いた中身（`.operations`）を行の直下へ重ねるため
  * `position: relative` にする。はみ出しは切らない — 切ると開いた中身が見えなくなる（規則7）。
  */
 .row {
   position: relative;
   height: 56px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-background);
+  background: var(--color-surface);
   cursor: pointer;
   /* なぞる操作で文字が選ばれないようにする（ポインタでなぞると選択の色が乗る）。 */
   user-select: none;
+  transition: background-color var(--duration-quick) ease;
+}
+
+.row + .row {
+  border-top: 1px solid var(--color-border);
+}
+
+/* 面の丸みは最初と最後の行が持つ（面ははみ出しを切らない）。 */
+.row:first-child,
+.row:first-child .rowContent {
+  border-top-left-radius: calc(var(--radius-surface) - 1px);
+  border-top-right-radius: calc(var(--radius-surface) - 1px);
+}
+
+.row:last-child,
+.row:last-child .rowContent {
+  border-bottom-left-radius: calc(var(--radius-surface) - 1px);
+  border-bottom-right-radius: calc(var(--radius-surface) - 1px);
 }
 
 .row:hover {
-  background: var(--color-surface);
+  background: var(--color-background);
 }
 
 /*
@@ -92,7 +147,7 @@
  */
 .rowContent {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px 72px;
+  grid-template-columns: minmax(0, 1fr) 72px 80px;
   column-gap: 12px;
   align-items: center;
   height: 100%;
@@ -117,12 +172,13 @@
   position: relative;
   z-index: 1;
   transform: translateX(-96px);
-  background: var(--color-background);
+  border-radius: 0;
+  background: var(--color-surface);
 }
 
 /* 行末の操作を開いた行（規則6）。行の地を面の白にする。 */
 .rowOperationsOpen {
-  background: var(--color-surface);
+  background: var(--color-background);
 }
 
 .name {
@@ -139,20 +195,33 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 残日数。色は帯の文字色で、文に添えるだけである（規則5 / NFR-17）。 */
+/*
+ * 残日数。今日まで・期限が近いは帯と同じ地の丸めきった札にし、色は文に添えるだけである
+ * （規則5 / NFR-17）。
+ */
 .remainingDays {
+  justify-self: end;
   font-size: var(--font-size-14);
   line-height: 1.6;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .remainingDaysUrgent {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-danger-surface);
   color: var(--color-danger);
+  font-weight: var(--font-weight-medium);
 }
 
 .remainingDaysSoon {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-caution-surface);
   color: var(--color-caution);
+  font-weight: var(--font-weight-medium);
 }
 
 .remainingDaysRest {
@@ -176,6 +245,7 @@
   height: var(--control-height-secondary);
   padding: 0;
   border: 0;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -209,21 +279,25 @@
 .operations {
   position: absolute;
   top: 100%;
-  right: 0;
+  right: 8px;
   z-index: 3;
   display: flex;
   flex-direction: column;
   width: 160px;
-  margin-top: -1px;
+  margin-top: -4px;
+  padding: 6px;
   border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   background: var(--color-surface);
+  box-shadow: var(--shadow-overlay);
   cursor: default;
 }
 
 .operation {
   height: 44px;
-  padding: 0 16px;
+  padding: 0 12px;
   border: 0;
+  border-radius: 8px;
   background: none;
   color: var(--color-text);
   font-size: var(--font-size-16);
@@ -253,9 +327,11 @@
   width: 96px;
   padding: 0;
   border: 0;
+  border-radius: 0;
   background: var(--color-danger);
   color: var(--color-background);
   font-size: var(--font-size-14);
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
 }
 
@@ -271,8 +347,14 @@
  */
 @media (min-width: 1024px) {
   .rowContent {
-    grid-template-columns: minmax(0, 1fr) 72px 72px 48px;
-    padding: 0 0 0 16px;
+    grid-template-columns: minmax(0, 1fr) 96px 96px 48px;
+    padding: 0 4px 0 20px;
+  }
+
+  .band,
+  .rows {
+    margin-right: 0;
+    margin-left: 0;
   }
 
   .toggle {

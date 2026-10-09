@@ -10,9 +10,12 @@
  * `:focus-visible` に任せ、ここで消さない（規則21）。
  */
 
-/* 画面の欄（原本 `main` の `0 0 24px`）。帯と行は幅いっぱいに引く。 */
+/*
+ * 画面の欄。帯の下のまとまり（ログアウト・冷蔵庫の共有・データ）は、それぞれ角を丸めた白い面に
+ * 載せ、左右 16px を空ける。帯はその面の上に置く小さな見出しである。
+ */
 .screen {
-  padding: 0 0 24px;
+  padding: 0 0 32px;
 }
 
 /* 見出しの行（規則11）。左に戻る、続けて題。 */
@@ -21,7 +24,7 @@
   align-items: center;
   gap: 4px;
   min-height: 48px;
-  padding: 24px 16px 24px 4px;
+  padding: 20px 16px 20px 4px;
 }
 
 /*
@@ -36,9 +39,16 @@
   height: var(--control-height-secondary);
   padding: 0;
   border: 0;
+  border-radius: var(--radius-pill);
   background: none;
   color: var(--color-text);
   cursor: pointer;
+  transition: background-color var(--duration-quick) ease;
+}
+
+.back:hover:not(:disabled),
+.back:active:not(:disabled) {
+  background: var(--color-surface-muted);
 }
 
 /* 削除を送っている間（B-56f 規則6）。押せないことを弱い文字色で示す。 */
@@ -50,9 +60,10 @@
 /* 題（`h1`）。 */
 .title {
   margin: 0;
-  font-size: var(--font-size-20);
+  font-size: var(--font-size-26);
   font-weight: var(--font-weight-medium);
-  line-height: 1.45;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
 }
 
 /* 帯（規則12。見出し `h2`）。 */
@@ -60,40 +71,47 @@
   display: flex;
   align-items: center;
   height: 32px;
-  margin: 0;
-  padding: 0 16px;
-  background: var(--color-surface-muted);
+  margin: 28px 0 0;
+  padding: 0 20px;
+  color: var(--color-text-secondary);
   font-size: var(--font-size-12);
-  font-weight: var(--font-weight-regular);
+  font-weight: var(--font-weight-medium);
   line-height: 1.5;
   letter-spacing: 0.12em;
 }
 
+/* 見出しの行の直後の帯は上を空けない。 */
+.header + .band {
+  margin-top: 0;
+}
+
 /* ログアウトの行の下の帯（上を 24px 空ける。規則12）。 */
 .bandSpaced {
-  margin-top: 24px;
+  margin-top: 28px;
 }
 
 /* ログアウトの行（規則13）。素の button の枠と地はここで消す。 */
 .signOut {
   display: flex;
   align-items: center;
-  width: 100%;
+  width: calc(100% - 32px);
   height: var(--control-height-primary);
+  margin: 0 16px;
   padding: 0 16px;
-  border: 0;
-  border-bottom: 1px solid var(--color-border);
-  border-radius: 0;
-  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-surface);
   color: var(--color-text);
   font-size: var(--font-size-16);
   letter-spacing: 0.02em;
   text-align: left;
   cursor: pointer;
+  transition: background-color var(--duration-quick) ease;
 }
 
 .signOut:hover:not(:disabled) {
-  background: var(--color-surface);
+  background: var(--color-background);
 }
 
 .signOut:disabled {
@@ -103,20 +121,31 @@
 
 /* 削除の置き場（規則14）。 */
 .dataArea {
-  padding: 24px 16px;
+  margin: 0 16px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-surface);
 }
 
-/* 削除の操作（規則14）。赤の枠と文字・地なし。 */
+/* 削除の操作（規則14）。赤の枠と文字・地なし（hover と押下で赤の地）。 */
 .delete {
   width: 100%;
   height: var(--control-height-secondary);
   border: 1px solid var(--color-danger);
-  border-radius: 0;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--color-danger);
   font-size: var(--font-size-16);
   letter-spacing: 0.02em;
   cursor: pointer;
+  transition: background-color var(--duration-quick) ease;
+}
+
+.delete:hover:not(:disabled),
+.delete:active:not(:disabled) {
+  background: var(--color-danger-surface);
 }
 
 /* 確認（規則15）。文と操作群の間 24px。 */
@@ -146,7 +175,7 @@
   width: 100%;
   height: var(--control-height-secondary);
   border: 0;
-  border-radius: 0;
+  border-radius: var(--radius-control);
   background: var(--color-danger);
   color: var(--color-background);
   font-size: var(--font-size-16);
@@ -168,17 +197,23 @@
   cursor: default;
 }
 
-/* 副の操作（`やめる`・`招待リンクを作る`・`コピー`・`この冷蔵庫から抜ける`）。文字色の枠・地なし。 */
+/* 副の操作（`やめる`・`招待リンクを作る`・`コピー`・`この冷蔵庫から抜ける`）。灰の枠・白の地。 */
 .secondary {
   width: 100%;
   height: var(--control-height-secondary);
-  border: 1px solid var(--color-text);
-  border-radius: 0;
-  background: transparent;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
   color: var(--color-text);
   font-size: var(--font-size-16);
   letter-spacing: 0.02em;
   cursor: pointer;
+  transition: background-color var(--duration-quick) ease;
+}
+
+.secondary:hover:not(:disabled),
+.secondary:active:not(:disabled) {
+  background: var(--color-background);
 }
 
 .secondary:disabled {
@@ -192,15 +227,22 @@
   margin: 0;
 }
 
-/* 人数の行（B-76 規則2）。名札と人数を横に並べ、人数を右に寄せる。行の寸法はログアウトの行に揃える。 */
+/*
+ * 人数の行（B-76 規則2）。名札と人数を横に並べ、人数を右に寄せる。行の高さはログアウトの行に揃え、
+ * 下の招待と抜けるの置き場と合わせて1枚の面にする（この行が面の上半分）。
+ */
 .memberRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   min-height: var(--control-height-primary);
+  margin: 0 16px;
   padding: 0 16px;
-  border-bottom: 1px solid var(--color-border);
+  border: 1px solid var(--color-border);
+  border-bottom-color: transparent;
+  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+  background: var(--color-surface);
   letter-spacing: 0.02em;
 }
 
@@ -211,12 +253,19 @@
   text-align: right;
 }
 
-/* 招待と抜けるの置き場（削除の置き場に揃える）。招待のかたまりと抜けるの間 24px。 */
+/* 招待と抜けるの置き場（面の下半分）。人数の行との間に区切り線。招待のかたまりと抜けるの間 24px。 */
 .sharingArea {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding: 24px 16px;
+  margin: 0 16px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 0 0 var(--radius-surface) var(--radius-surface);
+  background:
+    linear-gradient(var(--color-border), var(--color-border)) top / calc(100% - 32px) 1px no-repeat,
+    var(--color-surface);
+  box-shadow: var(--shadow-surface);
 }
 
 /* 招待のかたまり。操作・補助の文字・リンクの行・案内の間 12px（確認の操作群に揃える）。 */
@@ -273,5 +322,21 @@
   .header {
     margin-left: -12px;
     padding: 40px 0 32px;
+  }
+
+  .signOut,
+  .memberRow,
+  .sharingArea,
+  .dataArea {
+    margin-right: 0;
+    margin-left: 0;
+  }
+
+  .signOut {
+    width: 100%;
+  }
+
+  .band {
+    padding: 0 4px;
   }
 }
