@@ -24,9 +24,16 @@
   color: var(--color-text-secondary);
 }
 
-/* 理由のある欄。枠の色だけを変え、太さは変えない（並びが動かないように）。 */
+/*
+ * 理由のある欄。枠の色だけを変え、太さは変えない（並びが動かないように）。焦点で内側を太らせる線も
+ * 枠と同じ色にする（文字色と重ねると二重の枠に見える）。
+ */
 .invalid {
   border-color: var(--color-danger);
+}
+
+.invalid:focus {
+  box-shadow: inset 0 0 0 2px var(--color-danger);
 }
 
 /* 確認のメールの案内（規則12）。見出しから 32px、行ごとに段を分ける。 */

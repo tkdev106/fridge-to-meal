@@ -928,14 +928,14 @@ describe('献立タブ MealsTab のカード全体を押せること', () => {
 /**
  * 一覧の見た目のうち、文言と並びで観察できるもの（B-61 / ADR-074 / `docs/design/`）。
  *
- * ここに書く文言（`今日の献立` / `太字の材料は今日が期限です` / `材料4件・不足なし` /
+ * ここに書く文言（`今日の献立` / `黒地の材料は今日が期限です` / `材料4件・不足なし` /
  * `前に見た献立` / 注意表示）は**デザインから取ったもので、仮ではない**（ADR-074 /
  * `docs/screen-design.md` 論点3）。**読み上げにだけ届く文字はデザインに無い仮の文言なので、
  * 期待値に書かない**（`docs/testing.md` 4.1）— 名称の直後に別の要素が付くかどうかで見る。
  * **見た目の値（太さ・余白・列の数）は見ない**（ADR-055 決定3）。
  */
 const HEADING = '今日の献立';
-const LEGEND = '太字の材料は今日が期限です';
+const LEGEND = '黒地の材料は今日が期限です';
 const CAUTION_TEXT = 'AI による提案です。分量・加熱時間等はご自身でご確認ください';
 
 /**
@@ -978,6 +978,15 @@ describe('献立タブ MealsTab の見出し', () => {
     renderTab(suggested(entry()), { mealDetail: <p>詳細の中身</p> });
 
     expect(screen.queryAllByRole('heading', { name: HEADING })).toHaveLength(0);
+  });
+
+  it('見出しの前に、今日の日付を「月日 曜日」の形で出す', () => {
+    // ADR-093: 見出しの上の1行。今日は門から受け取った日付で、2026-09-20 は日曜日。
+    renderTab(suggested(entry()));
+
+    const heading = screen.getByRole('heading', { level: 1, name: HEADING });
+    const todayLine = screen.getByText('9月20日 日曜日');
+    expect(precedes(todayLine, heading)).toBe(true);
   });
 
   it('カードの献立の名称を、水準3の見出しで出す', () => {
@@ -1095,7 +1104,7 @@ describe('献立タブ MealsTab のカードの件数と使う在庫', () => {
   });
 
   it('期限が今日の材料にだけ、読み上げの文字を添える', () => {
-    // 規則6 / NFR-17: 太字は色ではないが読み上げに届かない。翌日以降の材料には添えない。
+    // 規則6 / NFR-17: 黒地の札は見た目だけで読み上げに届かない。翌日以降の材料には添えない。
     renderTab(
       suggested(
         entry({

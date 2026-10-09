@@ -1,15 +1,15 @@
 /*
- * 履歴タブ（原本 `docs/design/src/index.dc.html` 12 / 設計 B-67 6章 規則3〜10）。
+ * 履歴タブ（設計 B-67 6章 規則3〜10 / ADR-093）。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1・2）。`HistoryTab.tsx` は class 名しか書かない。
  * 色・文字の大きさ・太さはトークン（`src/global.css` の `:root`）から `var(--…)` で引き、
- * ここで新しい色を作らない。トークンに無い寸法（余白・高さ）は原本の値を直に書く。
+ * ここで新しい色を作らない。トークンに無い寸法（余白・高さ）は直に書く。
  *
  * PC（幅 1024px 以上）は末尾で左右の余白と最大幅だけをタブの画面で共通の値に揃える。
  */
 
 /*
- * 画面の欄（原本 `main` の `0 0 24px`）。**横の余白は持たない**（規則3）— 行が区切り線を幅いっぱいに
+ * 画面の欄。**横の余白は持たない**（規則3）— 行が区切り線を幅いっぱいに
  * 引くため。横 16px は見出しの行・切り替え・案内の置き場がそれぞれ持つ。
  */
 .screen {
@@ -36,13 +36,13 @@
 }
 
 /*
- * 切り替え（規則4）。外側は高さ 40px・枠 1px の2等分の格子。
+ * 切り替え（規則4）。外側は高さ 48px・文字色の枠 2px の2等分の格子。
  */
 .toggles {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  height: 40px;
-  border: 1px solid var(--color-border-strong);
+  height: 48px;
+  border: 2px solid var(--color-text);
 }
 
 /* 選んでいない側。素の button の枠と地はここで消す（規則2）。 */
@@ -64,7 +64,7 @@
  */
 .toggleSelected {
   background: var(--color-text);
-  color: var(--color-background);
+  color: var(--color-surface);
   font-weight: var(--font-weight-medium);
 }
 
@@ -74,9 +74,9 @@
   outline-offset: var(--focus-outline-offset-inverse);
 }
 
-/* 日ごとのまとまりの並び。切り替えとの間 16px（規則5）。 */
+/* 日ごとのまとまりの並び。切り替えとの間 20px（規則5）。 */
 .days {
-  margin-top: 16px;
+  margin-top: 20px;
 }
 
 /* 日の見出し（ADR-083 決定4）。`h2` の既定の余白と文字の大きさは持たせない。 */
@@ -87,8 +87,8 @@
 }
 
 /*
- * 日の見出しの操作。行と同じ左右 16px・高さ 44px・14px・太さ 500・補助の文字色、下辺に区切り線
- * （`docs/design/README.md` 履歴の日ごとの見出し）。
+ * 日の見出しの操作。行と同じ左右 16px・高さ 44px・14px・太さ 500・補助の文字色、下辺に文字色の
+ * 2px の線（`docs/design/README.md` 履歴の日ごとの見出し）。
  */
 .dayToggle {
   display: flex;
@@ -98,13 +98,14 @@
   height: 44px;
   padding: 0 16px;
   border: 0;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 2px solid var(--color-text);
   border-radius: 0;
   background: none;
   color: var(--color-text-secondary);
   font-size: var(--font-size-14);
   font-weight: var(--font-weight-medium);
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
   text-align: left;
   cursor: pointer;
 }
@@ -143,16 +144,17 @@
 }
 
 /*
- * 1行（規則6・7）。押下の受け口は行全体を覆う button 1つ。高さ 56px・下辺に区切り線。
- * 名称は左で1行に収めて省略記号で切り、件数は右寄せ。
+ * 1行（規則6・7）。押下の受け口は行全体を覆う button 1つ。高さ 60px・下辺に区切り線。
+ * 頭に食材の3色の四角を日ごとに順に置き（飾り。同じ日の行は同じ色）、名称は1行に収めて省略記号で
+ * 切り、件数は右寄せ。
  */
 .row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 16px;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  column-gap: 14px;
   align-items: center;
   width: 100%;
-  height: 56px;
+  height: 60px;
   padding: 0 16px;
   border: 0;
   border-bottom: 1px solid var(--color-border);
@@ -167,9 +169,25 @@
   background: var(--color-surface);
 }
 
+.row::before {
+  width: 10px;
+  height: 10px;
+  background: var(--color-fill-tomato);
+  content: '';
+}
+
+.days > :nth-child(3n + 2) .row::before {
+  background: var(--color-fill-leaf);
+}
+
+.days > :nth-child(3n) .row::before {
+  background: var(--color-fill-yolk);
+}
+
 /* 名称。DOM の文字は切らず、見た目だけ省略記号で切る（規則6）。 */
 .title {
   overflow: hidden;
+  font-weight: var(--font-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

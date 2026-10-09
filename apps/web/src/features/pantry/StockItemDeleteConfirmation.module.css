@@ -1,10 +1,9 @@
 /*
- * 在庫品の削除の確認の見た目（設計 B-64 6章 規則10・11 / 原本 `docs/design/src/PantryScreen.dc.html`
- * の `confirm` と `confirmSP`）。
+ * 在庫品の削除の確認の見た目（設計 B-64 6章 規則10・11 / ADR-093）。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1）。色・文字の大きさ・太さ・操作の高さは
  * トークンから `var(--…)` で引く。**暗幕の色はトークンを足さず、`--color-text` からここで作る**
- * （規則12。原本の rgba(31,30,27,0.4) は文字色の 40%）。
+ * （規則12。文字色の 40%）。
  *
  * SP は下から出る面、PC（幅 1024px 以上）は中央の幅 400px のダイアログ（末尾のメディアクエリ）。
  * 動きは付けない（規則8）。
@@ -29,15 +28,18 @@
   flex-direction: column;
   gap: 24px;
   padding: 32px 16px calc(24px + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid var(--color-border);
+  border-top: 6px solid var(--color-fill-tomato);
   background: var(--color-surface);
 }
 
+/* 問い。見出しの書体で置く。 */
 .question {
   margin: 0;
-  font-size: var(--font-size-16);
-  font-weight: var(--font-weight-medium);
-  line-height: 1.75;
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-20);
+  font-weight: var(--font-weight-display);
+  line-height: 1.5;
+  letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -57,13 +59,14 @@
   height: var(--control-height-secondary);
   border-radius: 0;
   font-size: var(--font-size-16);
-  letter-spacing: 0.02em;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.04em;
   cursor: pointer;
 }
 
 /* `やめる`（枠のみ）。 */
 .cancel {
-  border: 1px solid var(--color-text);
+  border: 2px solid var(--color-text);
   background: transparent;
   color: var(--color-text);
 }
@@ -72,8 +75,7 @@
 .confirm {
   border: 0;
   background: var(--color-danger);
-  color: var(--color-background);
-  font-weight: var(--font-weight-medium);
+  color: var(--color-surface);
 }
 
 /* 赤の地（文字色の輪郭では地との差が小さい）。焦点の輪郭は地の色で内側に引く（`global.css` の `--focus-outline-inverse`）。 */
@@ -92,7 +94,7 @@
 /*
  * PC（幅 1024px 以上。値の正は `docs/screen-design.md` 2.1 / ADR-076。CSS 変数はメディアクエリに
  * 使えないので写しを書く）。中央の幅 400px のダイアログで、操作は `やめる` | `削除` の2列
- * （原本 `confirmPC`。DOM の順のまま並べる）。
+ * （DOM の順のまま並べる）。
  */
 @media (min-width: 1024px) {
   .dialog {
@@ -103,7 +105,8 @@
     width: 400px;
     gap: 32px;
     padding: 32px 24px 24px;
-    border: 1px solid var(--color-border);
+    border: 2px solid var(--color-text);
+    border-top: 6px solid var(--color-fill-tomato);
     transform: translate(-50%, -50%);
   }
 

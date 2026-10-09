@@ -1,5 +1,5 @@
 /*
- * ログイン／アカウント作成の画面（`docs/design/` の 14 / 設計 B-68 6章 規則1〜11）。
+ * ログイン／アカウント作成の画面（`docs/design/` の 14 / 設計 B-68 6章 規則1〜11 / ADR-093）。
  * まず SP の見た目を書き、末尾の `@media (min-width: 1024px)` で PC の配置に組み替える
  * （切り替え幅の正は `docs/screen-design.md` 2.1。PC の配置の値の正は同 8章）。
  *
@@ -8,7 +8,8 @@
  * 引き、ここで新しい色を作らない（規則11）。余白・字間・行高は生の px / em で書く
  * （先行 `TabbedScreen.module.css`）。
  *
- * **フォーカスの見た目はここで上書きしない**（規則5）— `global.css` の `:focus-visible` に任せる。
+ * 入力欄と操作は冷蔵庫の登録（`StockItemForm.module.css`）と同じ形にそろえる — 文字色の 2px の枠、
+ * 焦点は枠の内側を太らせる、主の操作は見出しの書体。
  */
 
 /*
@@ -26,14 +27,32 @@
   padding: 24px 16px calc(48px + env(safe-area-inset-bottom, 0px));
 }
 
-/* ロゴ（規則2）。見出しにも段落にもしない文字1つ。 */
+/*
+ * ロゴ（規則2）。見出しにも段落にもしない文字1つ。SP では見出しの書体で表紙のように大きく置き、
+ * 「fridge」と「to meal」の2行に折る（幅で折る。文字は1つのまま）。食材の3色の点を下に添える
+ * （点は飾り）。
+ */
 .logo {
   display: flex;
-  align-items: center;
-  height: 48px;
-  font-size: var(--font-size-14);
-  font-weight: var(--font-weight-medium);
-  letter-spacing: 0.16em;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 170px;
+  padding-top: 24px;
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-40);
+  font-weight: var(--font-weight-display);
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+}
+
+.logo::after {
+  width: 74px;
+  height: 14px;
+  background:
+    radial-gradient(circle at 7px 7px, var(--color-fill-tomato) 7px, transparent 7.5px),
+    radial-gradient(circle at 37px 7px, var(--color-fill-leaf) 7px, transparent 7.5px),
+    radial-gradient(circle at 67px 7px, var(--color-fill-yolk) 7px, transparent 7.5px);
+  content: '';
 }
 
 /* フォーム。SP では下寄せにする（規則1）。 */
@@ -43,12 +62,28 @@
   margin-top: auto;
 }
 
-/* 見出し（規則3）。 */
+/* 見出し（規則3）。見出しの書体の極太で置き、献立詳細の名称と同じ3色の帯を下に引く（帯は飾り）。 */
 .heading {
   margin: 0;
-  font-size: var(--font-size-20);
-  font-weight: var(--font-weight-medium);
-  line-height: 1.45;
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-32);
+  font-weight: var(--font-weight-display);
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+}
+
+.heading::after {
+  display: block;
+  width: 96px;
+  height: 8px;
+  margin-top: 16px;
+  background: linear-gradient(
+    to right,
+    var(--color-fill-tomato) 0 33.3%,
+    var(--color-fill-leaf) 33.3% 66.6%,
+    var(--color-fill-yolk) 66.6% 100%
+  );
+  content: '';
 }
 
 /* 欄の塊（規則4）。見出しから 32px、欄どうしは間 24px。 */
@@ -68,23 +103,33 @@
 
 /* 欄の見出しの文字（規則4）。 */
 .fieldLabel {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-12);
+  color: var(--color-text);
+  font-size: var(--font-size-14);
+  font-weight: var(--font-weight-medium);
   line-height: 1.5;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.06em;
 }
 
-/* 入力欄（規則5）。角なし。 */
+/* 入力欄（規則5）。角なし・文字色の 2px の枠。 */
 .input {
   box-sizing: border-box;
   width: 100%;
   height: var(--control-height-secondary);
-  padding: 0 16px;
-  border: 1px solid var(--color-border-strong);
+  padding: 0 14px;
+  border: 2px solid var(--color-text);
   border-radius: 0;
   background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
+}
+
+/*
+ * 焦点は枠の内側を同じ色で太らせる（規則5）。外に輪郭を離すと枠と輪郭が二重に見える。
+ * 枠の色が変わる欄（アカウント作成の `.invalid`）でも、焦点の線は文字色である。
+ */
+.input:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--color-text);
 }
 
 /* パスワードの欄だけ字間を広げる（規則5）。 */
@@ -111,11 +156,13 @@
 
 /*
  * 断りの案内（規則9 / NFR-16 / NFR-17）。色だけで分けないために、文の前に記号を添える
- * （記号は `aria-hidden` で読み上げに出さない）。
+ * （記号は `aria-hidden` で読み上げに出さない）。左端にトマトの太い線を引く（献立の失敗の帯と同じ形）。
  */
 .noticeRejected {
+  border-left: 6px solid var(--color-fill-tomato);
   background: var(--color-danger-surface);
   color: var(--color-danger);
+  font-weight: var(--font-weight-medium);
 }
 
 /* 断りの記号。文との間を空ける。 */
@@ -133,9 +180,12 @@
   border: 0;
   border-radius: 0;
   background: var(--color-text);
-  color: var(--color-background);
+  color: var(--color-surface);
   font: inherit;
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-18);
+  font-weight: var(--font-weight-display);
+  letter-spacing: 0.06em;
   cursor: pointer;
 }
 
@@ -150,7 +200,7 @@
 }
 
 .primary:disabled {
-  background: var(--color-border);
+  background: var(--color-surface-muted);
   color: var(--color-text-muted);
   cursor: default;
 }
@@ -161,46 +211,72 @@
   height: var(--control-height-secondary);
   margin-top: 16px;
   padding: 0 16px;
-  border: 1px solid var(--color-text);
+  border: 2px solid var(--color-text);
   border-radius: 0;
   background: transparent;
   color: var(--color-text);
   font: inherit;
-  font-weight: var(--font-weight-regular);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.04em;
   cursor: pointer;
 }
 
+.secondary:active:not(:disabled) {
+  background: var(--color-surface-muted);
+}
+
 .secondary:disabled {
-  border-color: var(--color-border);
+  border-color: var(--color-text-muted);
   color: var(--color-text-muted);
   cursor: default;
 }
 
 /*
- * PC（幅 1024px 以上）。ロゴは上端の帯の左に置き、フォームは帯の下の上寄りに幅を留めた面として
- * 横の中央に置く。下寄せにしない — 広い画面の下端に欄が離れると、ロゴと欄の間が空きすぎる。
- * DOM の順（ロゴ → フォーム）と欄・操作の並びは SP と同じで、配置だけを組み替える。
+ * PC（幅 1024px 以上）。タブの画面の PC と同じく、左に幅 240px の文字色の欄を画面の高さいっぱいに
+ * 置いてロゴを載せ、フォームは右の残りの横の中央に、幅を留めた面として上寄りに置く。下寄せに
+ * しない — 広い画面の下端に欄が離れると、ロゴと欄の間が空きすぎる。DOM の順（ロゴ → フォーム）と
+ * 欄・操作の並びは SP と同じで、配置だけを組み替える。
  */
 @media (min-width: 1024px) {
   .screen {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    align-items: start;
     max-width: none;
-    padding: 0 0 64px;
+    padding: 0;
   }
 
-  /* 上端の帯。左右の余白は他の画面の PC の余白（`--screen-inset-wide`）に揃える。 */
+  /* 左の欄。ロゴの位置と大きさはタブの画面の PC のロゴと同じ（1行・22px・点 10px）。 */
   .logo {
-    height: 64px;
-    padding: 0 var(--screen-inset-wide);
-    border-bottom: 1px solid var(--color-border);
+    gap: 10px;
+    align-self: stretch;
+    max-width: none;
+    min-height: 100dvh;
+    padding: 40px 24px;
+    background: var(--color-text);
+    color: var(--color-surface);
+    font-size: var(--font-size-22);
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
   }
 
-  /* 面。中身の幅 360px に内側の余白を足した幅で留め、帯から画面の高さの 10% 下に置く。 */
+  .logo::after {
+    width: 54px;
+    height: 10px;
+    background:
+      radial-gradient(circle at 5px 5px, var(--color-fill-tomato) 5px, transparent 5.5px),
+      radial-gradient(circle at 27px 5px, var(--color-fill-leaf) 5px, transparent 5.5px),
+      radial-gradient(circle at 49px 5px, var(--color-fill-yolk) 5px, transparent 5.5px);
+  }
+
+  /* 面。中身の幅 360px に内側の余白を足した幅で留め、上端から画面の高さの 12% 下に置く。 */
   .form {
     box-sizing: border-box;
     width: 440px;
-    margin: 10vh auto 0;
+    margin: 12vh auto 64px;
     padding: 40px;
-    border: 1px solid var(--color-border);
+    border: 2px solid var(--color-text);
     background: var(--color-surface);
   }
 }

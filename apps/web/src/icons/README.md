@@ -10,7 +10,7 @@
 
 | ファイル | 役割 |
 | --- | --- |
-| `Icon.tsx` | アイコンの部品 `Icon`。原本 `docs/design/src/Icon.dc.html` の11個（設計 B-59 3章） |
+| `Icon.tsx` | アイコンの部品 `Icon`。原本 `docs/design/src/Icon.dc.html` の11個（設計 B-59 3章）と、献立のカードの `forward`（`back` の向きを返した形。ADR-093） |
 | `Icon.module.css` | 置き方（行の中で浮かせない・縮ませない）。色も寸法も持たない |
 
 ## ここで守ること

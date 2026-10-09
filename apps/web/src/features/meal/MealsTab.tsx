@@ -57,10 +57,24 @@ const EMPTY_SUGGESTION_NOTICE = LOAD_FAILURE_NOTICE;
 const HEADING = '今日の献立';
 
 /**
- * 凡例（D-4 の追記 / 原本 `MealScreen`）。**カードが1枚以上あるときだけ出す** — カードの中に
- * 期限が今日の材料があるかどうかでは出し分けない（原本は `hasCards` だけで出す。B-61 規則3）。
+ * 凡例（D-4 の追記）。**カードが1枚以上あるときだけ出す** — カードの中に期限が今日の材料が
+ * あるかどうかでは出し分けない（B-61 規則3）。
  */
-const LEGEND = '太字の材料は今日が期限です';
+const LEGEND = '黒地の材料は今日が期限です';
+
+/** 見出しの上の日付の曜日（`Date#getUTCDay` の順）。 */
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'] as const;
+
+/**
+ * 見出しの上に添える今日の日付（`10月9日 金曜日`）。`today` は `YYYY-MM-DD` の暦日であり、
+ * 時差で日がずれないよう UTC の 0 時として曜日を数える。
+ */
+function todayLabelOf(today: string): string {
+  const date = new Date(`${today}T00:00:00Z`);
+  const weekday = WEEKDAYS[date.getUTCDay()] ?? '';
+
+  return `${date.getUTCMonth() + 1}月${date.getUTCDate()}日 ${weekday}曜日`;
+}
 
 /** 再利用の印（FR-35 / D-3。文言は原本 `MealCard`）。 */
 const REUSED_MARK = '前に見た献立';
@@ -74,8 +88,8 @@ const CAUTION = 'AI による提案です。分量・加熱時間等はご自身
 /**
  * 期限が今日の材料に添える、**読み上げにだけ届く**文字（D-4 の追記 / NFR-17）。
  *
- * 見た目の手がかりは太字であり（色ではない）、**太字は読み上げに届かない。** 原本には無い
- * 文字なので、凡例の文から取った（B-61 設計 10章 前提）。
+ * 見た目の手がかりは黒地の札であり、**札は読み上げに届かない。** デザインに無い文字なので、
+ * 凡例の文から取った（B-61 設計 10章 前提）。
  */
 const EXPIRING_TODAY_TEXT = '今日が期限';
 
@@ -164,7 +178,7 @@ function coverageText(ingredientCount: number, missingCount: number): string {
 
 /**
  * 使う在庫の欄（FR-18 の結果を見せる。D-4 の追記）。**見出しを置かず名称だけを並べ**、期限が
- * 今日のものは太字にする。**並べ替えは `MealCards.ts` の持ち分。**
+ * 今日のものは黒地の札にする。**並べ替えは `MealCards.ts` の持ち分。**
  *
  * **`ul` / `li` にしない** — カードを `listitem` で数える読み手と混ざる（B-61 規則7）。
  */
@@ -215,7 +229,8 @@ export type MealsTabState =
 export type MealsTabProps = {
   suggestion: MealsTabState;
   /**
-   * 使う在庫のうち期限が今日のもの（太字）を決める基準日（`YYYY-MM-DD`）。**呼び出し側が渡す。**
+   * 使う在庫のうち期限が今日のもの（黒地の札）と見出しの上の日付を決める基準日（`YYYY-MM-DD`）。
+   * **呼び出し側が渡す。**
    * ここで `new Date()` を読むと、現在時刻が本体に埋まる（`docs/testing.md` 5章）。
    */
   today: string;
@@ -302,6 +317,9 @@ function SuggestionBody({
           <div className={styles.openMeal}>
             <button type="button" className={styles.openMealButton}>
               {OPEN_MEAL_LABEL}
+              <span className={styles.openMealArrow}>
+                <Icon name="forward" size={20} />
+              </span>
             </button>
           </div>
         </li>
@@ -574,7 +592,7 @@ function MealsTabList({
         </div>
       )}
       <div className={styles.content}>
-        <ScreenHeader title={HEADING} onOpenSettings={onOpenSettings}>
+        <ScreenHeader title={HEADING} eyebrow={todayLabelOf(today)} onOpenSettings={onOpenSettings}>
           {cards.length > 0 && <p className={styles.legend}>{LEGEND}</p>}
         </ScreenHeader>
         <MealsTabBody

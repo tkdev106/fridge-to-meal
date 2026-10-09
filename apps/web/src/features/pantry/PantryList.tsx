@@ -60,7 +60,7 @@ const SECTION_HEADINGS: Record<ExpirySection, string> = {
  */
 const ALERTED_SECTIONS: ReadonlySet<ExpirySection> = new Set(['urgent']);
 
-/** 帯ごとの見た目（地と文字色・残日数の色）。値は module の側にある（B-64 設計 規則3・5）。 */
+/** 帯ごとの見た目（見出しの文字色・残日数の色）。値は module の側にある（B-64 設計 規則3・5）。 */
 const SECTION_CLASSES: Record<ExpirySection, { band: string; remainingDays: string }> = {
   urgent: { band: styles.bandUrgent ?? '', remainingDays: styles.remainingDaysUrgent ?? '' },
   soon: { band: styles.bandSoon ?? '', remainingDays: styles.remainingDaysSoon ?? '' },
@@ -467,6 +467,10 @@ export function PantryList({
                 </span>
               )}
               <span>{SECTION_HEADINGS[section.section]}</span>
+              {/* 件数は見た目の手がかりで、読み上げは一覧の件数が運ぶ。 */}
+              <span className={styles.bandCount} aria-hidden="true">
+                {section.stockItems.length}
+              </span>
             </h2>
             <ul className={styles.rows}>
               {section.stockItems.map((row) => (
