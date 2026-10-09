@@ -1,12 +1,11 @@
 /*
- * 食材名の欄と直下の補完の一覧（原本 `docs/design/src/IngredientForm.dc.html` の add の食材名 /
- * 設計 B-66 6章 規則14）。
+ * 食材名の欄と直下の補完の一覧（設計 B-66 6章 規則14 / ADR-093）。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1・2）。`IngredientNameCombobox.tsx` は class 名しか
  * 書かない。色はトークン（`src/global.css` の `:root`）から `var(--…)` で引き、ここで新しい色を
  * 作らない。余白は生の px で書く（先行 `SignInForm.module.css`）。
  *
- * **フォーカスの輪郭はここで上書きしない** — `global.css` の `:focus-visible` に任せる（NFR-16）。
+ * 焦点は欄の枠の内側を太らせて示す（入力欄の形。`global.css`）。一覧の行は焦点を持たない（NFR-16）。
  */
 
 /* 欄と一覧の包み。一覧を欄の直下に絶対配置で重ねる基準になる。 */
@@ -14,23 +13,28 @@
   position: relative;
 }
 
-/* 欄。角なし。枠は他の入力欄（分量・期限）と同じ 1px で始める。 */
+/* 欄。角なし。枠は他の入力欄（分量・期限）と同じ文字色の 2px。 */
 .input {
   box-sizing: border-box;
   width: 100%;
   height: var(--control-height-secondary);
-  padding: 0 16px;
-  border: 1px solid var(--color-border-strong);
+  padding: 0 14px;
+  border: 2px solid var(--color-text);
   border-radius: 0;
   background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
 }
 
-/* 焦点の当たった欄は文字色の 2px の枠（原本）。枠が太るぶん左右の余白を 1px 詰め、文字を動かさない。 */
+/*
+ * 焦点の当たった欄は枠の内側にもう 2px 重ねて太い1本の枠にする（`StockItemForm.module.css` の
+ * 入力欄と同じ）。輪郭は透明にする — 色を付けると枠と二重に見え、透明なら `box-shadow` を
+ * 描かない強制配色のときにだけ色が付いて見える。
+ */
 .input:focus {
-  padding: 0 15px;
-  border: 2px solid var(--color-text);
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 2px var(--color-text);
 }
 
 /* 名前が空の断りが出ている間（B-65 規則10）。焦点の枠のほうを優先する。 */
@@ -38,7 +42,7 @@
   border-color: var(--color-danger);
 }
 
-/* 一覧。欄の直下に重ね、上辺の枠は欄と共有する（原本）。件数と高さの上限は置かない（設計 10章）。 */
+/* 一覧。欄の直下に重ね、上辺の枠は欄と共有する。件数と高さの上限は置かない（設計 10章）。 */
 .listbox {
   position: absolute;
   top: 100%;
@@ -47,23 +51,23 @@
   z-index: 2;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--color-border);
+  border: 2px solid var(--color-text);
   border-top: 0;
   background: var(--color-surface);
   list-style: none;
 }
 
-/* 行1つ。高さ 48px・左右 16px（原本）。 */
+/* 行1つ。高さ 48px・左右 14px。 */
 .option {
   display: flex;
   align-items: center;
   height: var(--control-height-secondary);
-  padding: 0 16px;
+  padding: 0 14px;
   cursor: pointer;
 }
 
-/* 指を乗せている行と選んでいる行の地（原本の hover）。 */
+/* 指を乗せている行と選んでいる行の地は控えめな面（文字色との比 14.0）。 */
 .option:hover,
 .optionActive {
-  background: var(--color-background);
+  background: var(--color-surface-muted);
 }

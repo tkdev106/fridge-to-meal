@@ -980,6 +980,15 @@ describe('献立タブ MealsTab の見出し', () => {
     expect(screen.queryAllByRole('heading', { name: HEADING })).toHaveLength(0);
   });
 
+  it('見出しの前に、今日の日付を「月日 曜日」の形で出す', () => {
+    // ADR-093: 見出しの上の1行。今日は門から受け取った日付で、2026-09-20 は日曜日。
+    renderTab(suggested(entry()));
+
+    const heading = screen.getByRole('heading', { level: 1, name: HEADING });
+    const todayLine = screen.getByText('9月20日 日曜日');
+    expect(precedes(todayLine, heading)).toBe(true);
+  });
+
   it('カードの献立の名称を、水準3の見出しで出す', () => {
     // 規則2: 原本 `MealCard` も h3。画面の見出し（h1。B-60）の下に入る。
     renderTab(suggested(entry({ title: '豚こま肉と白菜の生姜焼き' })));

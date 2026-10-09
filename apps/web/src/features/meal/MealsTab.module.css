@@ -1,20 +1,15 @@
 /*
- * 献立タブの一覧と「新しい献立を見る」の面・結末（原本 `docs/design/src/MealScreen.dc.html`・
- * `MealCard.dc.html`・`AiNotice.dc.html`・`RequestBlock.dc.html` / 設計 B-61 6章・B-62 6章）。
+ * 献立タブの一覧と「新しい献立を見る」の面・結末（設計 B-61 6章・B-62 6章 / ADR-093）。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1・2）。`MealsTab.tsx` は class 名しか書かない。
  * 色・文字の大きさ・太さはトークン（`src/global.css` の `:root`）から `var(--…)` で引き、
- * ここで新しい色を作らない。余白・字間・行の高さなどトークンの無い値は原本の数をそのまま書く
- * （先行 `navigation/TabbedScreen.module.css`）。
+ * ここで新しい色を作らない。余白・字間・行の高さなどトークンの無い値は直に書く。
  *
- * 狭い幅（原本 SP）は1列・最大幅なし、広い幅（原本 PC）は3列・最大幅 1080px（設計 6章 規則12）。
- * 切り替えはこのファイルの末尾の1か所にだけ書く。
+ * カードは面の色の地に文字色の 2px の枠。狭い幅は1列・最大幅なし、広い幅は
+ * 3列・最大幅 1080px（設計 6章 規則12）。切り替えはこのファイルの末尾の1か所にだけ書く。
  */
 
-/*
- * 画面の欄（原本 SP の `main` の余白）。生成中の進行線の置き場でもある（原本 `main` の
- * `position: relative`。設計 B-62 規則7）。
- */
+/* 画面の欄。生成中の進行線の置き場でもある（設計 B-62 規則7）。 */
 .screen {
   position: relative;
   padding: 0 16px 24px;
@@ -36,7 +31,7 @@
   flex-direction: column;
 }
 
-/* 中ほどに置く結末の上下の空き（原本 `MealScreen` の `flex:3` / `flex:1` / `flex:2`）。 */
+/* 中ほどに置く結末の上下の空き。 */
 .spaceAbove {
   flex: 3;
   min-height: 24px;
@@ -52,16 +47,14 @@
   min-height: 24px;
 }
 
-/*
- * 生成中の進行線（原本 `MealScreen` の progress / 設計 B-62 規則7）。欄の上端に高さ 2px で置く。
- */
+/* 生成中の進行線（設計 B-62 規則7）。欄の上端に高さ 4px で置く。 */
 .progress {
   position: absolute;
   top: 0;
   right: 0;
   left: 0;
   z-index: 2;
-  height: 2px;
+  height: 4px;
   overflow: hidden;
 }
 
@@ -92,18 +85,18 @@
   }
 }
 
-/* 中身の欄（原本 `main` の内側の `div`）。最大幅は広い幅でだけ付ける。 */
+/* 中身の欄。最大幅は広い幅でだけ付ける。 */
 .content {
   width: 100%;
 }
 
 /* 凡例（D-4 の追記）。 */
 .legend {
-  margin: 0;
+  margin: 12px 0 0;
   color: var(--color-text-secondary);
-  font-size: var(--font-size-14);
+  font-size: var(--font-size-12);
   line-height: 1.6;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
 }
 
 /*
@@ -113,96 +106,112 @@
 .cards {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 24px;
+  gap: 14px;
   margin: 0;
   padding: 0;
   list-style: none;
   transition: opacity 150ms;
 }
 
-/* 生成中は前の提案を薄く残す（D-6 / 原本 `dim` / 設計 B-62 規則8）。カード群だけを薄くする。 */
+/* 生成中は前の提案を薄く残す（D-6 / 設計 B-62 規則8）。カード群だけを薄くする。 */
 .cardsDimmed {
   opacity: 0.4;
 }
 
 /*
- * カード1枚（原本 `MealCard` の `article`）。**カード全体が押せる**（設計 B-61 規則9・10）ので
- * 指の形と hover の枠を出す — 見た目だけで、焦点はカードに当てない（止まり先は中のボタン）。
+ * カード1枚。面の色の地に文字色の 2px の枠。**カード全体が押せる**（設計 B-61 規則9・10）
+ * ので指の形を出す — 焦点はカードに当てない（止まり先は中のボタン）。
  */
 .card {
-  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 16px;
-  border: 1px solid var(--color-border);
+  padding: 18px 18px 4px;
+  border: 2px solid var(--color-text);
   background: var(--color-surface);
   color: var(--color-text);
   cursor: pointer;
 }
 
-.card:hover {
-  border-color: var(--color-border-strong);
-}
-
-/* 再利用の札（FR-35 / D-3）。名称の上に、左に寄せて置く。 */
+/* 再利用の札（FR-35 / D-3）。名称の上に、左に寄せて置く。文字色の地に面の色の文字。 */
 .reusedMark {
   display: flex;
   align-items: center;
   align-self: flex-start;
-  height: 24px;
-  margin-bottom: 12px;
+  height: 22px;
+  margin-bottom: 10px;
   padding: 0 8px;
-  background: var(--color-positive-surface);
-  color: var(--color-positive);
+  background: var(--color-text);
+  color: var(--color-surface);
   font-size: var(--font-size-12);
+  font-weight: var(--font-weight-medium);
   line-height: 1.5;
   letter-spacing: 0.12em;
 }
 
-/* 献立の名称。 */
+/* 献立の名称。見出しの書体で置く。 */
 .title {
   margin: 0;
-  font-size: var(--font-size-18);
-  font-weight: var(--font-weight-medium);
-  line-height: 1.5;
-  letter-spacing: 0.01em;
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-22);
+  font-weight: var(--font-weight-display);
+  line-height: 1.4;
+  letter-spacing: 0.02em;
   text-wrap: pretty;
 }
 
 /* 材料の件数と不足の件数。数字の幅を揃える。 */
 .coverage {
-  margin: 4px 0 0;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-14);
+  margin: 6px 0 0;
+  font-size: var(--font-size-12);
+  font-weight: var(--font-weight-medium);
   font-variant-numeric: tabular-nums;
   line-height: 1.6;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
 }
 
-/* 使う在庫の欄。名称を横に並べ、収まらなければ折り返す。 */
+/* 使う在庫の欄。名称を横に並べ、斜線で区切り、収まらなければ折り返す。 */
 .usedIngredients {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  column-gap: 12px;
-  row-gap: 4px;
-  margin: 12px 0 0;
+  column-gap: 18px;
+  row-gap: 6px;
+  margin: 14px 0 0;
   font-size: var(--font-size-14);
   line-height: 1.6;
   letter-spacing: 0.02em;
 }
 
 /*
- * 使う在庫の1件。**期限が今日でないものの太さも明示する**（設計 B-61 規則5）— 片方を既定任せに
- * すると、既定の太さが変わった回に太字の差だけが黙って消える（先行 `TabbedScreen.module.css`）。
+ * 使う在庫の1件。補助の文字色・太さ 400。**期限が今日でないものの太さも明示する**（設計 B-61 規則5）
+ * — 片方を既定任せにすると、既定の太さが変わった回に太字の差だけが黙って消える。
  */
-.usedIngredient {
+.usedIngredient,
+.usedIngredientExpiringToday {
+  position: relative;
+  color: var(--color-text-secondary);
   font-weight: var(--font-weight-regular);
 }
 
-/* 期限が今日の1件は太字（D-4 の追記。原本 `u.today ? 500 : 400`）。 */
+/* 2件目からの頭に斜線を置く（飾り）。 */
+.usedIngredient + .usedIngredient::before,
+.usedIngredient + .usedIngredientExpiringToday::before,
+.usedIngredientExpiringToday + .usedIngredient::before,
+.usedIngredientExpiringToday + .usedIngredientExpiringToday::before {
+  position: absolute;
+  left: -12px;
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-regular);
+  content: '/' / '';
+}
+
+/*
+ * 期限が今日の1件は文字色の太字（D-4）。太さ 500 と 400 の差だけでは見分けにくいので、ほかの
+ * 材料を補助の文字色に落として差を付ける（色相は使わない。NFR-17）。
+ */
 .usedIngredientExpiringToday {
+  color: var(--color-text);
   font-weight: var(--font-weight-medium);
 }
 
@@ -223,40 +232,82 @@
   white-space: nowrap;
 }
 
-/* 「作り方を見る」の置き場。カードの下端に寄せる（原本 `MealCard`）。 */
+/* 「作り方を見る」の置き場。カードの下端に寄せる。 */
 .openMeal {
   margin-top: auto;
-  padding-top: 16px;
+  padding-top: 14px;
 }
 
 /*
- * 「作り方を見る」。原本は下線の文字である。素の button の枠と地はここで消す（リセットでは
- * 全体を消さない。設計 B-59 6章 規則3）。押せる高さは 44px 以上を保つ。
+ * 「作り方を見る」。上に文字色の太い線を引き、文字を左・丸い矢印を右に置く。素の button の
+ * 枠と地はここで消す（リセットでは全体を消さない。設計 B-59 6章 規則3）。押せる高さは 44px 以上。
  */
 .openMealButton {
-  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 56px;
   padding: 0;
   border: 0;
+  border-top: 2px solid currentColor;
   background: transparent;
   color: inherit;
   font-size: var(--font-size-14);
+  font-weight: var(--font-weight-medium);
   line-height: 1.6;
-  letter-spacing: 0.02em;
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 4px;
+  letter-spacing: 0.1em;
   cursor: pointer;
 }
 
 /*
- * 「新しい献立を見る」の面の置き場（原本 `MealScreen` の `margin-top: 24px`）。失敗の帯は面の
- * 直前に並ぶ（設計 B-62 規則9 / 10章 前提2）。
+ * 焦点は「作り方を見る」に当たるが、押せるのはカード全体なので、カードの枠を内側に 2px 太らせて示す
+ * （入力欄と同じ形）。ボタンの輪郭は透明で残す — 強制色のモードでは影が消え、輪郭が見える（NFR-16）。
+ */
+.openMealButton:focus-visible {
+  outline: 2px solid transparent;
+}
+
+.card:has(.openMealButton:focus-visible) {
+  box-shadow: inset 0 0 0 2px var(--color-text);
+}
+
+/* 丸い矢印（飾り）。文字色の丸に面の色の矢印。 */
+.openMealArrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--color-text);
+  color: var(--color-surface);
+  transition: transform 150ms ease-out;
+}
+
+/* カードに指を載せると矢印が少し進む。動きを減らす設定では動かさない。 */
+.card:hover .openMealArrow {
+  transform: translateX(4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .openMealArrow {
+    transition: none;
+  }
+
+  .card:hover .openMealArrow {
+    transform: none;
+  }
+}
+
+/*
+ * 「新しい献立を見る」の面の置き場。失敗の帯は面の直前に並ぶ（設計 B-62 規則9 / 10章 前提2）。
  */
 .request {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  margin-top: 24px;
+  margin-top: 28px;
 }
 
 /* 中ほどに置く S-8 では、上下の空きが余白を持つ。 */
@@ -264,38 +315,34 @@
   margin-top: 0;
 }
 
-/*
- * 失敗の帯（原本 `index.dc.html` の「案内の帯」2行目 / S-6 / 設計 B-62 規則9）。
- */
+/* 失敗の帯（S-6 / 設計 B-62 規則9）。左端に赤の太い線を引く。 */
 .failedBand {
   display: flex;
   gap: 8px;
   margin: 0;
   padding: 12px 16px;
+  border-left: 6px solid var(--color-danger);
   background: var(--color-danger-surface);
   color: var(--color-danger);
   font-size: var(--font-size-14);
+  font-weight: var(--font-weight-medium);
   line-height: 1.6;
 }
 
-/* 帯の記号（原本は Inter の 500）。 */
+/* 帯の記号。 */
 .failedMark {
   flex: none;
   font-weight: var(--font-weight-medium);
 }
 
 /*
- * 「新しい献立を見る」の面（原本 `RequestBlock` の sp / 設計 B-62 規則10）。狭い幅は縦並びで、
- * 文書順（手がかり → ボタン → 案内）のまま並ぶ。
+ * 「新しい献立を見る」の面（設計 B-62 規則10）。面そのものは地に溶かし、ボタンと案内だけを置く。
+ * 狭い幅は縦並びで、文書順（手がかり → ボタン → 案内）のまま並ぶ。
  */
 .requestPanel {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 16px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text);
+  gap: 10px;
 }
 
 /* 在庫が変わった手がかり（D-8）。点は飾りで、文字が意味を運ぶ。 */
@@ -306,43 +353,45 @@
   margin: 0;
   color: var(--color-positive);
   font-size: var(--font-size-14);
+  font-weight: var(--font-weight-medium);
   line-height: 1.6;
   letter-spacing: 0.02em;
 }
 
 .pantryChangedDot {
   flex: none;
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--color-positive);
 }
 
-/* 待ち時間の案内と、生成中の「考えています…」と秒数。 */
+/* 待ち時間の案内と、生成中の「考えています…」。 */
 .requestInfo {
   display: flex;
   gap: 8px;
   margin: 0;
   color: var(--color-text-secondary);
-  font-size: var(--font-size-14);
+  font-size: var(--font-size-12);
   line-height: 1.6;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.06em;
 }
 
 /*
- * 主の操作（原本 `RequestBlock` / state=short のボタン / 設計 B-62 規則11）。素の button の枠と
+ * 主の操作（設計 B-62 規則11）。文字色の面に、見出しの書体で文字を置く。素の button の枠と
  * 地はここで消す（リセットでは消さない。設計 B-59 6章 規則3）。
  */
 .primaryButton {
   width: 100%;
   height: var(--control-height-primary);
-  padding: 0 16px;
+  padding: 0 20px;
   border: 0;
   background: var(--color-text);
-  color: var(--color-background);
-  font-size: var(--font-size-16);
-  font-weight: var(--font-weight-medium);
-  letter-spacing: 0.02em;
+  color: var(--color-surface);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-18);
+  font-weight: var(--font-weight-display);
+  letter-spacing: 0.06em;
   cursor: pointer;
 }
 
@@ -356,9 +405,9 @@
   background: var(--color-text-secondary);
 }
 
-/* 生成中・オフラインの無効の見た目（原本 pending / 設計 B-62 規則3）。 */
+/* 生成中・オフラインの無効の見た目（設計 B-62 規則3）。 */
 .primaryButton:disabled {
-  background: var(--color-border);
+  background: var(--color-surface-muted);
   color: var(--color-text-muted);
   cursor: default;
 }
@@ -368,37 +417,38 @@
   flex: none;
 }
 
-/*
- * 出せない回（S-4 / S-7）の置き場（原本 `MealScreen` の state=short / limit）。狭い幅は最大幅なし、
- * 広い幅は 520px（末尾）。
- */
+/* 出せない回（S-4 / S-7 / S-9）の置き場。狭い幅は最大幅なし、広い幅は 520px（末尾）。 */
 .outcome {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
   width: 100%;
 }
 
-/* 出せない回の控えめな面。 */
+/*
+ * 出せない回の面。カードと同じ、面の色の地に文字色の 2px の枠で置く（`docs/design/README.md`「色の規則」）。
+ */
 .outcomePanel {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 24px 16px;
-  background: var(--color-surface-muted);
+  gap: 10px;
+  padding: 28px 20px;
+  border: 2px solid var(--color-text);
+  background: var(--color-surface);
   color: var(--color-text);
 }
 
-/* 出せない回の主文。 */
+/* 出せない回の主文。見出しの書体で置く。 */
 .outcomeMessage {
   margin: 0;
-  font-size: var(--font-size-20);
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-22);
+  font-weight: var(--font-weight-display);
   line-height: 1.45;
   letter-spacing: 0.02em;
 }
 
-/* S-7 の主文は行の長さを揃えて折り返す（原本 state=limit）。 */
+/* S-7 の主文は行の長さを揃えて折り返す。 */
 .outcomeMessageBalanced {
   text-wrap: balance;
 }
@@ -411,38 +461,36 @@
 /* S-4 の補足。 */
 .outcomeNote {
   margin: 0;
-  color: var(--color-text-secondary);
   font-size: var(--font-size-14);
   line-height: 1.6;
 }
 
-/* 注意表示の置き場（原本 `MealScreen` の `margin-top: 48px`）。 */
+/* 注意表示の置き場。 */
 .cautionArea {
-  margin-top: 48px;
+  margin-top: 40px;
 }
 
-/* 注意表示（原本 `AiNotice`）。 */
+/* 注意表示（FR-20）。 */
 .caution {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  padding: 12px;
+  padding: 12px 14px;
   background: var(--color-surface-muted);
   color: var(--color-text-secondary);
-  font-size: var(--font-size-14);
-  line-height: 1.6;
+  font-size: var(--font-size-12);
+  line-height: 1.7;
   letter-spacing: 0.02em;
 }
 
 /* 情報のアイコン。文字より一段濃い色で、行の頭に揃える。 */
 .cautionIcon {
   flex: none;
-  padding-top: 1px;
   color: var(--color-text);
 }
 
 /*
- * 広い幅（原本 PC）。カード3列・中身の最大幅 1080px・原本 PC の余白（設計 B-61 規則12）。
+ * 広い幅。カード3列・中身の最大幅 1080px（設計 B-61 規則12）。
  *
  * **切り替え幅 1024px は `docs/screen-design.md` 2.1 の写しである**（B-60 で決めた。ADR-076）。
  * CSS 変数はメディアクエリに使えないのでトークンにできず、このファイルではここ1か所にだけ書く
@@ -460,15 +508,16 @@
 
   .cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
   }
 
-  /* 原本 PC には下タブが無い（設計 B-62 10章 前提3。PC はサイドナビで、B-60 / ADR-076 と食い違わない）。 */
+  /* PC には下タブが無い（設計 B-62 10章 前提3。PC はサイドナビで、B-60 / ADR-076 と食い違わない）。 */
   .screenCentered {
     min-height: 100dvh;
   }
 
   /*
-   * 面を横長にする（原本 `RequestBlock` の pc / 設計 B-62 規則10）。**文書順は変えず**、grid の
+   * 面を横長にする（設計 B-62 規則10）。**文書順は変えず**、grid の
    * 配置だけでボタンを左、手がかりと案内を右の列に縦に置く。手がかりが無い回は、案内が
    * ボタンの高さの中ほどに来る。
    */

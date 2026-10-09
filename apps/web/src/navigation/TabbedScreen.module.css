@@ -1,6 +1,6 @@
 /*
- * 帯（SP の下タブ・PC のサイドナビ）と中身の欄（原本 `docs/design/src/TabBar.dc.html` /
- * `docs/design/src/SideNav.dc.html` / 設計 B-59 6章 規則6〜10 / 設計 B-60 6章 規則1〜6・15・16）。
+ * 帯（SP の下タブ・PC のサイドナビ）と中身の欄（設計 B-59 6章 規則6〜10 / 設計 B-60 6章
+ * 規則1〜6・15・16 / ADR-093）。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1・2。B-41 設計 6章 規則6 を引き継ぐ）。
  * `TabbedScreen.tsx` は class 名しか書かない。色・文字の大きさはトークン（`src/global.css` の
@@ -15,13 +15,11 @@
  * 選んでいるタブはそれに加えて `.tabSelected` で、タブの識別子ごとの class は置かない。
  * 帯の「設定」も同じ2つを使い、開いている間は選んでいるタブと同じ手がかりで示す（B-60 規則7）。
  *
- * **NFR-16（コントラスト比 4.5:1 以上）について。** 選んでいる / いないの区別に色を使わない
- * （規則3）。文字色も地も選択で変えず、線の印は文字色そのもの（`--color-text`）なので、
- * この帯は地と文字の1組（`#1F1E1B` / `#FAF9F6`）のほかに新しいコントラスト比を作らない。
- * PC の hover の地は `--color-surface`（白。`#1F1E1B` との比は地より高い）。
- * 色を足す周は WCAG 2.1 AA（4.5:1）を確かめてから足し、**そのときも規則1（太さ）・規則2
- * （線）の手がかりを消さない** — 色以外の手がかりが残っていることが NFR-17 の構えの側の
- * 担保である。比の実測は単体テストに入れない（jsdom はレイアウトも配色の合成も持たない）。
+ * **帯は文字色（`--color-text`）の地に置く。** 選んでいる項目は、文字を明るく（`--color-surface`。
+ * 地との比 17.5）・太く（500）し、同じ明るい色の線を添える。選んでいない項目は
+ * `--color-text-on-dark`（地との比 8.7）。帯に色相を足さない（`docs/design/README.md`「色の規則」）。**色だけで選択を示さない** — 太さと線の
+ * 手がかりが残っていることが NFR-17 の構えの側の担保である。比の実測は単体テストに入れない
+ * （jsdom はレイアウトも配色の合成も持たない）。
  */
 
 /*
@@ -36,7 +34,7 @@
  * 帯。SP では**親指の届く画面の下端に固定する**（NFR-14。`docs/screen-design.md` 2.1）。
  * 文書順は「中身 → 帯」のままで、固定は見た目だけの話である（`navigation/README.md`）。
  *
- * 高さは原本の 64px に、下端の安全域（`index.html` が `viewport-fit=cover`）を足して伸ばす —
+ * 高さは 64px に、下端の安全域（`index.html` が `viewport-fit=cover`）を足して伸ばす —
  * 足さないと iPhone のホームインジケータが帯に重なる。
  */
 .bar {
@@ -47,9 +45,8 @@
   box-sizing: border-box;
   height: calc(var(--tab-bar-height) + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  border-top: 1px solid var(--color-border);
-  background: var(--color-background);
-  color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-text-on-dark);
 }
 
 /* ロゴは SP で出さない（B-60 規則4）。DOM には常にある。 */
@@ -57,7 +54,7 @@
   display: none;
 }
 
-/* タブ3つの並び。SP では帯の幅を3等分する（原本 `TabBar`）。 */
+/* タブ3つの並び。SP では帯の幅を3等分する。 */
 .tablist {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -65,7 +62,7 @@
 }
 
 /*
- * タブ1つ。アイコンとラベルを縦に間 4px で並べる（原本 `TabBar`）。
+ * タブ1つ。アイコンとラベルを縦に間 4px で並べる。
  * 素の button の枠と地はここで消す — リセットでは全体を消さない（設計 B-59 6章 規則3）。
  */
 .tab {
@@ -78,7 +75,6 @@
   padding: 0;
   border: 0;
   background: transparent;
-  /* 規則3: 選択で文字色も地も変えない。どちらの側も帯の文字色のまま。 */
   color: inherit;
   /*
    * 規則1: 選んでいないタブの太さも**明示する**。片方を既定任せにすると、既定の太さが
@@ -88,24 +84,30 @@
   cursor: pointer;
 }
 
+/* 文字色の地の上では、地の色の線を内側に引く（`global.css` の主の操作と同じ）。 */
+.tab:focus-visible {
+  outline: var(--focus-outline-inverse);
+  outline-offset: var(--focus-outline-offset-inverse);
+}
+
 /*
- * 規則2・4: SP で選んでいるタブの印は**上辺の線**（帯の中身に近い側）。左右 16px 内側に 2px で
- * 引き、帯の上の境界（1px）に重ねる。**疑似要素を絶対配置で重ねるので、線の有無で帯の高さも
- * 中身の位置も動かない**（規則4 / NFR-14 — 動くと、タブを移るたびに押す位置がずれる）。
- * 線の色は新しい色ではなく文字色そのもの（規則3 / NFR-16）。
+ * 規則2・4: SP で選んでいるタブの印は**上辺の明るい線**（帯の中身に近い側）。左右 28px 内側に
+ * 4px で引く。**疑似要素を絶対配置で重ねるので、線の有無で帯の高さも中身の位置も動かない**
+ * （規則4 / NFR-14 — 動くと、タブを移るたびに押す位置がずれる）。
  */
 .tabSelected::before {
   position: absolute;
-  top: -1px;
-  right: 16px;
-  left: 16px;
-  height: 2px;
-  background: var(--color-text);
+  top: 0;
+  right: 28px;
+  left: 28px;
+  height: 4px;
+  background: var(--color-surface);
   content: '';
 }
 
-/* 規則1: 選んでいるタブの文字は太い（400 に対して 500）。 */
+/* 規則1: 選んでいるタブの文字は太く（400 に対して 500）、明るい。 */
 .tabSelected {
+  color: var(--color-surface);
   font-weight: var(--font-weight-medium);
 }
 
@@ -114,7 +116,7 @@
   display: none;
 }
 
-/* ラベルの文字（原本 `TabBar`）。太さはタブの側から継ぐ。 */
+/* ラベルの文字。太さはタブの側から継ぐ。 */
 .label {
   font-size: var(--font-size-12);
   line-height: 1.5;
@@ -122,7 +124,7 @@
 }
 
 /*
- * PC（幅 1024px 以上。B-60 規則1）。帯を左の幅 240px のサイドナビにする（原本 `SideNav`）。
+ * PC（幅 1024px 以上。B-60 規則1）。帯を左の幅 240px のサイドナビにする。
  */
 @media (min-width: 1024px) {
   /*
@@ -134,7 +136,7 @@
     grid-template-columns: 240px minmax(0, 1fr);
   }
 
-  /* 規則6: PC の中身の欄は下余白を持たない（各画面の PC の余白は B-61 以降）。 */
+  /* 規則6: PC の中身の欄は下余白を持たない。 */
   .panel {
     grid-row: 1;
     grid-column: 2;
@@ -157,20 +159,18 @@
     height: 100vh;
     height: 100dvh;
     padding: 40px 0 32px;
-    border-top: 0;
-    border-right: 1px solid var(--color-border);
   }
 
-  /* ロゴ「fridge to meal」（原本 `SideNav`。規則16 — 書体の並びの先頭が Inter）。 */
+  /* ロゴ「fridge to meal」（規則16）。見出しの書体で1行に置く。 */
   .logo {
-    display: flex;
-    align-items: center;
-    height: 48px;
+    display: block;
     padding: 0 24px;
-    font-family: var(--font-family);
-    font-size: var(--font-size-14);
-    font-weight: var(--font-weight-medium);
-    letter-spacing: 0.16em;
+    color: var(--color-surface);
+    font-family: var(--font-family-display);
+    font-size: var(--font-size-22);
+    font-weight: var(--font-weight-display);
+    line-height: 1.2;
+    letter-spacing: 0.02em;
     white-space: nowrap;
   }
 
@@ -179,26 +179,26 @@
     display: flex;
     flex-direction: column;
     height: auto;
-    margin-top: 32px;
+    margin-top: 40px;
   }
 
-  /* 項目1つ。アイコンを左・文字を右に間 12px で並べる（原本 `SideNav`）。 */
+  /* 項目1つ。アイコンを左・文字を右に間 12px で並べる。 */
   .tab {
     flex-direction: row;
     gap: 12px;
     justify-content: flex-start;
-    height: 48px;
+    height: 52px;
     padding: 0 24px;
   }
 
-  /* hover の地は白（規則16。新しい色ではなく `--color-surface`）。 */
+  /* hover は文字を明るくする（地の色は変えない）。 */
   .tab:hover {
-    background: var(--color-surface);
+    color: var(--color-surface);
   }
 
   /*
    * 規則15: PC のアイコンは 20px。`Icon` には 24 を渡したまま、ここで大きさを合わせる。
-   * 線の太さは描かれる 1.5px 相当に保つ（1.5 × 24 / 20 = 1.8。原本 `Icon` の `sw`）。
+   * 線の太さは描かれる 1.5px 相当に保つ（1.5 × 24 / 20 = 1.8）。
    */
   .tab svg {
     width: 20px;
@@ -207,7 +207,7 @@
   }
 
   /*
-   * 選択の印は**左辺の線**（原本 `SideNav`。上下 12px 内側に 2px）。太さの手がかりは SP と同じ。
+   * 選択の印は**左辺の明るい線**（上下 12px 内側に 4px）。太さの手がかりは SP と同じ。
    * 疑似要素を重ねるので、線の有無で項目の位置は動かない。
    */
   .tabSelected::before {
@@ -215,19 +215,19 @@
     right: auto;
     bottom: 12px;
     left: 0;
-    width: 2px;
+    width: 4px;
     height: auto;
   }
 
-  /* 帯の「設定」は下端に寄せる（原本 `SideNav`。規則4）。 */
+  /* 帯の「設定」は下端に寄せる（規則4）。 */
   .settings {
     display: flex;
     margin-top: auto;
   }
 
-  /* 項目の文字（原本 `SideNav`）。 */
+  /* 項目の文字。 */
   .label {
     font-size: var(--font-size-16);
-    letter-spacing: 0.02em;
+    letter-spacing: 0.04em;
   }
 }

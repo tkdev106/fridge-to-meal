@@ -1,19 +1,19 @@
 /*
- * オフラインの帯（原本 `docs/design/src/index.dc.html`「案内の帯」の1行目 / B-70 設計 6章 規則15）。
+ * オフラインの帯（B-70 設計 6章 規則15 / ADR-093）。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1）。色と文字の大きさはトークン（`src/global.css` の
- * `:root`）から `var(--…)` で引き、ここで新しい色を作らない。地と文字は原本どおり文字色と地の
- * 入れ替わり（`#1F1E1B` / `#FAF9F6`）で、新しいコントラスト比を作らない（NFR-16）。
+ * `:root`）から `var(--…)` で引き、ここで新しい色を作らない。地は文字色、文字は明るい色
+ * （比 17.5。NFR-16）。
  *
  * **作り込まない**（設計 2章）— 固定表示も動きも入れず、文書の流れのまま `<main>` の先頭に出す。
- * 余白の値は `:root` にトークンが無いため、原本の値（12px 16px）をそのまま書く。
  */
 
 .banner {
   margin: 0;
   padding: 12px 16px;
   background: var(--color-text);
-  color: var(--color-background);
+  color: var(--color-surface);
   font-size: var(--font-size-14);
+  font-weight: var(--font-weight-medium);
   line-height: 1.6;
 }

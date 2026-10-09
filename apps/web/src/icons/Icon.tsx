@@ -2,7 +2,8 @@
  * アイコンの部品（設計 B-59 5章 / 6章 規則4・5。原本 `docs/design/src/Icon.dc.html`）。
  *
  * **形は原本の11個をそのまま写す。** `viewBox` も path も変えない — 形を詰めるのはデザインの側で
- * あって、ここで描き直すと原本との突き合わせができなくなる（ADR-074 決定1）。
+ * あって、ここで描き直すと原本との突き合わせができなくなる（ADR-093 決定2）。原本に無いのは
+ * 献立のカードの `forward` だけで、`back` と同じ線で向きを返した形である（ADR-093）。
  *
  * **色は持たない。** 線も塗りも `currentColor` で、置き場の文字色に従う。色をここで決めると、
  * 置き場ごとに配色を変えたい周が部品を分けることになる。
@@ -21,6 +22,7 @@ export type IconName =
   | 'history'
   | 'plus'
   | 'back'
+  | 'forward'
   | 'settings'
   | 'more'
   | 'info'
@@ -33,7 +35,7 @@ export type IconProps = { name: IconName; size?: number };
 /** 原本の既定の大きさ。 */
 const DEFAULT_SIZE = 24;
 
-/** 線で描く10個の中身。`more` だけは塗りなのでここに置かない（下の `MORE_SHAPE`）。 */
+/** 線で描く11個の中身。`more` だけは塗りなのでここに置かない（下の `MORE_SHAPE`）。 */
 const STROKE_SHAPES: Record<Exclude<IconName, 'more'>, ReactNode> = {
   meal: (
     <>
@@ -67,6 +69,12 @@ const STROKE_SHAPES: Record<Exclude<IconName, 'more'>, ReactNode> = {
     <>
       <path d="M19 12H5" />
       <path d="m11 18-6-6 6-6" />
+    </>
+  ),
+  forward: (
+    <>
+      <path d="M5 12h14" />
+      <path d="m13 6 6 6-6 6" />
     </>
   ),
   settings: (

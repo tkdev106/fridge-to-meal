@@ -57,4 +57,20 @@ describe('見出しの行 ScreenHeader', () => {
 
     expect(precedes(heading, gear)).toBe(true);
   });
+
+  it('添え書きを渡すと、見出しの前に出し、見出しの名前には含めない', () => {
+    // ADR-093: 題の上の1行（献立の今日の日付）。見出しの名前は題だけである。
+    renderHeader({ title: '今日の献立', eyebrow: '10月9日 金曜日' });
+
+    const heading = screen.getByRole('heading', { level: 1, name: '今日の献立' });
+    const eyebrow = screen.getByText('10月9日 金曜日');
+    expect(precedes(eyebrow, heading)).toBe(true);
+  });
+
+  it('添え書きを渡さなければ、題のほかに文字を出さない', () => {
+    // ADR-093: 添え書きは任意で、献立のほかのタブには出ない。
+    const { container } = renderHeader({ title: '冷蔵庫' });
+
+    expect(container.textContent).toBe('冷蔵庫');
+  });
 });

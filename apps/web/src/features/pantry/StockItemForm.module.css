@@ -1,14 +1,13 @@
 /*
- * 食材の登録・編集の見た目（設計 B-65 6章 規則1〜12 / 原本 `docs/design/src/IngredientForm.dc.html`
- * の SP。入力欄は `index.dc.html`）。
+ * 食材の登録・編集の見た目（設計 B-65 6章 規則1〜12 / ADR-093）。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1）。`StockItemForm.tsx` と `StockItemEditForm.tsx`
- * は class 名しか書かない — 原本が1部品の add / edit なので、2画面でこの module を共有する。
+ * は class 名しか書かない — 登録と編集は同じ形なので、2画面でこの module を共有する。
  * 色・文字の大きさ・太さ・操作の高さ・フォーカスはトークン（`src/global.css` の `:root`）から
- * `var(--…)` で引き、ここで新しい色を作らない。トークンに無い寸法は原本の値を直に書く。
+ * `var(--…)` で引き、ここで新しい色を作らない。トークンに無い寸法は直に書く。
  *
- * **PC（幅 1024px 以上）では右から出るパネルの中に描かれる**（B-65b 設計 6章 規則13・14 / 原本の
- * `pc`）。パネルの位置・幅・面は `PantryTab.module.css` の持ち分で、ここはフォームの中身だけを持つ。
+ * **PC（幅 1024px 以上）では右から出るパネルの中に描かれる**（B-65b 設計 6章 規則13・14）。
+ * パネルの位置・幅・面は `PantryTab.module.css` の持ち分で、ここはフォームの中身だけを持つ。
  */
 
 /*
@@ -23,7 +22,7 @@
   padding: 8px 16px 0;
 }
 
-/* 見出しの行。左の -12px は戻るのアイコンの線を本文の左端に揃えるため（原本）。 */
+/* 見出しの行。左の -12px は戻るのアイコンの線を本文の左端に揃えるため。 */
 .header {
   display: flex;
   gap: 4px;
@@ -83,15 +82,17 @@
   cursor: default;
 }
 
-/* 見出し（第1階層）。 */
+/* 見出し（第1階層）。見出しの書体で置く。 */
 .heading {
   margin: 0;
-  font-size: var(--font-size-20);
-  font-weight: var(--font-weight-medium);
-  line-height: 1.45;
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-26);
+  font-weight: var(--font-weight-display);
+  line-height: 1.35;
+  letter-spacing: 0.02em;
 }
 
-/* 欄群。見出しとの間 32px、欄の間 24px（原本）。 */
+/* 欄群。見出しとの間 32px、欄の間 24px。 */
 .fields {
   display: flex;
   flex-direction: column;
@@ -99,7 +100,7 @@
   margin-top: 32px;
 }
 
-/* 欄1つ。欄の名前と欄の間 8px（原本）。 */
+/* 欄1つ。欄の名前と欄の間 8px。 */
 .field,
 .nameField {
   display: flex;
@@ -107,32 +108,40 @@
   gap: 8px;
 }
 
-/* 欄の名前。小さく字間を空けた補助の文字（規則3）。札 `任意` と横に並べる。 */
+/* 欄の名前（規則3）。札 `任意` と横に並べる。 */
 .fieldLabel {
   display: flex;
+  align-items: center;
   gap: 8px;
-  font-size: var(--font-size-12);
+  font-size: var(--font-size-14);
+  font-weight: var(--font-weight-medium);
   line-height: 1.5;
-  letter-spacing: 0.12em;
-  color: var(--color-text-secondary);
+  letter-spacing: 0.06em;
+  color: var(--color-text);
 }
 
-/* 札 `任意`（規則3）。 */
+/* 札 `任意`（規則3）。控えめな面の小さな札。 */
 .optional {
-  color: var(--color-text-muted);
+  padding: 0 6px;
+  background: var(--color-surface-muted);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-12);
+  font-weight: var(--font-weight-regular);
+  letter-spacing: 0.08em;
 }
 
 /*
- * 入力欄（規則4）。高さ 48px・白の面・1px の枠・左右 16px。
- * 焦点がある間は文字色の 2px の枠にし、左右を 15px にして文字の位置を動かさない（NFR-16）。
+ * 入力欄（規則4）。高さ 48px・明るい面・文字色の 2px の枠・左右 14px。
+ * 焦点がある間は枠の内側にもう 2px 重ねて太い1本の枠にする（文字の位置は動かさない。NFR-16）。
+ * 輪郭は透明にし、`box-shadow` を描かない強制配色のときにだけ色が付いて見えるようにする。
  */
 .input,
 .dateBox {
   box-sizing: border-box;
   width: 100%;
   height: var(--control-height-secondary);
-  padding: 0 16px;
-  border: 1px solid var(--color-border-strong);
+  padding: 0 14px;
+  border: 2px solid var(--color-text);
   background: var(--color-surface);
   font-variant-numeric: tabular-nums;
 }
@@ -144,9 +153,9 @@
 
 .input:focus,
 .dateBox:focus-within {
-  padding: 0 15px;
-  border: 2px solid var(--color-text);
-  outline: none;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 2px var(--color-text);
 }
 
 /* 分量の行。数値（または `その他` の自由入力）の欄と単位の選択を横に並べる。 */
@@ -162,18 +171,18 @@
 
 /*
  * 単位の選択。入力欄と同じ箱に、右端の下向きの山形を置く。素の矢印は `appearance: none` で消す。
- * data URL の中では `var(--…)` を引けないので、山形の色は `--color-text` の値（#1F1E1B）を直に書く。
+ * data URL の中では `var(--…)` を引けないので、山形の色は `--color-text` の値（#161513）を直に書く。
  */
 .unitSelect {
   flex: none;
   box-sizing: border-box;
   width: 120px;
   height: var(--control-height-secondary);
-  padding: 0 40px 0 16px;
-  border: 1px solid var(--color-border-strong);
+  padding: 0 40px 0 14px;
+  border: 2px solid var(--color-text);
   border-radius: 0;
   background: var(--color-surface)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231F1E1B' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23161513' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
     no-repeat right 12px center / 20px 20px;
   color: var(--color-text);
   font: inherit;
@@ -182,10 +191,9 @@
 }
 
 .unitSelect:focus {
-  padding: 0 39px 0 15px;
-  border: 2px solid var(--color-text);
-  outline: none;
-  background-position: right 11px center;
+  outline: 2px solid transparent;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 2px var(--color-text);
 }
 
 /* 編集の画面の名称。欄の位置に高さ 48px の素の文字で出す（規則9）。 */
@@ -239,7 +247,7 @@
   width: 100%;
   height: 100%;
   margin: 0;
-  padding: 0 15px;
+  padding: 0 14px;
   border: 0;
   background: var(--color-surface);
   opacity: 0;
@@ -266,16 +274,16 @@
 }
 
 /*
- * チェックの箱。20px 四方・角 0。素の見た目を `appearance: none` で消して描き直す。
- * オフは面の地に入力欄と同じ 1px の枠。
+ * チェックの箱。22px 四方・角 0。素の見た目を `appearance: none` で消して描き直す。
+ * オフは面の地に入力欄と同じ 2px の枠。
  */
 .checkbox {
   flex: none;
   box-sizing: border-box;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   margin: 0;
-  border: 1px solid var(--color-border-strong);
+  border: 2px solid var(--color-text);
   border-radius: 0;
   background: var(--color-surface);
   appearance: none;
@@ -283,20 +291,20 @@
 }
 
 /*
- * オンは地と枠を文字色にし、`check` のアイコン（`src/icons/Icon.tsx` と同じ path・16px 相当・
- * 線 1.5px 相当）を地の色で置く。data URL の中では `var(--…)` を引けないので、線の色だけは
- * `--color-background` の値（#FAF9F6）を直に書く。
+ * オンは地と枠を文字色にし、`check` のアイコン（`src/icons/Icon.tsx` と同じ path・16px）を
+ * 線を太くして（viewBox 24 の 2.5 = 描いて約 1.7px）明るい色で置く。data URL の中では `var(--…)` を引けないので、線の色だけは
+ * `--color-surface` の値（#FFFAF0）を直に書く。
  */
 .checkbox:checked {
   border-color: var(--color-text);
   background-color: var(--color-text);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FAF9F6' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FFFAF0' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
   background-position: center;
   background-repeat: no-repeat;
   background-size: 16px 16px;
 }
 
-/* 焦点の輪郭は箱の外に引く。20px の箱の内側に引くとチェックの印に重なる。 */
+/* 焦点の輪郭は箱の外に引く。22px の箱の内側に引くとチェックの印に重なる。 */
 .checkbox:focus-visible {
   outline: var(--focus-outline);
   outline-offset: var(--focus-outline-offset);
@@ -306,6 +314,7 @@
 .notice {
   margin: 0;
   font-size: var(--font-size-14);
+  font-weight: var(--font-weight-medium);
   line-height: 1.6;
   color: var(--color-danger);
 }
@@ -333,17 +342,19 @@
 }
 
 /*
- * 主の保存（規則11）。文字色の地・地の色の文字。**幅は欄と同じく横いっぱい**（幅の広い端末でも
- * 左に寄せない）。
+ * 主の保存（規則11）。文字色の地に明るい色の文字を見出しの書体で置く。**幅は欄と同じく横いっぱい**
+ * （幅の広い端末でも左に寄せない）。
  */
 .primary {
   width: 100%;
   height: var(--control-height-primary);
   border: 0;
   background: var(--color-text);
-  color: var(--color-background);
-  font-weight: var(--font-weight-medium);
-  letter-spacing: 0.02em;
+  color: var(--color-surface);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-18);
+  font-weight: var(--font-weight-display);
+  letter-spacing: 0.06em;
   cursor: pointer;
 }
 
@@ -357,14 +368,15 @@
   background: var(--color-text-secondary);
 }
 
-/* 登録の `保存して閉じる`（規則11）。文字色の 1px の枠・透明の地。幅は主の保存と同じく横いっぱい。 */
+/* 登録の `保存して閉じる`（規則11）。文字色の 2px の枠・透明の地。幅は主の保存と同じく横いっぱい。 */
 .secondary {
   width: 100%;
   height: var(--control-height-secondary);
-  border: 1px solid var(--color-text);
+  border: 2px solid var(--color-text);
   background: transparent;
   color: var(--color-text);
-  letter-spacing: 0.02em;
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.04em;
   cursor: pointer;
 }
 
@@ -383,14 +395,14 @@
 }
 
 .secondary:disabled {
-  border-color: var(--color-text-muted);
+  border-color: var(--color-border-strong);
   color: var(--color-text-muted);
   cursor: default;
 }
 
 /*
  * PC（幅 1024px 以上。値の正は `docs/screen-design.md` 2.1 / ADR-076。CSS 変数はメディアクエリに
- * 使えないので写しを書く）。原本 `IngredientForm` の `pc`（B-65b 設計 規則13）: 余白 `40px 40px 0`、
+ * 使えないので写しを書く）。B-65b 設計 規則13: 余白 `40px 40px 0`、
  * 最小の高さはパネルの高さ（下タブの帯を引かない — PC の帯は左のサイドナビである）。見出しの行は
  * 左の -12px を外して見出しと `閉じる` を両端に寄せ、`戻る` を隠す。
  */

@@ -14,13 +14,14 @@ import { render, screen } from '../support/dom/renderComponent.js';
 import type { IconName } from '../../src/icons/Icon.js';
 import { Icon } from '../../src/icons/Icon.js';
 
-/** 原本 `Icon` の `options` の11個（設計 B-59 3章）。 */
+/** `Icon` が描ける12個。 */
 const iconNames: readonly IconName[] = [
   'meal',
   'pantry',
   'history',
   'plus',
   'back',
+  'forward',
   'settings',
   'more',
   'info',

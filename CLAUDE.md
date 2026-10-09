@@ -18,7 +18,7 @@
 | 技術スタック・実装上の必須事項の詳細・ディレクトリ構成・環境変数 | `docs/architecture.md` |
 | LLM に何を渡し何を受け取るか（プロンプト全文・応答の検証規則） | `docs/prompt-design.md` |
 | 画面に何をどう出すか（遷移・状態・再利用の見せ方） | `docs/screen-design.md` |
-| 画面がどう見えるか（配色・書体・寸法・文言。**文言もこちらが正**） | `docs/design/`（入口は `README.md`。ADR-074） |
+| 画面がどう見えるか（配色・書体・寸法・文言。**文言もこちらが正**） | `docs/design/`（入口は `README.md`。配色・書体・寸法は README が正。ADR-074 / ADR-093） |
 | どうテストするか（古典派・観察可能な振る舞い・TDD の1周） | `docs/testing.md` |
 | どう進めるか（ブランチ運用・完了の定義・自律ループ・安全装置） | `docs/workflow.md` |
 | 各層の置き場所の意味 | `apps/api/src/README.md` |
