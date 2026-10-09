@@ -1,16 +1,18 @@
 /*
- * 履歴タブ（原本 `docs/design/src/index.dc.html` 12 / 設計 B-67 6章 規則3〜10）。
+ * 履歴タブ（`docs/design/src/index.dc.html` 12 / 設計 B-67 6章 規則3〜10 / 紙面の作りは ADR-093）。
+ *
+ * 献立の控え帳に見立てる。日の見出しは明朝の日付の後ろに罫を引き、献立の名称も明朝で並べる。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1・2）。`HistoryTab.tsx` は class 名しか書かない。
- * 色・文字の大きさ・太さ・丸み・浮きはトークン（`src/global.css` の `:root`）から `var(--…)` で引き、
- * ここで新しい色を作らない。トークンに無い寸法（余白・高さ）は原本の値を直に書く。
+ * 色・文字の大きさ・太さはトークン（`src/global.css` の `:root`）から `var(--…)` で引き、
+ * ここで新しい色を作らない。トークンに無い寸法（余白・高さ）は直に書く。
  *
  * PC（幅 1024px 以上）は末尾で左右の余白と最大幅だけをタブの画面で共通の値に揃える。
  */
 
 /*
- * 画面の欄。**横の余白は持たない**（規則3）。横 16px は見出しの行・切り替え・案内・日ごとの
- * まとまりの置き場がそれぞれ持つ。
+ * 画面の欄（`main` の `0 0 24px`）。**横の余白は持たない**（規則3）— 行が区切り線を幅いっぱいに
+ * 引くため。横 16px は見出しの行・切り替え・案内の置き場がそれぞれ持つ。
  */
 .screen {
   padding: 0 0 24px;
@@ -36,33 +38,35 @@
 }
 
 /*
- * 切り替え（規則4）。控えめな面の溝（高さ 44px・内側 4px）を2等分し、選んでいる側を白い面で浮かせる。
+ * 切り替え（規則4）。外側は高さ 44px・墨の枠 1px の2等分の格子。
  */
 .toggles {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px;
   height: 44px;
-  padding: 4px;
-  border-radius: var(--radius-control);
-  background: var(--color-surface-muted);
+  border: 1px solid var(--color-text);
 }
 
 /* 選んでいない側。素の button の枠と地はここで消す（規則2）。 */
 .toggle {
   padding: 0;
   border: 0;
-  border-radius: 9px;
+  border-radius: 0;
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--color-text);
   font-size: var(--font-size-14);
   font-weight: var(--font-weight-regular);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.12em;
   cursor: pointer;
   transition:
-    background-color var(--duration-quick) ease,
-    color var(--duration-quick) ease,
-    box-shadow var(--duration-quick) ease;
+    background-color var(--duration-quick),
+    color var(--duration-quick);
+}
+
+@media (hover: hover) {
+  .toggle:hover:not(.toggleSelected) {
+    background: var(--color-surface);
+  }
 }
 
 /*
@@ -70,19 +74,18 @@
  * 色の差のほかに太さの差が残る（NFR-17）。
  */
 .toggleSelected {
-  background: var(--color-surface);
-  box-shadow: var(--shadow-surface);
-  color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-background);
   font-weight: var(--font-weight-medium);
 }
 
-/* 選んでいる側の焦点の輪郭。白い面の内側に文字色で引く。 */
+/* 選んでいる側は文字色の地。焦点の輪郭は地の色で内側に引く（`global.css` の `--focus-outline-inverse`）。 */
 .toggleSelected:focus-visible {
-  outline: var(--focus-outline);
-  outline-offset: var(--focus-outline-offset-inset);
+  outline: var(--focus-outline-inverse);
+  outline-offset: var(--focus-outline-offset-inverse);
 }
 
-/* 日ごとのまとまりの並び。切り替えとの間 16px（規則5）。 */
+/* 日ごとのまとまりの並び。切り替えとの間 16px（規則5）。日の間は 8px 空ける。 */
 .days {
   display: flex;
   flex-direction: column;
@@ -98,36 +101,43 @@
 }
 
 /*
- * 日の見出しの操作。高さ 44px・14px・太さ 500・補助の文字色で、行の面の外に置く
- * （`docs/design/README.md` 履歴の日ごとの見出し）。文字は面の中の行の文字と左を揃える。
+ * 日の見出しの操作。行と同じ左右 16px・高さ 48px。明朝の日付の後ろに、右端まで墨の罫を引く
+ * （冷蔵庫の帯の見出しと同じ作り。`docs/design/README.md` 履歴の日ごとの見出し）。
  */
 .dayToggle {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  height: 44px;
-  padding: 0 20px;
+  height: 48px;
+  padding: 0 16px;
   border: 0;
   border-radius: 0;
   background: none;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-14);
-  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-16);
+  font-weight: var(--font-weight-display);
+  letter-spacing: 0.08em;
   font-variant-numeric: tabular-nums;
   text-align: left;
   cursor: pointer;
 }
 
-.dayToggle:hover {
-  color: var(--color-text);
+.dayToggle::after {
+  flex: 1;
+  height: 0;
+  border-top: 1px solid var(--color-text);
+  content: '';
 }
 
-/* ▼。畳んでいる間は右向きに回す。 */
+/* ▼。畳んでいる間は右向きに回す。弱い文字色で、日付を主にする。 */
 .dayMarker {
   display: inline-block;
-  font-size: 9px;
-  transition: transform var(--duration-quick) ease;
+  color: var(--color-text-muted);
+  font-family: var(--font-family);
+  font-size: var(--font-size-12);
+  transition: transform var(--duration-quick) var(--ease-out);
 }
 
 .dayMarkerCollapsed {
@@ -140,15 +150,10 @@
   }
 }
 
-/* 1日ぶんの行の一覧。角を丸めた白い面に載せる。`role="list"` は `.tsx` が明示する（規則8）。 */
+/* 1日ぶんの行の一覧。`role="list"` は `.tsx` が明示する（規則8）。 */
 .rows {
-  margin: 0 16px;
+  margin: 0;
   padding: 0;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-surface);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-surface);
   list-style: none;
 }
 
@@ -158,49 +163,43 @@
 }
 
 /*
- * 1行（規則6・7）。押下の受け口は行全体を覆う button 1つ。高さ 56px。
- * 名称は左で1行に収めて省略記号で切り、件数は右寄せ、右端に山形。
+ * 1行（規則6・7）。押下の受け口は行全体を覆う button 1つ。高さ 56px・下辺に点線の区切り。
+ * 名称は左で1行に収めて省略記号で切り、件数は右寄せ。
  */
 .row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 20px;
-  column-gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 16px;
   align-items: center;
   width: 100%;
   height: 56px;
-  padding: 0 12px 0 16px;
+  padding: 0 16px;
   border: 0;
+  border-bottom: 1px dotted var(--color-border-strong);
   border-radius: 0;
   background: none;
   color: var(--color-text);
   text-align: left;
   cursor: pointer;
-  transition: background-color var(--duration-quick) ease;
+  transition: background-color var(--duration-quick);
 }
 
-/* 行と行の間の区切り線。 */
-.rows > li + li {
-  border-top: 1px solid var(--color-border);
+@media (hover: hover) {
+  .row:hover {
+    background: var(--color-surface);
+  }
 }
 
-/* 行の右端の山形。開ける行だと読める飾りで、名前は名称が持つ。 */
-.row::after {
-  justify-self: center;
-  width: 7px;
-  height: 7px;
-  border-top: 1.5px solid var(--color-text-muted);
-  border-right: 1.5px solid var(--color-text-muted);
-  transform: rotate(45deg);
-  content: '';
+.row:active {
+  background: var(--color-surface-muted);
 }
 
-.row:hover {
-  background: var(--color-background);
-}
-
-/* 名称。DOM の文字は切らず、見た目だけ省略記号で切る（規則6）。 */
+/* 名称。明朝で並べる。DOM の文字は切らず、見た目だけ省略記号で切る（規則6）。 */
 .title {
   overflow: hidden;
+  font-family: var(--font-family-display);
+  font-weight: var(--font-weight-display);
+  letter-spacing: 0.04em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -226,13 +225,5 @@
 
   .inset {
     padding: 0;
-  }
-
-  .rows {
-    margin: 0;
-  }
-
-  .dayToggle {
-    padding: 0 4px;
   }
 }

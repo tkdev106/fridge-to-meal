@@ -25,13 +25,16 @@
   --color-caution: #8a5a12; /* 黄土の文字（期限が近い） */
   --color-caution-surface: #f5ebd8; /* 黄土の地 */
 
-  /* 文字の大きさ（6段）と太さ（2つ） */
+  /* 文字の大きさ（7段）と太さ（2つ。明朝の太さは下の `--font-weight-display`） */
   --font-size-12: 12px;
   --font-size-14: 14px;
   --font-size-16: 16px;
   --font-size-18: 18px;
   --font-size-20: 20px;
   --font-size-26: 26px;
+  /* 明朝の見出しにだけ使う大きさ（画面の題・献立名。40px は PC の献立詳細の名称） */
+  --font-size-32: 32px;
+  --font-size-40: 40px;
   --font-weight-regular: 400;
   --font-weight-medium: 500;
 
@@ -45,25 +48,22 @@
     sans-serif;
 
   /*
-   * 角の丸み。面（カード・パネル・まとまりの一覧）は 16px、操作と入力欄は 12px、札と
-   * 小さな印は丸めきる。下から出る面は上の2つの角だけを 24px で丸める。
+   * 明朝の並び（ADR-093）。画面の題・献立名・帯の見出し・手順の番号・ロゴにだけ使い、本文と
+   * 操作の文字はゴシックのまま。太さは 600 の1つだけを読み込む。
    */
-  --radius-surface: 16px;
-  --radius-control: 12px;
-  --radius-sheet: 24px;
-  --radius-pill: 999px;
+  --font-family-display:
+    'Zen Old Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', 'YuMincho', 'Noto Serif JP', serif;
+  --font-weight-display: 600;
 
   /*
-   * 面の浮き。色は文字色を薄めたものだけを使い、新しい色相を作らない。`raised` は
-   * 押せるカードを指で触れている間・hover の間、`overlay` は一覧の上に重なる面。
+   * 紙の肌理（ADR-093）。地の上にごく薄い雑音を重ね、画面を印刷物の紙に寄せる。色は文字色を
+   * 薄めたものだけで、新しい色相を作らない。
    */
-  --shadow-surface: 0 1px 2px rgb(31 30 27 / 4%), 0 2px 8px rgb(31 30 27 / 4%);
-  --shadow-raised: 0 2px 4px rgb(31 30 27 / 5%), 0 12px 28px rgb(31 30 27 / 9%);
-  --shadow-overlay: 0 8px 24px rgb(31 30 27 / 12%), 0 24px 64px rgb(31 30 27 / 14%);
+  --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .12 0 0 0 0 .11 0 0 0 0 .1 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 
-  /* 動き。押下・hover の色と浮きは短く、出入りする面は少し長く、終わりを緩める */
+  /* 動き。押下と色の変化は短く、現れる面は少し長く、終わりを緩める */
   --duration-quick: 150ms;
-  --duration-enter: 280ms;
+  --duration-enter: 360ms;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
   /* 操作の高さ。副は 48px、主は 56px。押せる要素はどれも 44px 以上にする */
@@ -112,7 +112,7 @@ body {
 
 /*
  * フォーム部品は既定で独自の書体と色を持つ。地の書体と色を継がせる。
- * 角は操作の丸み（README「トークン」）。丸めない部品は各画面の module が 0 に戻す。
+ * 角は丸めない（README「トークン」）。
  */
 button,
 input,
@@ -120,14 +120,7 @@ select,
 textarea {
   font: inherit;
   color: inherit;
-  border-radius: var(--radius-control);
-}
-
-/* 押した瞬間にブラウザが重ねる灰色の面を消す。押下の見た目は各画面の `:active` が持つ */
-button,
-a,
-label {
-  -webkit-tap-highlight-color: transparent;
+  border-radius: 0;
 }
 
 :focus-visible {
@@ -149,24 +142,36 @@ textarea:focus-visible {
 
 /* 地（原本の画面の根 `MealScreen` ほかと同じ。設計 B-59 6章 規則2） */
 body {
-  background: var(--color-background);
+  background: var(--paper-grain) var(--color-background);
   color: var(--color-text);
   font-family: var(--font-family);
   font-size: var(--font-size-16);
   line-height: 1.75;
   letter-spacing: 0.02em;
+  /*
+   * 日本語の折り返しを文節の切れ目で行い、「照り焼／き丼」「くだ／さい」のように語の途中で
+   * 切らない。解さないブラウザは字の単位で折り返す（見た目が今までどおりになるだけ）。
+   */
+  word-break: auto-phrase;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 選んだ文字の地。緑の地に文字色で、地の比を保つ */
+/* 押した瞬間にブラウザが重ねる灰色の面を消す。押下の見た目は各画面の `:active` が持つ */
+button,
+a,
+label {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 選んだ文字の地。緑の地に文字色で、地との比を保つ */
 ::selection {
   background: var(--color-positive-surface);
   color: var(--color-text);
 }
 
 /*
- * 動きを減らす設定では、出入りと浮きの動きをすべて止める（NFR-16）。色の変化は残す。
+ * 動きを減らす設定では、現れる・揺れる・回る動きをすべて止める（NFR-16）。色の変化は残す。
  */
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -11,7 +11,8 @@
  */
 
 /*
- * 見出しの行の外枠。余白は SP `16px 0 24px`（原本。設計 10章 前提）。**横の余白は持たない** —
+ * 見出しの行の外枠。雑誌の扉のように、下に墨の二重罫を引いて本文と分ける（ADR-093）。
+ * **横の余白は持たない** —
  * 横の余白は画面の欄の持ち分である（原本の `main`。先行 `features/meal/MealsTab.module.css` の
  * `.screen`）。持つと、画面の欄の余白と二重になる。
  */
@@ -20,7 +21,19 @@
   flex-direction: column;
   justify-content: center;
   min-height: 48px;
-  padding: 20px 0 20px;
+  margin-bottom: 20px;
+  padding: 20px 0 14px;
+  border-bottom: 3px double var(--color-text);
+}
+
+/* 題の上の小さな文字（献立の今日の日付）。字間を空けたゴシック。 */
+.eyebrow {
+  margin: 0 0 2px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-12);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.5;
+  letter-spacing: 0.16em;
 }
 
 /* 題と歯車の1行。両端に置く。 */
@@ -31,13 +44,14 @@
   min-height: 48px;
 }
 
-/* 題（`h1`）。画面の入口として一番大きな文字にする。 */
+/* 題（`h1`）。明朝の大きな文字にする（ADR-093）。 */
 .title {
   margin: 0;
-  font-size: var(--font-size-26);
-  font-weight: var(--font-weight-medium);
-  line-height: 1.4;
-  letter-spacing: 0.04em;
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-32);
+  font-weight: var(--font-weight-display);
+  line-height: 1.35;
+  letter-spacing: 0.06em;
 }
 
 /*
@@ -50,8 +64,7 @@
 }
 
 /*
- * 歯車。押せる大きさは 48px（規則13 / NFR-16）。素の button の枠と地はここで消し、
- * 丸い面を hover と押下の手がかりにする。
+ * 歯車。押せる大きさは 48px（規則13 / NFR-16）。素の button の枠と地はここで消す。
  */
 .settings {
   display: flex;
@@ -61,22 +74,16 @@
   height: 48px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-pill);
   background: none;
   color: var(--color-text);
   cursor: pointer;
-  transition: background-color var(--duration-quick) ease;
 }
 
-.settings:hover,
-.settings:active {
-  background: var(--color-surface-muted);
-}
-
-/* PC（幅 1024px 以上）。余白は `40px 0 32px`（設計 10章 前提）、歯車は出さない（規則4）。 */
+/* PC（幅 1024px 以上）。上を広く空け、歯車は出さない（規則4）。 */
 @media (min-width: 1024px) {
   .header {
-    padding: 40px 0 32px;
+    margin-bottom: 32px;
+    padding: 40px 0 20px;
   }
 
   .settings {

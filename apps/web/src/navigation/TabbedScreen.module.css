@@ -1,6 +1,7 @@
 /*
- * 帯（SP の下タブ・PC のサイドナビ）と中身の欄（原本 `docs/design/src/TabBar.dc.html` /
- * `docs/design/src/SideNav.dc.html` / 設計 B-59 6章 規則6〜10 / 設計 B-60 6章 規則1〜6・15・16）。
+ * 帯（SP の下タブ・PC のサイドナビ）と中身の欄（`docs/design/src/TabBar.dc.html` /
+ * `docs/design/src/SideNav.dc.html` / 設計 B-59 6章 規則6〜10 / 設計 B-60 6章 規則1〜6・15・16 /
+ * 紙面の作りは ADR-093）。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1・2。B-41 設計 6章 規則6 を引き継ぐ）。
  * `TabbedScreen.tsx` は class 名しか書かない。色・文字の大きさはトークン（`src/global.css` の
@@ -15,10 +16,13 @@
  * 選んでいるタブはそれに加えて `.tabSelected` で、タブの識別子ごとの class は置かない。
  * 帯の「設定」も同じ2つを使い、開いている間は選んでいるタブと同じ手がかりで示す（B-60 規則7）。
  *
- * **NFR-16（コントラスト比 4.5:1 以上）について。** 選んでいる / いないの区別に文字色を使わない
- * （規則3）。印は太さ（規則1）と、アイコンの背後の丸めた面（SP）・項目の地（PC）という形で示す。
- * 面の色は `--color-surface-muted`（`#ECE7DF`）で、文字 `#1F1E1B` との比は 4.5:1 を大きく超える。
- * 比の実測は単体テストに入れない（jsdom はレイアウトも配色の合成も持たない）。
+ * **NFR-16（コントラスト比 4.5:1 以上）について。** 選んでいる / いないの区別に色相を使わない
+ * （規則3）。選んだ印は地と文字の1組（`#1F1E1B` / `#FAF9F6`）を入れ替えた白抜きなので、
+ * 新しいコントラスト比を作らない。PC の地は `--color-surface-muted`（砂。`#1F1E1B` との比は
+ * 4.5:1 を大きく超える）、hover の地は `--color-surface`（白）。
+ * 色を足す周は WCAG 2.1 AA（4.5:1）を確かめてから足し、**そのときも規則1（太さ）・規則2
+ * （白抜き）の手がかりを消さない** — 色以外の手がかりが残っていることが NFR-17 の構えの側の
+ * 担保である。比の実測は単体テストに入れない（jsdom はレイアウトも配色の合成も持たない）。
  */
 
 /*
@@ -33,24 +37,21 @@
  * 帯。SP では**親指の届く画面の下端に固定する**（NFR-14。`docs/screen-design.md` 2.1）。
  * 文書順は「中身 → 帯」のままで、固定は見た目だけの話である（`navigation/README.md`）。
  *
- * 高さは 64px に下端の安全域（`index.html` が `viewport-fit=cover`）を足して伸ばす —
- * 足さないと iPhone のホームインジケータが帯に重なる。地は半透明にしてぼかし、下を流れる
- * 中身の気配を残す（ぼかせないブラウザでは不透明に近い地のまま読める）。
+ * 高さは 64px に、下端の安全域（`index.html` が `viewport-fit=cover`）を足して伸ばす —
+ * 足さないと iPhone のホームインジケータが帯に重なる。地は画面と同じ紙で、上に墨の細い罫を引く。
  */
 .bar {
   position: fixed;
   right: 0;
   bottom: 0;
   left: 0;
-  z-index: 4;
+  z-index: 3;
   box-sizing: border-box;
   height: calc(var(--tab-bar-height) + env(safe-area-inset-bottom, 0px));
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  border-top: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-background) 88%, transparent);
+  border-top: 1px solid var(--color-text);
+  background: var(--paper-grain) var(--color-background);
   color: var(--color-text);
-  -webkit-backdrop-filter: saturate(1.4) blur(16px);
-  backdrop-filter: saturate(1.4) blur(16px);
 }
 
 /* ロゴは SP で出さない（B-60 規則4）。DOM には常にある。 */
@@ -78,9 +79,7 @@
   justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: 0;
   background: transparent;
-  /* 規則3: 選択で文字色を変えない。どちらの側も帯の文字色のまま。 */
   color: inherit;
   /*
    * 規則1: 選んでいないタブの太さも**明示する**。片方を既定任せにすると、既定の太さが
@@ -91,16 +90,16 @@
 }
 
 /*
- * 規則2・4: SP で選んでいるタブの印は**アイコンの背後の丸めた面**。アイコンの外側に余白を
- * 取って面の大きさを決めるので、印の有無で帯の高さも中身の位置も動かない（規則4 / NFR-14 —
- * 動くと、タブを移るたびに押す位置がずれる）。
+ * アイコンの台。選んでいないタブにも同じ大きさの台を置き、選んだときに墨で塗るだけにする —
+ * **台の有無で帯の高さも中身の位置も動かない**（規則4 / NFR-14。動くと、タブを移るたびに
+ * 押す位置がずれる）。
  */
 .tab svg {
   box-sizing: content-box;
-  padding: 4px 18px;
-  border-radius: var(--radius-pill);
+  padding: 3px 14px;
   transition:
-    background-color var(--duration-quick) ease,
+    background-color var(--duration-quick),
+    color var(--duration-quick),
     transform var(--duration-quick) var(--ease-out);
 }
 
@@ -108,8 +107,13 @@
   transform: scale(0.92);
 }
 
+/*
+ * 規則2: SP で選んでいるタブの印は**アイコンの台を墨で塗る**こと（白抜き）。地と文字の1組
+ * （`#1F1E1B` / `#FAF9F6`）を入れ替えるだけで、新しい色もコントラスト比も作らない（NFR-16）。
+ */
 .tabSelected svg {
-  background: var(--color-surface-muted);
+  background: var(--color-text);
+  color: var(--color-background);
 }
 
 /* 規則1: 選んでいるタブの文字は太い（400 に対して 500）。 */
@@ -126,11 +130,12 @@
 .label {
   font-size: var(--font-size-12);
   line-height: 1.5;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
 }
 
 /*
- * PC（幅 1024px 以上。B-60 規則1）。帯を左の幅 240px のサイドナビにする。
+ * PC（幅 1024px 以上。B-60 規則1）。帯を左の幅 240px のサイドナビにする。地は砂色の紙にして、
+ * 中身の生成りの紙と分ける。
  */
 @media (min-width: 1024px) {
   /*
@@ -152,7 +157,7 @@
   /*
    * サイドナビ。**中身がスクロールしても画面の高さいっぱいに留まる**（規則5）— 固定ではなく
    * 列の中で `sticky` にする（`align-self: start` が無いとグリッドの行いっぱいに伸びて留まらない）。
-   * 下端への固定・安全域の余白・半透明の地は外す（規則6）。
+   * 下端への固定と安全域の余白は外す（規則6）。
    */
   .bar {
     position: sticky;
@@ -164,39 +169,46 @@
     flex-direction: column;
     height: 100vh;
     height: 100dvh;
-    padding: 32px 12px 24px;
+    padding: 40px 0 32px;
     border-top: 0;
     border-right: 1px solid var(--color-border);
-    background: var(--color-background);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
+    background: var(--paper-grain) var(--color-surface-muted);
   }
 
   /*
-   * ロゴ「fridge to meal」（規則16 — 書体の並びの先頭が Inter）。左にアプリのアイコン
-   * （`public/icons/icon.svg`）を角を丸めた面で添える。アイコンは飾りで、名前は文字が持つ。
+   * ロゴ「fridge to meal」（規則16 — 書体の並びの先頭が Inter）。頭に弁柄の落款「献」を押す。
+   * 落款は飾りなので読み上げには出さない（`content` の代替の文字を空にする）。
    */
   .logo {
     display: flex;
     gap: 12px;
     align-items: center;
     height: 48px;
-    padding: 0 12px;
+    padding: 0 24px;
     font-family: var(--font-family);
     font-size: var(--font-size-14);
     font-weight: var(--font-weight-medium);
-    letter-spacing: 0.12em;
+    letter-spacing: 0.16em;
     white-space: nowrap;
   }
 
   .logo::before {
+    display: flex;
     flex: none;
+    align-items: center;
+    justify-content: center;
     width: 32px;
     height: 32px;
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
-    background: var(--color-surface) url('/icons/icon.svg') center / 26px 26px no-repeat;
-    content: '';
+    background: var(--color-danger);
+    color: var(--color-background);
+    font-family: var(--font-family-display);
+    font-size: var(--font-size-20);
+    font-weight: var(--font-weight-display);
+    letter-spacing: 0;
+    line-height: 1;
+    content: '献';
+    content: '献' / '';
+    transform: rotate(-4deg);
   }
 
   /* 3項目を縦に並べる（規則3。タブは SP と同じ1組を並べ替えただけ）。 */
@@ -205,27 +217,30 @@
     flex-direction: column;
     gap: 4px;
     height: auto;
-    margin-top: 32px;
+    margin-top: 40px;
+    padding: 0 12px;
   }
 
-  /* 項目1つ。アイコンを左・文字を右に間 12px で並べ、角を丸めた面にする。 */
+  /* 項目1つ。アイコンを左・文字を右に間 12px で並べる。 */
   .tab {
     flex-direction: row;
     gap: 12px;
     justify-content: flex-start;
     height: 48px;
     padding: 0 12px;
-    border-radius: var(--radius-control);
-    transition: background-color var(--duration-quick) ease;
+    transition:
+      background-color var(--duration-quick),
+      color var(--duration-quick);
   }
 
-  .tab:hover {
+  /* hover の地は白（規則16。新しい色ではなく `--color-surface`）。 */
+  .tab:hover:not(:disabled) {
     background: var(--color-surface);
   }
 
   /*
    * 規則15: PC のアイコンは 20px。`Icon` には 24 を渡したまま、ここで大きさを合わせる。
-   * 線の太さは描かれる 1.5px 相当に保つ（1.5 × 24 / 20 = 1.8）。SP の面の余白は外す。
+   * 線の太さは描かれる 1.5px 相当に保つ（1.5 × 24 / 20 = 1.8）。台は SP だけのもの。
    */
   .tab svg {
     width: 20px;
@@ -236,23 +251,35 @@
 
   .tabSelected svg {
     background: none;
+    color: inherit;
   }
 
-  /* 選択の印は**項目の地**。太さの手がかりは SP と同じ。 */
+  /*
+   * 選択の印は**項目の行を墨で塗る**こと（白抜き）。SP と同じく地と文字の1組を入れ替えるだけで、
+   * 太さの手がかりも残す。
+   */
   .tabSelected,
-  .tabSelected:hover {
-    background: var(--color-surface-muted);
+  .tabSelected:hover:not(:disabled) {
+    background: var(--color-text);
+    color: var(--color-background);
   }
 
   /* 帯の「設定」は下端に寄せる（規則4）。 */
   .settings {
     display: flex;
-    margin-top: auto;
+    width: auto;
+    margin: auto 12px 0;
   }
 
   /* 項目の文字。 */
   .label {
     font-size: var(--font-size-16);
-    letter-spacing: 0.02em;
+    letter-spacing: 0.08em;
+  }
+
+  /* 墨の地の項目は、焦点の輪郭を地の色で内側に引く（`global.css` の `--focus-outline-inverse`）。 */
+  .tabSelected:focus-visible {
+    outline: var(--focus-outline-inverse);
+    outline-offset: var(--focus-outline-offset-inverse);
   }
 }

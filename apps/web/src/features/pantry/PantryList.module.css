@@ -1,16 +1,16 @@
 /*
- * 在庫一覧の帯と行の見た目（設計 B-64 6章 規則3〜8・14 / 原本 `docs/design/src/PantryScreen.dc.html`
- * と部品一覧の「スマホ・横スワイプ中」「PC・行末の操作を開いた」）。
+ * 在庫一覧の帯と行の見た目（設計 B-64 6章 規則3〜8・14 / `docs/design/src/PantryScreen.dc.html`
+ * と部品一覧の「スマホ・横スワイプ中」「PC・行末の操作を開いた」/ 紙面の作りは ADR-093）。
  *
- * **見た目の値はここにだけ置く**（ADR-055 決定1）。色・文字の大きさ・太さ・操作の高さ・丸み・浮きは
+ * 在庫帳に見立てる。帯は地を塗らず、明朝の見出しと帯の色の罫で区切る。期限が今日以前の残日数は
+ * 弁柄の枠で囲み、判のように押す。
+ *
+ * **見た目の値はここにだけ置く**（ADR-055 決定1）。色・文字の大きさ・太さ・操作の高さは
  * トークン（`src/global.css` の `:root`）から `var(--…)` で引き、ここで新しい色を作らない。
- * トークンに無い寸法（行の高さ 56px・列の幅 80px・ずらし 96px・開いた中身の幅 160px・余白）は
- * ここに直に書く（規則12）。
+ * トークンに無い寸法（行の高さ 56px・列の幅 72px・ずらし 96px・開いた中身の幅 160px・余白）は
+ * 直に書く（規則12）。
  *
- * 帯ごとの行は、角を丸めた白い面に1つのまとまりとして載せる。開いた中身（`.operations`）が
- * 面の外へはみ出せるよう、面ははみ出しを切らず、丸みは最初と最後の行が持つ。
- *
- * **動きを付けない**（規則8）— ずらしも開閉も即時である。
+ * **ずらしと開閉には動きを付けない**（規則8）— どちらも即時である。
  * SP（幅 1024px 未満）は3列の行で `…` を見た目からだけ隠し、PC は `…` を4列目に置く（末尾のメディアクエリ。B-60 / ADR-076）。
  */
 
@@ -30,124 +30,100 @@
   padding: 0 16px;
 }
 
-/* 0件の案内。丸い面のアイコンの下に文を置き、画面の中ほどに揃える。アイコンは飾りである。 */
-.empty {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  align-items: center;
-  padding: 64px 32px 0;
-  text-align: center;
-}
-
-.emptyIcon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  background: var(--color-surface-muted);
-  color: var(--color-text);
-}
-
-.emptyNotice {
-  max-width: 320px;
-  margin: 0;
-  color: var(--color-text-secondary);
-  text-wrap: balance;
-}
-
-/* 帯の見出し。丸めきった札（高さ 28px）を面の左上に置く。地と文字色は帯ごとに下で当てる。 */
+/*
+ * 帯の見出し。明朝の文字の後ろに、帯の色の罫を右端まで引く（地は塗らない）。文字色と罫の色は
+ * 帯ごとに下で当てる。罫は文字色をそのまま使い、新しい色を作らない。
+ */
 .band {
   display: flex;
   align-items: center;
-  align-self: flex-start;
-  gap: 6px;
-  width: fit-content;
-  height: 28px;
-  margin: 0 16px 10px;
-  padding: 0 12px;
-  border-radius: var(--radius-pill);
-  font-size: var(--font-size-12);
-  font-weight: var(--font-weight-medium);
+  gap: 10px;
+  height: 40px;
+  margin: 0;
+  padding: 0 16px;
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-16);
+  font-weight: var(--font-weight-display);
   line-height: 1.5;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.16em;
+}
+
+.band::after {
+  flex: 1;
+  height: 0;
+  border-top: 1px solid currentColor;
+  content: '';
 }
 
 .bandUrgent {
-  background: var(--color-danger-surface);
   color: var(--color-danger);
 }
 
 .bandSoon {
-  background: var(--color-caution-surface);
   color: var(--color-caution);
 }
 
 .bandRest {
-  background: var(--color-surface-muted);
   color: var(--color-text);
 }
 
-/* `今日まで` に添える `!`（原本は太さ 500・字間なし。書体は `--font-family` に任せる — 先頭が Inter）。 */
+/*
+ * `今日まで` に添える `!`。弁柄の小さな角印にし、地の色で抜く（書体は `--font-family` — 先頭が Inter）。
+ */
 .alertMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--color-danger);
+  color: var(--color-background);
+  font-family: var(--font-family);
+  font-size: var(--font-size-14);
   font-weight: var(--font-weight-medium);
+  line-height: 1;
   letter-spacing: 0;
 }
 
 .rows {
-  margin: 0 16px;
+  margin: 0;
   padding: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-surface);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-surface);
   list-style: none;
 }
 
 /*
- * 1行。高さ 56px・行と行の間に区切り線。開いた中身（`.operations`）を行の直下へ重ねるため
+ * 1行。高さ 56px・下に区切り線。開いた中身（`.operations`）を行の直下へ重ねるため
  * `position: relative` にする。はみ出しは切らない — 切ると開いた中身が見えなくなる（規則7）。
  */
 .row {
   position: relative;
   height: 56px;
-  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
   cursor: pointer;
   /* なぞる操作で文字が選ばれないようにする（ポインタでなぞると選択の色が乗る）。 */
   user-select: none;
-  transition: background-color var(--duration-quick) ease;
+  transition: background-color var(--duration-quick);
 }
 
-.row + .row {
-  border-top: 1px solid var(--color-border);
+@media (hover: hover) {
+  .row:hover {
+    background: var(--color-surface);
+  }
 }
 
-/* 面の丸みは最初と最後の行が持つ（面ははみ出しを切らない）。 */
-.row:first-child,
-.row:first-child .rowContent {
-  border-top-left-radius: calc(var(--radius-surface) - 1px);
-  border-top-right-radius: calc(var(--radius-surface) - 1px);
-}
-
-.row:last-child,
-.row:last-child .rowContent {
-  border-bottom-left-radius: calc(var(--radius-surface) - 1px);
-  border-bottom-right-radius: calc(var(--radius-surface) - 1px);
-}
-
-.row:hover {
-  background: var(--color-background);
+/* 押している間は面の色を一段濃くし、指の下で行が受け止めたことを見せる。 */
+.row:active {
+  background: var(--color-surface-muted);
 }
 
 /*
- * 行の中身。SP は名称・分量・残日数の3列（原本 SP の rowCols / rowPad）。`…` は木に置いたまま
+ * 行の中身。SP は名称・分量・残日数の3列。`…` は木に置いたまま
  * 列から外し、見た目からだけ隠す（下の `.toggle`）。PC は `…` を4列目に置く（末尾のメディアクエリ）。
  */
 .rowContent {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px 80px;
+  grid-template-columns: minmax(0, 1fr) 72px 72px;
   column-gap: 12px;
   align-items: center;
   height: 100%;
@@ -164,7 +140,8 @@
   background: var(--color-danger);
 }
 
-.rowRevealed:hover {
+.rowRevealed:hover,
+.rowRevealed:active {
   background: var(--color-danger);
 }
 
@@ -172,19 +149,19 @@
   position: relative;
   z-index: 1;
   transform: translateX(-96px);
-  border-radius: 0;
-  background: var(--color-surface);
+  background: var(--paper-grain) var(--color-background);
 }
 
 /* 行末の操作を開いた行（規則6）。行の地を面の白にする。 */
 .rowOperationsOpen {
-  background: var(--color-background);
+  background: var(--color-surface);
 }
 
 .name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: 0.04em;
 }
 
 .amount {
@@ -195,33 +172,33 @@
   font-variant-numeric: tabular-nums;
 }
 
-/*
- * 残日数。今日まで・期限が近いは帯と同じ地の丸めきった札にし、色は文に添えるだけである
- * （規則5 / NFR-17）。
- */
+/* 残日数。色は帯の文字色で、文に添えるだけである（規則5 / NFR-17）。 */
 .remainingDays {
-  justify-self: end;
   font-size: var(--font-size-14);
   line-height: 1.6;
   text-align: right;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
+/*
+ * 期限が今日以前。弁柄の枠で囲み、明朝で少し傾けて判のように押す。意味は中の文字が運ぶ（NFR-17）。
+ */
 .remainingDaysUrgent {
-  padding: 2px 10px;
-  border-radius: var(--radius-pill);
-  background: var(--color-danger-surface);
+  justify-self: end;
+  padding: 0 6px;
+  border: 1px solid var(--color-danger);
+  box-shadow: inset 0 0 0 1px var(--color-background), inset 0 0 0 2px var(--color-danger);
   color: var(--color-danger);
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-family-display);
+  font-weight: var(--font-weight-display);
+  line-height: 1.75;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  transform: rotate(-4deg);
 }
 
 .remainingDaysSoon {
-  padding: 2px 10px;
-  border-radius: var(--radius-pill);
-  background: var(--color-caution-surface);
   color: var(--color-caution);
-  font-weight: var(--font-weight-medium);
 }
 
 .remainingDaysRest {
@@ -245,7 +222,6 @@
   height: var(--control-height-secondary);
   padding: 0;
   border: 0;
-  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -275,29 +251,29 @@
   background: var(--color-surface-muted);
 }
 
-/* 開いた中身（規則6 / 原本「PC・行末の操作を開いた」）。行の直下の右端に重ねる。 */
+/*
+ * 開いた中身（規則6 / 「PC・行末の操作を開いた」）。行の直下の右端に、白い紙を1枚、右下へ
+ * ずらした影の上に重ねる。
+ */
 .operations {
   position: absolute;
   top: 100%;
-  right: 8px;
+  right: 0;
   z-index: 3;
   display: flex;
   flex-direction: column;
   width: 160px;
-  margin-top: -4px;
-  padding: 6px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
+  margin-top: -1px;
+  border: 1px solid var(--color-border-strong);
   background: var(--color-surface);
-  box-shadow: var(--shadow-overlay);
+  box-shadow: 4px 4px 0 0 var(--color-border-strong);
   cursor: default;
 }
 
 .operation {
-  height: 44px;
-  padding: 0 12px;
+  height: 48px;
+  padding: 0 16px;
   border: 0;
-  border-radius: 8px;
   background: none;
   color: var(--color-text);
   font-size: var(--font-size-16);
@@ -318,7 +294,7 @@
   background: var(--color-danger-surface);
 }
 
-/* なぞって現れる `削除`（規則7 / 原本「スマホ・横スワイプ中」）。行の右端の下、幅 96px・行の高さ。 */
+/* なぞって現れる `削除`（規則7 / 「スマホ・横スワイプ中」）。行の右端の下、幅 96px・行の高さ。 */
 .revealedDelete {
   position: absolute;
   top: 0;
@@ -327,11 +303,11 @@
   width: 96px;
   padding: 0;
   border: 0;
-  border-radius: 0;
   background: var(--color-danger);
   color: var(--color-background);
   font-size: var(--font-size-14);
   font-weight: var(--font-weight-medium);
+  letter-spacing: 0.12em;
   cursor: pointer;
 }
 
@@ -342,24 +318,54 @@
 }
 
 /*
+ * 在庫が0件のとき。冷蔵庫の絵と案内を、画面の欄の中ほどに置く。
+ */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin: 0;
+  padding: 72px 16px 0;
+  text-align: center;
+}
+
+.emptyIcon {
+  display: inline-flex;
+  color: var(--color-text-muted);
+}
+
+.emptyNotice {
+  max-width: 22em;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-14);
+  line-height: 1.8;
+  text-wrap: pretty;
+}
+
+/*
  * PC（幅 1024px 以上。値の正は `docs/screen-design.md` 2.1 / ADR-076。CSS 変数はメディアクエリに
- * 使えないので写しを書く）。`…` を行末の4列目に見せる（原本 PC の rowCols / rowPad）。
+ * 使えないので写しを書く）。`…` を行末の4列目に見せる。
  */
 @media (min-width: 1024px) {
   .rowContent {
-    grid-template-columns: minmax(0, 1fr) 96px 96px 48px;
-    padding: 0 4px 0 20px;
-  }
-
-  .band,
-  .rows {
-    margin-right: 0;
-    margin-left: 0;
+    grid-template-columns: minmax(0, 1fr) 72px 72px 48px;
+    padding: 0 0 0 16px;
   }
 
   .toggle {
     position: static;
     opacity: 1;
     pointer-events: auto;
+  }
+
+  /* 帯の見出しは、行と同じく画面の欄の内側に収める。0件の案内は上を広く空ける。 */
+  .band {
+    padding: 0;
+  }
+
+  .empty {
+    padding-top: 120px;
   }
 }

@@ -440,7 +440,7 @@ export function PantryList({
     return (
       <div className={styles.empty}>
         <span className={styles.emptyIcon}>
-          <Icon name="pantry" size={32} />
+          <Icon name="pantry" size={64} />
         </span>
         <p className={styles.emptyNotice}>{EMPTY_NOTICE}</p>
       </div>

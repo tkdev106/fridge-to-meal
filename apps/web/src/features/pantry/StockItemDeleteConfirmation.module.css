@@ -16,7 +16,13 @@
   inset: 0;
   z-index: 10;
   background: color-mix(in srgb, var(--color-text) 40%, transparent);
-  animation: scrim-enter var(--duration-enter) ease;
+  animation: scrim-enter var(--duration-quick) ease-out both;
+}
+
+@keyframes scrim-enter {
+  from {
+    opacity: 0;
+  }
 }
 
 /* 下から出る面（規則11）。暗幕と下タブの帯より上に重ねる。下端の安全域を余白に足す。 */
@@ -29,50 +35,28 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding: 32px 20px calc(20px + env(safe-area-inset-bottom, 0px));
-  border-radius: var(--radius-sheet) var(--radius-sheet) 0 0;
+  padding: 32px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--color-text);
   background: var(--color-surface);
-  box-shadow: var(--shadow-overlay);
-  animation: sheet-enter var(--duration-enter) var(--ease-out);
+  animation: sheet-enter var(--duration-enter) var(--ease-out) both;
 }
 
-/* SP の面の上端の取っ手。飾りであり、下から出た面だと読める手がかりにする。 */
-.dialog::before {
-  position: absolute;
-  top: 10px;
-  left: 50%;
-  width: 36px;
-  height: 4px;
-  border-radius: var(--radius-pill);
-  background: var(--color-border);
-  transform: translateX(-50%);
-  content: '';
-}
-
+/* 下から紙を1枚差し出すように現れる。 */
 @keyframes sheet-enter {
   from {
-    transform: translateY(100%);
-  }
-}
-
-@keyframes dialog-enter {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.96);
-  }
-}
-
-@keyframes scrim-enter {
-  from {
+    transform: translateY(24px);
     opacity: 0;
   }
 }
 
+/* 問い。明朝で据える。 */
 .question {
   margin: 0;
-  font-size: var(--font-size-16);
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-18);
+  font-weight: var(--font-weight-display);
   line-height: 1.75;
+  letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -90,17 +74,22 @@
 .confirm {
   width: 100%;
   height: var(--control-height-secondary);
-  border-radius: var(--radius-control);
+  border-radius: 0;
   font-size: var(--font-size-16);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.12em;
   cursor: pointer;
+  transition: background-color var(--duration-quick);
 }
 
 /* `やめる`（枠のみ）。 */
 .cancel {
-  border: 1px solid var(--color-border-strong);
-  background: var(--color-surface);
+  border: 1px solid var(--color-text);
+  background: transparent;
   color: var(--color-text);
+}
+
+.cancel:active {
+  background: var(--color-surface-muted);
 }
 
 /* `削除`（赤の地）。 */
@@ -138,14 +127,17 @@
     width: 400px;
     gap: 32px;
     padding: 32px 24px 24px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-surface);
+    border: 1px solid var(--color-text);
+    box-shadow: 6px 6px 0 0 var(--color-border-strong);
     transform: translate(-50%, -50%);
     animation-name: dialog-enter;
   }
 
-  .dialog::before {
-    display: none;
+  @keyframes dialog-enter {
+    from {
+      transform: translate(-50%, calc(-50% + 12px));
+      opacity: 0;
+    }
   }
 
   .operations {

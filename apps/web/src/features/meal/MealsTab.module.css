@@ -1,16 +1,21 @@
 /*
- * 献立タブの一覧と「新しい献立を見る」の面・結末（設計 B-61 6章・B-62 6章 / `docs/design/README.md`）。
+ * 献立タブの一覧と「新しい献立を見る」の面・結末（`docs/design/src/MealScreen.dc.html`・
+ * `MealCard.dc.html`・`AiNotice.dc.html`・`RequestBlock.dc.html` / 設計 B-61 6章・B-62 6章 /
+ * 紙面の作りは ADR-093）。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1・2）。`MealsTab.tsx` は class 名しか書かない。
- * 色・文字の大きさ・太さ・丸み・浮き・動きはトークン（`src/global.css` の `:root`）から
- * `var(--…)` で引き、ここで新しい色を作らない。余白・字間・行の高さなどトークンの無い値はここに書く。
+ * 色・文字の大きさ・太さはトークン（`src/global.css` の `:root`）から `var(--…)` で引き、
+ * ここで新しい色を作らない。余白・字間・行の高さなどトークンの無い値は直に書く。
+ *
+ * カードは品書きの1枚に見立てる。左の欄に一・二・三の番号を明朝で置き、紙を2枚重ねたように
+ * 右下へずらした影を落とす。押すと紙が沈む。
  *
  * 狭い幅は1列・最大幅なし、広い幅は3列・最大幅 1080px（設計 6章 規則12）。
  * 切り替えはこのファイルの末尾の1か所にだけ書く。
  */
 
 /*
- * 画面の欄。生成中の進行線の置き場でもある（`position: relative`。設計 B-62 規則7）。
+ * 画面の欄。生成中の進行線の置き場でもある（設計 B-62 規則7）。
  */
 .screen {
   position: relative;
@@ -18,7 +23,7 @@
 }
 
 /*
- * 縦の中ほどに置く結末（S-4 / S-7 / S-8 / S-9。設計 B-62 規則16）。欄を縦の flex にし、
+ * 縦の中ほどに置く結末（S-4 / S-7 / S-8。設計 B-62 規則16 / 10章 前提3）。欄を縦の flex にし、
  * 最小の高さを「表示域 − 下タブ − 下端の安全域」にする。空きの比は各結末の `.space*` が持つ。
  */
 .screenCentered {
@@ -33,7 +38,7 @@
   flex-direction: column;
 }
 
-/* 中ほどに置く結末の上下の空き（3:1、上限は 3:2）。 */
+/* 中ほどに置く結末の上下の空き（S-4 / S-8 は 3:1、S-7 は 3:2）。 */
 .spaceAbove {
   flex: 3;
   min-height: 24px;
@@ -50,7 +55,7 @@
 }
 
 /*
- * 生成中の進行線（設計 B-62 規則7）。欄の上端に高さ 3px で置き、線の端を丸める。
+ * 生成中の進行線（設計 B-62 規則7）。欄の上端に高さ 2px で置く。
  */
 .progress {
   position: absolute;
@@ -58,9 +63,8 @@
   right: 0;
   left: 0;
   z-index: 2;
-  height: 3px;
+  height: 2px;
   overflow: hidden;
-  background: var(--color-border);
 }
 
 .progressBar {
@@ -69,9 +73,8 @@
   bottom: 0;
   left: 0;
   width: 32%;
-  border-radius: var(--radius-pill);
-  background: var(--color-text);
-  animation: progress-indeterminate 1.6s var(--ease-out) infinite;
+  background: var(--color-danger);
+  animation: progress-indeterminate 1.8s cubic-bezier(0.45, 0, 0.25, 1) infinite;
 }
 
 @keyframes progress-indeterminate {
@@ -96,84 +99,73 @@
   width: 100%;
 }
 
-/* 凡例（D-4 の追記）。 */
+/* 凡例（D-4 の追記）。見出しの二重罫の上に小さく添える。 */
 .legend {
-  margin: 4px 0 0;
+  margin: 8px 0 0;
   color: var(--color-text-secondary);
-  font-size: var(--font-size-14);
+  font-size: var(--font-size-12);
   line-height: 1.6;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
 }
 
 /*
  * カードの一覧。素の `ul` の印と字下げを消す（一覧の役割は `MealsTab.tsx` の `role="list"` が
- * 保つ。設計 B-61 規則13）。
+ * 保つ。設計 B-61 規則13）。右と下は重ねた紙の影のぶん空ける。
  */
 .cards {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
+  gap: 28px;
   margin: 0;
-  padding: 0;
+  padding: 0 6px 6px 0;
   list-style: none;
-  transition: opacity var(--duration-quick) ease;
+  transition: opacity var(--duration-quick);
 }
 
-/*
- * 生成中は前の提案を薄く残す（D-6 / 設計 B-62 規則8）。カード群だけを薄くし、ゆっくり明滅させて
- * 待っていることを伝える（動きを減らす設定では `global.css` が止め、薄いまま残る）。
- */
+/* 生成中は前の提案を薄く残す（D-6 / 設計 B-62 規則8）。カード群だけを薄くする。 */
 .cardsDimmed {
   opacity: 0.4;
-  animation: cards-waiting 1.6s ease-in-out infinite alternate;
-}
-
-@keyframes cards-waiting {
-  from {
-    opacity: 0.4;
-  }
-
-  to {
-    opacity: 0.6;
-  }
 }
 
 /*
- * カード1枚。**カード全体が押せる**（設計 B-61 規則9・10）ので指の形・hover の浮き・押下の
- * 縮みを出す — 見た目だけで、焦点はカードに当てない（止まり先は中のボタン）。
- * 一覧に入るときは下から少しずつ現れ、2枚目・3枚目を僅かに遅らせる。
+ * カード1枚。**カード全体が押せる**（設計 B-61 規則9・10）ので指の形を出す — 見た目だけで、
+ * 焦点はカードに当てない（止まり先は中のボタン）。
+ *
+ * 影は2つ重ね、白い紙をもう1枚、右下へ 6px ずらして敷いたように見せる（ぼかしは使わない）。
+ * 左の 56px は番号の欄である。
  */
 .card {
   position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 20px 20px 8px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-surface);
+  padding: 18px 18px 0 72px;
+  border: 1px solid var(--color-border-strong);
   background: var(--color-surface);
-  box-shadow: var(--shadow-surface);
+  box-shadow:
+    6px 6px 0 -1px var(--color-surface),
+    6px 6px 0 0 var(--color-border-strong);
   color: var(--color-text);
   cursor: pointer;
   transition:
-    box-shadow var(--duration-quick) ease,
     transform var(--duration-quick) var(--ease-out),
-    border-color var(--duration-quick) ease;
+    box-shadow var(--duration-quick) var(--ease-out);
   animation: card-enter var(--duration-enter) var(--ease-out) both;
 }
 
+/* 2枚目・3枚目は少し遅れて現れる。 */
 .card:nth-child(2) {
-  animation-delay: 60ms;
+  animation-delay: 70ms;
 }
 
 .card:nth-child(3) {
-  animation-delay: 120ms;
+  animation-delay: 140ms;
 }
 
 @keyframes card-enter {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px);
   }
 
   to {
@@ -182,111 +174,130 @@
   }
 }
 
+/* 指を載せると上の紙が浮き、押すと下の紙へ沈む。 */
 @media (hover: hover) {
   .card:hover {
-    border-color: var(--color-border-strong);
-    box-shadow: var(--shadow-raised);
-    transform: translateY(-2px);
+    transform: translate(-2px, -2px);
+    box-shadow:
+      8px 8px 0 -1px var(--color-surface),
+      8px 8px 0 0 var(--color-border-strong);
   }
 }
 
 .card:active {
-  box-shadow: var(--shadow-surface);
-  transform: scale(0.985);
+  transform: translate(3px, 3px);
+  box-shadow:
+    3px 3px 0 -1px var(--color-surface),
+    3px 3px 0 0 var(--color-border-strong);
 }
 
-/* 焦点が中のボタンにある間は、カードの縁でも居場所を示す。 */
-.card:has(:focus-visible) {
-  border-color: var(--color-text);
+/*
+ * 品書きの番号（一・二・三）。左の欄に明朝で置き、本文との間を縦の罫で分ける。
+ */
+.number {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  width: 56px;
+  padding-top: 14px;
+  border-right: 1px solid var(--color-border);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-26);
+  font-weight: var(--font-weight-display);
+  line-height: 1.3;
 }
 
-/* 再利用の札（FR-35 / D-3）。名称の上に、左に寄せて丸めきった札で置く。 */
+/* 再利用の札（FR-35 / D-3）。名称の上に、左に寄せて置く。緑の細い枠だけの札。 */
 .reusedMark {
   display: flex;
   align-items: center;
   align-self: flex-start;
-  height: 24px;
+  height: 22px;
   margin-bottom: 10px;
-  padding: 0 10px;
-  border-radius: var(--radius-pill);
-  background: var(--color-positive-surface);
+  padding: 0 8px;
+  border: 1px solid var(--color-positive);
   color: var(--color-positive);
   font-size: var(--font-size-12);
-  font-weight: var(--font-weight-medium);
   line-height: 1.5;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
 }
 
-/* 献立の名称。カードの中で一番大きな文字にする。 */
+/* 献立の名称。明朝で、品書きの品名にする。 */
 .title {
   margin: 0;
+  font-family: var(--font-family-display);
   font-size: var(--font-size-20);
-  font-weight: var(--font-weight-medium);
-  line-height: 1.45;
-  letter-spacing: 0.02em;
+  font-weight: var(--font-weight-display);
+  line-height: 1.5;
+  letter-spacing: 0.04em;
   text-wrap: pretty;
 }
 
-/*
- * 材料の件数と不足の件数。数字の幅を揃え、頭に不足の有無のアイコンを置く。不足なしは緑、
- * 不足ありは黄土（どちらも地との比 4.5:1 以上。意味は文字が運ぶ）。
- */
+/* 材料の件数と不足の件数。数字の幅を揃える。 */
 .coverage {
-  display: flex;
-  gap: 6px;
-  align-items: center;
   margin: 6px 0 0;
-  font-size: var(--font-size-14);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-12);
   font-variant-numeric: tabular-nums;
   line-height: 1.6;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.06em;
 }
 
-.coverageComplete {
-  color: var(--color-positive);
-}
-
+/* 不足がある回は黄土の文字にする。意味は「不足n件」の文字が運ぶ（NFR-17）。 */
 .coverageShort {
   color: var(--color-caution);
+  font-weight: var(--font-weight-medium);
 }
 
-/* 使う在庫の欄。名称を丸めた札にして横に並べ、収まらなければ折り返す。 */
+/*
+ * 使う在庫の欄。点線の罫の下に名称を中黒で区切って並べ、収まらなければ折り返す。行の高さは
+ * 傍点の載る分だけ高くとる。
+ */
 .usedIngredients {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: baseline;
   margin: 14px 0 0;
+  padding-top: 10px;
+  border-top: 1px dotted var(--color-border-strong);
   font-size: var(--font-size-14);
-  line-height: 1.6;
+  line-height: 2.1;
   letter-spacing: 0.02em;
+}
+
+/* 中黒の区切りは名称の後ろに付け、行の頭に来ないようにする。読み上げには出さない。 */
+.usedIngredients > span:not(:last-child)::after {
+  content: '・';
+  content: '・' / '';
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-regular);
 }
 
 /*
  * 使う在庫の1件。**期限が今日でないものの太さも明示する**（設計 B-61 規則5）— 片方を既定任せに
  * すると、既定の太さが変わった回に太字の差だけが黙って消える。
  */
-.usedIngredient,
-.usedIngredientExpiringToday {
-  display: inline-flex;
-  align-items: center;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: var(--radius-pill);
-}
-
 .usedIngredient {
-  border: 1px solid var(--color-border);
-  background: var(--color-background);
-  color: var(--color-text-secondary);
   font-weight: var(--font-weight-regular);
 }
 
-/* 期限が今日の1件は太字（D-4 の追記）。赤の地を重ね、一覧を流し見ても目に留まるようにする。 */
+/*
+ * 期限が今日の1件（D-4 の追記）。太字の弁柄にし、名称に傍点を打つ。傍点は区切りの中黒には
+ * 打たない（名称の要素だけに付ける）。
+ */
 .usedIngredientExpiringToday {
-  border: 1px solid transparent;
-  background: var(--color-danger-surface);
   color: var(--color-danger);
   font-weight: var(--font-weight-medium);
+}
+
+.usedIngredientExpiringToday > span:first-child {
+  -webkit-text-emphasis: filled dot var(--color-danger);
+  text-emphasis: filled dot var(--color-danger);
+  -webkit-text-emphasis-position: over right;
+  text-emphasis-position: over right;
 }
 
 /*
@@ -306,60 +317,52 @@
   white-space: nowrap;
 }
 
-/* 「作り方を見る」の置き場。カードの下端に寄せ、上に区切り線を引く。 */
+/* 「作り方を見る」の置き場。カードの下端に寄せる。 */
 .openMeal {
   margin-top: auto;
-  padding-top: 16px;
-}
-
-.openMeal::before {
-  display: block;
-  height: 1px;
-  margin-bottom: 4px;
-  background: var(--color-border);
-  content: '';
+  padding-top: 14px;
 }
 
 /*
- * 「作り方を見る」。行いっぱいに広げ、文字を左・矢印を右に置く。素の button の枠と地は
- * ここで消す（リセットでは全体を消さない。設計 B-59 6章 規則3）。押せる高さは 44px 以上を保つ。
+ * 「作り方を見る」。破線の罫の下に、文字と矢印を左右に置く。素の button の枠と地はここで消す
+ * （リセットでは全体を消さない。設計 B-59 6章 規則3）。押せる高さは 44px 以上を保つ。
  */
 .openMealButton {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  min-height: 44px;
+  min-height: 48px;
   padding: 0;
   border: 0;
-  border-radius: 0;
+  border-top: 1px dashed var(--color-border);
   background: transparent;
   color: inherit;
   font-size: var(--font-size-14);
   font-weight: var(--font-weight-medium);
   line-height: 1.6;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
   cursor: pointer;
 }
 
-.openMealButton svg {
+.openMealButton > svg {
   transition: transform var(--duration-quick) var(--ease-out);
 }
 
 @media (hover: hover) {
-  .card:hover .openMealButton svg {
-    transform: translateX(3px);
+  .card:hover .openMealButton > svg {
+    transform: translateX(4px);
   }
 }
 
 /*
- * 「新しい献立を見る」の面の置き場。失敗の帯は面の直前に並ぶ（設計 B-62 規則9）。
+ * 「新しい献立を見る」の面の置き場。失敗の帯は面の直前に並ぶ（設計 B-62 規則9 / 10章 前提2）。
  */
 .request {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  margin-top: 32px;
+  margin-top: 36px;
 }
 
 /* 中ほどに置く S-8 では、上下の空きが余白を持つ。 */
@@ -367,33 +370,32 @@
   margin-top: 0;
 }
 
-/* S-8（まだ提案が無い）で面の上に置く、丸い面の中のアイコン。飾りである。 */
-.firstIcon {
-  display: flex;
-  align-items: center;
-  align-self: center;
-  justify-content: center;
-  width: 96px;
-  height: 96px;
-  margin-bottom: 32px;
-  border-radius: 50%;
-  background: var(--color-surface-muted);
-  color: var(--color-text);
-}
-
 /*
- * 失敗の帯（S-6 / 設計 B-62 規則9）。
+ * 失敗の帯（S-6 / 設計 B-62 規則9）。左に弁柄の太い罫を引く。
  */
 .failedBand {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   margin: 0;
   padding: 12px 16px;
-  border-radius: var(--radius-control);
+  border-left: 3px solid var(--color-danger);
   background: var(--color-danger-surface);
   color: var(--color-danger);
   font-size: var(--font-size-14);
   line-height: 1.6;
+  animation: band-enter var(--duration-enter) var(--ease-out) both;
+}
+
+@keyframes band-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* 帯の記号。 */
@@ -404,107 +406,126 @@
 
 /*
  * 「新しい献立を見る」の面（設計 B-62 規則10）。狭い幅は縦並びで、文書順（手がかり → ボタン →
- * 案内）のまま並ぶ。枠を持たず、手がかりと案内はボタンの中心に揃える。
+ * 案内）のまま並ぶ。面は枠を持たず、墨の板のボタンが主役になる。
  */
 .requestPanel {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  align-items: center;
   color: var(--color-text);
 }
 
-/* 在庫が変わった手がかり（D-8）。緑の地の札にし、点は飾りで、文字が意味を運ぶ。 */
+/* 在庫が変わった手がかり（D-8）。点は飾りで、文字が意味を運ぶ。 */
 .pantryChanged {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 32px;
+  justify-content: center;
+  gap: 10px;
   margin: 0;
-  padding: 0 14px;
-  border-radius: var(--radius-pill);
-  background: var(--color-positive-surface);
   color: var(--color-positive);
   font-size: var(--font-size-14);
+  font-weight: var(--font-weight-medium);
   line-height: 1.6;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
 }
 
+/* 点は脈を打つように輪を広げ、変わったことに目を留めさせる。 */
 .pantryChangedDot {
   flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--color-positive);
-  animation: changed-pulse 2s ease-out infinite;
+  animation: dot-pulse 2s ease-out infinite;
 }
 
-@keyframes changed-pulse {
+@keyframes dot-pulse {
   0% {
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-positive) 45%, transparent);
   }
 
   70%,
   100% {
-    box-shadow: 0 0 0 6px transparent;
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--color-positive) 0%, transparent);
   }
 }
 
 /* 待ち時間の案内と、生成中の「考えています…」。 */
 .requestInfo {
   display: flex;
-  gap: 8px;
   align-items: center;
+  justify-content: center;
+  gap: 8px;
   margin: 0;
   color: var(--color-text-secondary);
-  font-size: var(--font-size-14);
+  font-size: var(--font-size-12);
   line-height: 1.6;
-  letter-spacing: 0.02em;
-}
-
-/* 「考えています…」の頭で回る輪。飾りであり、状態は status の文字が伝える。 */
-.spinner {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  border: 2px solid var(--color-border);
-  border-top-color: var(--color-text);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  letter-spacing: 0.08em;
 }
 
 /*
- * 主の操作（設計 B-62 規則11）。素の button の枠と地はここで消す（リセットでは消さない。
- * 設計 B-59 6章 規則3）。押した瞬間に僅かに縮める。
+ * 湯気の立つ椀（生成中・S-8・上限に達した回）。椀の上の2本（`meal` の3つ目と4つ目の線）を
+ * 交互に立ち昇らせる。`meal` 以外の絵には付けない。動きを減らす設定では `global.css` が止める。
+ */
+.simmering,
+.firstIcon,
+.outcomeIcon {
+  display: inline-flex;
+}
+
+.steam path:nth-child(3),
+.steam path:nth-child(4) {
+  transform-box: fill-box;
+  animation: steam 2.4s ease-in-out infinite;
+}
+
+.steam path:nth-child(4) {
+  animation-delay: 0.8s;
+}
+
+@keyframes steam {
+  0% {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+
+  35% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+
+/* S-8 の大きな椀。面の上の中ほどに置く。 */
+.firstIcon {
+  align-self: center;
+  margin-bottom: 28px;
+  color: var(--color-text-muted);
+}
+
+/*
+ * 主の操作。墨の板に、右下へずらした影を落とす。押すと影の位置まで沈む。素の button の枠と
+ * 地はここで消す（リセットでは消さない。設計 B-59 6章 規則3）。右と下の 4px は影の分である。
  */
 .primaryButton {
-  width: 100%;
+  width: calc(100% - 4px);
   height: var(--control-height-primary);
   padding: 0 16px;
-  border: 0;
-  border-radius: var(--radius-control);
+  border: 1px solid var(--color-text);
   background: var(--color-text);
+  box-shadow: 4px 4px 0 0 var(--color-border-strong);
   color: var(--color-background);
   font-size: var(--font-size-16);
   font-weight: var(--font-weight-medium);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.12em;
   cursor: pointer;
   transition:
-    background-color var(--duration-quick) ease,
     transform var(--duration-quick) var(--ease-out),
-    box-shadow var(--duration-quick) ease;
-}
-
-@media (hover: hover) {
-  .primaryButton:hover:not(:disabled) {
-    box-shadow: var(--shadow-raised);
-  }
+    box-shadow var(--duration-quick) var(--ease-out),
+    background-color var(--duration-quick);
 }
 
 /* 文字色の地。焦点の輪郭は地の色で内側に引く（`global.css` の `--focus-outline-inverse`）。 */
@@ -513,14 +534,23 @@
   outline-offset: var(--focus-outline-offset-inverse);
 }
 
-.primaryButton:active:not(:disabled) {
-  background: var(--color-text-secondary);
-  transform: scale(0.98);
+@media (hover: hover) {
+  .primaryButton:hover:not(:disabled) {
+    transform: translate(-1px, -1px);
+    box-shadow: 5px 5px 0 0 var(--color-border-strong);
+  }
 }
 
-/* 生成中・オフラインの無効の見た目（設計 B-62 規則3）。 */
+.primaryButton:active:not(:disabled) {
+  transform: translate(4px, 4px);
+  box-shadow: 0 0 0 0 var(--color-border-strong);
+}
+
+/* 生成中・オフラインの無効の見た目（設計 B-62 規則3）。影を外し、色を抜く。 */
 .primaryButton:disabled {
+  border-color: var(--color-border);
   background: var(--color-border);
+  box-shadow: none;
   color: var(--color-text-muted);
   cursor: default;
 }
@@ -530,26 +560,9 @@
   flex: none;
 }
 
-/* 生成中は無効の地の上を光の帯が流れ、止まっていないことを示す。 */
-.requestButtonBusy {
-  background-image: linear-gradient(
-    100deg,
-    transparent 30%,
-    color-mix(in srgb, var(--color-surface) 70%, transparent) 50%,
-    transparent 70%
-  );
-  background-size: 200% 100%;
-  animation: busy-sheen 1.4s linear infinite;
-}
-
-@keyframes busy-sheen {
-  from {
-    background-position: 150% 0;
-  }
-
-  to {
-    background-position: -50% 0;
-  }
+/* 生成中は指の形を「待ち」にする。 */
+.requestButtonBusy:disabled {
+  cursor: progress;
 }
 
 /*
@@ -558,45 +571,41 @@
 .outcome {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 28px;
   width: 100%;
 }
 
-/* 出せない回の面。白い面に丸い面のアイコンを置き、文を中ほどに揃える。 */
+/* 出せない回の面。墨の細い罫で上下を挟んだ、貼り紙のような1枚。 */
 .outcomePanel {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   align-items: center;
-  padding: 32px 20px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-surface);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-surface);
+  gap: 8px;
+  padding: 28px 16px;
+  border-top: 1px solid var(--color-text);
+  border-bottom: 1px solid var(--color-text);
   color: var(--color-text);
   text-align: center;
 }
 
-/* 出せない回のアイコン。飾りである。 */
-.outcomeIcon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 64px;
-  height: 64px;
-  margin-bottom: 8px;
-  border-radius: 50%;
-  background: var(--color-surface-muted);
-  color: var(--color-text);
+/* S-7 は面そのものが置き場を兼ねる（操作を持たない）。 */
+.outcome.outcomePanel {
+  gap: 8px;
 }
 
-/* 出せない回の主文。 */
+.outcomeIcon {
+  margin-bottom: 8px;
+  color: var(--color-text-muted);
+}
+
+/* 出せない回の主文。明朝で据える。 */
 .outcomeMessage {
   margin: 0;
+  font-family: var(--font-family-display);
   font-size: var(--font-size-20);
-  font-weight: var(--font-weight-medium);
-  line-height: 1.5;
-  letter-spacing: 0.02em;
+  font-weight: var(--font-weight-display);
+  line-height: 1.6;
+  letter-spacing: 0.06em;
 }
 
 /* S-7 の主文は行の長さを揃えて折り返す。 */
@@ -609,7 +618,7 @@
   display: inline-block;
 }
 
-/* S-4 / S-9 の補足。 */
+/* S-4 の補足。 */
 .outcomeNote {
   margin: 0;
   color: var(--color-text-secondary);
@@ -619,21 +628,20 @@
 
 /* 注意表示の置き場。 */
 .cautionArea {
-  margin-top: 40px;
+  margin-top: 48px;
 }
 
-/* 注意表示（FR-20）。控えめな面を丸めて置く。 */
+/* 注意表示（`AiNotice`）。紙面の脚注として、細い罫の下に小さく置く。 */
 .caution {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: var(--radius-control);
-  background: var(--color-surface-muted);
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
   color: var(--color-text-secondary);
   font-size: var(--font-size-12);
   line-height: 1.7;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
 }
 
 /* 情報のアイコン。文字より一段濃い色で、行の頭に揃える。 */
@@ -645,7 +653,7 @@
 /*
  * 広い幅。カード3列・中身の最大幅 1080px（設計 B-61 規則12）。
  *
- * **切り替え幅 1024px は `docs/screen-design.md` 2.1 の写しである**（ADR-076）。
+ * **切り替え幅 1024px は `docs/screen-design.md` 2.1 の写しである**（B-60 で決めた。ADR-076）。
  * CSS 変数はメディアクエリに使えないのでトークンにできず、このファイルではここ1か所にだけ書く
  * （ほかの module にも同じ値の写しがある。ADR-076 決定3）。
  */
@@ -661,30 +669,28 @@
 
   .cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 20px;
+    gap: 32px;
   }
 
-  /* 広い幅には下タブが無い（サイドナビ。ADR-076）。 */
+  /* PC には下タブが無い（設計 B-62 10章 前提3。PC はサイドナビ。B-60 / ADR-076）。 */
   .screenCentered {
     min-height: 100dvh;
   }
 
+  .request {
+    margin-top: 48px;
+  }
+
   /*
-   * 面を横長の白い面にする（設計 B-62 規則10）。**文書順は変えず**、grid の配置だけでボタンを左、
+   * 面を横長にする（設計 B-62 規則10）。**文書順は変えず**、grid の配置だけでボタンを左、
    * 手がかりと案内を右の列に縦に置く。手がかりが無い回は、案内がボタンの高さの中ほどに来る。
    */
   .requestPanel {
     display: grid;
     grid-template-columns: 360px minmax(0, 1fr);
     align-items: center;
-    justify-items: start;
-    column-gap: 24px;
-    row-gap: 6px;
-    padding: 16px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-surface);
-    background: var(--color-surface);
-    box-shadow: var(--shadow-surface);
+    column-gap: 28px;
+    row-gap: 4px;
   }
 
   .requestButton {
@@ -695,12 +701,14 @@
   .requestInfo {
     grid-row: 1 / span 2;
     grid-column: 2;
+    justify-content: flex-start;
   }
 
   .pantryChanged {
     grid-row: 1;
     grid-column: 2;
     align-self: end;
+    justify-content: flex-start;
   }
 
   .pantryChanged ~ .requestInfo {
@@ -708,19 +716,15 @@
     align-self: start;
   }
 
-  /* S-8 は面を中ほどの幅に収め、アイコンと揃える。 */
+  /* S-8 は面ごと中ほどに寄せる。 */
   .screenCentered .request {
-    align-self: center;
     width: 100%;
-    max-width: 720px;
+    max-width: 640px;
+    margin: 0 auto;
   }
 
   .outcome {
-    align-self: center;
     max-width: 520px;
-  }
-
-  .caution {
-    font-size: var(--font-size-14);
+    margin: 0 auto;
   }
 }

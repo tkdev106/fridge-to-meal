@@ -14,27 +14,23 @@
   position: relative;
 }
 
-/* 欄。角と枠は他の入力欄（分量・期限）と同じ。 */
+/* 欄。角なし。枠は他の入力欄（分量・期限）と同じ 1px で始める。 */
 .input {
   box-sizing: border-box;
   width: 100%;
   height: var(--control-height-secondary);
   padding: 0 16px;
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-control);
+  border-radius: 0;
   background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
 }
 
-/*
- * 焦点の当たった欄は文字色の 2px の枠と、外側の控えめな面の縁。枠が太るぶん左右の余白を 1px 詰め、
- * 文字を動かさない。
- */
+/* 焦点の当たった欄は文字色の 2px の枠（原本）。枠が太るぶん左右の余白を 1px 詰め、文字を動かさない。 */
 .input:focus {
   padding: 0 15px;
   border: 2px solid var(--color-text);
-  box-shadow: 0 0 0 4px var(--color-surface-muted);
 }
 
 /* 名前が空の断りが出ている間（B-65 規則10）。焦点の枠のほうを優先する。 */
@@ -42,34 +38,38 @@
   border-color: var(--color-danger);
 }
 
-/* 一覧。欄の 6px 下に浮いた面として重ねる。件数と高さの上限は置かない（設計 10章）。 */
+/* 一覧。欄の直下に重ね、上辺の枠は欄と共有する（原本）。件数と高さの上限は置かない（設計 10章）。 */
 .listbox {
   position: absolute;
-  top: calc(100% + 6px);
+  top: 100%;
   right: 0;
   left: 0;
   z-index: 2;
   margin: 0;
-  padding: 6px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
+  padding: 0;
+  border: 1px solid var(--color-border-strong);
+  border-top: 0;
   background: var(--color-surface);
-  box-shadow: var(--shadow-overlay);
+  box-shadow: 4px 4px 0 0 var(--color-border-strong);
   list-style: none;
 }
 
-/* 行1つ。高さ 48px。地を角の丸い面にする。 */
+/* 行1つ。高さ 48px・左右 16px（原本）。 */
 .option {
   display: flex;
   align-items: center;
   height: var(--control-height-secondary);
-  padding: 0 12px;
-  border-radius: 8px;
+  padding: 0 16px;
   cursor: pointer;
 }
 
 /* 指を乗せている行と選んでいる行の地（原本の hover）。 */
 .option:hover,
 .optionActive {
-  background: var(--color-background);
+  background: var(--color-surface-muted);
+}
+
+/* 矢印キーで選んでいる候補は、左に墨の太い罫を添えて地の色だけに頼らない（NFR-17）。 */
+.optionActive {
+  box-shadow: inset 3px 0 0 0 var(--color-text);
 }

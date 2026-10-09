@@ -18,6 +18,8 @@ import styles from './ScreenHeader.module.css';
 
 export type ScreenHeaderProps = {
   title: string;
+  /** 題の上に小さく添える文字（献立の今日の日付）。省略すると何も置かない。 */
+  eyebrow?: string;
   onOpenSettings: () => void;
   /**
    * 題の行の下に添えるもの（献立の凡例など。B-61 規則3）。見出しの行の外枠（`header`）の中に
@@ -36,12 +38,14 @@ const SETTINGS_LABEL = '設定';
 
 export function ScreenHeader({
   title,
+  eyebrow,
   onOpenSettings,
   children,
   actions,
 }: ScreenHeaderProps): JSX.Element {
   return (
     <header className={styles.header}>
+      {eyebrow !== undefined && <p className={styles.eyebrow}>{eyebrow}</p>}
       <div className={styles.row}>
         <h1 className={styles.title}>{title}</h1>
         <div className={styles.operations}>

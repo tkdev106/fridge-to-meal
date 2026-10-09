@@ -30,7 +30,8 @@
 }
 
 /*
- * アイコンだけの操作（`+`）。押せる範囲は 48px 四方（NFR-16）。
+ * アイコンだけの操作（`+`）。押せる範囲は 48px 四方（NFR-16）。見えるのは 36px の墨の角で、
+ * 右下へずらした影を落とし、押すと影の位置まで沈む（主の操作と同じ）。
  * 素の button の枠と地はここで消す（リセットでは全体を消さない。B-59 規則3）。
  */
 .iconButton {
@@ -41,16 +42,24 @@
   height: var(--control-height-secondary);
   padding: 0;
   border: 0;
-  border-radius: var(--radius-pill);
   background: none;
-  color: var(--color-text);
+  color: var(--color-background);
   cursor: pointer;
-  transition: background-color var(--duration-quick) ease;
 }
 
-.iconButton:hover,
-.iconButton:active {
-  background: var(--color-surface-muted);
+.iconButton > svg {
+  box-sizing: content-box;
+  padding: 6px;
+  background: var(--color-text);
+  box-shadow: 3px 3px 0 0 var(--color-border-strong);
+  transition:
+    transform var(--duration-quick) var(--ease-out),
+    box-shadow var(--duration-quick) var(--ease-out);
+}
+
+.iconButton:active > svg {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 0 var(--color-border-strong);
 }
 
 /*
@@ -82,9 +91,9 @@
   }
 
   /*
-   * パネル（B-65b 設計 規則12 / 原本 `PantryScreen` の `aside`）。表示域の右端に上下いっぱいで
-   * 固定し、幅 440px・面の色・左に 1px の区切り線。中身が長ければパネルの中で縦にスクロールする。
-   * 一覧の側の手前に重ねる。
+   * パネル（B-65b 設計 規則12 / `PantryScreen` の `aside`）。表示域の右端に上下いっぱいで
+   * 固定し、幅 440px・面の色・左に墨の 1px の罫。中身が長ければパネルの中で縦にスクロールする。
+   * 一覧の側の手前に、白い紙を1枚差し込むように重ねる。
    */
   .formPanel {
     position: fixed;
@@ -95,19 +104,20 @@
     box-sizing: border-box;
     width: 440px;
     overflow-y: auto;
-    border-left: 1px solid var(--color-border);
+    border-left: 1px solid var(--color-text);
     background: var(--color-surface);
-    /* 後ろの一覧を暗くし、開いている間は押せないことを見た目でも示す。 */
-    box-shadow:
-      var(--shadow-overlay),
-      0 0 0 100vmax color-mix(in srgb, var(--color-text) 24%, transparent);
-    animation: panel-enter var(--duration-enter) var(--ease-out);
+    animation: panel-enter var(--duration-enter) var(--ease-out) both;
   }
-}
 
-@keyframes panel-enter {
-  from {
-    transform: translateX(40px);
-    opacity: 0;
+  @keyframes panel-enter {
+    from {
+      transform: translateX(24px);
+      opacity: 0;
+    }
+
+    to {
+      transform: none;
+      opacity: 1;
+    }
   }
 }

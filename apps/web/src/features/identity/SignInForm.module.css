@@ -1,10 +1,11 @@
 /*
- * ログイン／アカウント作成の画面（`docs/design/` の 14 / 設計 B-68 6章 規則1〜11）。
+ * ログイン／アカウント作成の画面（`docs/design/` の 14 / 設計 B-68 6章 規則1〜11 / 紙面の作りは
+ * ADR-093）。
  * まず SP の見た目を書き、末尾の `@media (min-width: 1024px)` で PC の配置に組み替える
  * （切り替え幅の正は `docs/screen-design.md` 2.1。PC の配置の値の正は同 8章）。
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1・2）。`SignInForm.tsx` は class 名しか書かない。
- * 色・文字の大きさ・太さ・操作の高さ・丸み・浮きはトークン（`src/global.css` の `:root`）から `var(--…)` で
+ * 色・文字の大きさ・太さ・操作の高さはトークン（`src/global.css` の `:root`）から `var(--…)` で
  * 引き、ここで新しい色を作らない（規則11）。余白・字間・行高は生の px / em で書く
  * （先行 `TabbedScreen.module.css`）。
  *
@@ -12,8 +13,7 @@
  */
 
 /*
- * 根。SP ではロゴを上の空きの中ほどに、フォームを下寄せに置く（規則1）。ロゴとフォームの
- * `margin-top: auto` で空きを分け、
+ * 根。SP ではロゴを上に、フォームを下寄せに置く（規則1）。フォームの `margin-top: auto` で寄せ、
  * 空の要素を足さない。下の余白には安全域を足す（先行 `TabbedScreen.module.css` `.bar`）。
  * 幅は 390px で留めて中央に寄せる（規則10）。
  */
@@ -28,28 +28,57 @@
 }
 
 /*
- * ロゴ（規則2）。見出しにも段落にもしない文字1つ。SP では上の空きの中ほどに、アプリのアイコン
- * （`public/icons/icon.svg`。飾り）を角の丸い白い面に載せて文字の上に置く。
+ * ロゴ（規則2）。見出しにも段落にもしない文字1つ。SP ではフォームの上の空きの中ほどに、弁柄の
+ * 落款「献」を大きく押し、その下に文字を置く（サイドナビのロゴと同じ印）。落款は飾りなので
+ * 読み上げには出さない（`content` の代替の文字を空にする）。
  */
 .logo {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 16px;
   align-items: center;
-  margin-top: auto;
-  font-size: var(--font-size-18);
+  justify-content: center;
+  gap: 20px;
+  min-height: 160px;
+  font-size: var(--font-size-14);
   font-weight: var(--font-weight-medium);
-  letter-spacing: 0.14em;
+  letter-spacing: 0.24em;
 }
 
 .logo::before {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 72px;
   height: 72px;
-  border: 1px solid var(--color-border);
-  border-radius: 20px;
-  background: var(--color-surface) url('/icons/icon.svg') center / 60px 60px no-repeat;
-  box-shadow: var(--shadow-raised);
-  content: '';
+  background: var(--color-danger);
+  color: var(--color-background);
+  font-family: var(--font-family-display);
+  font-size: var(--font-size-40);
+  font-weight: var(--font-weight-display);
+  line-height: 1;
+  letter-spacing: 0;
+  content: '献';
+  content: '献' / '';
+  transform: rotate(-4deg);
+  animation: seal-press var(--duration-enter) var(--ease-out) both;
+}
+
+@keyframes seal-press {
+  0% {
+    opacity: 0;
+    transform: rotate(-12deg) scale(1.4);
+  }
+
+  70% {
+    opacity: 1;
+    transform: rotate(-3deg) scale(0.96);
+  }
+
+  100% {
+    opacity: 1;
+    transform: rotate(-4deg) scale(1);
+  }
 }
 
 /* フォーム。SP では下寄せにする（規則1）。 */
@@ -59,21 +88,26 @@
   margin-top: auto;
 }
 
-/* 見出し（規則3）。 */
+/* 見出し（規則3）。明朝で据える。 */
 .heading {
   margin: 0;
+  font-family: var(--font-family-display);
   font-size: var(--font-size-26);
-  font-weight: var(--font-weight-medium);
-  line-height: 1.4;
-  letter-spacing: 0.04em;
+  font-weight: var(--font-weight-display);
+  line-height: 1.45;
+  letter-spacing: 0.06em;
 }
 
-/* 欄の塊（規則4）。見出しから 32px、欄どうしは間 24px。 */
+/*
+ * 欄の塊（規則4）。見出しの下に墨の二重罫を引き、その下 28px から欄を並べる。欄どうしは間 24px。
+ */
 .fields {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  margin-top: 32px;
+  margin-top: 12px;
+  padding-top: 28px;
+  border-top: 3px double var(--color-text);
 }
 
 /* 欄1つ。`<label>` が欄を包む形は変えず、見出しと欄の間を 8px にする（規則4）。 */
@@ -86,20 +120,20 @@
 /* 欄の見出しの文字（規則4）。 */
 .fieldLabel {
   color: var(--color-text);
-  font-size: var(--font-size-14);
+  font-size: var(--font-size-12);
   font-weight: var(--font-weight-medium);
-  line-height: 1.6;
-  letter-spacing: 0.04em;
+  line-height: 1.5;
+  letter-spacing: 0.16em;
 }
 
-/* 入力欄（規則5）。 */
+/* 入力欄（規則5）。角なし。 */
 .input {
   box-sizing: border-box;
   width: 100%;
   height: var(--control-height-secondary);
   padding: 0 16px;
   border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-control);
+  border-radius: 0;
   background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
@@ -117,7 +151,6 @@
 .notice {
   margin: 24px 0 0;
   padding: 12px 16px;
-  border-radius: var(--radius-control);
   font-size: var(--font-size-14);
   line-height: 1.6;
 }
@@ -133,6 +166,7 @@
  * （記号は `aria-hidden` で読み上げに出さない）。
  */
 .noticeRejected {
+  border-left: 3px solid var(--color-danger);
   background: var(--color-danger-surface);
   color: var(--color-danger);
 }
@@ -143,23 +177,27 @@
   font-weight: var(--font-weight-medium);
 }
 
-/* 主の操作「ログイン」（規則6）。欄の塊（または案内）から 40px 下。 */
+/*
+ * 主の操作「ログイン」（規則6）。欄の塊（または案内）から 40px 下。墨の板に右下へずらした影を
+ * 落とし、押すと影の位置まで沈む（献立タブの主の操作と同じ）。右と下の 4px は影の分である。
+ */
 .primary {
-  width: 100%;
+  width: calc(100% - 4px);
   height: var(--control-height-primary);
   margin-top: 40px;
   padding: 0 16px;
-  border: 0;
-  border-radius: var(--radius-control);
+  border: 1px solid var(--color-text);
+  border-radius: 0;
   background: var(--color-text);
+  box-shadow: 4px 4px 0 0 var(--color-border-strong);
   color: var(--color-background);
   font: inherit;
   font-weight: var(--font-weight-medium);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.16em;
   cursor: pointer;
   transition:
-    background-color var(--duration-quick) ease,
-    transform var(--duration-quick) var(--ease-out);
+    transform var(--duration-quick) var(--ease-out),
+    box-shadow var(--duration-quick) var(--ease-out);
 }
 
 /* 文字色の地。焦点の輪郭は地の色で内側に引く（`global.css` の `--focus-outline-inverse`）。 */
@@ -168,30 +206,45 @@
   outline-offset: var(--focus-outline-offset-inverse);
 }
 
+@media (hover: hover) {
+  .primary:hover:not(:disabled) {
+    transform: translate(-1px, -1px);
+    box-shadow: 5px 5px 0 0 var(--color-border-strong);
+  }
+}
+
 .primary:active:not(:disabled) {
-  background: var(--color-text-secondary);
-  transform: scale(0.98);
+  transform: translate(4px, 4px);
+  box-shadow: 0 0 0 0 var(--color-border-strong);
 }
 
 .primary:disabled {
+  border-color: var(--color-border);
   background: var(--color-border);
+  box-shadow: none;
   color: var(--color-text-muted);
   cursor: default;
 }
 
 /* 副の操作「アカウントを作る」（規則7）。ログインの 16px 下。 */
 .secondary {
-  width: 100%;
+  width: calc(100% - 4px);
   height: var(--control-height-secondary);
   margin-top: 16px;
   padding: 0 16px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
+  border: 1px solid var(--color-text);
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text);
   font: inherit;
   font-weight: var(--font-weight-regular);
+  letter-spacing: 0.12em;
   cursor: pointer;
+  transition: background-color var(--duration-quick);
+}
+
+.secondary:active:not(:disabled) {
+  background: var(--color-surface-muted);
 }
 
 .secondary:disabled {
@@ -211,35 +264,41 @@
     padding: 0 0 64px;
   }
 
-  /* 上端の帯。左右の余白は他の画面の PC の余白（`--screen-inset-wide`）に揃える。 */
+  /*
+   * 上端の帯。左右の余白は他の画面の PC の余白（`--screen-inset-wide`）に揃える。落款は
+   * サイドナビと同じ 32px にして、文字の左に置く。
+   */
   .logo {
+    flex: none;
     flex-direction: row;
+    justify-content: flex-start;
     gap: 12px;
     height: 64px;
-    margin-top: 0;
+    min-height: 0;
     padding: 0 var(--screen-inset-wide);
-    border-bottom: 1px solid var(--color-border);
-    font-size: var(--font-size-14);
-    letter-spacing: 0.12em;
+    border-bottom: 1px solid var(--color-text);
+    letter-spacing: 0.16em;
   }
 
   .logo::before {
     width: 32px;
     height: 32px;
-    border-radius: 10px;
-    background-size: 26px 26px;
-    box-shadow: none;
+    font-size: var(--font-size-20);
   }
 
-  /* 面。中身の幅 360px に内側の余白を足した幅で留め、帯から画面の高さの 10% 下に置く。 */
+  /*
+   * 面。中身の幅 360px に内側の余白を足した幅で留め、帯から画面の高さの 10% 下に置く。白い紙を
+   * 1枚、右下へずらした影の上に重ねる。
+   */
   .form {
     box-sizing: border-box;
     width: 440px;
     margin: 10vh auto 0;
     padding: 40px;
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-surface);
+    border: 1px solid var(--color-border-strong);
     background: var(--color-surface);
-    box-shadow: var(--shadow-raised);
+    box-shadow:
+      6px 6px 0 -1px var(--color-surface),
+      6px 6px 0 0 var(--color-border-strong);
   }
 }

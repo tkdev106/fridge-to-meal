@@ -62,6 +62,22 @@ const HEADING = '今日の献立';
  */
 const LEGEND = '太字の材料は今日が期限です';
 
+/** カードの番号（品書きの一・二・三）。提案は最大3件である（D-1）。 */
+const CARD_NUMERALS = ['一', '二', '三'] as const;
+
+/** 曜日の文字。`Date#getUTCDay` の並び（日曜が 0）に合わせる。 */
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'] as const;
+
+/**
+ * 見出しの上に置く今日の日付（`10月9日 金曜日`）。暦日から UTC で数え、実行環境の時間帯に
+ * 左右されない（先行 `ExpiryDateLabel.ts`）。
+ */
+function todayLabelOf(today: string): string {
+  const date = new Date(`${today}T00:00:00Z`);
+
+  return `${date.getUTCMonth() + 1}月${date.getUTCDate()}日 ${WEEKDAYS[date.getUTCDay()] ?? ''}曜日`;
+}
+
 /** 再利用の印（FR-35 / D-3。文言は原本 `MealCard`）。 */
 const REUSED_MARK = '前に見た献立';
 
@@ -278,7 +294,7 @@ function SuggestionBody({
   // あるためである（B-61 規則13）。
   return (
     <ul role="list" className={dimmed ? `${styles.cards} ${styles.cardsDimmed}` : styles.cards}>
-      {cards.map((card) => (
+      {cards.map((card, index) => (
         // **押下の受け口はカード（`li`）の1か所だけ**（B-61 規則9・10）。札・名称・件数・余白の
         // どこを押しても、中のボタンを押しても、ここで1回だけ開く — ボタンにも `onClick` を
         // 置くと、ボタンの押下が伝わった先で2回目が走る。
@@ -286,6 +302,10 @@ function SuggestionBody({
         // **`li` に `role` / `tabIndex` / `aria-*` を付けない。** 付けると焦点の止まり先がボタンと
         // 2つになり、操作が入れ子になる。キーボードと読み上げはボタンが担う。
         <li key={card.mealId} className={styles.card} onClick={() => onOpenMeal(card.mealId)}>
+          {/* 品書きの番号（一・二・三）。並びの位置を示す飾りで、読み上げには出さない。 */}
+          <span aria-hidden="true" className={styles.number}>
+            {CARD_NUMERALS[index]}
+          </span>
           {/* 再利用にだけ印を置き、名称の上に出す（FR-35 / D-3 / 原本 `MealCard`）。`note` は
               本文に添える補助であり、読み上げにも印として届く。 */}
           {card.reused && (
@@ -295,15 +315,12 @@ function SuggestionBody({
           )}
           {/* 画面の見出し（h1。B-60）の下に入る（B-61 規則2 / 原本 `MealCard`）。 */}
           <h3 className={styles.title}>{card.title}</h3>
-          {/* 不足の有無はアイコンと色でも見分けられるようにする。意味は文字が運ぶ（NFR-17）。 */}
+          {/* 不足があるカードは件数の文字に色を添える。意味は文字が運ぶ（NFR-17）。 */}
           <p
             className={
-              card.missingCount === 0
-                ? `${styles.coverage} ${styles.coverageComplete}`
-                : `${styles.coverage} ${styles.coverageShort}`
+              card.missingCount === 0 ? styles.coverage : `${styles.coverage} ${styles.coverageShort}`
             }
           >
-            <Icon name={card.missingCount === 0 ? 'check' : 'alert'} size={16} />
             {coverageText(card.ingredientCount, card.missingCount)}
           </p>
           <UsedIngredients ingredients={card.usedIngredients} />
@@ -409,7 +426,10 @@ function RequestNewMealsControl({
 
         {requesting ? (
           <p className={styles.requestInfo}>
-            <span aria-hidden="true" className={styles.spinner} />
+            {/* 湯気の立つ椀。飾りであり、状態は status の文字が伝える。 */}
+            <span aria-hidden="true" className={`${styles.simmering} ${styles.steam}`}>
+              <Icon name="meal" size={20} />
+            </span>
             <span role="status">{REQUESTING_NOTICE}</span>
           </p>
         ) : (
@@ -473,7 +493,7 @@ function GoToPantryNotice({
     <div className={styles.outcome}>
       <div role="status" className={styles.outcomePanel}>
         <span className={styles.outcomeIcon}>
-          <Icon name="pantry" size={28} />
+          <Icon name="pantry" size={48} />
         </span>
         <p className={styles.outcomeMessage}>
           {lines.map((line) => (
@@ -501,8 +521,8 @@ function GoToPantryNotice({
 function GenerationLimitReachedNotice() {
   return (
     <div role="status" className={`${styles.outcome} ${styles.outcomePanel}`}>
-      <span className={styles.outcomeIcon}>
-        <Icon name="meal" size={28} />
+      <span className={`${styles.outcomeIcon} ${styles.steam}`}>
+        <Icon name="meal" size={48} />
       </span>
       <p className={`${styles.outcomeMessage} ${styles.outcomeMessageBalanced}`}>
         {GENERATION_LIMIT_REACHED_NOTICE}
@@ -596,7 +616,11 @@ function MealsTabList({
         </div>
       )}
       <div className={styles.content}>
-        <ScreenHeader title={HEADING} onOpenSettings={onOpenSettings}>
+        <ScreenHeader
+          title={HEADING}
+          eyebrow={todayLabelOf(today)}
+          onOpenSettings={onOpenSettings}
+        >
           {cards.length > 0 && <p className={styles.legend}>{LEGEND}</p>}
         </ScreenHeader>
         <MealsTabBody
@@ -687,8 +711,8 @@ function MealsTabBody({
     return (
       <>
         <div className={styles.spaceAbove} />
-        <span className={styles.firstIcon}>
-          <Icon name="meal" size={40} />
+        <span className={`${styles.firstIcon} ${styles.steam}`}>
+          <Icon name="meal" size={96} />
         </span>
         {control}
         <div className={styles.spaceBelow} />
