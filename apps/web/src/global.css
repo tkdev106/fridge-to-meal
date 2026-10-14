@@ -23,7 +23,7 @@
   --color-danger-surface: #f6dcd3; /* 赤の地 */
   --color-caution: #8a5a12; /* 黄土の文字（期限が近い） */
 
-  /* 文字の大きさと太さ。本文は 400 と 500、見出しの書体は 900 だけ */
+  /* 文字の大きさと太さ。本文は 400 と 500、見出しの書体は 700 だけ */
   --font-size-12: 12px;
   --font-size-14: 14px;
   --font-size-16: 16px;
@@ -35,19 +35,19 @@
   --font-size-40: 40px;
   --font-weight-regular: 400;
   --font-weight-medium: 500;
-  --font-weight-display: 900;
+  --font-weight-display: 700;
 
   /*
    * 書体の並び。本文（`--font-family`）と見出し（`--font-family-display`）の2つ。読み込みは
    * `public/fonts/fonts.css`（index.html が読む。ADR-075）であってここではない — まだ取りに行って
-   * いない分割の文字は、並びの後ろの書体に落ちる。見出しの2つ目の Zen Maru Gothic は、
-   * M PLUS Rounded 1c に無い JIS 第2水準の字（蒡・蜊など）を同じ丸ゴシックで描くためにある（ADR-093）。
+   * いない分割の文字は、並びの後ろの書体に落ちる。見出しの2つ目に本文の和文の書体を置き、
+   * LINE Seed JP を取りに行くまでの間も読み込んだ書体で描く（ADR-094）。
    */
   --font-family:
     'Inter', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui,
     sans-serif;
   --font-family-display:
-    'M PLUS Rounded 1c', 'Zen Maru Gothic', 'Hiragino Maru Gothic ProN', 'Hiragino Sans', system-ui,
+    'LINE Seed JP', 'Zen Kaku Gothic New', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', system-ui,
     sans-serif;
 
   /* 操作の高さ。副は 48px、主は 64px。押せる要素はどれも 44px 以上にする */

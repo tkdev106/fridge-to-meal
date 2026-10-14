@@ -1,5 +1,5 @@
 /**
- * 書体の読み込み（設計 B-59b / ADR-074 結果3 / ADR-075 / ADR-093）。
+ * 書体の読み込み（設計 B-59b / ADR-074 結果3 / ADR-075 / ADR-093 / ADR-094）。
  *
  * 観るのは**置いたファイルどうしの整合**である — 書体の一覧 `public/fonts/fonts.css` の
  * `@font-face`、その `src` が指す woff2、各書体の `OFL.txt`、それを読む `index.html`。
@@ -28,8 +28,7 @@ import {
 
 const inter = 'Inter';
 const zenKakuGothicNew = 'Zen Kaku Gothic New';
-const mPlusRounded1c = 'M PLUS Rounded 1c';
-const zenMaruGothic = 'Zen Maru Gothic';
+const lineSeedJp = 'LINE Seed JP';
 
 const fontFaces = fontFacesOf(fontsCss);
 
@@ -48,17 +47,16 @@ function distinct<T>(values: readonly T[]): T[] {
 }
 
 describe('書体の一覧 public/fonts/fonts.css', () => {
-  it('書体と太さの組は本文の2書体の 400 と 500、見出しの2書体の 900 の6組だけである', () => {
+  it('書体と太さの組は本文の2書体の 400 と 500、見出しの書体の 700 の5組だけである', () => {
     const pairs = distinct(fontFaces.map(({ family, weight }) => `${family} ${weight}`)).sort();
 
-    // ADR-074 結果3 / 設計 B-59b 6章 規則1 / ADR-093: 本文は2書体 × 2太さ、見出しは2書体 × 900。
+    // ADR-074 結果3 / 設計 B-59b 6章 規則1 / ADR-094: 本文は2書体 × 2太さ、見出しは1書体 × 700。
     expect(pairs).toEqual([
       'Inter 400',
       'Inter 500',
-      'M PLUS Rounded 1c 900',
+      'LINE Seed JP 700',
       'Zen Kaku Gothic New 400',
       'Zen Kaku Gothic New 500',
-      'Zen Maru Gothic 900',
     ]);
   });
 
@@ -72,14 +70,17 @@ describe('書体の一覧 public/fonts/fonts.css', () => {
       (customPropertyOf(globalCss, property) ?? '').split(',').slice(0, 2).map(unquote);
     const leading = [...leadingTwoOf('--font-family'), ...leadingTwoOf('--font-family-display')];
 
-    // 設計 B-59b 6章 規則2 / ADR-093: 名が一つでも違えば、読み込んだ書体が並びから使われない。
-    expect(distinct(fontFaces.map((fontFace) => fontFace.family)).sort()).toEqual(leading.sort());
+    // 設計 B-59b 6章 規則2 / ADR-094 決定2: 名が一つでも違えば、読み込んだ書体が並びから使われない。
+    // 見出しの並びの2つ目は本文の和文の書体である。
+    expect(distinct(fontFaces.map((fontFace) => fontFace.family)).sort()).toEqual(
+      distinct(leading).sort(),
+    );
   });
 
-  it('一覧は 496 個の @font-face からなる', () => {
+  it('一覧は 378 個の @font-face からなる', () => {
     // 設計 B-59b 6章 規則3: 本文の2書体は css2 応答のブロックをそのまま保つ（256）。
-    // ADR-093: 見出しの2書体は和文の 118 分割と latin / latin-ext（120 × 2）。
-    expect(fontFaces).toHaveLength(496);
+    // ADR-094: 見出しの書体は和文の 120 分割と latin / latin-ext（122）。
+    expect(fontFaces).toHaveLength(378);
   });
 
   it('書体を取りに行けない間は手元の書体で描く', () => {
@@ -140,25 +141,18 @@ describe('書体の一覧 public/fonts/fonts.css', () => {
     }).toEqual({ regular: 121, medium: 121, shared: 0 });
   });
 
-  it('見出しの2書体は 900 だけがそれぞれ別の 120 ファイルを指す', () => {
-    const rounded = distinct(
-      fontFacesFor(mPlusRounded1c, '900').map((fontFace) => resolvedPathOf(fontFace.src)),
-    );
-    const maru = distinct(
-      fontFacesFor(zenMaruGothic, '900').map((fontFace) => resolvedPathOf(fontFace.src)),
+  it('見出しの書体は 700 が 122 ファイルを指す', () => {
+    const bold = distinct(
+      fontFacesFor(lineSeedJp, '700').map((fontFace) => resolvedPathOf(fontFace.src)),
     );
 
-    // ADR-093: 和文の 118 分割と latin / latin-ext の2つ。
-    expect({
-      rounded: rounded.length,
-      maru: maru.length,
-      shared: rounded.filter((path) => maru.includes(path)).length,
-    }).toEqual({ rounded: 120, maru: 120, shared: 0 });
+    // ADR-094: 和文の 120 分割と latin / latin-ext の2つ。
+    expect(bold).toHaveLength(122);
   });
 
   it('書体のファイルは版の入ったディレクトリに置く', () => {
     const directoriesByFamily = Object.fromEntries(
-      [inter, zenKakuGothicNew, mPlusRounded1c, zenMaruGothic].map((family) => [
+      [inter, zenKakuGothicNew, lineSeedJp].map((family) => [
         family,
         distinct(
           fontFaces
@@ -173,8 +167,7 @@ describe('書体の一覧 public/fonts/fonts.css', () => {
     expect(directoriesByFamily).toEqual({
       [inter]: ['inter-4.001'],
       [zenKakuGothicNew]: ['zen-kaku-gothic-new-1.002'],
-      [mPlusRounded1c]: ['m-plus-rounded-1c-v22'],
-      [zenMaruGothic]: ['zen-maru-gothic-v19'],
+      [lineSeedJp]: ['line-seed-jp-v5'],
     });
   });
 
@@ -224,12 +217,12 @@ describe('書体の一覧 public/fonts/fonts.css', () => {
     );
 
     // 設計 B-59b 6章 規則6 / 10章 前提3: 番号はその書体・太さの中の出現順。コメントのある
-    // 分割（cyrillic / latin-ext / latin）は末尾にあるので、番号の無いブロックは 000〜117。
+    // 分割（cyrillic / latin-ext / latin）は末尾にあるので、番号の無いブロックは 000 から途切れない。
     expect(summaries).toEqual({
-      'M PLUS Rounded 1c 900': {
-        first: '900-000.woff2',
-        last: '900-117.woff2',
-        count: 118,
+      'LINE Seed JP 700': {
+        first: '700-000.woff2',
+        last: '700-119.woff2',
+        count: 120,
         ascendingWithoutDuplicates: true,
       },
       'Zen Kaku Gothic New 400': {
@@ -241,12 +234,6 @@ describe('書体の一覧 public/fonts/fonts.css', () => {
       'Zen Kaku Gothic New 500': {
         first: '500-000.woff2',
         last: '500-117.woff2',
-        count: 118,
-        ascendingWithoutDuplicates: true,
-      },
-      'Zen Maru Gothic 900': {
-        first: '900-000.woff2',
-        last: '900-117.woff2',
         count: 118,
         ascendingWithoutDuplicates: true,
       },
@@ -290,7 +277,7 @@ describe('書体の OFL.txt', () => {
 
     // SIL OFL 1.1 の同梱条件 / 設計 B-59b 6章 規則7。
     expect(directories.filter((directory) => !oflTextByDirectory.has(directory))).toEqual([]);
-    expect(directories).toHaveLength(4);
+    expect(directories).toHaveLength(3);
   });
 
   it.each([
@@ -299,11 +286,7 @@ describe('書体の OFL.txt', () => {
       'zen-kaku-gothic-new-1.002',
       'Copyright 2022 The Zen Project Authors (https://github.com/googlefonts/zen-kakugothic)',
     ],
-    ['m-plus-rounded-1c-v22', 'Copyright 2016 The Rounded M+ Project Authors.'],
-    [
-      'zen-maru-gothic-v19',
-      'Copyright 2021 The Zen Maru Gothic Authors (https://github.com/googlefonts/zen-marugothic)',
-    ],
+    ['line-seed-jp-v5', '© LY Corporation'],
   ])('OFL.txt の先頭行はその書体の著作権表示である（%s）', (directory, copyright) => {
     const firstLine = (oflTextByDirectory.get(directory) ?? '').split(/\r?\n/)[0];
 
@@ -311,17 +294,15 @@ describe('書体の OFL.txt', () => {
     expect(firstLine).toBe(copyright);
   });
 
-  it.each([
-    'inter-4.001',
-    'zen-kaku-gothic-new-1.002',
-    'm-plus-rounded-1c-v22',
-    'zen-maru-gothic-v19',
-  ])('OFL.txt は SIL OFL 1.1 の全文を含む（%s）', (directory) => {
-    const text = oflTextByDirectory.get(directory) ?? '';
+  it.each(['inter-4.001', 'zen-kaku-gothic-new-1.002', 'line-seed-jp-v5'])(
+    'OFL.txt は SIL OFL 1.1 の全文を含む（%s）',
+    (directory) => {
+      const text = oflTextByDirectory.get(directory) ?? '';
 
-    // 設計 B-59b 6章 規則7: 著作権表示に続けて SIL OFL 1.1 の全文を置く。
-    expect(text).toContain('SIL OPEN FONT LICENSE');
-    expect(text).toContain('Version 1.1 - 26 February 2007');
-    expect(text).toContain('OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.');
-  });
+      // 設計 B-59b 6章 規則7: 著作権表示に続けて SIL OFL 1.1 の全文を置く。
+      expect(text).toContain('SIL OPEN FONT LICENSE');
+      expect(text).toContain('Version 1.1 - 26 February 2007');
+      expect(text).toContain('OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.');
+    },
+  );
 });
