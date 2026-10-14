@@ -18,8 +18,6 @@ import styles from './ScreenHeader.module.css';
 
 export type ScreenHeaderProps = {
   title: string;
-  /** 題の上に小さく添える1行（献立の今日の日付）。省略すれば出さない。 */
-  eyebrow?: string;
   onOpenSettings: () => void;
   /**
    * 題の行の下に添えるもの（献立の凡例など。B-61 規則3）。見出しの行の外枠（`header`）の中に
@@ -35,7 +33,6 @@ const SETTINGS_LABEL = '設定';
 
 export function ScreenHeader({
   title,
-  eyebrow,
   onOpenSettings,
   children,
   actions,
@@ -43,10 +40,7 @@ export function ScreenHeader({
   return (
     <header className={styles.header}>
       <div className={styles.row}>
-        <div className={styles.titleBlock}>
-          {eyebrow !== undefined && <p className={styles.eyebrow}>{eyebrow}</p>}
-          <h1 className={styles.title}>{title}</h1>
-        </div>
+        <h1 className={styles.title}>{title}</h1>
         <div className={styles.operations}>
           {actions}
           <button

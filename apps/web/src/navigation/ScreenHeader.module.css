@@ -21,28 +21,13 @@
   padding: 24px 0 20px;
 }
 
-/* 題と歯車の1行。下に揃え、日付の行があっても歯車を題の高さに保つ。 */
+/* 題と歯車の1行。下に揃える。 */
 .row {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
   min-height: 48px;
-}
-
-/* 日付の行と題の塊。 */
-.titleBlock {
-  min-width: 0;
-}
-
-/* 題の上に添える1行（献立の今日の日付）。 */
-.eyebrow {
-  margin: 0 0 4px;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-12);
-  font-weight: var(--font-weight-medium);
-  line-height: 1.5;
-  letter-spacing: 0.14em;
 }
 
 /* 題。見出しの書体で大きく置く。 */
