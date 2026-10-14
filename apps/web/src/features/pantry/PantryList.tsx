@@ -168,11 +168,7 @@ function StockItemRow({
   const pressedPoint = useRef<SwipePoint | null>(null);
   const operationsId = useId();
   const { stockItem } = row;
-  const rowClass = [
-    styles.row,
-    showing === 'revealed' ? styles.rowRevealed : '',
-    showing === 'operationsOpen' ? styles.rowOperationsOpen : '',
-  ]
+  const rowClass = [styles.row, showing === 'operationsOpen' ? styles.rowOperationsOpen : '']
     .filter((name) => name !== '' && name !== undefined)
     .join(' ');
   // 期限なしの `－` は弱い文字色、それ以外は帯の文字色（B-64 設計 規則5）。色は文に添えるだけである。
@@ -220,8 +216,8 @@ function StockItemRow({
         pressedPoint.current = null;
       }}
     >
-      {/* 行の中身（名称・分量・残日数・`…`）。なぞった行ではこれを左へずらし、下の `削除` を
-          見せる（B-64 設計 規則7）。 */}
+      {/* 行の中身（名称・分量・残日数・`…`）。なぞった行でも動かさず、`削除` を右端に重ねる
+          （B-64 設計 規則7）。 */}
       <div className={styles.rowContent}>
         <span className={styles.name}>{stockItem.name}</span>
         {/* 分量が無い行も欄は空のまま置き、列をずらさない。`null` も `－` も文字にしない

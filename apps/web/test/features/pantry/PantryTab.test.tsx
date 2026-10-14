@@ -811,6 +811,40 @@ function saveEditOperation(): HTMLElement {
   return screen.getByRole('button', { name: '保存' });
 }
 
+/**
+ * 更新と削除の口を同じダブルから渡して描く（pantry-edit-delete 規則14）。**`PantryTab` は削除の結末を
+ * 読まない**ので、閉じるかどうかは編集の画面の側の振る舞いがここまで届くかで観る。
+ */
+function renderWithDelete(
+  options: FixedStockItemRequestsOptions,
+  overrides: Partial<PantryTabProps> = {},
+) {
+  const requests = new FixedStockItemRequests(options);
+  render(
+    pantryTab({
+      onUpdate: requests.updateStockItem,
+      onDelete: requests.deleteStockItem,
+      ...overrides,
+    }),
+  );
+
+  return requests;
+}
+
+/**
+ * 編集の画面の `削除`（pantry-edit-delete 規則1）。一覧の側の `削除` は行をなぞるか `…` を開かない
+ * かぎり木に無いので、名前で1つに引ける。
+ */
+function editDeleteOperation(): HTMLElement {
+  return screen.getByRole('button', { name: '削除' });
+}
+
+/** 編集の画面の `削除` を押し、確認の `削除` を押す（確認の側は `dialog` の中で引く）。 */
+function confirmDeletionFromEdit(): void {
+  fireEvent.click(editDeleteOperation());
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '削除' }));
+}
+
 describe('在庫タブの中身と編集', () => {
   it('行をタップすると、編集の入力の欄が出る', () => {
     renderWithUpdate({});
@@ -1012,6 +1046,61 @@ describe('在庫タブの中身と編集', () => {
     expect(editAmountField().value).toBe('1');
     expect(amountUnitField().value).toBe('玉');
     expect(requests.receivedUpdates).toEqual([]);
+  });
+
+  it('編集の画面で削除を確定すると、その行の識別子が削除の口へ届く', async () => {
+    const requests = renderWithDelete({ remove: [{ outcome: 'deleted' }] });
+
+    tapRowAt(0, 1);
+    confirmDeletionFromEdit();
+    await act(async () => {});
+
+    // pantry-edit-delete 規則14 / FR-06: 在庫タブは削除の口を編集の画面へ素通しする。
+    expect(requests.deletedIds).toEqual(['1']);
+  });
+
+  it('編集の画面から削除が通ると、パネルが消え一覧の側の `inert` が外れる', async () => {
+    renderWithDelete({ remove: [{ outcome: 'deleted' }] });
+
+    tapRowAt(0, 1);
+    confirmDeletionFromEdit();
+
+    // pantry-edit-delete 規則5・14 / B-65b 規則1・3: 消えたら一覧へ戻る。閉じるのは既存の閉じ方と同じ口である。
+    await waitFor(() => {
+      expect(textboxes()).toHaveLength(0);
+    });
+    expect(insideInert(rowOf(carrot.name))).toBe(false);
+  });
+
+  it('編集の画面から削除が失敗しても、編集の画面のままである', async () => {
+    const requests = renderWithDelete({ remove: [{ outcome: 'failed' }] });
+
+    tapRowAt(0, 1);
+    confirmDeletionFromEdit();
+    await waitFor(() => {
+      expect(requests.deletedIds).toHaveLength(1);
+    });
+    await act(async () => {});
+
+    // pantry-edit-delete 規則6 / 7章 行3: 消せなかった回は閉じず、送り直せる画面を残す。
+    expect(textboxes()).toHaveLength(1);
+  });
+
+  it('削除が通って閉じると、焦点はその行の `…` へ戻る', async () => {
+    // 一覧の結末は入れ替えない — 取り直しで行が消えた回の焦点は 10章 前提2 の持ち分である。
+    renderWithDelete(
+      { remove: [{ outcome: 'deleted' }] },
+      { stockItems: loaded(porkWithAmount, cabbageWithAmount) },
+    );
+
+    tapRow(rowOf(cabbageWithAmount.name));
+    confirmDeletionFromEdit();
+
+    // pantry-edit-delete 規則14 / 10章 前提2 / B-65b 規則7: 削除で閉じた回も既存の閉じ方を通る。
+    await waitFor(() => {
+      expect(textboxes()).toHaveLength(0);
+      expect(document.activeElement).toBe(rowToggleOf(cabbageWithAmount.name));
+    });
   });
 });
 

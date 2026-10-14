@@ -14,6 +14,11 @@
  * **保存の操作は1つである**（設計 規則5）— 編集は在庫品1件に閉じ、次の1件が無いので
  * 「保存してもう1件」（FR-08 は登録の話）を置かない。
  *
+ * **保存の下に `削除` を置く**（FR-06 / pantry-edit-delete）。一覧の削除と同じ確認
+ * （`StockItemDeleteConfirmation`）を開き、消すのは確認の `削除` を押したときだけである。
+ * 結末の読みは `DeleteFailureNotice.ts` に任せる。確認を出している間は `<form>` を `inert` にし、
+ * 確認はその外の兄弟に置く（`PantryList.tsx` と同じ構え）。
+ *
  * 反対に、**日本語はここにしか置かない**（設計 規則19 / B-12 設計 規則9）。見出し・欄の名前・
  * 置き文字・保存の名札は ADR-074 で確定した原本（`docs/design/src/IngredientForm.dc.html` の edit）
  * に揃えてある（B-65）。原本に無い断りと送信中の名札は従来の文言のままである。
@@ -26,13 +31,16 @@
  */
 
 import type { ChangeEvent, FormEvent, JSX, MouseEvent } from 'react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { StockItemDto } from '@fridge-to-meal/contract';
 import type { StockItemEditValues } from './StockItemFormValues.js';
 import { stockItemEditValuesOf, updateStockItemInputOf } from './StockItemFormValues.js';
+import type { DeleteFailureNotice } from './DeleteFailureNotice.js';
+import { deleteFailureNoticeOf } from './DeleteFailureNotice.js';
+import { StockItemDeleteConfirmation } from './StockItemDeleteConfirmation.js';
 import type { UpdateFailureNotice } from './UpdateFailureNotice.js';
 import { updateFailureNoticeOf } from './UpdateFailureNotice.js';
-import type { UpdateStockItem } from '../../server/StockItemRequests.js';
+import type { DeleteStockItem, UpdateStockItem } from '../../server/StockItemRequests.js';
 import { Icon } from '../../icons/Icon.js';
 import { AmountField } from './AmountField.js';
 import { expiryDateLabelOf, remainingDaysLabelOf } from './ExpiryDateLabel.js';
@@ -66,6 +74,9 @@ const EXPIRY_DATE_PLACEHOLDER = '日付を選ぶ';
 
 /** 保存の操作の名札。**1つである**（設計 規則5 / B-65 規則11）。 */
 const SAVE_LABEL = '保存';
+
+/** 削除の操作の名札。一覧の削除と同じ文言で、送っている間も変えない。 */
+const DELETE_LABEL = '削除';
 
 /**
  * 保存せずに閉じる操作の名前（設計 規則7・8 / B-65 規則2）。**見える文字は持たず**、`back` の
@@ -104,18 +115,35 @@ const SENDING_LABEL = '保存しています…';
  * **直せる誤りだけ、どこを直すかを言う。** `unavailable` は原因を断定しない — サーバ側の不備も
  * 通信の失敗もここに落ちており、見分ける材料が無い（先行 `StockItemForm.tsx` と同じ構え）。
  */
-const NOTICES: Record<UpdateFailureNotice, string> = {
+const UPDATE_NOTICES: Record<UpdateFailureNotice, string> = {
   gone: 'この在庫はもう見つかりませんでした。',
   amountInvalid: '分量は15字以内で、改行やタブを含めずに入れてください。',
   expiryDateInvalid: '期限を確かめてください。',
   unavailable: '保存できませんでした。入力はそのままです。もう一度お試しください。',
 };
 
+/**
+ * 消せなかったときの案内。選ぶ判断は `DeleteFailureNotice.ts` にあり、ここは識別子に文言を当てる
+ * だけである。値は `PantryList.tsx` と同じ文字列 — 共有の定数にしないのは、日本語を各 `.tsx` に
+ * 置く流儀に揃えるためである。
+ */
+const DELETE_NOTICES: Record<DeleteFailureNotice, string> = {
+  unavailable: 'いま消せませんでした。もう一度お試しください。',
+};
+
+/**
+ * 送っている書き込み。保存と削除を分けるのは名札のためだけで（`保存しています…` は保存の間だけ）、
+ * どちらの間も他の操作を止める。
+ */
+type Sending = 'none' | 'update' | 'delete';
+
 export type StockItemEditFormProps = {
   /** 編集する在庫品1件。**行から受け取る**（設計 規則17）。 */
   stockItem: StockItemDto;
   /** 更新の実行（設計 5章）。**結末で返り、例外を投げない**（`server/README.md`）。 */
   onUpdate: UpdateStockItem;
+  /** 削除の実行（FR-06）。結末で返り、例外を投げない（`server/README.md`）。 */
+  onDelete: DeleteStockItem;
   /** 一覧へ戻す（設計 規則7・8）。**通った回と、保存せずに閉じた回に呼ぶ。** */
   onClose: () => void;
   /** 接続が切れているか（B-70 / FR-41）。省略は `false`。 */
@@ -127,6 +155,7 @@ export type StockItemEditFormProps = {
 export function StockItemEditForm({
   stockItem,
   onUpdate,
+  onDelete,
   onClose,
   offline = false,
   today,
@@ -134,13 +163,34 @@ export function StockItemEditForm({
   // 開いた直後の欄はその行の値である（設計 規則2 / NFR-15）。**取り直した一覧で書き換えない**
   // （同 規則17）ので、初期値としてだけ読む — 編集の対象は行から受け取った1件である。
   const [values, setValues] = useState<StockItemEditValues>(() => stockItemEditValuesOf(stockItem));
-  const [sending, setSending] = useState(false);
-  const [notice, setNotice] = useState<UpdateFailureNotice | null>(null);
+  const [sendingKind, setSendingKind] = useState<Sending>('none');
+  // 案内は保存と削除のどちらのものでも同時に1つだけなので、文言で持つ。
+  const [notice, setNotice] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const deleteButton = useRef<HTMLButtonElement>(null);
+  // やめた回だけ焦点を `削除` へ戻す。閉じた直後はまだ `<form>` が `inert` で焦点が乗らないため、
+  // 描いたあとに移す。
+  const returnFocusToDelete = useRef(false);
+  const sending = sendingKind !== 'none';
+
+  useEffect(() => {
+    if (confirming || !returnFocusToDelete.current) return;
+
+    returnFocusToDelete.current = false;
+    deleteButton.current?.focus();
+  }, [confirming]);
 
   // 端末の戻るは「←」と同じ口で閉じる（B-75 規則1・2）。**送っている間は飲み込む**（規則6）。
+  // 確認の口は確認を出すたびに後から登録されるので、編集の画面の口より先に呼ばれる（ADR-084）。
   useBackHandler(true, () => {
     if (!sending) onClose();
   });
+  useBackHandler(confirming, cancelConfirmation);
+
+  function cancelConfirmation() {
+    returnFocusToDelete.current = true;
+    setConfirming(false);
+  }
 
   function changeField(field: 'expiryDate') {
     return (event: ChangeEvent<HTMLInputElement>) => {
@@ -157,7 +207,7 @@ export function StockItemEditForm({
     // **接続が切れている間も止める**（B-70 規則10）。Enter もここで止まり、入力は消さない。
     if (sending || offline) return;
 
-    setSending(true);
+    setSendingKind('update');
     setNotice(null);
     // **`catch` を置かない。** 口は結末で返し投げない（`server/README.md`）ので、握り潰すと
     // 本当の不具合が案内に化ける。`finally` だけは残す — 投げられた回に操作が戻らなくなるため。
@@ -165,13 +215,36 @@ export function StockItemEditForm({
       const selectedNotice = updateFailureNoticeOf(
         await onUpdate(stockItem.id, updateStockItemInputOf(values)),
       );
-      setNotice(selectedNotice);
 
       // **通った回だけ閉じる**（設計 規則8 / 規則10）— 断られた回も失敗した回も閉じず、
       // 入力も消さない（NFR-15）。`update.notFound` もここに含まれる（ADR-050 結果5）。
       if (selectedNotice === null) onClose();
+      else setNotice(UPDATE_NOTICES[selectedNotice]);
     } finally {
-      setSending(false);
+      setSendingKind('none');
+    }
+  }
+
+  /**
+   * 削除の本体。確認を先に閉じてから送る（一覧の確定と同じ順。B-69 規則11）。
+   * **接続が切れている間は送らない**（B-70 規則11）— 確認の `削除` は `disabled` なので最後の守りであり、
+   * 断りの案内も出さない。
+   */
+  async function remove() {
+    setConfirming(false);
+    if (sending || offline) return;
+
+    setSendingKind('delete');
+    setNotice(null);
+    // `catch` を置かない理由は `save()` と同じである。
+    try {
+      const selectedNotice = deleteFailureNoticeOf(await onDelete(stockItem.id));
+
+      // すでに消えていた回も消えたと読み、一覧へ戻る（ADR-050）。消せなかった回は閉じず、入力も残す。
+      if (selectedNotice === null) onClose();
+      else setNotice(DELETE_NOTICES[selectedNotice]);
+    } finally {
+      setSendingKind('none');
     }
   }
 
@@ -185,110 +258,133 @@ export function StockItemEditForm({
   }
 
   return (
-    <form className={styles.form} onSubmit={submit}>
-      <div className={styles.header}>
-        {/* 閉じる操作は見出しの行、つまり**画面のいちばん上**に置く（先行 `StockItemForm.tsx`）。
+    <>
+      {/* 確認を出している間は `<form>` 全体を `inert` にし、確認はその外の兄弟に置く（B-64 規則9）。 */}
+      <form className={styles.form} onSubmit={submit} inert={confirming}>
+        <div className={styles.header}>
+          {/* 閉じる操作は見出しの行、つまり**画面のいちばん上**に置く（先行 `StockItemForm.tsx`）。
             **`type="submit"` にしない** — 押した回に保存が走ってしまう。
             **送っている間は押せない**（設計 規則7）— 結末が届く前に閉じると、断りの案内が
             出ないまま画面が消え、打った入力も捨てられる。利用者は保存できたと思い込む。
             見えるのはアイコンだけで、名前は `aria-label`（B-65 規則2）。 */}
-        <button
-          type="button"
-          className={styles.back}
-          disabled={sending}
-          onClick={onClose}
-          aria-label={CLOSE_LABEL}
-        >
-          <Icon name="back" size={24} />
-        </button>
+          <button
+            type="button"
+            className={styles.back}
+            disabled={sending}
+            onClick={onClose}
+            aria-label={CLOSE_LABEL}
+          >
+            <Icon name="back" size={24} />
+          </button>
 
-        <h1 className={styles.heading}>{HEADING}</h1>
+          <h1 className={styles.heading}>{HEADING}</h1>
 
-        {/* `閉じる` は `戻る` と同じ「保存せずに閉じる」（B-65b 設計 規則9）。SP は `戻る`（アイコン）、
+          {/* `閉じる` は `戻る` と同じ「保存せずに閉じる」（B-65b 設計 規則9）。SP は `戻る`（アイコン）、
             PC は `閉じる`（下線の文字）だけを CSS で見せる — 幅で ARIA を変えられないので、木には
             2つとも置く（ADR-076 結果2 / 前提3）。`type="submit"` にしない・送っている間は押せない
             理由は `戻る` と同じである。 */}
-        <button type="button" className={styles.close} disabled={sending} onClick={onClose}>
-          {CLOSE_TEXT}
-        </button>
-      </div>
-
-      <div className={styles.fields}>
-        {/* 名称は**出すが変えられない**（設計 規則1 / `UpdateStockItemInput` に名称が無い / B-65
-            規則9）— 何を編集しているか分からないまま打たせない。欄にしないのは、送れない値を
-            編集させる形になるためである。 */}
-        <div className={styles.field}>
-          <span className={styles.fieldLabel}>{NAME_LABEL}</span>
-          <span className={styles.fixedName}>{stockItem.name}</span>
+          <button type="button" className={styles.close} disabled={sending} onClick={onClose}>
+            {CLOSE_TEXT}
+          </button>
         </div>
 
-        {/* 開いた直後の焦点は分量の欄である（設計 規則18 / NFR-15）— 編集できる先頭の欄であり、
+        <div className={styles.fields}>
+          {/* 名称は**出すが変えられない**（設計 規則1 / `UpdateStockItemInput` に名称が無い / B-65
+            規則9）— 何を編集しているか分からないまま打たせない。欄にしないのは、送れない値を
+            編集させる形になるためである。 */}
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>{NAME_LABEL}</span>
+            <span className={styles.fixedName}>{stockItem.name}</span>
+          </div>
+
+          {/* 開いた直後の焦点は分量の欄である（設計 規則18 / NFR-15）— 編集できる先頭の欄であり、
             編集の画面は開くまで木に無い（`PantryTab`）ので mount のときに当てれば足りる。
             **効果と `ref` を置かない。** */}
-        <AmountField
-          autoFocus
-          values={values.amount}
-          onChange={(amount) => setValues((previous) => ({ ...previous, amount }))}
-        />
-
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>
-            <span>{FIELD_LABELS.expiryDate}</span>
-            <span className={styles.optional}>{OPTIONAL_LABEL}</span>
-          </span>
-          {/* 見える箱の上に素の日付欄を透明に重ねる（B-65 規則6）。箱の文字（日付と残日数）は
-              値から作り、`<label>` の中に置くので欄の名前の後ろに続いて読まれる（NFR-17）。 */}
-          <span className={styles.dateBox}>
-            {values.expiryDate === '' ? (
-              <span className={styles.datePlaceholder}>{EXPIRY_DATE_PLACEHOLDER}</span>
-            ) : (
-              <span>{expiryDateLabelOf(values.expiryDate)}</span>
-            )}
-            {remainingDays !== null && (
-              <span
-                className={`${styles.remainingDays} ${REMAINING_DAYS_CLASSES[expirySectionOf(remainingDays)] ?? ''}`}
-              >
-                {remainingDaysLabelOf(remainingDays)}
-              </span>
-            )}
-            {/* YYYY-MM-DD を返す日付の欄（先行 `StockItemForm.tsx`）。書式の検めは置かない
-                （設計 規則4）— 正規化と検めはサーバの1か所に残す。 */}
-            <input
-              type="date"
-              className={styles.dateInput}
-              value={values.expiryDate}
-              onChange={changeField('expiryDate')}
-              onClick={openDatePicker}
-            />
-          </span>
-        </label>
-
-        {/* 献立に使うかどうか（B-76 規則13〜16）。欄群の最後に置き、`<label>` で包んで行全体を
-            押せる範囲にする。**札 `任意` を付けない** — 真偽値なので空という状態が無い。 */}
-        <label className={styles.checkboxField}>
-          <input
-            type="checkbox"
-            className={styles.checkbox}
-            checked={values.useForMeals}
-            onChange={(event) => {
-              const useForMeals = event.target.checked;
-              setValues((previous) => ({ ...previous, useForMeals }));
-            }}
+          <AmountField
+            autoFocus
+            values={values.amount}
+            onChange={(amount) => setValues((previous) => ({ ...previous, amount }))}
           />
-          <span>{FIELD_LABELS.useForMeals}</span>
-        </label>
-      </div>
 
-      {notice !== null && <p className={styles.notice}>{NOTICES[notice]}</p>}
+          <label className={styles.field}>
+            <span className={styles.fieldLabel}>
+              <span>{FIELD_LABELS.expiryDate}</span>
+              <span className={styles.optional}>{OPTIONAL_LABEL}</span>
+            </span>
+            {/* 見える箱の上に素の日付欄を透明に重ねる（B-65 規則6）。箱の文字（日付と残日数）は
+              値から作り、`<label>` の中に置くので欄の名前の後ろに続いて読まれる（NFR-17）。 */}
+            <span className={styles.dateBox}>
+              {values.expiryDate === '' ? (
+                <span className={styles.datePlaceholder}>{EXPIRY_DATE_PLACEHOLDER}</span>
+              ) : (
+                <span>{expiryDateLabelOf(values.expiryDate)}</span>
+              )}
+              {remainingDays !== null && (
+                <span
+                  className={`${styles.remainingDays} ${REMAINING_DAYS_CLASSES[expirySectionOf(remainingDays)] ?? ''}`}
+                >
+                  {remainingDaysLabelOf(remainingDays)}
+                </span>
+              )}
+              {/* YYYY-MM-DD を返す日付の欄（先行 `StockItemForm.tsx`）。書式の検めは置かない
+                （設計 規則4）— 正規化と検めはサーバの1か所に残す。 */}
+              <input
+                type="date"
+                className={styles.dateInput}
+                value={values.expiryDate}
+                onChange={changeField('expiryDate')}
+                onClick={openDatePicker}
+              />
+            </span>
+          </label>
 
-      {/* 保存は画面の下半分に置く（NFR-14 / B-65 規則12）。**1つだけである**（設計 規則5）。
+          {/* 献立に使うかどうか（B-76 規則13〜16）。欄群の最後に置き、`<label>` で包んで行全体を
+            押せる範囲にする。**札 `任意` を付けない** — 真偽値なので空という状態が無い。 */}
+          <label className={styles.checkboxField}>
+            <input
+              type="checkbox"
+              className={styles.checkbox}
+              checked={values.useForMeals}
+              onChange={(event) => {
+                const useForMeals = event.target.checked;
+                setValues((previous) => ({ ...previous, useForMeals }));
+              }}
+            />
+            <span>{FIELD_LABELS.useForMeals}</span>
+          </label>
+        </div>
+
+        {notice !== null && <p className={styles.notice}>{notice}</p>}
+
+        {/* 保存は画面の下半分に置く（NFR-14 / B-65 規則12）。**1つだけである**（設計 規則5）。
           `<form>` の送信にしてあるので、欄で Enter を打った回もここに落ちる。 */}
-      <div className={styles.actions}>
-        <button type="submit" className={styles.primary} disabled={sending || offline}>
-          {sending ? SENDING_LABEL : SAVE_LABEL}
-        </button>
-      </div>
-    </form>
+        <div className={styles.actions}>
+          <button type="submit" className={styles.primary} disabled={sending || offline}>
+            {sendingKind === 'update' ? SENDING_LABEL : SAVE_LABEL}
+          </button>
+          {/* `type="submit"` にしない — 押した回に保存が走ってしまう。接続が切れていても押せ、
+            確認の `削除` だけを止める（B-70 規則11）。 */}
+          <button
+            ref={deleteButton}
+            type="button"
+            className={styles.delete}
+            disabled={sending}
+            onClick={() => setConfirming(true)}
+          >
+            {DELETE_LABEL}
+          </button>
+        </div>
+      </form>
+
+      {confirming && (
+        <StockItemDeleteConfirmation
+          stockItem={stockItem}
+          confirmDisabled={offline}
+          onCancel={cancelConfirmation}
+          onConfirm={() => void remove()}
+        />
+      )}
+    </>
   );
 }
 

@@ -401,6 +401,30 @@
 }
 
 /*
+ * 編集の `削除`。設定画面の削除（`SettingsScreen.module.css` の `.delete`）と同じく赤の 2px の枠と
+ * 赤の文字で、地は置かない — 赤の地は確認の `削除` だけが持つ（ADR-093）。幅は保存と同じく横いっぱい。
+ */
+.delete {
+  width: 100%;
+  height: var(--control-height-secondary);
+  border: 2px solid var(--color-danger);
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-danger);
+  font-size: var(--font-size-16);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+/* 送っている間。`.secondary:disabled` と同じ弱い枠と文字色で押せないことを示す。 */
+.delete:disabled {
+  border-color: var(--color-border-strong);
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+/*
  * PC（幅 1024px 以上。値の正は `docs/screen-design.md` 2.1 / ADR-076。CSS 変数はメディアクエリに
  * 使えないので写しを書く）。B-65b 設計 規則13: 余白 `40px 40px 0`、
  * 最小の高さはパネルの高さ（下タブの帯を引かない — PC の帯は左のサイドナビである）。見出しの行は

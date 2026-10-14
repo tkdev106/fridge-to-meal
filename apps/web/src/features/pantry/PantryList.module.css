@@ -3,10 +3,10 @@
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1）。色・文字の大きさ・太さ・操作の高さは
  * トークン（`src/global.css` の `:root`）から `var(--…)` で引き、ここで新しい色を作らない。
- * トークンに無い寸法（行の高さ 56px・列の幅 72px・ずらし 96px・開いた中身の幅 160px・余白）は
+ * トークンに無い寸法（行の高さ 56px・列の幅 72px・現れる `削除` の幅 96px・開いた中身の幅 160px・余白）は
  * 直に書く（規則12）。
  *
- * **動きを付けない**（規則8）— ずらしも開閉も即時である。
+ * **動きを付けない**（規則8）— `削除` の現れも開閉も即時である。
  * SP（幅 1024px 未満）は3列の行で `…` を見た目からだけ隠し、PC は `…` を4列目に置く（末尾のメディアクエリ。B-60 / ADR-076）。
  */
 
@@ -107,26 +107,6 @@
   height: 100%;
   padding: 0 16px;
   background: inherit;
-}
-
-/*
- * なぞった行（規則7）。赤の地の上で中身を左へ 96px ずらし、右端の `削除` を見せる。
- * はみ出しを切るのはこの間だけである（開いた中身とは同時に出ない。`RowOperations` 規則2・3）。
- */
-.rowRevealed {
-  overflow: hidden;
-  background: var(--color-danger);
-}
-
-.rowRevealed:hover {
-  background: var(--color-danger);
-}
-
-.rowRevealed .rowContent {
-  position: relative;
-  z-index: 1;
-  transform: translateX(-96px);
-  background: var(--color-background);
 }
 
 /* 行末の操作を開いた行（規則6）。行の地を面の白にする。 */
@@ -255,9 +235,13 @@
   background: var(--color-danger-surface);
 }
 
-/* なぞって現れる `削除`（規則7）。行の右端の下、幅 96px・行の高さ。 */
+/*
+ * なぞって現れる `削除`（規則7）。行の右端に、幅 96px・行の高さで中身の上へ重ねる。中身は動かさない
+ * — 名称は元の位置に見えたまま、分量と残日数の上に `削除` が乗る。
+ */
 .revealedDelete {
   position: absolute;
+  z-index: 1;
   top: 0;
   right: 0;
   bottom: 0;

@@ -1360,11 +1360,11 @@ describe('門 App のタブの結線', () => {
 describe('在庫の編集（B-55）', () => {
   /**
    * 編集の画面に出ている操作は、保存せずに閉じる2つ（`戻る` / `閉じる`。B-65b 規則9）を除けば
-   * 保存の1つである。下タブは `role="tab"` なので混ざらない。**ログアウトは置かない**（B-56c 規則12。
+   * 保存と削除の2つである。下タブは `role="tab"` なので混ざらない。**ログアウトは置かない**（B-56c 規則12。
    * 編集の画面の規則12 はこの件数で押さえる）。一覧の側はパネルを出している間も木に残るが
    * `inert` の中にあるので（B-65b 規則1・3）、数えない。
    */
-  const EDIT_SAVE_OPERATION_COUNT = 1;
+  const EDIT_OPERATION_COUNT = 2;
 
   /** 帯の外・`inert` の外にある操作のうち、保存せずに閉じる2つを除いたもの。 */
   function editPanelOperations(): readonly HTMLElement[] {
@@ -1437,7 +1437,7 @@ describe('在庫の編集（B-55）', () => {
     // FR-05 / 設計 5章: 更新の口が門から通っていることの検めである。編集の欄は分量
     // （`textbox`）と期限（`type="date"`）の2つで、名称の欄は無い（設計 規則1）。
     expect(textboxes()).toHaveLength(1);
-    expect(editPanelOperations()).toHaveLength(EDIT_SAVE_OPERATION_COUNT);
+    expect(editPanelOperations()).toHaveLength(EDIT_OPERATION_COUNT);
   });
 
   it('更新が通ると、一覧を取り直して新しい在庫品が出る', async () => {
