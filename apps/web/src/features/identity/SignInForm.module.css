@@ -48,7 +48,7 @@
   margin-top: auto;
 }
 
-/* 見出し（規則3）。見出しの書体の極太で置く。 */
+/* 見出し（規則3）。見出しの書体で置く。 */
 .heading {
   margin: 0;
   font-family: var(--font-family-display);

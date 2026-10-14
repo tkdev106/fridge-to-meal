@@ -45,7 +45,7 @@
   letter-spacing: 0.14em;
 }
 
-/* 題。見出しの書体の極太で大きく置く。 */
+/* 題。見出しの書体で大きく置く。 */
 .title {
   margin: 0;
   font-family: var(--font-family-display);
