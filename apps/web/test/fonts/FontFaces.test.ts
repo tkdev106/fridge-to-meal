@@ -1,5 +1,5 @@
 /**
- * 書体の読み込み（設計 B-59b / ADR-074 結果3 / ADR-075 / ADR-093）。
+ * 書体の読み込み（設計 B-59b / ADR-074 結果3 / ADR-075 / ADR-093 / ADR-094）。
  *
  * 観るのは**置いたファイルどうしの整合**である — 書体の一覧 `public/fonts/fonts.css` の
  * `@font-face`、その `src` が指す woff2、各書体の `OFL.txt`、それを読む `index.html`。
@@ -50,7 +50,7 @@ describe('書体の一覧 public/fonts/fonts.css', () => {
   it('書体と太さの組は本文の2書体の 400 と 500、見出しの書体の 700 の5組だけである', () => {
     const pairs = distinct(fontFaces.map(({ family, weight }) => `${family} ${weight}`)).sort();
 
-    // ADR-074 結果3 / 設計 B-59b 6章 規則1 / ADR-093: 本文は2書体 × 2太さ、見出しは1書体 × 700。
+    // ADR-074 結果3 / 設計 B-59b 6章 規則1 / ADR-094: 本文は2書体 × 2太さ、見出しは1書体 × 700。
     expect(pairs).toEqual([
       'Inter 400',
       'Inter 500',
@@ -70,7 +70,7 @@ describe('書体の一覧 public/fonts/fonts.css', () => {
       (customPropertyOf(globalCss, property) ?? '').split(',').slice(0, 2).map(unquote);
     const leading = [...leadingTwoOf('--font-family'), ...leadingTwoOf('--font-family-display')];
 
-    // 設計 B-59b 6章 規則2 / ADR-093: 名が一つでも違えば、読み込んだ書体が並びから使われない。
+    // 設計 B-59b 6章 規則2 / ADR-094 決定2: 名が一つでも違えば、読み込んだ書体が並びから使われない。
     // 見出しの並びの2つ目は本文の和文の書体である。
     expect(distinct(fontFaces.map((fontFace) => fontFace.family)).sort()).toEqual(
       distinct(leading).sort(),
@@ -79,7 +79,7 @@ describe('書体の一覧 public/fonts/fonts.css', () => {
 
   it('一覧は 378 個の @font-face からなる', () => {
     // 設計 B-59b 6章 規則3: 本文の2書体は css2 応答のブロックをそのまま保つ（256）。
-    // ADR-093: 見出しの書体は和文の 120 分割と latin / latin-ext（122）。
+    // ADR-094: 見出しの書体は和文の 120 分割と latin / latin-ext（122）。
     expect(fontFaces).toHaveLength(378);
   });
 
@@ -146,7 +146,7 @@ describe('書体の一覧 public/fonts/fonts.css', () => {
       fontFacesFor(lineSeedJp, '700').map((fontFace) => resolvedPathOf(fontFace.src)),
     );
 
-    // ADR-093: 和文の 120 分割と latin / latin-ext の2つ。
+    // ADR-094: 和文の 120 分割と latin / latin-ext の2つ。
     expect(bold).toHaveLength(122);
   });
 

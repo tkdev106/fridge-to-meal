@@ -4,7 +4,7 @@
  *
  * 本文の2書体（Inter・Zen Kaku Gothic New）は `docs/design/screens.html` に同梱された Google Fonts の
  * css2 応答を写し、`src` だけを同じディレクトリに置いたファイルへ向けた。見出しの書体（LINE Seed JP の 700）は
- * Google Fonts の分割（fontsource が配る版）から和文と latin / latin-ext だけを取った（ADR-093）。
+ * Google Fonts の分割（fontsource が配る版）から和文と latin / latin-ext だけを取った（ADR-093 決定4 / ADR-094）。
  * 書体は SIL OFL 1.1（各ディレクトリの `OFL.txt`）。差し替えるときは版の入ったディレクトリごと替える
  * — Service Worker は `/fonts/` を CacheFirst で持つため、同じパスのまま中身を替えると古い書体が残る。
  */
