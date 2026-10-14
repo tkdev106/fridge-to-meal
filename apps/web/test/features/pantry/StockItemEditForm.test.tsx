@@ -23,7 +23,14 @@
 
 import { describe, expect, it } from 'vitest';
 import type { StockItemDto } from '@fridge-to-meal/contract';
-import { act, fireEvent, render, screen, waitFor } from '../../support/dom/renderComponent.js';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '../../support/dom/renderComponent.js';
 import { amountNumberField, amountUnitField, typeAmount } from '../../support/dom/typeAmount.js';
 import { FixedBackNavigation } from '../../support/backNavigation/FixedBackNavigation.js';
 import { FixedStockItemRequests } from '../../support/server/FixedStockItemRequests.js';
@@ -68,6 +75,7 @@ function renderEditForm(
     <StockItemEditForm
       stockItem={stockItem}
       onUpdate={requests.updateStockItem}
+      onDelete={requests.deleteStockItem}
       onClose={ignoreClose}
       today={today}
     />,
@@ -99,22 +107,47 @@ function closeOperations(): readonly HTMLElement[] {
 }
 
 /**
- * 保存。**文書順の末尾である**（設計 規則5）。
+ * 削除（pantry-edit-delete 規則1）。名札 `削除` は一覧の削除と同じ文言で仮ではない（ADR-074）ので
+ * 名前で引く。**確認（`role="dialog"`）の中の `削除` は数えない** — 確認を出している間は同じ名前の
+ * 操作が2つ木にある（編集の画面の側は `inert` の中に残る。規則10）。**1つであることを先に確かめる。**
+ */
+function deleteOperation(): HTMLElement {
+  const inConfirmation = confirmationButtons();
+  const found = screen
+    .queryAllByRole('button', { name: '削除' })
+    .filter((button) => !inConfirmation.includes(button));
+  expect(found).toHaveLength(1);
+
+  const [operation] = found;
+  if (operation === undefined) throw new Error('削除の操作が無い');
+
+  return operation;
+}
+
+/** 確認（`role="dialog"`）の中の操作をすべて。確認が出ていなければ空である。 */
+function confirmationButtons(): readonly HTMLElement[] {
+  return screen
+    .queryAllByRole('dialog')
+    .flatMap((confirmation) => within(confirmation).queryAllByRole('button'));
+}
+
+/**
+ * 保存。**閉じる操作と削除を除いた1つである**（設計 規則5 / pantry-edit-delete 規則1）。
  *
- * 保存せずに閉じる操作（`closeOperations`）を除けば、編集の画面の操作は保存の1つだけである
- * （「保存してもう1件」は置かない。規則5）。**この数を先に確かめる** — 崩れた回に閉じる操作を
- * 保存として押してしまうと、テストは何が壊れたか読めない形で落ちる。**名札では引かない**（規則19。
- * 送っている間は名札が変わる）。
+ * 保存せずに閉じる操作（`closeOperations`）と削除（`deleteOperation`）を除けば、編集の画面の操作は
+ * 保存の1つだけである（「保存してもう1件」は置かない。規則5）。**この数を先に確かめる** — 崩れた回に
+ * 別の操作を保存として押してしまうと、テストは何が壊れたか読めない形で落ちる。**名札では引かない**
+ * （規則19。送っている間は名札が変わる）。確認を出していない回にだけ使う。
  */
 function saveOperation(): HTMLElement {
-  const closes = closeOperations();
-  const all = screen.getAllByRole('button');
-  expect(all.filter((button) => !closes.includes(button))).toHaveLength(1);
+  const others = [...closeOperations(), ...screen.queryAllByRole('button', { name: '削除' })];
+  const found = screen.getAllByRole('button').filter((button) => !others.includes(button));
+  expect(found).toHaveLength(1);
 
-  const found = all.at(-1);
-  if (found === undefined) throw new Error('保存の操作が無い');
+  const [operation] = found;
+  if (operation === undefined) throw new Error('保存の操作が無い');
 
-  return found;
+  return operation;
 }
 
 /** 出ている案内。**数だけを見る**（設計 規則19 / 先行 `StockItemForm.test.tsx`）。 */
@@ -249,8 +282,9 @@ describe('編集の画面 StockItemEditForm の保存', () => {
     renderEditForm();
 
     // 規則5: 「保存してもう1件」を置かない — 編集は在庫品1件に閉じ、次の1件が無い
-    // （FR-08 は登録の話である）。閉じる操作が2つ（`戻る` / `閉じる`。B-65b 規則9）と保存の1つである。
-    expect(screen.getAllByRole('button')).toHaveLength(3);
+    // （FR-08 は登録の話である）。閉じる操作が2つ（`戻る` / `閉じる`。B-65b 規則9）と保存の1つと、
+    // 削除の1つ（pantry-edit-delete 規則1）である。
+    expect(screen.getAllByRole('button')).toHaveLength(4);
   });
 
   it('送っている間にもう一度保存を押しても、更新の口へは1件しか届かない', async () => {
@@ -371,6 +405,7 @@ describe('編集の画面 StockItemEditForm の接続が切れている間', () 
       <StockItemEditForm
         stockItem={stockItem}
         onUpdate={requests.updateStockItem}
+        onDelete={requests.deleteStockItem}
         onClose={onClose}
         offline={offline}
         today={today}
@@ -384,6 +419,7 @@ describe('編集の画面 StockItemEditForm の接続が切れている間', () 
           <StockItemEditForm
             stockItem={stockItem}
             onUpdate={requests.updateStockItem}
+            onDelete={requests.deleteStockItem}
             onClose={onClose}
             offline={next}
             today={today}
@@ -499,10 +535,12 @@ describe('編集の画面 StockItemEditForm の見た目と文言', () => {
 
   it('「戻る」という名前の操作を押すと、一覧へ戻す口が呼ばれる', () => {
     const closed: string[] = [];
+    const requests = new FixedStockItemRequests();
     render(
       <StockItemEditForm
         stockItem={stockItemOf()}
-        onUpdate={new FixedStockItemRequests().updateStockItem}
+        onUpdate={requests.updateStockItem}
+        onDelete={requests.deleteStockItem}
         onClose={() => closed.push('close')}
         today={today}
       />,
@@ -604,11 +642,17 @@ describe('編集の画面 StockItemEditForm の見た目と文言', () => {
     ]);
   });
 
-  it('「保存」という名前の操作は、操作の末尾に在る', () => {
+  it('「保存」という名前の操作は、戻るの後ろ、削除の前に在る', () => {
     renderEditForm();
 
-    // B-65 規則11・13 / ADR-074: 編集の保存の名札は `保存`。並び（戻る → 保存）は変えない。
-    expect(screen.getByRole('button', { name: '保存' })).toBe(saveOperation());
+    // B-65 規則11・13 / ADR-074: 編集の保存の名札は `保存`。並び（戻る → 保存）は変えず、
+    // 削除はその後ろに置く（pantry-edit-delete 規則1）。
+    const save = screen.getByRole('button', { name: '保存' });
+    expect(save).toBe(saveOperation());
+    expect([
+      precedes(screen.getByRole('button', { name: '戻る' }), save),
+      precedes(save, deleteOperation()),
+    ]).toEqual([true, true]);
   });
 });
 
@@ -659,6 +703,7 @@ describe('編集の画面 StockItemEditForm の `閉じる`', () => {
       <StockItemEditForm
         stockItem={stockItemOf()}
         onUpdate={requests.updateStockItem}
+        onDelete={requests.deleteStockItem}
         onClose={() => closed.push('close')}
         offline={offline}
         today={today}
@@ -757,6 +802,7 @@ describe('編集の画面 StockItemEditForm の端末の戻る', () => {
         <StockItemEditForm
           stockItem={stockItemOf()}
           onUpdate={requests.updateStockItem}
+          onDelete={requests.deleteStockItem}
           onClose={() => closed.push('close')}
           today={today}
         />
@@ -847,5 +893,579 @@ describe('編集の画面 StockItemEditForm の献立に使う', () => {
       precedes(namedExpiryDateField(), useForMealsCheckbox()),
       precedes(useForMealsCheckbox(), screen.getByRole('button', { name: '保存' })),
     ]).toEqual([true, true]);
+  });
+});
+
+/**
+ * 削除（pantry-edit-delete 設計 6章 規則1〜11 / 7章 / FR-06 / FR-41 / NFR-15 / ADR-050 / ADR-084）。
+ *
+ * 確認の部品そのもの（文・最初の焦点・Tab の巡回）は `StockItemDeleteConfirmation.test.tsx` が
+ * 押さえている。ここで確かめるのは**編集の画面との配線**だけ — 確認を開くこと、確定で送ること、
+ * 結末でどう閉じるか・案内を出すか、送っている間に何を止めるかである。
+ *
+ * - **削除の口へ届いたもの** … `FixedStockItemRequests` の `deletedIds`
+ * - **閉じたこと** … 一覧へ戻す口が残した配列（`docs/testing.md` 2章。`vi.fn()` を使わない）
+ * - **確認** … `role="dialog"`。確認の側の `削除` / `やめる` はその中で引く
+ * - **案内** … 段落の数だけ。**確認の文（段落）は数えない**（`deleteNotices`）
+ */
+describe('編集の画面 StockItemEditForm の削除', () => {
+  type DeletableOptions = {
+    readonly stockItem?: StockItemDto;
+    readonly requests?: FixedStockItemRequestsOptions;
+    readonly offline?: boolean;
+  };
+
+  /** 一覧へ戻す口を配列に残し、端末の戻るの継ぎ目も差し替えて描く。 */
+  function renderDeletable({
+    stockItem = stockItemOf(),
+    requests: options = {},
+    offline = false,
+  }: DeletableOptions = {}) {
+    const requests = new FixedStockItemRequests(options);
+    const backNavigation = new FixedBackNavigation();
+    const closed: string[] = [];
+
+    render(
+      <BackNavigationProvider backNavigation={backNavigation}>
+        <StockItemEditForm
+          stockItem={stockItem}
+          onUpdate={requests.updateStockItem}
+          onDelete={requests.deleteStockItem}
+          onClose={() => closed.push('close')}
+          offline={offline}
+          today={today}
+        />
+      </BackNavigationProvider>,
+    );
+
+    return { requests, backNavigation, closed };
+  }
+
+  function confirmation(): HTMLElement {
+    return screen.getByRole('dialog');
+  }
+
+  function confirmations(): readonly HTMLElement[] {
+    return screen.queryAllByRole('dialog');
+  }
+
+  /** 確認の `削除`（B-69 規則8）。 */
+  function confirmDeletion(): HTMLButtonElement {
+    return within(confirmation()).getByRole('button', { name: '削除' }) as HTMLButtonElement;
+  }
+
+  /** 確認の `やめる`（B-69 規則8）。 */
+  function cancelConfirmation(): HTMLElement {
+    return within(confirmation()).getByRole('button', { name: 'やめる' });
+  }
+
+  function openConfirmation(): void {
+    fireEvent.click(deleteOperation());
+  }
+
+  /** 確認を開いて、確認の `削除` を押す。 */
+  function confirmDeletionFromForm(): void {
+    openConfirmation();
+    fireEvent.click(confirmDeletion());
+  }
+
+  /** 確認の名前に、渡した文字がすべて入っているもの。 */
+  function confirmationsNaming(...parts: readonly string[]): readonly HTMLElement[] {
+    return screen.queryAllByRole('dialog', {
+      name: (accessibleName) => parts.every((part) => accessibleName.includes(part)),
+    });
+  }
+
+  /** 出ている案内。**確認の文は数えない** — 確認を出している間も段落として木にある。 */
+  function deleteNotices(): readonly HTMLElement[] {
+    const inConfirmation = confirmations().flatMap((found) =>
+      within(found).queryAllByRole('paragraph'),
+    );
+
+    return screen
+      .queryAllByRole('paragraph')
+      .filter((paragraph) => !inConfirmation.includes(paragraph));
+  }
+
+  /** 要素が `inert` の中にあるか（先例 `PantryList.test.tsx`）。 */
+  function insideInert(element: HTMLElement): boolean {
+    return element.closest('[inert]') !== null;
+  }
+
+  function pressBack(backNavigation: FixedBackNavigation): void {
+    act(() => {
+      backNavigation.pressBack();
+    });
+  }
+
+  /** 押したあとに届く結末を `act` の中で流す。 */
+  async function flush(): Promise<void> {
+    await act(async () => {});
+  }
+
+  it('「削除」という名前の操作は、「保存」より後ろに在る', () => {
+    renderDeletable();
+
+    // 規則1 / NFR-14: 削除は操作群の中、保存の下に置く。
+    expect(precedes(screen.getByRole('button', { name: '保存' }), deleteOperation())).toBe(true);
+  });
+
+  it('削除を押しても、更新の口へは何も届かない', () => {
+    const { requests } = renderDeletable({ requests: { update: [{ outcome: 'updated' }] } });
+
+    typeAmount(typedValues.amount);
+    fireEvent.click(deleteOperation());
+
+    // 規則1: 削除は `type="button"` で、`<form>` の送信にならない。
+    expect(requests.receivedUpdates).toEqual([]);
+  });
+
+  it('削除を押すと、編集中の在庫品の確認が出る', () => {
+    renderDeletable({ stockItem: stockItemOf({ name: 'にんじん', amount: '2本' }) });
+
+    openConfirmation();
+
+    // 規則2 / 論点4 #1 / B-69 規則8: 一覧の削除と同じ確認で、対象は編集中の在庫品である。
+    expect(confirmationsNaming('にんじん', '2本')).toHaveLength(1);
+  });
+
+  it('削除を押しただけでは、削除の口へ何も届かない', async () => {
+    const { requests } = renderDeletable({ requests: { remove: [{ outcome: 'deleted' }] } });
+
+    openConfirmation();
+    await flush();
+
+    // 規則2 / FR-06: 消すのは確認の削除を押したときだけである。
+    expect(requests.deletedIds).toEqual([]);
+  });
+
+  it('確認でやめると、削除の口へ何も届かない', async () => {
+    const { requests } = renderDeletable({ requests: { remove: [{ outcome: 'deleted' }] } });
+
+    openConfirmation();
+    fireEvent.click(cancelConfirmation());
+    await flush();
+
+    // 規則3: やめるは何も送らない。
+    expect(requests.deletedIds).toEqual([]);
+  });
+
+  it('確認でやめても、一覧へ戻す口は呼ばれない', () => {
+    const { closed } = renderDeletable();
+
+    openConfirmation();
+    fireEvent.click(cancelConfirmation());
+
+    // 規則3: 閉じるのは確認だけで、編集の画面は閉じない。
+    expect([closed, confirmations()]).toEqual([[], []]);
+  });
+
+  it('確認でやめても、打ちかけの分量は欄に残る', () => {
+    renderDeletable();
+
+    typeAmount(typedValues.amount);
+    openConfirmation();
+    fireEvent.click(cancelConfirmation());
+
+    // 規則3 / NFR-15: 入力を消さない。
+    expect(amountNumberField().value).toBe('300');
+    expect(amountUnitField().value).toBe('g');
+  });
+
+  it('確認でやめると、焦点は「削除」へ戻る', () => {
+    renderDeletable();
+
+    openConfirmation();
+    fireEvent.click(cancelConfirmation());
+
+    // 規則3 / B-69 規則13 と同じ構え: キーボードの利用者が元の場所を見失わない。
+    expect(document.activeElement).toBe(deleteOperation());
+  });
+
+  it('確認で Esc を押すと、何も送らずに確認だけが閉じる', async () => {
+    const { requests, closed } = renderDeletable({
+      requests: { remove: [{ outcome: 'deleted' }] },
+    });
+
+    openConfirmation();
+    fireEvent.keyDown(cancelConfirmation(), { key: 'Escape' });
+    await flush();
+
+    // 規則3 / B-69 規則10: Esc はやめると同じである。
+    expect([requests.deletedIds, confirmations(), closed]).toEqual([[], [], []]);
+  });
+
+  it('確認を出している間に端末の戻るを押すと、確認だけが閉じ編集の画面は閉じない', () => {
+    const { backNavigation, closed } = renderDeletable();
+
+    openConfirmation();
+    pressBack(backNavigation);
+
+    // 規則3 / ADR-084: 戻るは手前に開いたものから閉じる（確認の口が後から登録される）。
+    expect([confirmations(), closed]).toEqual([[], []]);
+  });
+
+  it('端末の戻るで確認を閉じたあとにもう一度戻ると、一覧へ戻す口へ届く', () => {
+    const { backNavigation, closed } = renderDeletable();
+
+    openConfirmation();
+    pressBack(backNavigation);
+    pressBack(backNavigation);
+
+    // 規則3 / ADR-084 / B-75 規則1・2: 確認が閉じたあとの戻るは、編集の画面の口へ戻る。
+    expect(closed).toEqual(['close']);
+  });
+
+  it('確認の削除を押すと、その在庫品の識別子が削除の口へ届く', async () => {
+    const { requests } = renderDeletable({
+      stockItem: stockItemOf({ id: '1' }),
+      requests: { remove: [{ outcome: 'deleted' }] },
+    });
+
+    confirmDeletionFromForm();
+    await flush();
+
+    // 規則4 / FR-06: 送るのは編集中の在庫品の識別子だけである（世帯は運ばない。C-9）。
+    expect(requests.deletedIds).toEqual(['1']);
+  });
+
+  it('確認の削除を押すと、結末を待たずに確認は閉じる', async () => {
+    const { requests } = renderDeletable({
+      requests: { remove: [{ heldUntilSettled: { outcome: 'deleted' } }] },
+    });
+
+    confirmDeletionFromForm();
+
+    // 規則4 / B-69 規則11: 確認を先に閉じてから送る（一覧の確定と同じ順）。
+    expect(confirmations()).toHaveLength(0);
+
+    await act(async () => {
+      requests.settle();
+    });
+  });
+
+  it('削除が通ると、一覧へ戻す口が呼ばれる', async () => {
+    const { closed } = renderDeletable({ requests: { remove: [{ outcome: 'deleted' }] } });
+
+    confirmDeletionFromForm();
+
+    // 規則5 / FR-06: 消えたら一覧へ戻る。
+    await waitFor(() => {
+      expect(closed).toEqual(['close']);
+    });
+  });
+
+  it('削除が通った回は、案内を出さない', async () => {
+    renderDeletable({ requests: { remove: [{ outcome: 'deleted' }] } });
+
+    confirmDeletionFromForm();
+    await flush();
+
+    // 規則5 / 7章 行1: `deleteFailureNoticeOf` が `null` を返す回である。
+    expect(deleteNotices()).toHaveLength(0);
+  });
+
+  it('削除の結末が「見つからない」でも、一覧へ戻す口が呼ばれる', async () => {
+    const { closed } = renderDeletable({
+      requests: { remove: [{ outcome: 'rejected', rule: 'delete.notFound' }] },
+    });
+
+    confirmDeletionFromForm();
+
+    // 規則5 / 7章 行2 / ADR-050: すでに消えていると読む — 利用者が求めたのはその在庫品が
+    // 消えていることである。
+    await waitFor(() => {
+      expect(closed).toEqual(['close']);
+    });
+  });
+
+  it('削除の結末が「見つからない」なら、案内を出さない', async () => {
+    renderDeletable({ requests: { remove: [{ outcome: 'rejected', rule: 'delete.notFound' }] } });
+
+    confirmDeletionFromForm();
+    await flush();
+
+    // 規則5 / ADR-050: 更新の `update.notFound` と違い、削除は案内を出さない。
+    expect(deleteNotices()).toHaveLength(0);
+  });
+
+  it('削除が失敗すると、一覧へ戻す口は呼ばれない', async () => {
+    const { requests, closed } = renderDeletable({ requests: { remove: [{ outcome: 'failed' }] } });
+
+    confirmDeletionFromForm();
+    await waitFor(() => {
+      expect(requests.deletedIds).toHaveLength(1);
+    });
+    await flush();
+
+    // 規則6 / 7章 行3: 消せなかった回は閉じない。
+    expect(closed).toEqual([]);
+  });
+
+  it('削除が失敗すると、案内が1つ出る', async () => {
+    renderDeletable({ requests: { remove: [{ outcome: 'failed' }] } });
+
+    confirmDeletionFromForm();
+
+    // 規則6 / 7章 行3: 原因を断定せず、いま消せないことを1つの案内で伝える。
+    await waitFor(() => {
+      expect(deleteNotices()).toHaveLength(1);
+    });
+  });
+
+  it('「見つからない」以外の断りでも、案内が1つ出る', async () => {
+    // 7章 行3 / ADR-032 決定3: すでに消えていると読むのは `delete.notFound` だけである。
+    // 別の口の「見つからない」（`update.notFound`）を消えたことに倒さない。
+    renderDeletable({ requests: { remove: [{ outcome: 'rejected', rule: 'update.notFound' }] } });
+
+    confirmDeletionFromForm();
+
+    await waitFor(() => {
+      expect(deleteNotices()).toHaveLength(1);
+    });
+  });
+
+  it('削除が失敗しても、打った分量は欄に残る', async () => {
+    renderDeletable({ requests: { remove: [{ outcome: 'failed' }] } });
+
+    typeAmount(typedValues.amount);
+    confirmDeletionFromForm();
+    await waitFor(() => {
+      expect(deleteNotices()).toHaveLength(1);
+    });
+
+    // 規則6 / NFR-15: 入力を消さない。
+    expect(amountNumberField().value).toBe('300');
+    expect(amountUnitField().value).toBe('g');
+  });
+
+  it('削除が失敗したあとは、もう一度削除して確認を開ける', async () => {
+    renderDeletable({ requests: { remove: [{ outcome: 'failed' }] } });
+
+    confirmDeletionFromForm();
+    await waitFor(() => {
+      expect(deleteNotices()).toHaveLength(1);
+    });
+    openConfirmation();
+
+    // 規則6・7 / ADR-007: 自動で送り直さないので、送り直せる画面を残す。
+    expect(confirmationsNaming('にんじん')).toHaveLength(1);
+  });
+
+  it('削除を送っている間は、保存・戻る・閉じる・削除のどれも押せない', async () => {
+    const { requests } = renderDeletable({
+      requests: { remove: [{ heldUntilSettled: { outcome: 'failed' } }] },
+    });
+
+    confirmDeletionFromForm();
+
+    // 規則7: 送るのは同時に1件まで。結末が届く前に閉じると、案内が出ないまま画面が消える。
+    expect(
+      [
+        screen.getByRole('button', { name: '保存' }),
+        screen.getByRole('button', { name: '戻る' }),
+        screen.getByRole('button', { name: '閉じる' }),
+        deleteOperation(),
+      ].map((button) => (button as HTMLButtonElement).disabled),
+    ).toEqual([true, true, true, true]);
+
+    await act(async () => {
+      requests.settle();
+    });
+  });
+
+  it('削除を送っている間に欄で Enter しても、更新の口へ何も届かない', async () => {
+    const { requests } = renderDeletable({
+      requests: {
+        remove: [{ heldUntilSettled: { outcome: 'failed' } }],
+        update: [{ outcome: 'updated' }],
+      },
+    });
+
+    confirmDeletionFromForm();
+    // 前提: 削除は送られ、結末はまだ返っていない。
+    expect(requests.deletedIds).toHaveLength(1);
+
+    fireEvent.submit(amountNumberField());
+
+    // 規則7: 保存の本体で止める（ボタンを押さない経路も塞ぐ）。
+    expect(requests.receivedUpdates).toEqual([]);
+
+    await act(async () => {
+      requests.settle();
+    });
+  });
+
+  it('削除を送っている間に端末の戻るを押しても、一覧へ戻す口は呼ばれない', async () => {
+    const { requests, backNavigation, closed } = renderDeletable({
+      requests: { remove: [{ heldUntilSettled: { outcome: 'failed' } }] },
+    });
+
+    confirmDeletionFromForm();
+    // 前提: 削除は送られ、結末はまだ返っていない。
+    expect(requests.deletedIds).toHaveLength(1);
+
+    pressBack(backNavigation);
+
+    // 規則7 / B-75 規則6: 送っている間は戻るを飲み込む。
+    expect(closed).toEqual([]);
+
+    await act(async () => {
+      requests.settle();
+    });
+  });
+
+  it('保存を送っている間は、削除が押せない', async () => {
+    const { requests } = renderDeletable({
+      requests: { update: [{ heldUntilSettled: { outcome: 'failed' } }] },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    // 前提: 更新は送られ、結末はまだ返っていない。
+    expect(requests.receivedUpdates).toHaveLength(1);
+
+    // 規則7: 保存中に削除を送らない（送るのは同時に1件まで）。
+    expect((deleteOperation() as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => {
+      requests.settle();
+    });
+  });
+
+  it('削除を送っている間も、保存の名札は「保存」のままである', async () => {
+    const { requests } = renderDeletable({
+      requests: { remove: [{ heldUntilSettled: { outcome: 'failed' } }] },
+    });
+
+    confirmDeletionFromForm();
+    // 前提: 削除は送られ、結末はまだ返っていない。
+    expect(requests.deletedIds).toHaveLength(1);
+
+    // 規則8: `保存しています…` は保存を送っている間だけである。
+    expect(screen.queryAllByRole('button', { name: '保存' })).toHaveLength(1);
+
+    await act(async () => {
+      requests.settle();
+    });
+  });
+
+  it('削除を送っている間も、削除の名札は「削除」のままである', async () => {
+    const { requests } = renderDeletable({
+      requests: { remove: [{ heldUntilSettled: { outcome: 'failed' } }] },
+    });
+
+    confirmDeletionFromForm();
+    // 前提: 削除は送られ、結末はまだ返っていない（確認は閉じている）。
+    expect([requests.deletedIds.length, confirmations().length]).toEqual([1, 0]);
+
+    // 規則8: 送っている間の名札を新しく作らない。
+    expect(screen.queryAllByRole('button', { name: '削除' })).toHaveLength(1);
+
+    await act(async () => {
+      requests.settle();
+    });
+  });
+
+  it('接続が切れていても、削除を押すと確認が出る', () => {
+    renderDeletable({ offline: true });
+
+    openConfirmation();
+
+    // 規則9 / FR-41: 確認を開くのは書き込みではない。
+    expect(confirmationsNaming('にんじん')).toHaveLength(1);
+  });
+
+  it('接続が切れている間は、確認の削除が押せない', () => {
+    renderDeletable({ offline: true });
+
+    openConfirmation();
+
+    // 規則9 / B-70 規則11: 押せなくするのは確認の削除だけである。
+    expect(confirmDeletion().disabled).toBe(true);
+  });
+
+  it('接続が切れている間は、確認の削除を押しても削除の口へ何も届かず、案内も出ない', async () => {
+    const { requests } = renderDeletable({
+      offline: true,
+      requests: { remove: [{ outcome: 'failed' }] },
+    });
+
+    confirmDeletionFromForm();
+    await flush();
+
+    // 規則9 / 9章: 送らない。送っていないので消せなかったとも言わない。
+    expect([requests.deletedIds, deleteNotices()]).toEqual([[], []]);
+  });
+
+  it('確認を出している間は、編集の欄が `inert` の中にある', () => {
+    renderDeletable();
+
+    openConfirmation();
+
+    // 規則10 / B-64 規則9: 確認の裏の操作を受けない。
+    expect(insideInert(amountNumberField())).toBe(true);
+  });
+
+  it('確認を出している間も、確認そのものは `inert` の外にある', () => {
+    renderDeletable();
+
+    openConfirmation();
+
+    // 規則10: 確認は `<form>` の外の兄弟に置く。
+    expect(insideInert(confirmation())).toBe(false);
+  });
+
+  it('確認をやめると、編集の欄の `inert` は外れる', () => {
+    renderDeletable();
+
+    openConfirmation();
+    fireEvent.click(cancelConfirmation());
+
+    // 規則3・10: 確認だけが閉じ、編集の画面は操作を受けるように戻る。
+    expect(insideInert(amountNumberField())).toBe(false);
+  });
+
+  it('更新が断られて案内が出たあとに削除を確定すると、その案内は消える', async () => {
+    const { requests } = renderDeletable({
+      requests: {
+        update: [{ outcome: 'rejected', rule: 'expiryDate.format' }],
+        remove: [{ heldUntilSettled: { outcome: 'failed' } }],
+      },
+    });
+
+    fireEvent.click(saveOperation());
+    await waitFor(() => {
+      expect(deleteNotices()).toHaveLength(1);
+    });
+    confirmDeletionFromForm();
+
+    // 規則11: 案内は同時に1つだけ。送り始めたら前の案内を消す。
+    expect(deleteNotices()).toHaveLength(0);
+
+    await act(async () => {
+      requests.settle();
+    });
+  });
+
+  it('削除が失敗して案内が出たあとに保存すると、その案内は消える', async () => {
+    const { requests } = renderDeletable({
+      requests: {
+        remove: [{ outcome: 'failed' }],
+        update: [{ heldUntilSettled: { outcome: 'failed' } }],
+      },
+    });
+
+    confirmDeletionFromForm();
+    await waitFor(() => {
+      expect(deleteNotices()).toHaveLength(1);
+    });
+    fireEvent.click(saveOperation());
+
+    // 規則11: 削除の案内も、保存を送り始めたら消す。
+    expect(deleteNotices()).toHaveLength(0);
+
+    await act(async () => {
+      requests.settle();
+    });
   });
 });

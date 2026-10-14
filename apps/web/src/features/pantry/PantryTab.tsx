@@ -74,7 +74,7 @@ export type PantryTabProps = {
    * （`docs/testing.md` 5章）— 実行環境の暦日を作るのは門の仕事である。
    */
   today: string;
-  /** 削除の実行（B-23）。一覧へ素通しする。 */
+  /** 削除の実行（B-23）。一覧と編集の画面へ素通しする。 */
   onDelete: DeleteStockItem;
   /** 登録の実行（B-24）。登録の画面へ素通しする。 */
   onRegister: RegisterStockItem;
@@ -149,6 +149,7 @@ export function PantryTab({
     <StockItemEditForm
       stockItem={editing}
       onUpdate={onUpdate}
+      onDelete={onDelete}
       onClose={() => closeEdit(editing)}
       offline={offline}
       today={today}
