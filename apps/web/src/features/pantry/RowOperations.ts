@@ -16,7 +16,7 @@ export type RowOperationEvent =
   | { readonly kind: 'swiped'; readonly stockItemId: string }
   | { readonly kind: 'tapped' }
   | { readonly kind: 'operationsToggled'; readonly stockItemId: string }
-  | { readonly kind: 'deleteChosen'; readonly stockItem: StockItemDto } // 現れた `削除` か、開いた `…` の `削除`
+  | { readonly kind: 'deleteChosen'; readonly stockItem: StockItemDto } // 開いた `…` の `削除`
   | { readonly kind: 'dismissed' } // やめる / Esc
   | { readonly kind: 'confirmed' };
 
@@ -41,7 +41,7 @@ export function nextRowOperations(state: RowOperations, event: RowOperationEvent
 
   switch (event.kind) {
     case 'swiped':
-      // 現れている行をもう一度なぞっても現れたまま（規則2）。引っ込めるのはタップである。
+      // 現れている行をもう一度なぞっても現れたまま（規則2）。引っ込めるのはタップか、右へなぞって戻したとき（`dismissed`）である。
       return { kind: 'revealed', stockItemId: event.stockItemId };
     case 'operationsToggled':
       // 開閉ボタンの形（規則3）。開いている行の `…` だけが閉じる側に倒れる。
@@ -49,8 +49,7 @@ export function nextRowOperations(state: RowOperations, event: RowOperationEvent
         ? IDLE
         : { kind: 'operationsOpen', stockItemId: event.stockItemId };
     case 'deleteChosen':
-      // 現れた `削除` も開いた中身の `削除` も同じ確認を開く（規則6）。抱えるのは
-      // **開いた時点の在庫品**である（規則12）。
+      // 開いた中身の `削除` は確認を開く（規則6）。抱えるのは **開いた時点の在庫品**である（規則12）。
       return { kind: 'confirming', stockItem: event.stockItem };
     case 'tapped':
     case 'dismissed':

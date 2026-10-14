@@ -1,76 +1,67 @@
 /**
- * 行をなぞった動きを、削除のスワイプとして読むかを決める（FR-06 / B-23。
- * `docs/screen-design.md` 5章「削除は確認を挟む」）。**なぞっただけでは消えない** — 読めた回は
- * 行に `削除` が現れるだけで、消すのは確認の `削除` である（B-69 設計 規則1）。
+ * 行をなぞる動きの読み方（FR-06 / FR-05 / `docs/screen-design.md` 5章）。指に合わせて右から `削除` が
+ * 行の上へ滑り込む。離したときに半分を越えて見えていれば開いた位置に、越えていなければ元の位置に
+ * 落ち着く。**なぞっただけでは消えない** — 消すのは現れた `削除` を押したときである。
  *
- * **判断はここに置き、実際の入力（ポインタの押下と離上）は `.tsx` が拾う**（先行
- * `RegisterFailureNotice.ts` / `StockItemFormValues.ts` と同じ置き方）— `.tsx` は vitest が
- * 拾わない（`include` は `*.test.ts`、`environment: 'node'`）ため、判断を置くと誰も
- * 確かめられなくなる。**React も DOM の型も import しない。**
+ * **判断はここに置き、実際の入力（ポインタの押下・移動・離上）は `.tsx` が拾う**（先行
+ * `RegisterFailureNotice.ts` / `StockItemFormValues.ts` と同じ置き方）。**React も DOM の型も import しない。**
  *
- * **依存は足さない**（`docs/workflow.md` 3章）。要るのは2点の座標の引き算だけであり、
- * ジェスチャのライブラリを入れる理由が無い。
+ * **依存は足さない**（`docs/workflow.md` 3章）。要るのは座標の引き算だけであり、ジェスチャの
+ * ライブラリを入れる理由が無い。
  */
 
-/** なぞった点1つ。押下と離上の2点だけを見る（途中の軌跡は持たない）。 */
+/** なぞった点1つ。 */
 export type SwipePoint = { readonly x: number; readonly y: number };
 
 /**
- * 削除と読むのに要する横の長さ（CSS ピクセル）。
- *
- * 消す前には確認が挟まる（B-69）が、触れただけ・わずかに滑っただけで `削除` が現れると、
- * 行のタップで編集を開けなくなり（何かが出ているときのタップは閉じるだけ。B-69 規則4）、
- * 送りのたびに行が騒がしくなる。**行の高さの倍ほどの長さ**であり、指で意図して引かないと届かない。
+ * 開いたときに現れる `削除` の幅（CSS ピクセル）。値の写しは
+ * `PantryList.module.css` の `.revealedDelete` にある。
  */
-const DELETE_SWIPE_DISTANCE = 64;
+export const REVEAL_WIDTH = 88;
 
 /**
- * 削除のスワイプとして読むか。
- *
- * **向きは問わない。** `docs/screen-design.md` 5章 は「行のスワイプ」としか定めておらず、
- * 片方の向きだけを受け取ると、**逆になぞった回は何も起きない** — `削除` が現れなかった理由を
- * 知る手がかりが画面に残らない（同章 / ADR-050 の構え）。
- *
- * **縦の動きのほうが大きければ読まない。** 在庫の一覧は縦に長く（FR-04）、縦になぞるのは
- * 送りの操作である。斜めに流れた送りのたびに `削除` が現れると、取り消しの無い操作が
- * 送りの指のすぐ下に出てしまう。
+ * 動きを読み始めるまでの遊び（CSS ピクセル。B-55 規則15）。**指は静止しない** — これ未満の揺れは
+ * タップと読み、これを越えて横に大きく動いたらなぞりと読む。
  */
-export function isDeleteSwipe(start: SwipePoint, end: SwipePoint): boolean {
-  const horizontal = Math.abs(end.x - start.x);
-  const vertical = Math.abs(end.y - start.y);
+const SLOP = 8;
 
-  if (horizontal < DELETE_SWIPE_DISTANCE) return false;
+/**
+ * 横へなぞり始めたと読むか。**縦の動きのほうが大きければ読まない** — 一覧は縦に長く（FR-04）、
+ * 縦は送りの操作である。行はそのまま送りに任せる（`touch-action: pan-y`）。
+ */
+export function startsHorizontalDrag(start: SwipePoint, point: SwipePoint): boolean {
+  const horizontal = Math.abs(point.x - start.x);
+  const vertical = Math.abs(point.y - start.y);
 
-  return horizontal > vertical;
+  return horizontal >= SLOP && horizontal > vertical;
 }
 
 /**
- * タップと読むのに許す動きの長さ（CSS ピクセル。B-55 規則15）。
- *
- * **指は静止しない。** 押して離すまでのわずかな揺れで編集を開けなくなると、開く手立てが
- * 他に無い（`docs/screen-design.md` 2章 `pantry --> edit` の導線はこれ1つである）。
- * **`DELETE_SWIPE_DISTANCE`（64px）よりずっと小さく取る** — 2つの閾値の間に隙間を空け、
- * どちらにも当たらない中途半端な動きでは何も起こさない（B-55 規則15）。
+ * なぞっている間の `削除` の位置（左へ引いた量を負の数で返す）。**右へは引けない**（`削除` は
+ * 右端にしか無い）。開いた位置を越えて引いた分は3分の1だけ動かし、引きすぎを手応えで伝える。
  */
-const TAP_DISTANCE = 8;
+export function swipeOffsetOf(revealed: boolean, start: SwipePoint, point: SwipePoint): number {
+  const offset = (revealed ? -REVEAL_WIDTH : 0) + (point.x - start.x);
+
+  if (offset >= 0) return 0;
+  if (offset >= -REVEAL_WIDTH) return offset;
+
+  return -REVEAL_WIDTH + (offset + REVEAL_WIDTH) / 3;
+}
+
+/** 離した位置で、開いた位置に落ち着くか。`削除` の半分を越えて見えていれば開く。 */
+export function settlesRevealed(offset: number): boolean {
+  return offset < -REVEAL_WIDTH / 2;
+}
 
 /**
- * 行のタップとして読むか（B-55 規則15 / FR-05）。
- *
- * **縦横どちらの移動も閾値未満であることを要る。** 向きは問わない（`isDeleteSwipe` と同じ）—
- * タップは「動かさなかったこと」であって、どちらへ動かさなかったかではない。
- *
- * **縦を横と同じ閾値で見る。** 一覧は縦に長く（FR-04）、送りの操作は縦に流れる。縦を見ないと、
+ * 行のタップとして読むか（B-55 規則15 / FR-05）。縦横とも遊びの内側であることを要る — 縦を見ないと、
  * 送り始めて指を離した回に編集が開く。
- *
- * **削除として読んだ動きはここを通らない** — 64px 動いた点は 8px の閾値を越えており、
- * `削除` が現れることと編集の画面が開くことが同時に起きないのは**距離の取り方だけで**防がれている
- * （旗でも順序でも保っていないので、片方を消しても崩れない）。
  */
 export function isTap(start: SwipePoint, end: SwipePoint): boolean {
   const horizontal = Math.abs(end.x - start.x);
   const vertical = Math.abs(end.y - start.y);
 
-  // 境界は含まない（ちょうど閾値だけ動いたらタップと読まない）。
-  return horizontal < TAP_DISTANCE && vertical < TAP_DISTANCE;
+  // 境界は含まない（ちょうど遊びだけ動いたらタップと読まない）。
+  return horizontal < SLOP && vertical < SLOP;
 }

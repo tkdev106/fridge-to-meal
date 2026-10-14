@@ -14,9 +14,10 @@
  * 「読み込み中／取れた／取れなかった」の3値を受け取り、出し分けだけを行う。取りに行くのは
  * `apps/web/src/server/` の継ぎ目で、それを呼ぶのは `App.tsx` である。
  *
- * **削除は確認を挟む**（B-69 / FR-06 / `docs/screen-design.md` 論点4 #1）。なぞると行の `削除` が
- * 現れ、行末の `…` を開くと `編集` / `削除` が出る。どちらの `削除` も同じ確認
- * （`StockItemDeleteConfirmation`）を開き、**消すのは確認の `削除` を押したときだけである。**
+ * **削除の入口は2つある**（FR-06 / `docs/screen-design.md` 5章）。なぞると指に合わせて右から `削除` が
+ * 行の上へ滑り込む（名称は隠れない）。それを押すと**確認を挟まずに行が消え**、画面の下に `元に戻す` が5秒出る。
+ * 送るのはその5秒が過ぎてからである（取り消せる間は何も送らない）。行末の `…`（PC の幅だけに見える）の
+ * `削除` は確認（`StockItemDeleteConfirmation`）を開き、消すのは確認の `削除` を押したときである。
  * どの出来事でどの状態へ移るかは `RowOperations.ts` が持ち、ここはその状態を1つ持って配線する。
  *
  * **確認を出している間は、一覧（帯・行・削除の断りの案内）を `inert` にする**（B-64 設計 規則9 /
@@ -37,7 +38,13 @@ import type { RowOperationEvent, RowOperations } from './RowOperations.js';
 import { IDLE, nextRowOperations, opensEditOnTap } from './RowOperations.js';
 import { StockItemDeleteConfirmation } from './StockItemDeleteConfirmation.js';
 import type { SwipePoint } from './SwipeGesture.js';
-import { isDeleteSwipe, isTap } from './SwipeGesture.js';
+import {
+  REVEAL_WIDTH,
+  isTap,
+  settlesRevealed,
+  startsHorizontalDrag,
+  swipeOffsetOf,
+} from './SwipeGesture.js';
 import styles from './PantryList.module.css';
 import { Icon } from '../../icons/Icon.js';
 import { useBackHandler } from '../../backNavigation/BackHandler.js';
@@ -102,6 +109,12 @@ const LOAD_FAILURE_NOTICE = '在庫を読み込めませんでした。';
  * 見分ける材料が無い（取れなかったときの断りと同じ構え）。**「すでに消えている」ときは
  * ここへ来ない** — 案内そのものを出さない（ADR-050）。
  */
+/**
+ * なぞって消した在庫品を取り消せる長さ（ミリ秒）。帯を読んで指を伸ばすのに足り、次の操作の
+ * 邪魔にならない長さである。過ぎたら送る。
+ */
+const UNDO_DURATION_MS = 5000;
+
 const NOTICES: Record<DeleteFailureNotice, string> = {
   unavailable: 'いま消せませんでした。もう一度お試しください。',
 };
@@ -129,17 +142,17 @@ function startsOnOperation(target: EventTarget): boolean {
 type RowShowing = 'nothing' | 'revealed' | 'operationsOpen';
 
 /**
- * 一覧の1行。**なぞると `削除` が現れ、タップで編集を開き、行末の `…` から `編集` / `削除` に
- * 届く**（FR-06 / FR-05 / B-69 設計 規則1・3・4 / `docs/screen-design.md` 5章 と 2章
- * `pantry --> edit`）。**なぞっただけでは消えない** — 消すのは確認の `削除` である（規則1）。
+ * 一覧の1行。**なぞると指に合わせて右から `削除` が中身の上へ滑り込み、タップで編集を開き、行末の `…`
+ * から `編集` / `削除` に届く**（FR-06 / FR-05 / `docs/screen-design.md` 5章 と 2章 `pantry --> edit`）。
+ * **なぞっただけでは消えない** — 消すのは現れた `削除` を押したときである。
  *
- * 押した点と離した点の2つだけを覚え、**スワイプと読むか・タップと読むかの判断は
- * `SwipeGesture.ts` が持つ**（規則7 / B-55 設計 規則15）。**2つの閾値の間には隙間があり**
- * （8px と 64px）、どちらにも当たらない中途半端な動きでは何も起こさない。
+ * **動きの読み方は `SwipeGesture.ts` が持つ**（B-55 設計 規則15）。横へ遊びを越えて動いたらなぞりと
+ * 読み、離した位置で開くか戻るかを決める。縦へ動き出した指は送りに任せる（`touch-action: pan-y`。
+ * 送りが始まると `pointercancel` が届き、行は元の位置に戻る）。
  *
- * **`…` はどの幅でも置く**（B-69 規則3）。キーボードと読み上げから編集・削除に届く経路は
- * これであり、なぞる・タップはポインタにしかできない。開いた中身は DOM で `…` の直後に置き、
- * Tab で届く。矢印キーの移動を約束する役割は使わず、開閉ボタンの形にする。
+ * **`…` は木に置き、見せるのは PC の幅だけである**（`PantryList.module.css`）。PC の幅では開いた中身を
+ * DOM で `…` の直後に置き、Tab で届く。矢印キーの移動を約束する役割は使わず、開閉ボタンの形にする。
+ * SP の幅ではキーボードと読み上げから編集・削除に届く経路が無い（`docs/screen-design.md` 5章）。
  *
  * ポインタのイベントは触れる相手を問わない（指・マウス・ペン）ので、ジェスチャの依存を
  * 足さずに済む（`docs/workflow.md` 3章）。
@@ -151,6 +164,8 @@ function StockItemRow({
   onEvent,
   onTap,
   onEdit,
+  onRemove,
+  removeDisabled,
   registerToggle,
   focusToggle,
 }: {
@@ -161,11 +176,21 @@ function StockItemRow({
   onEvent: (event: RowOperationEvent) => void;
   onTap: (stockItem: StockItemDto) => void;
   onEdit: (stockItem: StockItemDto) => void;
+  /** 現れた `削除` が押された（確認を挟まない。取り消しは一覧の `元に戻す`）。 */
+  onRemove: (stockItem: StockItemDto) => void;
+  /** 現れた `削除` を押せなくするか（接続が切れている間。B-70 / FR-41）。 */
+  removeDisabled: boolean;
   registerToggle: (id: string, toggle: HTMLButtonElement | null) => void;
   focusToggle: (id: string) => void;
 }) {
   // 覚えるだけで描き直す必要が無いので state にしない。
   const pressedPoint = useRef<SwipePoint | null>(null);
+  const dragging = useRef(false);
+  // なぞっている間の `削除` の位置（左へ引いた量。負の数）。離したら `null` に戻し、位置は
+  // `showing` から決める。
+  const [dragOffset, setDragOffset] = useState<number | null>(null);
+  const revealed = showing === 'revealed';
+  const offset = dragOffset ?? (revealed ? -REVEAL_WIDTH : 0);
   const operationsId = useId();
   const { stockItem } = row;
   const rowClass = [styles.row, showing === 'operationsOpen' ? styles.rowOperationsOpen : '']
@@ -190,34 +215,55 @@ function StockItemRow({
         }
 
         pressedPoint.current = { x: event.clientX, y: event.clientY };
-        // 行の外で指を離しても離上がこの行に届くようにする。届かないと、押した点が
+        dragging.current = false;
+        // 行の外で指を離しても移動と離上がこの行に届くようにする。届かないと、押した点が
         // 残ったまま次の操作と混ざる。
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
+      onPointerMove={(event) => {
+        const startPoint = pressedPoint.current;
+        if (startPoint === null) return;
+
+        const point = { x: event.clientX, y: event.clientY };
+        if (!dragging.current) {
+          if (!startsHorizontalDrag(startPoint, point)) return;
+          dragging.current = true;
+        }
+
+        setDragOffset(swipeOffsetOf(revealed, startPoint, point));
+      }}
       onPointerUp={(event) => {
         const startPoint = pressedPoint.current;
+        const wasDragging = dragging.current;
         pressedPoint.current = null;
+        dragging.current = false;
 
         if (startPoint === null) return;
 
         const endPoint = { x: event.clientX, y: event.clientY };
 
-        // スワイプとタップは**どちらか一方しか成り立たない**（B-55 設計 規則15）。先に見るほうを
-        // 決めているのは読みやすさのためだけで、順序に意味を持たせていない。
-        if (isDeleteSwipe(startPoint, endPoint)) {
-          onEvent({ kind: 'swiped', stockItemId: stockItem.id });
+        // なぞりとタップは**どちらか一方しか成り立たない**（B-55 設計 規則15）— なぞりと読むのは
+        // 遊びを越えて動いた回だけで、タップは遊びの内側で離した回だけである。
+        if (wasDragging) {
+          setDragOffset(null);
+          if (settlesRevealed(swipeOffsetOf(revealed, startPoint, endPoint))) {
+            onEvent({ kind: 'swiped', stockItemId: stockItem.id });
+          } else if (revealed) {
+            onEvent({ kind: 'dismissed' });
+          }
           return;
         }
 
         if (isTap(startPoint, endPoint)) onTap(stockItem);
       }}
-      // 送りに取られた・指が外れたなどで離上が来ない回は、押した点を捨てる。
+      // 送りに取られた・指が外れたなどで離上が来ない回は、押した点を捨てて元の位置に戻す。
       onPointerCancel={() => {
         pressedPoint.current = null;
+        dragging.current = false;
+        setDragOffset(null);
       }}
     >
-      {/* 行の中身（名称・分量・残日数・`…`）。なぞった行でも動かさず、`削除` を右端に重ねる
-          （B-64 設計 規則7）。 */}
+      {/* 行の中身（名称・分量・残日数・`…`）。なぞっても動かさない — 名称は常に見えている。 */}
       <div className={styles.rowContent}>
         <span className={styles.name}>{stockItem.name}</span>
         {/* 分量が無い行も欄は空のまま置き、列をずらさない。`null` も `－` も文字にしない
@@ -285,17 +331,27 @@ function StockItemRow({
           </button>
         </div>
       )}
-      {showing === 'revealed' && (
-        <button
-          type="button"
-          className={styles.revealedDelete}
-          onClick={() => {
-            onEvent({ kind: 'deleteChosen', stockItem });
-          }}
-        >
-          削除
-        </button>
-      )}
+      {/* 行の右端の外に常に置き、なぞる指に合わせて右から中身の上へ滑り込ませる。離したあとの動きは
+          CSS の遷移が受け持つ（`PantryList.module.css`）。**開いていない間は読み上げからも Tab からも
+          外す** — 見えていない操作に届かせない。 */}
+      <button
+        type="button"
+        className={`${styles.revealedDelete} ${dragOffset !== null ? styles.revealedDeleteDragging : ''}`}
+        // 開いた位置を越えて引いた分は、右端に付けたまま幅を広げる（右端に隙間を空けない）。
+        style={
+          -offset <= REVEAL_WIDTH
+            ? { transform: `translateX(${REVEAL_WIDTH + offset}px)` }
+            : { width: `${-offset}px` }
+        }
+        aria-hidden={!revealed}
+        tabIndex={revealed ? undefined : -1}
+        disabled={removeDisabled}
+        onClick={() => {
+          onRemove(stockItem);
+        }}
+      >
+        削除
+      </button>
     </li>
   );
 }
@@ -354,8 +410,20 @@ export function PantryList({
 }: PantryListProps) {
   const [notice, setNotice] = useState<DeleteFailureNotice | null>(null);
   const [rowOperations, setRowOperations] = useState<RowOperations>(IDLE);
-  // 送っている間は次の削除を送らない。描き直す必要が無いので state にしない。
-  const deleting = useRef(false);
+  // なぞって `削除` を押し、`元に戻す` を出している在庫品（取り消せる間は送らない）。
+  const [pendingRemoval, setPendingRemoval] = useState<StockItemDto | null>(null);
+  // 一覧から外して描く在庫品。取り消せる間と、送って結末を待つ間の行を隠す。
+  const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(new Set());
+  // 消えたと読めた在庫品と、そのとき受け取っていた一覧。**門が一覧を取り直すまで**隠す — 取り直した
+  // 一覧にまだ居れば戻る（取り直しが読みの検めである。ADR-050）。
+  const [deletedIn, setDeletedIn] = useState<ReadonlyMap<string, PantryListState>>(new Map());
+  const stockItemsRef = useRef(stockItems);
+  useEffect(() => {
+    stockItemsRef.current = stockItems;
+  });
+  // 時間切れの回と、一覧を離れた回（下の効果の後始末）に読む。描き直す必要が無いので state にしない。
+  const pendingRemovalRef = useRef<StockItemDto | null>(null);
+  const removalTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 行ごとの `…`。確認を閉じたときに焦点を戻す先である（B-69 規則13）。行が木から外れれば
   // 消えるので、消えた行へは戻さない。
   const toggles = useRef(new Map<string, HTMLButtonElement>());
@@ -399,40 +467,129 @@ export function PantryList({
     else if (current.kind === 'operationsOpen') focusToggle(current.stockItemId);
   });
 
-  function deleteRow(id: string) {
-    // 二重に送っても2度目は 404 になり、それを「すでに消えている」と読む（ADR-050）ので
-    // 害は無いが、往復を1つ無駄にする。
-    if (deleting.current) return;
-    // **接続が切れている間は送らない**（B-70 規則11）。確認の `削除` は `disabled` になって
-    // いるので、ここは最後の守りである。断りの案内も出さない（理由は門の帯が既に示している）。
-    // なぞる・確認を開く・やめる・タップで編集を開くことは止めない（規則6）。
-    if (offline) return;
+  function showRow(id: string) {
+    setHiddenIds((previous) => {
+      const next = new Set(previous);
+      next.delete(id);
+      return next;
+    });
+  }
 
-    deleting.current = true;
+  function deleteRow(id: string) {
+    // **接続が切れている間は送らない**（B-70 規則11）。確認の `削除` と現れた `削除` は `disabled`
+    // になっているので、ここは最後の守りである。断りの案内も出さない（理由は門の帯が既に示している）。
+    // `元に戻す` を出している間に切れた回は、隠した行を戻す。
+    if (offline) {
+      if (hiddenIds.has(id)) {
+        showRow(id);
+        setNotice('unavailable');
+      }
+      return;
+    }
+
     setNotice(null);
 
     // **`catch` を置かない。** 口は結末で返し投げない（`server/README.md`）ので、握り潰すと
-    // 本当の不具合が案内に化ける。`finally` だけは残す — 投げられた回に操作が戻らなくなるため。
+    // 本当の不具合が案内に化ける。
     void (async () => {
-      try {
-        // 消えたと読めた回は案内を出さない（`DeleteFailureNotice.ts`）。一覧は
-        // `App.tsx` が同じ読みで取り直すので、ここで列から抜かない（B-22 設計 規則3）。
-        setNotice(deleteFailureNoticeOf(await onDelete(id)));
-      } finally {
-        deleting.current = false;
+      // 消えたと読めた回は案内を出さない（`DeleteFailureNotice.ts`）。一覧は `App.tsx` が同じ読みで
+      // 取り直すので、ここで列から抜かない（B-22 設計 規則3）。消せなかった回は隠した行を戻す。
+      const failureNotice = deleteFailureNoticeOf(await onDelete(id));
+      setNotice(failureNotice);
+      if (failureNotice === null) {
+        const deletedFrom = stockItemsRef.current;
+        setDeletedIn((previous) => new Map(previous).set(id, deletedFrom));
       }
+      showRow(id);
     })();
   }
 
-  // 出し分けだけを行い、計算を持たない（B-22 設計 8章末尾 / B-11 設計 規則7）。
-  if (stockItems.outcome === 'loading') return <p className={styles.notice}>{LOADING_NOTICE}</p>;
-  if (stockItems.outcome === 'failed')
-    return <p className={styles.notice}>{LOAD_FAILURE_NOTICE}</p>;
+  // 時間切れと一覧を離れた回は、描いたときの `deleteRow`（`offline` と `onDelete` を抱える）ではなく
+  // 最新のものを呼ぶ。
+  const deleteRowRef = useRef(deleteRow);
+  useEffect(() => {
+    deleteRowRef.current = deleteRow;
+  });
 
-  const sections = pantrySectionsOf(stockItems.stockItems, today);
+  /** 取り消せる間の在庫品を、いま送る。無ければ何もしない。 */
+  function flushPendingRemoval() {
+    const pending = pendingRemovalRef.current;
+    if (pending === null) return;
+
+    if (removalTimer.current !== null) clearTimeout(removalTimer.current);
+    removalTimer.current = null;
+    pendingRemovalRef.current = null;
+    setPendingRemoval(null);
+    deleteRowRef.current(pending.id);
+  }
+
+  // 一覧を離れる（別のタブへ移る）回は、取り消せる間の在庫品をその場で送る — 黙って残すと、
+  // 消したつもりの行が次に開いたとき戻っている。
+  useEffect(() => flushPendingRemoval, []);
+
+  /**
+   * 現れた `削除` を押した（確認を挟まない）。行を隠して `元に戻す` を出し、時間切れで送る。
+   * 前の在庫品がまだ取り消せる間なら、それは先に送る（`元に戻す` は1件ぶんだけ出す）。
+   */
+  function removeRow(stockItem: StockItemDto) {
+    dispatch({ kind: 'dismissed' });
+    flushPendingRemoval();
+
+    setHiddenIds((previous) => new Set(previous).add(stockItem.id));
+    pendingRemovalRef.current = stockItem;
+    setPendingRemoval(stockItem);
+    removalTimer.current = setTimeout(flushPendingRemoval, UNDO_DURATION_MS);
+  }
+
+  function undoRemoval() {
+    const pending = pendingRemovalRef.current;
+    if (pending === null) return;
+
+    if (removalTimer.current !== null) clearTimeout(removalTimer.current);
+    removalTimer.current = null;
+    pendingRemovalRef.current = null;
+    setPendingRemoval(null);
+    showRow(pending.id);
+  }
+
+  // 取り消しの帯。一覧の出し分けによらず出す（最後の1件を消して0件の案内になった回も取り消せる）。
+  // 確認の暗幕より下に重ねる。
+  const undoBar =
+    pendingRemoval === null ? null : (
+      <div className={styles.undoBar} role="status">
+        <span className={styles.undoMessage}>{`${pendingRemoval.name}を削除しました`}</span>
+        <button type="button" className={styles.undoButton} onClick={undoRemoval}>
+          元に戻す
+        </button>
+      </div>
+    );
+
+  // 出し分けだけを行い、計算を持たない（B-22 設計 8章末尾 / B-11 設計 規則7）。
+  if (stockItems.outcome === 'loading' || stockItems.outcome === 'failed')
+    return (
+      <>
+        <p className={styles.notice}>
+          {stockItems.outcome === 'loading' ? LOADING_NOTICE : LOAD_FAILURE_NOTICE}
+        </p>
+        {undoBar}
+      </>
+    );
+
+  const sections = pantrySectionsOf(
+    stockItems.stockItems.filter(
+      (listed) => !hiddenIds.has(listed.id) && deletedIn.get(listed.id) !== stockItems,
+    ),
+    today,
+  );
 
   // 在庫品が0件なら帯を1つも出さない（規則11）。行の操作も描かない（B-69 規則16）。
-  if (sections.length === 0) return <p className={styles.notice}>{EMPTY_NOTICE}</p>;
+  if (sections.length === 0)
+    return (
+      <>
+        <p className={styles.notice}>{EMPTY_NOTICE}</p>
+        {undoBar}
+      </>
+    );
 
   function showingOf(id: string): RowShowing {
     if (current.kind === 'revealed' && current.stockItemId === id) return 'revealed';
@@ -478,6 +635,8 @@ export function PantryList({
                   onEvent={dispatch}
                   onTap={tapRow}
                   onEdit={onEdit}
+                  onRemove={removeRow}
+                  removeDisabled={offline}
                   registerToggle={registerToggle}
                   focusToggle={focusToggle}
                 />
@@ -505,6 +664,8 @@ export function PantryList({
           }}
         />
       )}
+
+      {undoBar}
     </div>
   );
 }

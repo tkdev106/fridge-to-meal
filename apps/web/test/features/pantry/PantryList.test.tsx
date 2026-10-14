@@ -14,7 +14,7 @@
  * デザインが正になった**（ADR-074 結果1 / B-64 設計 規則3〜5）。B-64 の suite はこれらを期待値に置く。
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { StockItemDto } from '@fridge-to-meal/contract';
 import {
   act,
@@ -212,6 +212,7 @@ function pressAndRelease(end: { readonly x: number; readonly y: number }): void 
   const row = rowAt(rows, 1);
 
   fireEvent.pointerDown(row, { pointerId: 1, clientX: 0, clientY: 0 });
+  fireEvent.pointerMove(row, { pointerId: 1, clientX: end.x, clientY: end.y });
   fireEvent.pointerUp(row, { pointerId: 1, clientX: end.x, clientY: end.y });
 }
 
@@ -243,7 +244,7 @@ describe('在庫一覧 PantryList の行のタップ', () => {
     const deletedIds: string[] = [];
     renderTwoRows(edits, deletedIds);
 
-    pressAndRelease({ x: 100, y: 0 });
+    pressAndRelease({ x: -100, y: 0 });
 
     // 削除として読まれている（対にして確かめる — 読まれていなければ「編集が開かないこと」を
     // 動きの長さで確かめたことにならない）。B-69 設計 規則1: なぞった行には削除の操作が
@@ -316,11 +317,12 @@ function listOf(
 function renderOperableRows(options: FixedStockItemRequestsOptions = {}) {
   const requests = new FixedStockItemRequests({ remove: [{ outcome: 'deleted' }], ...options });
   const edits: StockItemDto[] = [];
-  const { rerender } = render(listOf(twoRows, requests, edits));
+  const { rerender, unmount } = render(listOf(twoRows, requests, edits));
 
   return {
     requests,
     edits,
+    unmount,
     rerenderWith: (stockItems: readonly StockItemDto[]) => {
       rerender(listOf(stockItems, requests, edits));
     },
@@ -417,11 +419,12 @@ function confirmDeletion(): HTMLElement {
   return found;
 }
 
-/** 行を横になぞる（削除のスワイプ。判断は `SwipeGesture.ts`）。 */
+/** 行を左へなぞり、`削除` が開いた位置に落ち着くまで引いて離す（判断は `SwipeGesture.ts`）。 */
 function swipeRow(index: number): void {
   const row = rowAt(rows(), index);
 
-  fireEvent.pointerDown(row, { pointerId: 1, clientX: 0, clientY: 0 });
+  fireEvent.pointerDown(row, { pointerId: 1, clientX: 200, clientY: 0 });
+  fireEvent.pointerMove(row, { pointerId: 1, clientX: 100, clientY: 0 });
   fireEvent.pointerUp(row, { pointerId: 1, clientX: 100, clientY: 0 });
 }
 
@@ -431,12 +434,6 @@ function tapRow(index: number): void {
 
   fireEvent.pointerDown(row, { pointerId: 1, clientX: 0, clientY: 0 });
   fireEvent.pointerUp(row, { pointerId: 1, clientX: 0, clientY: 0 });
-}
-
-/** 2行目をなぞって現れた削除を押し、確認を開く。 */
-function openConfirmationBySwipe(): void {
-  swipeRow(1);
-  pressOperation(revealedDelete(1));
 }
 
 /** 2行目の `…` を開き、その中の削除を押して確認を開く。 */
@@ -494,20 +491,11 @@ describe('在庫一覧 PantryList の行の操作', () => {
     expect([rowButtons(0).length, rowButtons(1).length]).toEqual([1, 2]);
   });
 
-  it('現れた削除を押すと、その在庫品の確認が出る', () => {
-    // 規則6・8: 確認の名前は何を消すのかを含む。
-    renderOperableRows();
-
-    openConfirmationBySwipe();
-
-    expect(dialogsNaming('白菜')).toHaveLength(1);
-  });
-
   it('確認の削除を押すと、その行の識別子が削除の口へ届く', async () => {
     // 規則11 / FR-06: 消すのは確認の削除を押したときだけである。
     const { requests } = renderOperableRows();
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     pressOperation(confirmDeletion());
     await flush();
 
@@ -518,25 +506,10 @@ describe('在庫一覧 PantryList の行の操作', () => {
     // 規則11: 確認を閉じてから削除を送る。
     renderOperableRows({ remove: [{ heldUntilSettled: { outcome: 'deleted' } }] });
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     pressOperation(confirmDeletion());
 
     expect(screen.queryAllByRole('dialog')).toHaveLength(0);
-  });
-
-  it('削除を送っている間に別の行で確認まで進めても、2度目は送らない', () => {
-    // 規則11: 送っている間の二度目は今どおり送らない。
-    const { requests } = renderOperableRows({
-      remove: [{ heldUntilSettled: { outcome: 'deleted' } }],
-    });
-
-    openConfirmationBySwipe();
-    pressOperation(confirmDeletion());
-    swipeRow(0);
-    pressOperation(revealedDelete(0));
-    pressOperation(confirmDeletion());
-
-    expect(requests.deletedIds).toHaveLength(1);
   });
 
   it('行の操作を押すと開いた印が立ち、指す先に操作が2つ出る', () => {
@@ -683,7 +656,7 @@ describe('在庫一覧 PantryList の削除の確認', () => {
     // 規則10 / 論点4 #1: やめるは何も消さない。
     const { requests } = renderOperableRows();
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     pressOperation(cancelConfirmation());
     await flush();
 
@@ -694,7 +667,7 @@ describe('在庫一覧 PantryList の削除の確認', () => {
     // 規則10: `やめる` と Esc は同じである。
     const { requests } = renderOperableRows();
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     fireEvent.keyDown(cancelConfirmation(), { key: 'Escape' });
     await flush();
 
@@ -705,7 +678,7 @@ describe('在庫一覧 PantryList の削除の確認', () => {
     // 規則10: 状態は何も出ていない形に戻る。
     renderOperableRows();
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     pressOperation(cancelConfirmation());
 
     expect(screen.queryAllByRole('dialog')).toHaveLength(0);
@@ -749,7 +722,7 @@ describe('在庫一覧 PantryList の削除の確認', () => {
     // 規則14: 確認を出している間、一覧の操作は何もしない。
     const { edits } = renderOperableRows();
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     tapRow(0);
 
     expect(edits).toEqual([]);
@@ -759,7 +732,7 @@ describe('在庫一覧 PantryList の削除の確認', () => {
     // 規則14。
     renderOperableRows();
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     pressOperation(rowToggle(0));
 
     expect(rowToggle(0).getAttribute('aria-expanded')).toBe('false');
@@ -769,7 +742,7 @@ describe('在庫一覧 PantryList の削除の確認', () => {
     // 規則14。
     renderOperableRows();
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     swipeRow(0);
 
     expect(rowButtons(0)).toHaveLength(1);
@@ -779,7 +752,7 @@ describe('在庫一覧 PantryList の削除の確認', () => {
     // 規則12: 確認は開いた時点の在庫品1件を抱える（B-55 規則17 と同じ構え）。
     const { rerenderWith } = renderOperableRows();
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     rerenderWith([twoRows[0] as StockItemDto]);
 
     expect(dialogsNaming('白菜')).toHaveLength(1);
@@ -789,7 +762,7 @@ describe('在庫一覧 PantryList の削除の確認', () => {
     // 規則12 / ADR-050: 一覧から消えていれば `delete.notFound` になり、消えたと読む。
     const { requests, rerenderWith } = renderOperableRows();
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     rerenderWith([twoRows[0] as StockItemDto]);
     pressOperation(confirmDeletion());
     await flush();
@@ -841,7 +814,7 @@ describe('在庫一覧 PantryList の削除の確認', () => {
       remove: [{ outcome: 'rejected', rule: 'delete.notFound' }],
     });
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     pressOperation(confirmDeletion());
     await waitFor(() => {
       expect(requests.deletedIds).toHaveLength(1);
@@ -855,7 +828,7 @@ describe('在庫一覧 PantryList の削除の確認', () => {
     // 7章 / ADR-032 決定3: それ以外の断り・失敗は今の案内（文言は見ない）。
     renderOperableRows({ remove: [{ outcome: 'failed' }] });
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     pressOperation(confirmDeletion());
 
     await waitFor(() => {
@@ -904,7 +877,7 @@ describe('在庫一覧 PantryList の接続が切れている間', () => {
   it('接続が切れている間は、確認の削除が押せない', () => {
     renderTwoRowsWith([], recordingDelete([]), true);
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
 
     // 規則11 / FR-41: 削除は書き込みを伴う操作である。
     expect(confirmDeletion()).toHaveProperty('disabled', true);
@@ -914,7 +887,7 @@ describe('在庫一覧 PantryList の接続が切れている間', () => {
     const deletedIds: string[] = [];
     renderTwoRowsWith([], recordingDelete(deletedIds), true);
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     fireEvent.click(confirmDeletion());
     await act(async () => {});
 
@@ -925,7 +898,7 @@ describe('在庫一覧 PantryList の接続が切れている間', () => {
   it('接続が切れている間も、確認はやめられる', () => {
     renderTwoRowsWith([], recordingDelete([]), true);
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     pressOperation(cancelConfirmation());
 
     // 規則6: やめるは書き込みを伴わない。
@@ -942,11 +915,11 @@ describe('在庫一覧 PantryList の接続が切れている間', () => {
     expect(edits).toEqual([twoRows[1]]);
   });
 
-  it('接続が戻ると、確認の削除でなぞった行の識別子が削除の口へ届く', () => {
+  it('接続が戻ると、確認の削除で `…` から開いた行の識別子が削除の口へ届く', () => {
     const deletedIds: string[] = [];
     const { setOffline } = renderTwoRowsWith([], recordingDelete(deletedIds), true);
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     setOffline(false);
     pressOperation(confirmDeletion());
 
@@ -1119,7 +1092,7 @@ describe('在庫一覧 PantryList の確認を出している間', () => {
   it('確認を出している間は、帯の見出しも行も `inert` の中にある', () => {
     renderOperableRows();
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
 
     // B-64 規則9 / 論点4 #1: 焦点を確認の中に閉じ込める。
     expect(listParts().map(insideInert)).toEqual([true, true, true]);
@@ -1128,7 +1101,7 @@ describe('在庫一覧 PantryList の確認を出している間', () => {
   it('確認を出している間も、確認そのものは `inert` の外にある', () => {
     renderOperableRows();
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
 
     // B-64 規則9: 確認（暗幕と `role="dialog"`）は包みの外に置く。
     expect(insideInert(screen.getByRole('dialog'))).toBe(false);
@@ -1137,7 +1110,7 @@ describe('在庫一覧 PantryList の確認を出している間', () => {
   it('確認をやめると、一覧の `inert` は外れる', () => {
     renderOperableRows();
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     pressOperation(cancelConfirmation());
 
     // B-64 規則9: 閉じたら `inert` を外す。
@@ -1147,12 +1120,12 @@ describe('在庫一覧 PantryList の確認を出している間', () => {
   it('消せなかった案内も、次の確認を出している間は `inert` の中にある', async () => {
     renderOperableRows({ remove: [{ outcome: 'failed' }] });
 
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
     pressOperation(confirmDeletion());
     await waitFor(() => {
       expect(screen.queryAllByRole('paragraph')).toHaveLength(1);
     });
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
 
     // B-64 規則9: 包むのは帯・行・削除の断りの案内である。案内は確認の文でない段落で引く。
     const dialog = screen.getByRole('dialog');
@@ -1206,7 +1179,7 @@ describe('在庫一覧 PantryList の端末の戻る', () => {
 
   it('削除の確認を出している間に戻ると、確認が閉じる', () => {
     const backNavigation = renderRowsWithBack();
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
 
     pressBack(backNavigation);
 
@@ -1257,7 +1230,7 @@ describe('在庫一覧 PantryList の端末の戻る', () => {
 
   it('接続が切れていても、削除の確認は戻るで閉じる', () => {
     const backNavigation = renderRowsWithBack(true);
-    openConfirmationBySwipe();
+    openConfirmationByToggle();
 
     pressBack(backNavigation);
 
@@ -1265,3 +1238,248 @@ describe('在庫一覧 PantryList の端末の戻る', () => {
     expect(screen.queryAllByRole('dialog')).toHaveLength(0);
   });
 });
+
+/** 取り消しの帯の `元に戻す`。 */
+function undoOperation(): HTMLElement {
+  return screen.getByRole('button', { name: '元に戻す' });
+}
+
+/** 2行目をなぞって現れた削除を押す（確認は挟まない）。 */
+function removeBySwipe(index = 1): void {
+  swipeRow(index);
+  pressOperation(revealedDelete(index));
+}
+
+/** 行の名称の並び。 */
+function rowNames(): readonly string[] {
+  return screen.queryAllByRole('listitem').map((row) => row.textContent ?? '');
+}
+
+describe('在庫一覧 PantryList のなぞって消す', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('右へなぞっても、削除は現れない', () => {
+    // `削除` は右端にしか無い。右へは引けない（`SwipeGesture.ts`）。
+    renderOperableRows();
+    const row = rowAt(rows(), 1);
+
+    fireEvent.pointerDown(row, { pointerId: 1, clientX: 100, clientY: 0 });
+    fireEvent.pointerMove(row, { pointerId: 1, clientX: 200, clientY: 0 });
+    fireEvent.pointerUp(row, { pointerId: 1, clientX: 200, clientY: 0 });
+
+    expect(rowButtons(1)).toHaveLength(1);
+  });
+
+  it('削除の半分に届かないところで離すと、削除は現れない', () => {
+    renderOperableRows();
+    const row = rowAt(rows(), 1);
+
+    fireEvent.pointerDown(row, { pointerId: 1, clientX: 200, clientY: 0 });
+    fireEvent.pointerMove(row, { pointerId: 1, clientX: 170, clientY: 0 });
+    fireEvent.pointerUp(row, { pointerId: 1, clientX: 170, clientY: 0 });
+
+    expect(rowButtons(1)).toHaveLength(1);
+  });
+
+  it('現れている行を右へなぞって戻すと、削除は消える', () => {
+    renderOperableRows();
+    swipeRow(1);
+    const row = rowAt(rows(), 1);
+
+    fireEvent.pointerDown(row, { pointerId: 1, clientX: 100, clientY: 0 });
+    fireEvent.pointerMove(row, { pointerId: 1, clientX: 200, clientY: 0 });
+    fireEvent.pointerUp(row, { pointerId: 1, clientX: 200, clientY: 0 });
+
+    expect(rowButtons(1)).toHaveLength(1);
+  });
+
+  it('現れた削除を押すと、確認を出さずにその行が一覧から消える', () => {
+    // FR-06: なぞる操作が消す意思であり、誤りは `元に戻す` で救う。
+    renderOperableRows();
+
+    removeBySwipe();
+
+    expect(screen.queryAllByRole('dialog')).toHaveLength(0);
+    expect(rowNames().some((name) => name.includes('白菜'))).toBe(false);
+  });
+
+  it('現れた削除を押すと、消した在庫品の名称を添えて元に戻す操作が出る', () => {
+    renderOperableRows();
+
+    removeBySwipe();
+
+    expect(screen.getByRole('status').textContent).toContain('白菜');
+    expect(undoOperation()).toBeDefined();
+  });
+
+  it('現れた削除を押しただけでは、削除の口へ何も届かない', async () => {
+    // 取り消せる間は送らない。
+    const { requests } = renderOperableRows();
+
+    removeBySwipe();
+    await flush();
+
+    expect(requests.deletedIds).toEqual([]);
+  });
+
+  it('元に戻すを押すと行が一覧に戻り、時間が過ぎても削除の口へ何も届かない', async () => {
+    vi.useFakeTimers();
+    const { requests } = renderOperableRows();
+
+    removeBySwipe();
+    pressOperation(undoOperation());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10000);
+    });
+
+    expect(rowNames().some((name) => name.includes('白菜'))).toBe(true);
+    expect(requests.deletedIds).toEqual([]);
+    expect(screen.queryAllByRole('status')).toHaveLength(0);
+  });
+
+  it('5秒たつと、その行の識別子が削除の口へ届き、元に戻す操作は消える', async () => {
+    vi.useFakeTimers();
+    const { requests } = renderOperableRows();
+
+    removeBySwipe();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(requests.deletedIds).toEqual(['2']);
+    expect(screen.queryAllByRole('status')).toHaveLength(0);
+  });
+
+  it('5秒たつ前は、削除の口へ何も届かない', async () => {
+    vi.useFakeTimers();
+    const { requests } = renderOperableRows();
+
+    removeBySwipe();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4999);
+    });
+
+    expect(requests.deletedIds).toEqual([]);
+  });
+
+  it('取り消せる間に別の行を消すと、前の行はその場で削除の口へ届く', async () => {
+    // `元に戻す` は1件ぶんだけ出す。
+    const { requests } = renderOperableRows({
+      remove: [{ outcome: 'deleted' }, { outcome: 'deleted' }],
+    });
+
+    removeBySwipe(1);
+    removeBySwipe(0);
+    await flush();
+
+    expect(requests.deletedIds).toEqual(['2']);
+    expect(screen.getByRole('status').textContent).toContain('豚こま肉');
+  });
+
+  it('取り消せる間に一覧を離れると、その行はその場で削除の口へ届く', async () => {
+    // 黙って残すと、消したつもりの行が次に開いたとき戻っている。
+    const { requests, unmount } = renderOperableRows();
+
+    removeBySwipe();
+    unmount();
+    await flush();
+
+    expect(requests.deletedIds).toEqual(['2']);
+  });
+
+  it('時間が過ぎて送った削除が失敗すると、行が一覧に戻り案内が1つ出る', async () => {
+    vi.useFakeTimers();
+    renderOperableRows({ remove: [{ outcome: 'failed' }] });
+
+    removeBySwipe();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(rowNames().some((name) => name.includes('白菜'))).toBe(true);
+    expect(screen.getAllByRole('paragraph')).toHaveLength(1);
+  });
+
+  it('消えたと読めたあとに取り直した一覧にまだその行が居れば、行は戻る', async () => {
+    // ADR-050: 取り直しが「消えた」という読みの検めである。
+    vi.useFakeTimers();
+    const { rerenderWith } = renderOperableRows();
+
+    removeBySwipe();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    rerenderWith([...twoRows]);
+
+    expect(rowNames().some((name) => name.includes('白菜'))).toBe(true);
+  });
+
+  it('消えたと読めたあと、一覧を取り直すまではその行を出さない', async () => {
+    vi.useFakeTimers();
+    renderOperableRows();
+
+    removeBySwipe();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(rowNames().some((name) => name.includes('白菜'))).toBe(false);
+  });
+
+  it('取り消せる間に接続が切れて時間が過ぎると、行が戻り案内が1つ出て、削除の口へ何も届かない', async () => {
+    vi.useFakeTimers();
+    const deletedIds: string[] = [];
+    const onDelete: DeleteStockItem = (id) => {
+      deletedIds.push(id);
+      return Promise.resolve({ outcome: 'deleted' });
+    };
+    const props = { today: TODAY, onDelete, onEdit: neverEdit };
+    const { rerender } = render(
+      <PantryList {...props} stockItems={{ outcome: 'loaded', stockItems: twoRows }} />,
+    );
+
+    removeBySwipe();
+    rerender(
+      <PantryList {...props} stockItems={{ outcome: 'loaded', stockItems: twoRows }} offline />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    expect(deletedIds).toEqual([]);
+    expect(rowNames().some((name) => name.includes('白菜'))).toBe(true);
+    expect(screen.getAllByRole('paragraph')).toHaveLength(1);
+  });
+
+  it('最後の1行を消しても、元に戻す操作は出ている', () => {
+    const requests = new FixedStockItemRequests({ remove: [{ outcome: 'deleted' }] });
+    render(listOf([stockItem({ id: '1', name: '豚こま肉' })], requests, []));
+
+    removeBySwipe(0);
+
+    expect(undoOperation()).toBeDefined();
+  });
+
+  it('接続が切れている間は、現れた削除が押せない', () => {
+    // B-70 / FR-41: 書き込みを伴う操作を止める。なぞることは止めない。
+    renderTwoRowsWithOffline();
+
+    swipeRow(1);
+
+    expect(revealedDelete(1)).toHaveProperty('disabled', true);
+  });
+});
+
+function renderTwoRowsWithOffline(): void {
+  render(
+    <PantryList
+      today={TODAY}
+      onDelete={neverDelete}
+      onEdit={neverEdit}
+      stockItems={{ outcome: 'loaded', stockItems: twoRows }}
+      offline
+    />,
+  );
+}
