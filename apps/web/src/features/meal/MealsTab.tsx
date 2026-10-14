@@ -62,20 +62,6 @@ const HEADING = '今日の献立';
  */
 const LEGEND = '太字の材料は今日が期限です';
 
-/** 見出しの上の日付の曜日（`Date#getUTCDay` の順）。 */
-const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'] as const;
-
-/**
- * 見出しの上に添える今日の日付（`10月9日 金曜日`）。`today` は `YYYY-MM-DD` の暦日であり、
- * 時差で日がずれないよう UTC の 0 時として曜日を数える。
- */
-function todayLabelOf(today: string): string {
-  const date = new Date(`${today}T00:00:00Z`);
-  const weekday = WEEKDAYS[date.getUTCDay()] ?? '';
-
-  return `${date.getUTCMonth() + 1}月${date.getUTCDate()}日 ${weekday}曜日`;
-}
-
 /** 再利用の印（FR-35 / D-3。文言は原本 `MealCard`）。 */
 const REUSED_MARK = '前に見た献立';
 
@@ -592,7 +578,7 @@ function MealsTabList({
         </div>
       )}
       <div className={styles.content}>
-        <ScreenHeader title={HEADING} eyebrow={todayLabelOf(today)} onOpenSettings={onOpenSettings}>
+        <ScreenHeader title={HEADING} onOpenSettings={onOpenSettings}>
           {cards.length > 0 && <p className={styles.legend}>{LEGEND}</p>}
         </ScreenHeader>
         <MealsTabBody
