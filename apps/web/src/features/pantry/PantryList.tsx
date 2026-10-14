@@ -220,7 +220,7 @@ function StockItemRow({
         pressedPoint.current = null;
       }}
     >
-      {/* 行の中身（名称・分量・残日数・`…`）。なぞった行ではこれを左へずらし、下の `削除` を
+      {/* 行の中身（名称・分量・残日数・`…`）。なぞった行ではこれの右端を縮め、下の `削除` を
           見せる（B-64 設計 規則7）。 */}
       <div className={styles.rowContent}>
         <span className={styles.name}>{stockItem.name}</span>
