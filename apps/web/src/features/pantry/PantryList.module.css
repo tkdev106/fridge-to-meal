@@ -3,11 +3,11 @@
  *
  * **見た目の値はここにだけ置く**（ADR-055 決定1）。色・文字の大きさ・太さ・操作の高さは
  * トークン（`src/global.css` の `:root`）から `var(--…)` で引き、ここで新しい色を作らない。
- * トークンに無い寸法（行の高さ 56px・列の幅 72px・現れる `削除` の幅 96px・開いた中身の幅 160px・余白）は
+ * トークンに無い寸法（行の高さ 56px・列の幅 72px・現れる `削除` の幅 88px・開いた中身の幅 160px・余白）は
  * 直に書く（規則12）。
  *
- * **動きを付けない**（規則8）— `削除` の現れも開閉も即時である。
- * SP（幅 1024px 未満）は3列の行で `…` を見た目からだけ隠し、PC は `…` を4列目に置く（末尾のメディアクエリ。B-60 / ADR-076）。
+ * 動くのはなぞって現れる `削除` だけで、`…` の開閉は即時である。動きを減らす設定では動かさない。
+ * SP（幅 1024px 未満）は3列の行で `…` を出さず、PC は `…` を4列目に置く（末尾のメディアクエリ。B-60 / ADR-076）。
  */
 
 /* 帯・行の包み（確認の間は `inert`。規則9）。帯の間は 28px（規則14）。 */
@@ -79,10 +79,12 @@
 
 /*
  * 1行。高さ 56px・下に区切り線。開いた中身（`.operations`）を行の直下へ重ねるため
- * `position: relative` にする。はみ出しは切らない — 切ると開いた中身が見えなくなる（規則7）。
+ * `position: relative` にする。左へ動いた中身ははみ出しを切る。`…` を開いた行だけは切らない —
+ * 切ると開いた中身が見えなくなる（規則7）。
  */
 .row {
   position: relative;
+  overflow: hidden;
   height: 56px;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-background);
@@ -96,8 +98,8 @@
 }
 
 /*
- * 行の中身。SP は名称・分量・残日数の3列。`…` は木に置いたまま列から外し、見た目からだけ
- * 隠す（下の `.toggle`）。PC は `…` を4列目に置く（末尾のメディアクエリ）。
+ * 行の中身。SP は名称・分量・残日数の3列で、`…` は出さない（下の `.toggle`）。PC は `…` を4列目に
+ * 置く（末尾のメディアクエリ）。
  */
 .rowContent {
   display: grid;
@@ -111,6 +113,7 @@
 
 /* 行末の操作を開いた行（規則6）。行の地を面の白にする。 */
 .rowOperationsOpen {
+  overflow: visible;
   background: var(--color-surface);
 }
 
@@ -157,10 +160,10 @@
 
 /*
  * 行末の `…`。押せる範囲は 48px 四方（NFR-16）。素の button の枠と地はここで消す
- * （リセットでは全体を消さない。B-59 規則3）。
+ * （リセットでは全体を消さない。B-59 規則3）。SP は出さず、PC の幅だけに見せる（末尾のメディアクエリ）。
  */
 .toggle {
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   width: var(--control-height-secondary);
@@ -172,26 +175,7 @@
   cursor: pointer;
 }
 
-/*
- * SP の `…`（B-64 規則13）。**木からも読み上げの木からも外さず、見た目からだけ隠す** — 外すと
- * SP で外付けのキーボードと読み上げから編集・削除に届く経路が消える（論点4 #2）。焦点がある間と
- * 開いている間は行の右端に重ねて見せる。隠れている間はポインタを通し、行のタップとなぞりに任せる。
- */
-.toggle {
-  position: absolute;
-  top: 4px;
-  right: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.toggle:focus,
-.toggle[aria-expanded='true'] {
-  opacity: 1;
-  pointer-events: auto;
-  background: var(--color-surface-muted);
-}
-
+.toggle[aria-expanded='true'],
 .toggle:hover {
   background: var(--color-surface-muted);
 }
@@ -236,16 +220,20 @@
 }
 
 /*
- * なぞって現れる `削除`（規則7）。行の右端に、幅 96px・行の高さで中身の上へ重ねる。中身は動かさない
- * — 名称は元の位置に見えたまま、分量と残日数の上に `削除` が乗る。
+ * なぞって現れる `削除`。幅 88px・行の高さで（値の写しは `SwipeGesture.ts` の `REVEAL_WIDTH`）、閉じている
+ * 間は行の右端の外に置く。なぞる指に合わせて中身の上へ滑り込み、離したあとは開いた位置か外へ、減速しながら
+ * 落ち着く。
  */
 .revealedDelete {
   position: absolute;
   z-index: 1;
+  transition:
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
   top: 0;
   right: 0;
   bottom: 0;
-  width: 96px;
+  width: 88px;
   padding: 0;
   border: 0;
   background: var(--color-danger);
@@ -261,6 +249,74 @@
   outline-offset: var(--focus-outline-offset-inverse);
 }
 
+/* なぞっている間は指にそのまま付いていく。 */
+.revealedDeleteDragging {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .revealedDelete {
+    transition: none;
+  }
+}
+
+/* 接続が切れている間（B-70）。地を控えめな面に落とし、押せないと読めるようにする。 */
+.revealedDelete:disabled {
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+/*
+ * なぞって消したあとの取り消しの帯。SP は下タブの帯のすぐ上に左右 16px の余白で、PC は画面の下端から
+ * 24px の右寄せに置く。墨の地に面の色の文字で、一覧の上に浮かせる。確認の暗幕（`z-index: 10`）より下。
+ */
+.undoBar {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--tab-bar-height) + env(safe-area-inset-bottom, 0px) + 12px);
+  left: 16px;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 4px 4px 4px 16px;
+  background: var(--color-text);
+  color: var(--color-surface);
+}
+
+.undoMessage {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-size-14);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* `元に戻す`。押せる範囲は 48px の高さ（NFR-16）。 */
+.undoButton {
+  flex: none;
+  height: var(--control-height-secondary);
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--color-surface);
+  font-size: var(--font-size-14);
+  font-weight: var(--font-weight-medium);
+  letter-spacing: 0.04em;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+
+/* 墨の地。焦点の輪郭は地の色で内側に引く（`global.css` の `--focus-outline-inverse`）。 */
+.undoButton:focus-visible {
+  outline: var(--focus-outline-inverse);
+  outline-offset: var(--focus-outline-offset-inverse);
+}
+
 /*
  * PC（幅 1024px 以上。値の正は `docs/screen-design.md` 2.1 / ADR-076。CSS 変数はメディアクエリに
  * 使えないので写しを書く）。`…` を行末の4列目に見せる。
@@ -272,8 +328,13 @@
   }
 
   .toggle {
-    position: static;
-    opacity: 1;
-    pointer-events: auto;
+    display: flex;
+  }
+
+  .undoBar {
+    right: 24px;
+    bottom: 24px;
+    left: auto;
+    width: 400px;
   }
 }

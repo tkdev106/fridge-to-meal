@@ -434,26 +434,20 @@ function soleRow(): HTMLElement {
 }
 
 /**
- * 行を消す — **なぞる → 現れた削除を押す → 確認の削除を押す**の3つを1つにしたもの
- * （FR-06 / B-69 設計 規則1・6・11）。なぞっただけでは消えない。
+ * 行を消す — **行末の `…` → 開いた中の削除 → 確認の削除**の3つを1つにしたもの（FR-06 / B-69 設計
+ * 規則3・6・11）。その場で送る経路であり、なぞって消す経路（取り消せる間は送らない）は
+ * `PantryList.test.tsx` が確かめる。
  *
- * **判断は `SwipeGesture.ts` と `PantryList` の持ち分**で、ここは入力を送るだけである。
- * 現れた削除は行の中の `aria-expanded` を持たない button、確認の削除は `role="dialog"` の中の
- * 2つめの button である（同 規則8）。
+ * `…` は行の中の `aria-expanded` を持つ button、確認の削除は `role="dialog"` の中の 2つめの button
+ * である（同 規則8）。
  */
 function deleteSoleRow(): void {
-  const row = soleRow();
-
-  fireEvent.pointerDown(row, { pointerId: 1, clientX: 0, clientY: 0 });
-  fireEvent.pointerUp(row, { pointerId: 1, clientX: 100, clientY: 0 });
-
-  const revealed = within(soleRow())
+  const toggle = within(soleRow())
     .getAllByRole('button')
-    .filter((button) => !button.hasAttribute('aria-expanded'));
-  expect(revealed).toHaveLength(1);
-  const [revealedDelete] = revealed;
-  if (revealedDelete === undefined) throw new Error('行に削除が現れていない');
-  pressOperation(revealedDelete);
+    .find((button) => button.hasAttribute('aria-expanded'));
+  if (toggle === undefined) throw new Error('行に `…` が無い');
+  pressOperation(toggle);
+  pressOperation(within(soleRow()).getByRole('button', { name: '削除' }));
 
   const confirmation = within(screen.getByRole('dialog')).getAllByRole('button');
   expect(confirmation).toHaveLength(2);

@@ -1,47 +1,62 @@
 import { describe, expect, it } from 'vitest';
-import { isDeleteSwipe, isTap } from '../../../src/features/pantry/SwipeGesture.js';
+import {
+  isTap,
+  settlesRevealed,
+  startsHorizontalDrag,
+  swipeOffsetOf,
+} from '../../../src/features/pantry/SwipeGesture.js';
 
 /** 押した点の標本。どこから始めても結論は動かないので、原点から離した1点に固定する。 */
-const start = { x: 100, y: 200 };
+const start = { x: 200, y: 200 };
 
-describe('削除のスワイプ isDeleteSwipe', () => {
-  it('横に大きく動いたら削除のスワイプと読む', () => {
-    // FR-06 / `docs/screen-design.md` 5章: 削除は行のスワイプである。
-    expect(isDeleteSwipe(start, { x: 20, y: 200 })).toBe(true);
+describe('なぞり始め startsHorizontalDrag', () => {
+  it('横に遊びの8pxだけ動いたら、なぞり始めと読む', () => {
+    // 境界は含む。**期待値は literal で置く**（`docs/testing.md` 3章）。
+    expect(startsHorizontalDrag(start, { x: 192, y: 200 })).toBe(true);
   });
 
-  it('向きが逆でも削除のスワイプと読む', () => {
-    // B-23: **`docs/screen-design.md` 5章 は向きを定めていない。** 片方だけを受け取ると、
-    // 逆になぞった回は何も起きず、確認も取り消しも無い画面では理由を知る手がかりが残らない。
-    expect(isDeleteSwipe(start, { x: 180, y: 200 })).toBe(true);
-  });
-
-  it('横の動きが足りなければ読まない', () => {
-    // B-23: 触れただけ・わずかに滑っただけで消えない。確認を出さない以上（同 5章）、
-    // なぞったと言える長さを要求する側で守る。
-    expect(isDeleteSwipe(start, { x: 137, y: 200 })).toBe(false);
-  });
-
-  it('ちょうど64だけ横に動いたら読む', () => {
-    // B-23: 境界は含む。**期待値は literal で置く**（`docs/testing.md` 3章）。
-    expect(isDeleteSwipe(start, { x: 164, y: 200 })).toBe(true);
+  it('横の動きが遊びに届かなければ読まない', () => {
+    expect(startsHorizontalDrag(start, { x: 193, y: 200 })).toBe(false);
   });
 
   it('縦の動きのほうが大きければ読まない', () => {
-    // B-23 / FR-04: 一覧は縦に長く、縦になぞるのは送りの操作である。斜めに流れた送りで
-    // 行が消えると、取り消しの無い操作が事故で起きる。
-    expect(isDeleteSwipe(start, { x: 200, y: 320 })).toBe(false);
+    // FR-04: 一覧は縦に長く、縦は送りの操作である。
+    expect(startsHorizontalDrag(start, { x: 180, y: 230 })).toBe(false);
+  });
+});
+
+describe('なぞっている間の位置 swipeOffsetOf', () => {
+  it('閉じた行は、左へ引いた分だけ動く', () => {
+    expect(swipeOffsetOf(false, start, { x: 150, y: 200 })).toBe(-50);
   });
 
-  it('押した点から動いていなければ読まない', () => {
-    // B-23: 行に触れるだけの操作（将来の編集への入口）と、消す操作を分ける。
-    expect(isDeleteSwipe(start, start)).toBe(false);
+  it('右へは引けない', () => {
+    // `削除` は右端にしか無い。
+    expect(swipeOffsetOf(false, start, { x: 260, y: 200 })).toBe(0);
+  });
+
+  it('開いた行は、開いた位置から引いた分だけ動く', () => {
+    expect(swipeOffsetOf(true, start, { x: 240, y: 200 })).toBe(-48);
+  });
+
+  it('開いた位置の88pxを越えて引いた分は、3分の1だけ動く', () => {
+    expect(swipeOffsetOf(false, start, { x: 82, y: 200 })).toBe(-98);
+  });
+});
+
+describe('離したときの落ち着き先 settlesRevealed', () => {
+  it('削除の半分の44pxを越えて見えていれば開く', () => {
+    expect(settlesRevealed(-45)).toBe(true);
+  });
+
+  it('ちょうど半分なら開かない', () => {
+    expect(settlesRevealed(-44)).toBe(false);
   });
 });
 
 // ---- 行のタップ（B-55）----
 
-/** タップを見る側の押した点。閾値が小さいので、原点から離した見分けのつく1点に固定する。 */
+/** タップを見る側の押した点。遊びが小さいので、原点から離した見分けのつく1点に固定する。 */
 const pressed = { x: 10, y: 10 };
 
 describe('行のタップ isTap', () => {
@@ -56,27 +71,22 @@ describe('行のタップ isTap', () => {
   });
 
   it('横にちょうど8px動いたらタップと読まない', () => {
-    // B-55 規則15: 境界は含まない。**期待値は literal で置く**（`docs/testing.md` 3章）。
+    // B-55 規則15: 境界は含まない。
     expect(isTap(pressed, { x: 18, y: 10 })).toBe(false);
   });
 
   it('縦に逆向きへちょうど8px動いてもタップと読まない', () => {
-    // B-55 規則15: 縦も横と同じ閾値で、向きは問わない（一覧は縦に長く、送りの操作がある）。
+    // B-55 規則15: 縦も横と同じ遊びで、向きは問わない（一覧は縦に長く、送りの操作がある）。
     expect(isTap(pressed, { x: 10, y: 2 })).toBe(false);
   });
 
-  it('削除のスワイプと読む動きはタップと読まない', () => {
-    // B-55 規則15: **削除として読んだ動きで編集を開かない** — 取り消しの無い削除と、
-    // 編集の画面が同時に起きる。
-    const dragged = { x: 80, y: 10 };
+  it('なぞり始めと読む動きはタップと読まない', () => {
+    // B-55 規則15: なぞりと編集の画面が同時に起きない。
+    const dragged = { x: 2, y: 10 };
 
-    expect([isTap(pressed, dragged), isDeleteSwipe(pressed, dragged)]).toEqual([false, true]);
-  });
-
-  it('どちらにも当たらない中途半端な動きはタップでも削除のスワイプでもない', () => {
-    // B-55 規則15: 何も起こさない。閾値（8px と 64px）の間に隙間があることを守る。
-    const halfway = { x: 40, y: 10 };
-
-    expect([isTap(pressed, halfway), isDeleteSwipe(pressed, halfway)]).toEqual([false, false]);
+    expect([isTap(pressed, dragged), startsHorizontalDrag(pressed, dragged)]).toEqual([
+      false,
+      true,
+    ]);
   });
 });
