@@ -79,9 +79,20 @@ const db = drizzle(connection);
 // drizzle の handle とは別に持つ。置いた行は commit してから repository で読む。
 const rowConnection = postgres(APP_CONNECTION_STRING, { max: 1 });
 
+// 生成の回数を同時に数えるケース（45〜47）だけが使う3本。先と後のトランザクションと、待ちを見る
+// 観察用で分ける — 上の `connection` は `max: 1` なので、2本のトランザクションを同時に開けない。
+const firstCountConnection = postgres(APP_CONNECTION_STRING, { max: 1 });
+const firstCountDb = drizzle(firstCountConnection);
+const secondCountConnection = postgres(APP_CONNECTION_STRING, { max: 1 });
+const secondCountDb = drizzle(secondCountConnection);
+const observerConnection = postgres(APP_CONNECTION_STRING, { max: 1 });
+
 afterAll(async () => {
   await connection.end();
   await rowConnection.end();
+  await firstCountConnection.end();
+  await secondCountConnection.end();
+  await observerConnection.end();
 });
 
 /**
@@ -90,8 +101,8 @@ afterAll(async () => {
  * 複数のケースが同じ識別子を使うので、ケースごとではなくファイルの初めに1度だけ置く。
  */
 beforeAll(async () => {
-  // ケースの番号は 01〜44。`householdOf` と同じ形で、各ケースの2つの世帯を置く。
-  for (let caseIndex = 1; caseIndex <= 44; caseIndex += 1) {
+  // ケースの番号は 01〜47。`householdOf` と同じ形で、各ケースの2つの世帯を置く。
+  for (let caseIndex = 1; caseIndex <= 47; caseIndex += 1) {
     const caseNumber = String(caseIndex).padStart(2, '0');
     await insertUser(rowConnection, householdOf(caseNumber));
     await insertUser(rowConnection, householdOf(caseNumber, true));
@@ -180,6 +191,89 @@ function transactionWithoutClaims<T>(body: (tx: HouseholdTransaction) => Promise
     await tx.execute(sql`set local role authenticated`);
     return body(tx);
   });
+}
+
+/**
+ * ケース `n` の提案の識別子のうち、件数を積むためのもの。`index` は 0〜9 で、`suggestionIdOfCase` の
+ * `a1`〜`a4` とは末尾の並び（`c0`〜`c9`）で分ける。
+ */
+function numberedSuggestionIdOf(caseNumber: string, index: number): SuggestionId {
+  return suggestionIdOf(`6c6c6c6c-00${caseNumber}-4000-8000-0000000000c${index}`);
+}
+
+/** 窓の内側（`newerGeneratedAt`）の生成の提案を `size` 件作る。識別子は `c0` から順に振る。 */
+function generatedSuggestions(
+  caseNumber: string,
+  householdId: HouseholdId,
+  size: number,
+): Suggestion[] {
+  return Array.from({ length: size }, (_, index) =>
+    suggestion({
+      id: numberedSuggestionIdOf(caseNumber, index),
+      householdId,
+      generatedAt: newerGeneratedAt,
+    }),
+  );
+}
+
+type BackendRow = { pid: number };
+type WaitRow = { wait_event_type: string | null };
+
+/** 同時に数えるケースで、後のトランザクションがロックを待ち始めるまで見に行く回数の上限と間隔（秒）。 */
+const LOCK_WAIT_ATTEMPTS = 100;
+const LOCK_WAIT_INTERVAL_SECONDS = 0.02;
+
+/** 外から解ける約束。同時に数えるケースで、先のトランザクションのコミットを止めておくために使う（先行 `householdInvitation.test.ts`）。 */
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
+}
+
+/** そのバックエンドがいまロックを待っているかを、観察用の接続の `pg_stat_activity` で見る。 */
+async function isWaitingForLock(pid: number): Promise<boolean> {
+  const [row] = await observerConnection<WaitRow[]>`
+    select wait_event_type from pg_stat_activity where pid = ${pid}
+  `;
+  return row?.wait_event_type === 'Lock';
+}
+
+/**
+ * そのバックエンドがロックを待ち始めるまで待つ。上限を超えたら投げる — 待たないまま先へ進むと、
+ * 同時に数えたことを確かめたことにならない（先行 `householdInvitation.test.ts`）。
+ */
+async function waitUntilWaitingForLock(pid: number): Promise<void> {
+  for (let attempt = 0; attempt < LOCK_WAIT_ATTEMPTS; attempt += 1) {
+    if (await isWaitingForLock(pid)) {
+      return;
+    }
+    await observerConnection`select pg_sleep(${LOCK_WAIT_INTERVAL_SECONDS})`;
+  }
+  throw new Error(`後の数えがロックを待ち始めなかった（pid ${pid}）。`);
+}
+
+/**
+ * 後の数えが返るか、ロックを待ち始めるか、上限の回数に達するまで見に行く。返ったら `true`。
+ * 待たせてしまう実装でも、先を解く前にここを抜けられるようにする（解かずに待つと止まったままになる）。
+ */
+async function returnsWithoutWaiting(pid: number, hasReturned: () => boolean): Promise<boolean> {
+  for (let attempt = 0; attempt < LOCK_WAIT_ATTEMPTS; attempt += 1) {
+    if (hasReturned()) {
+      return true;
+    }
+    if (await isWaitingForLock(pid)) {
+      return false;
+    }
+    await observerConnection`select pg_sleep(${LOCK_WAIT_INTERVAL_SECONDS})`;
+  }
+  return hasReturned();
+}
+
+/** 先のトランザクションを、解かれたあとに巻き戻させるための失敗。 */
+class AbandonedTransaction extends Error {
+  override readonly name = 'AbandonedTransaction';
 }
 
 /** 実行が投げたものを返す（投げなければ `null`）。同じ実行を2度走らせないための形。 */
@@ -1148,5 +1242,160 @@ describe('提案リポジトリの実装（世帯のデータを消す）', () =
 
     // B-56a 規則7: 2度目の呼び出しも同じ結末。
     await expect(secondDeletion).resolves.toBeUndefined();
+  });
+});
+
+describe('提案リポジトリの実装（生成の回数を同時に数える）', () => {
+  // 窓の下端（ADR-049: 遡る24時間の窓）。積む提案は内側の `newerGeneratedAt`。
+  const since = middleGeneratedAt;
+
+  it('同じ世帯で、先のトランザクションが保存したままコミットしていない間に数えると、先のコミットを待ち、先の保存を含めた回数を返す', async () => {
+    const householdId = householdOf('45');
+    await saveAll(householdId, generatedSuggestions('45', householdId, 9));
+    const [secondBackend] = await secondCountConnection<BackendRow[]>`
+      select pg_backend_pid() as pid
+    `;
+
+    // 先は数えて1件保存したあと、コミットせずに止めておく。
+    const firstSaved = deferred<void>();
+    const releaseFirst = deferred<void>();
+    const firstTransaction = withHouseholdTransaction(firstCountDb, householdId, async (tx) => {
+      const repository = new SuggestionRepositoryImpl(tx);
+      const counted = await repository.countGeneratedByHouseholdSince(
+        householdId,
+        dateTimeOf(since),
+      );
+      await repository.save(
+        householdId,
+        suggestion({
+          id: numberedSuggestionIdOf('45', 9),
+          householdId,
+          generatedAt: newerGeneratedAt,
+        }),
+      );
+      firstSaved.resolve();
+      await releaseFirst.promise;
+      return counted;
+    });
+    await Promise.race([firstSaved.promise, firstTransaction]);
+
+    const secondTransaction = withHouseholdTransaction(secondCountDb, householdId, (tx) =>
+      new SuggestionRepositoryImpl(tx).countGeneratedByHouseholdSince(
+        householdId,
+        dateTimeOf(since),
+      ),
+    );
+    try {
+      await waitUntilWaitingForLock(secondBackend?.pid ?? -1);
+    } finally {
+      releaseFirst.resolve();
+    }
+
+    const counts = { first: await firstTransaction, second: await secondTransaction };
+
+    // B-83 設計 規則2・3 / NFR-C2 / ADR-049 決定1: 後の数えは先のコミットを待ち、先の保存を数えに入れる。
+    // だから上限の比較（`>= 10`）が並行でも10件を超えさせない。
+    expect(counts).toEqual({ first: 9, second: 10 });
+  });
+
+  it('別の世帯の数えは、先のトランザクションが数えたまま開いていても待たずに返る', async () => {
+    const lockedHouseholdId = householdOf('46');
+    const otherHouseholdId = householdOf('46', true);
+    await saveAll(otherHouseholdId, generatedSuggestions('46', otherHouseholdId, 1));
+    const [secondBackend] = await secondCountConnection<BackendRow[]>`
+      select pg_backend_pid() as pid
+    `;
+
+    // 世帯 A は数えたあと、コミットせずに止めておく。
+    const firstCounted = deferred<void>();
+    const releaseFirst = deferred<void>();
+    const firstTransaction = withHouseholdTransaction(
+      firstCountDb,
+      lockedHouseholdId,
+      async (tx) => {
+        await new SuggestionRepositoryImpl(tx).countGeneratedByHouseholdSince(
+          lockedHouseholdId,
+          dateTimeOf(since),
+        );
+        firstCounted.resolve();
+        await releaseFirst.promise;
+      },
+    );
+    await Promise.race([firstCounted.promise, firstTransaction]);
+
+    let secondReturned = false;
+    const secondTransaction = withHouseholdTransaction(secondCountDb, otherHouseholdId, (tx) =>
+      new SuggestionRepositoryImpl(tx).countGeneratedByHouseholdSince(
+        otherHouseholdId,
+        dateTimeOf(since),
+      ),
+    ).then((count) => {
+      secondReturned = true;
+      return count;
+    });
+    let returnedBeforeRelease: boolean;
+    try {
+      returnedBeforeRelease = await returnsWithoutWaiting(
+        secondBackend?.pid ?? -1,
+        () => secondReturned,
+      );
+    } finally {
+      releaseFirst.resolve();
+    }
+    await firstTransaction;
+
+    // B-83 設計 規則4 / C-9: 鍵は世帯から作る。別の世帯どうしは互いを待たない。
+    expect({ returnedBeforeRelease, count: await secondTransaction }).toEqual({
+      returnedBeforeRelease: true,
+      count: 1,
+    });
+  });
+
+  it('先のトランザクションがロールバックで終わっても、待っていた後の数えは進み、巻き戻った保存を含めない回数を返す', async () => {
+    const householdId = householdOf('47');
+    await saveAll(householdId, generatedSuggestions('47', householdId, 9));
+    const [secondBackend] = await secondCountConnection<BackendRow[]>`
+      select pg_backend_pid() as pid
+    `;
+
+    // 先は数えて1件保存し、止めておく。解かれたら投げて巻き戻る。
+    const firstSaved = deferred<void>();
+    const releaseFirst = deferred<void>();
+    const firstTransaction = withHouseholdTransaction(firstCountDb, householdId, async (tx) => {
+      const repository = new SuggestionRepositoryImpl(tx);
+      await repository.countGeneratedByHouseholdSince(householdId, dateTimeOf(since));
+      await repository.save(
+        householdId,
+        suggestion({
+          id: numberedSuggestionIdOf('47', 9),
+          householdId,
+          generatedAt: newerGeneratedAt,
+        }),
+      );
+      firstSaved.resolve();
+      await releaseFirst.promise;
+      throw new AbandonedTransaction('先のトランザクションを巻き戻す');
+    });
+    const firstFailure = failureOf(firstTransaction);
+    await Promise.race([firstSaved.promise, firstFailure]);
+
+    const secondTransaction = withHouseholdTransaction(secondCountDb, householdId, (tx) =>
+      new SuggestionRepositoryImpl(tx).countGeneratedByHouseholdSince(
+        householdId,
+        dateTimeOf(since),
+      ),
+    );
+    try {
+      await waitUntilWaitingForLock(secondBackend?.pid ?? -1);
+    } finally {
+      releaseFirst.resolve();
+    }
+
+    const failure = await firstFailure;
+    const secondCount = await secondTransaction;
+
+    // B-83 設計 規則6: ロールバックでもロックは外れ、待っていた数えが進む。巻き戻った保存は数えない。
+    expect(failure).toBeInstanceOf(AbandonedTransaction);
+    expect(secondCount).toBe(9);
   });
 });
