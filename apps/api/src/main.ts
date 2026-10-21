@@ -17,6 +17,7 @@ import type {
   FetchJwks,
 } from './contexts/identity/infrastructure/HouseholdAuthenticatorImpl.js';
 import { HouseholdAuthenticatorImpl } from './contexts/identity/infrastructure/HouseholdAuthenticatorImpl.js';
+import { IdentityRuleViolation } from './contexts/identity/domain/error/IdentityRuleViolation.js';
 import type { HouseholdRoutesDeps } from './contexts/identity/api/HouseholdRoutes.js';
 import { createHouseholdRoutes } from './contexts/identity/api/HouseholdRoutes.js';
 import { HouseholdInvitationCreatorImpl } from './contexts/identity/infrastructure/HouseholdInvitationCreatorImpl.js';
@@ -170,6 +171,11 @@ const now = (): string => new Date().toISOString();
  * 経路から受け取る第1引数は検証済みの利用者で、`withHouseholdTransaction` がそこから引いた
  * 世帯をユースケースの第1引数に渡す（C-9 / ADR-087 決定2）。
  *
+ * **世帯が `null`（`auth.users` に居ない利用者）なら、ユースケースを組み立てずに
+ * `IdentityRuleViolation`（`accessToken.invalid`）を投げる**（ADR-098 決定2）。経路はどれもこの名前を
+ * 401 に写す。トランザクションの中で投げるので、何も書かれずに巻き戻る。署名と期限は通っているが、
+ * 認証器で Supabase Auth に問い合わせて断らないのは ADR-098 案B を退けたためである。
+ *
  * **接続文字列は要求のたびに binding から読み、クライアントは要求ごとに作って閉じる。**
  * Workers は要求をまたいで TCP 接続を使い回せない。閉じるのは成功でも失敗でも（`finally`）。
  * `prepare: false` と `fetch_types: false` は Hyperdrive 経由で要る（ADR-042 決定3）。
@@ -187,9 +193,15 @@ function transactionPerRequest<Args extends unknown[], Result>(
     const client = postgres(connectionString, { prepare: false, fetch_types: false });
 
     try {
-      return await withHouseholdTransaction(drizzle(client), userId, (tx, householdId) =>
-        build(tx)(householdId, ...args),
-      );
+      return await withHouseholdTransaction(drizzle(client), userId, (tx, householdId) => {
+        if (householdId === null) {
+          throw new IdentityRuleViolation(
+            'accessToken.invalid',
+            'アクセストークンの利用者がどの世帯にも解決されない',
+          );
+        }
+        return build(tx)(householdId, ...args);
+      });
     } finally {
       await client.end();
     }

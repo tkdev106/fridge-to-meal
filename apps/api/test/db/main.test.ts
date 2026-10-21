@@ -5,7 +5,7 @@ import type {
   SuggestMealsOutput,
 } from '@fridge-to-meal/contract';
 import postgres from 'postgres';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Bindings } from '../../src/main.js';
 import { composeDependencies, createApp } from '../../src/main.js';
 import type { HouseholdId } from '../../src/shared/domain/HouseholdId.js';
@@ -109,6 +109,17 @@ const reusedCreator = householdIdOf('b74d3000-0003-4000-8000-000000000001');
 const firstReusingJoiner = householdIdOf('b74d3000-0003-4000-8000-000000000002');
 const secondReusingJoiner = householdIdOf('b74d3000-0003-4000-8000-000000000003');
 
+// B-82: 他のメンバーが残る世帯の作成者がアカウントを消したあとのトークン。先頭の並び（`b82c3000`）で分けてある。
+// 作った人（参加の行なし）の利用者 ID がそのまま世帯 ID である（ADR-087 決定1）。
+const listingDeletedCreator = householdIdOf('b82c3000-0001-4000-8000-000000000001');
+const listingRemainingMember = householdIdOf('b82c3000-0001-4000-8000-000000000002');
+const registeringDeletedCreator = householdIdOf('b82c3000-0002-4000-8000-000000000001');
+const registeringRemainingMember = householdIdOf('b82c3000-0002-4000-8000-000000000002');
+const invitingDeletedCreator = householdIdOf('b82c3000-0003-4000-8000-000000000001');
+const invitingRemainingMember = householdIdOf('b82c3000-0003-4000-8000-000000000002');
+const remainingCreatorHousehold = householdIdOf('b82c3000-0004-4000-8000-000000000001');
+const readingRemainingMember = householdIdOf('b82c3000-0004-4000-8000-000000000002');
+
 /** どの世帯も保存していない在庫品の識別子（#15）。 */
 const unsavedStockItemId = 'b9990000-0000-4000-8000-0000000000ff';
 
@@ -162,6 +173,37 @@ const rowConnection = postgres(APP_CONNECTION_STRING, { max: 1 });
 
 afterAll(async () => {
   await rowConnection.end();
+});
+
+/**
+ * トークンの `sub` に使う利用者のうち、ケースの中で置かないものを `auth.users` に置く。
+ * 居ない利用者の世帯は null に解決される（ADR-098 決定1）。複数のケースが同じ世帯を使うので、
+ * ケースごとではなくファイルの初めに1度だけ置く。
+ */
+beforeAll(async () => {
+  const users = [
+    registerHousehold,
+    twoItemsHousehold,
+    updateHousehold,
+    deleteHousehold,
+    ownerOfListedHousehold,
+    emptyNeighborHousehold,
+    ownerOfUpdatedHousehold,
+    updatingNeighborHousehold,
+    ownerOfDeletedHousehold,
+    deletingNeighborHousehold,
+    rejectedThenRegisterHousehold,
+    unsavedIdHousehold,
+    emptyGeminiKeyHousehold,
+    checkedWithoutKeyHousehold,
+    neverUsedHousehold,
+    sharingJoinedHousehold,
+    readingJoinedHousehold,
+    unrelatedHousehold,
+  ];
+  for (const user of users) {
+    await insertUser(rowConnection, user);
+  }
 });
 
 /** 実時刻からの固定オフセットで秒を置く。`exp` の本題は前後関係だけである。 */
@@ -322,6 +364,21 @@ async function joinRequest(userId: HouseholdId, token: string) {
     '/household/join',
     jsonRequest('POST', { token }, bearerHeaders(await accessTokenFor(userId))),
   );
+}
+
+/**
+ * 他のメンバーが残る世帯の作成者に、アカウントを消させる（B-82）。作成者の世帯に9表の行を置き、
+ * メンバーを参加させてから、作成者のトークンで `DELETE /household-data` を叩く。2人以上なので
+ * 消えるのは作成者だけで、世帯の行はメンバーのものとして残る（ADR-087 決定6）。本題ではない下ごしらえ。
+ */
+async function deletedCreatorWithRemainingMember(
+  creator: HouseholdId,
+  member: HouseholdId,
+): Promise<void> {
+  await seedHouseholdData(creator);
+  await joinHousehold(member, creator);
+  const response = await deleteHouseholdDataRequest(creator);
+  expect(response.status).toBe(204);
 }
 
 /** その世帯の9表の行数を、クレームを張った別のトランザクションで読む。 */
@@ -705,6 +762,9 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
       await seedHouseholdData(fullyDeletedHousehold);
       const response = await deleteHouseholdDataRequest(fullyDeletedHousehold);
       expect(response.status).toBe(204);
+      // ADR-098 結果1: 消えた利用者の世帯は null に解決され、行が残っていても0行に見える。
+      // 同じ ID で利用者を置き直し、世帯が同じ ID に解決される状態で読む（行が消えたことを見るため）。
+      await insertUser(rowConnection, fullyDeletedHousehold);
 
       await expect(rowCountsOf(fullyDeletedHousehold)).resolves.toEqual(noRows);
     });
@@ -719,31 +779,31 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
       await expect(rowCountsOf(untouchedNeighborHousehold)).resolves.toEqual(seededRows);
     });
 
-    it('世帯のデータを消したあとも、同じアクセストークンで在庫の一覧が 200 の空で返る', async () => {
-      // 利用者を消しても、トークンは期限まで通る（ADR-071 結果2。api では断らない）。
+    it('世帯のデータを消したあと、同じアクセストークンで在庫の一覧を求めると 401 accessToken.invalid が返る', async () => {
+      // ADR-098 結果1 / B-82 設計 規則9・10: 消えた利用者のトークンは、期限の前でも api が断る。
       await seedHouseholdData(listAfterDeletionHousehold);
       const deleteResponse = await deleteHouseholdDataRequest(listAfterDeletionHousehold);
       expect(deleteResponse.status).toBe(204);
 
       const response = await getStockItems(listAfterDeletionHousehold);
 
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({ stockItems: [] });
+      expect(response.status).toBe(401);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'accessToken.invalid' });
     });
 
-    it('世帯のデータを消したあと、同じアクセストークンで登録した在庫品は一覧に出る', async () => {
-      // 利用者を消しても、トークンは期限まで通る（ADR-071 結果2。api では断らない）。
+    it('世帯のデータを消したあと、同じアクセストークンで在庫品を登録すると 401 accessToken.invalid が返る', async () => {
+      // ADR-098 結果1 / B-82 設計 規則9・10: 消えた利用者のトークンは、期限の前でも api が断る。
       await seedHouseholdData(registerAfterDeletionHousehold);
       const deleteResponse = await deleteHouseholdDataRequest(registerAfterDeletionHousehold);
       expect(deleteResponse.status).toBe(204);
-      const registered = await registeredStockItem(registerAfterDeletionHousehold, {
+
+      const response = await postStockItem(registerAfterDeletionHousehold, {
         name: 'ごぼう',
         useForMeals: true,
       });
 
-      const stockItems = await listedStockItems(registerAfterDeletionHousehold);
-
-      expect(stockItems.map((stockItem) => stockItem.id)).toEqual([registered.id]);
+      expect(response.status).toBe(401);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'accessToken.invalid' });
     });
 
     it('行が1行も無い世帯のデータを消しても 204 が返る', async () => {
@@ -753,16 +813,16 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
       expect(response.status).toBe(204);
     });
 
-    it('同じ世帯のデータを続けて2度消しても、2度目も 204 が返る', async () => {
-      // 規則7: 2度目の呼び出しも同じ結末。
-      // 規則7（B-56d）: 1度目で利用者が消えていても、2度目は断らない。
+    it('同じ世帯のデータを続けて2度消すと、2度目は 401 accessToken.invalid が返る', async () => {
+      // ADR-098 結果1 / B-82 設計 規則9・10: 1度目で利用者が消えたので、2度目のトークンは api が断る。
       await seedHouseholdData(deletedTwiceHousehold);
       const firstResponse = await deleteHouseholdDataRequest(deletedTwiceHousehold);
       expect(firstResponse.status).toBe(204);
 
       const response = await deleteHouseholdDataRequest(deletedTwiceHousehold);
 
-      expect(response.status).toBe(204);
+      expect(response.status).toBe(401);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'accessToken.invalid' });
     });
   });
 
@@ -924,11 +984,15 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
 
     it('参加した利用者には、参加前に自分のトークンで登録した在庫品が一覧に出ない', async () => {
       // C-9 / ADR-087 決定2: 参加したあとの世帯は参加先であり、自分の ID の世帯の行は見えない。
+      await insertUser(rowConnection, formerlyLoneUser);
       const registeredBeforeJoining = await registeredStockItem(formerlyLoneUser, {
         name: 'ごぼう',
         useForMeals: true,
       });
-      await joinHousehold(formerlyLoneUser, formerlyLoneJoinedHousehold);
+      await insertHouseholdMember(rowConnection, {
+        userId: formerlyLoneUser,
+        householdId: formerlyLoneJoinedHousehold,
+      });
 
       const stockItems = await listedStockItems(formerlyLoneUser);
 
@@ -944,6 +1008,57 @@ describe('composition root main（ローカル Postgres を通す全経路）', 
 
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toEqual({ stockItems: [] });
+    });
+  });
+  describe('アカウントを消した利用者のトークンは断られる（B-82）', () => {
+    it('他のメンバーが残る世帯の作成者がアカウントを消したあと、そのトークンで在庫の一覧を求めると 401 accessToken.invalid が返る', async () => {
+      // ADR-098 決定1・2 / B-82 設計 規則6・9・10 / C-9: 消えた利用者は残った世帯に解決されず、api が断る。
+      await deletedCreatorWithRemainingMember(listingDeletedCreator, listingRemainingMember);
+
+      const response = await getStockItems(listingDeletedCreator);
+
+      expect(response.status).toBe(401);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'accessToken.invalid' });
+    });
+
+    it('他のメンバーが残る世帯の作成者がアカウントを消したあと、そのトークンで登録しようとした在庫品は残ったメンバーの一覧に出ない', async () => {
+      // ADR-098 決定1・2 / B-82 設計 規則6・9 / C-9: 断った要求は残った世帯に何も書かない。
+      await deletedCreatorWithRemainingMember(
+        registeringDeletedCreator,
+        registeringRemainingMember,
+      );
+      await postStockItem(registeringDeletedCreator, { name: 'ごぼう', useForMeals: true });
+
+      const stockItems = await listedStockItems(registeringRemainingMember);
+
+      expect(stockItems.map((stockItem) => stockItem.name)).not.toContain('ごぼう');
+    });
+
+    it('他のメンバーが残る世帯の作成者がアカウントを消したあと、そのトークンで招待を作ろうとすると 401 accessToken.invalid が返る', async () => {
+      // ADR-098 決定1・2 / B-82 設計 規則4・9・10: 消した人のトークンで残った世帯への招待を作らせない。
+      await deletedCreatorWithRemainingMember(invitingDeletedCreator, invitingRemainingMember);
+
+      const response = await app.request('/household/invitations', {
+        method: 'POST',
+        headers: bearerHeaders(await accessTokenFor(invitingDeletedCreator)),
+      });
+
+      expect(response.status).toBe(401);
+      await expect(failureBody(response)).resolves.toEqual({ rule: 'accessToken.invalid' });
+    });
+
+    it('他のメンバーが残る世帯の作成者がアカウントを消したあとも、残ったメンバーのトークンでは世帯の在庫品2件が一覧に出る', async () => {
+      // ADR-098 結果2 / B-82 設計 規則6・11 / ADR-087 決定6: auth.users に居る利用者の振る舞いは変わらない。
+      await deletedCreatorWithRemainingMember(remainingCreatorHousehold, readingRemainingMember);
+
+      const response = await getStockItems(readingRemainingMember);
+
+      expect(response.status).toBe(200);
+      const stockItems = ((await response.json()) as ListStockItemsOutput).stockItems;
+      expect(stockItems.map((stockItem) => stockItem.name).sort()).toEqual([
+        'たまねぎ',
+        'にんじん',
+      ]);
     });
   });
 });

@@ -14,6 +14,7 @@ import { countHouseholdRows } from '../support/db/HouseholdRows.js';
 import { insertChildRow, insertMeal } from '../support/db/MealRows.js';
 import { insertSuggestion, insertSuggestionChildRow } from '../support/db/SuggestionRows.js';
 import { withTransaction } from '../support/db/WithTransaction.js';
+import { resolvedHousehold } from '../support/db/ResolvedHousehold.js';
 
 /**
  * 人数を返す関数 `private.household_member_count()` と、世帯を抜ける関数
@@ -490,7 +491,9 @@ describe('2関数の置き場所と権限', () => {
 function countWithImpl(userId: string, argumentHousehold?: string): Promise<number> {
   return withHouseholdTransaction(db, householdIdOf(userId), (tx, householdId) =>
     new HouseholdMemberCounterImpl(tx).count(
-      argumentHousehold === undefined ? householdId : householdIdOf(argumentHousehold),
+      argumentHousehold === undefined
+        ? resolvedHousehold(householdId)
+        : householdIdOf(argumentHousehold),
     ),
   );
 }
@@ -498,7 +501,9 @@ function countWithImpl(userId: string, argumentHousehold?: string): Promise<numb
 function leaveWithImpl(userId: string, argumentHousehold?: string): Promise<boolean> {
   return withHouseholdTransaction(db, householdIdOf(userId), (tx, householdId) =>
     new HouseholdLeaverImpl(tx).leave(
-      argumentHousehold === undefined ? householdId : householdIdOf(argumentHousehold),
+      argumentHousehold === undefined
+        ? resolvedHousehold(householdId)
+        : householdIdOf(argumentHousehold),
     ),
   );
 }

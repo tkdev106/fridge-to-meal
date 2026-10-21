@@ -164,6 +164,7 @@ describe('参加した利用者から見た世帯のデータの9表', () => {
     const memberUser = sampleIdOf(1, table, 1);
     const joinedHousehold = sampleIdOf(1, table, 2);
     const rowId = sampleIdOf(1, table, 3);
+    await insertUser(rowConnection, joinedHousehold);
     // 参加先の持ち主（参加の行なし）のクレームで、参加先の世帯の行を置く。
     await withTransaction(connection, joinedHousehold, (tx) =>
       insertRowWithParent(tx, table, rowId, joinedHousehold),
@@ -207,6 +208,7 @@ describe('参加した利用者から見た世帯のデータの9表', () => {
     const memberUser = sampleIdOf(3, table, 1);
     const joinedHousehold = sampleIdOf(3, table, 2);
     const rowId = sampleIdOf(3, table, 3);
+    await insertUser(rowConnection, joinedHousehold);
     // 親は参加先の持ち主（参加の行なし）が置く。本題は表そのものの行である。
     await withTransaction(connection, joinedHousehold, (tx) =>
       prepareParent(tx, table, rowId, joinedHousehold),

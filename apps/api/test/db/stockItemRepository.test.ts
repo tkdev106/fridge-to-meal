@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createStockItem } from '../../src/contexts/pantry/domain/entity/StockItem.js';
 import { PantryRuleViolation } from '../../src/contexts/pantry/domain/error/PantryRuleViolation.js';
 import { amountOf } from '../../src/contexts/pantry/domain/value/Amount.js';
@@ -14,6 +14,7 @@ import type { HouseholdTransaction } from '../../src/shared/infrastructure/db/Ho
 import { withHouseholdTransaction } from '../../src/shared/infrastructure/db/HouseholdTransaction.js';
 import type { HouseholdId } from '../../src/shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../src/shared/domain/HouseholdId.js';
+import { insertUser } from '../support/db/AuthUsers.js';
 import { APP_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
 import { withTransaction } from '../support/db/WithTransaction.js';
 
@@ -60,6 +61,80 @@ const db = drizzle(connection);
 
 afterAll(async () => {
   await connection.end();
+});
+
+/**
+ * このファイルの世帯の識別子を、利用者として `auth.users` に置く。クレームの `sub` の利用者が
+ * 居なければ世帯は null に解決され、どの行も見えず書けなくなる（ADR-098 決定1）。
+ * 複数のケースが同じ識別子を使うので、ケースごとではなくファイルの初めに1度だけ置く。
+ */
+beforeAll(async () => {
+  for (const userId of [
+    roundTripHouseholdId,
+    reapplyClaimsHouseholdId,
+    rollbackHouseholdId,
+    notFoundHouseholdId,
+    ownerHouseholdId,
+    strangerHouseholdId,
+    argumentMismatchHouseholdId,
+    passedHouseholdId,
+    collisionOwnerHouseholdId,
+    colliderHouseholdId,
+    overwriteHouseholdId,
+    clearAmountHouseholdId,
+    clearExpiryDateHouseholdId,
+    clearIngredientHouseholdId,
+    saveMismatchHouseholdId,
+    saveMismatchStockItemSideHouseholdId,
+    untouchedHouseholdId,
+    untouchedStockItemSideHouseholdId,
+    deletionHouseholdId,
+    unsavedDeletionHouseholdId,
+    deletionOwnerHouseholdId,
+    deletionStrangerHouseholdId,
+    deletionMismatchHouseholdId,
+    deletionPassedHouseholdId,
+    listingHouseholdId,
+    emptyListingHouseholdId,
+    listingOwnerHouseholdId,
+    listingStrangerHouseholdId,
+    listingMismatchHouseholdId,
+    listingPassedHouseholdId,
+    valueRoundTripHouseholdId,
+    whitespaceHouseholdId,
+    nonUuidIngredientHouseholdId,
+    savedNamesHouseholdId,
+    deletedNameHouseholdId,
+    duplicateNameHouseholdId,
+    notationHouseholdId,
+    namesOwnerHouseholdId,
+    namesStrangerHouseholdId,
+    namesMismatchHouseholdId,
+    namesPassedHouseholdId,
+    namesSaveMismatchHouseholdId,
+    namesSaveMismatchStockItemSideHouseholdId,
+    namesRollbackHouseholdId,
+    householdDeletionHouseholdId,
+    namesDeletionHouseholdId,
+    survivingStockItemOwnerHouseholdId,
+    survivingStockItemStrangerHouseholdId,
+    survivingNamesOwnerHouseholdId,
+    survivingNamesStrangerHouseholdId,
+    householdDeletionMismatchHouseholdId,
+    householdDeletionPassedHouseholdId,
+    namesDeletionMismatchHouseholdId,
+    namesDeletionPassedHouseholdId,
+    emptyHouseholdDeletionHouseholdId,
+    repeatedHouseholdDeletionHouseholdId,
+    useForMealsTrueHouseholdId,
+    useForMealsFalseHouseholdId,
+    useForMealsListingHouseholdId,
+    useForMealsOverwriteHouseholdId,
+    useForMealsDefaultHouseholdId,
+    useForMealsNullHouseholdId,
+  ]) {
+    await insertUser(connection, userId);
+  }
 });
 
 /**

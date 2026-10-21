@@ -44,6 +44,18 @@ const deletedMemberHousehold = 'b73a0000-0014-4000-8000-000000000002';
 const recreatedMemberUser = 'b73a0000-0015-4000-8000-000000000001';
 const recreatedMemberHousehold = 'b73a0000-0015-4000-8000-000000000002';
 
+// B-82 のケース。先頭の並び（`b82a`）で上のケースと分ける。`auth.users` に1度も置かない利用者。
+const neverPlacedUser = 'b82a0000-0001-4000-8000-000000000001';
+
+const deletedCreatorUser = 'b82a0000-0002-4000-8000-000000000001';
+const deletedCreatorMemberUser = 'b82a0000-0002-4000-8000-000000000002';
+
+const remainingCreatorUser = 'b82a0000-0003-4000-8000-000000000001';
+const remainingMemberUser = 'b82a0000-0003-4000-8000-000000000002';
+
+const leftCreatorUser = 'b82a0000-0004-4000-8000-000000000001';
+const leftCreatorMemberUser = 'b82a0000-0004-4000-8000-000000000002';
+
 // 1本の接続で複数のトランザクションを張る（先行 `userDeleter.test.ts`）。
 const connection = postgres(APP_CONNECTION_STRING, { max: 1 });
 
@@ -96,6 +108,22 @@ async function currentHouseholdId(tx: TransactionSql): Promise<string | null> {
 /** 利用者のクレームを張って関数を呼ぶ。 */
 function currentHouseholdIdOf(userId: string): Promise<string | null> {
   return withTransaction(connection, userId, currentHouseholdId);
+}
+
+/** 利用者のクレームを張って、アカウントを消す関数を呼ぶ。 */
+function deleteOwnAccountOf(userId: string): Promise<unknown> {
+  return withTransaction(connection, userId, (tx) => tx`select private.delete_own_account()`);
+}
+
+/**
+ * 作った人と参加者1人の世帯を置く。作った人は参加の行を持たず、世帯 ID は作った人の利用者 ID
+ * （ADR-087 決定1）。返り値は世帯 ID。
+ */
+async function placeHouseholdWithMember(creator: string, member: string): Promise<string> {
+  await insertUser(rowConnection, creator);
+  await insertUser(rowConnection, member);
+  await insertHouseholdMember(rowConnection, { userId: member, householdId: creator });
+  return creator;
 }
 
 describe('世帯を決める関数 private.current_household_id() と参加の表・招待の表', () => {
@@ -304,5 +332,41 @@ describe('世帯を決める関数 private.current_household_id() と参加の�
     // ADR-087 決定2・6 / 設計 規則11: 参加の行は外部キーの on delete cascade で一緒に消える。
     // 参加の表は authenticator にも select を与えないので、関数の返す世帯で間接に見る。
     await expect(currentHouseholdIdOf(recreatedMemberUser)).resolves.toBe(recreatedMemberUser);
+  });
+
+  it('auth.users に居ない利用者のクレームで呼ぶと、参加の行が無くても null が返る', async () => {
+    // ADR-098 決定1 / B-82 設計 規則2: 利用者 ID を世帯に使うのは、利用者が居るときだけ。
+    await expect(currentHouseholdIdOf(neverPlacedUser)).resolves.toBeNull();
+  });
+
+  it('他のメンバーが残る世帯の作った人がアカウントを消したあと、その人のクレームで呼ぶと null が返る', async () => {
+    await placeHouseholdWithMember(deletedCreatorUser, deletedCreatorMemberUser);
+    await deleteOwnAccountOf(deletedCreatorUser);
+
+    // ADR-098 状況・決定1 / ADR-087 決定6 / FR-27 / B-82 設計 規則6: 消した人のトークンは
+    // 期限まで署名が通るが、残った世帯に解決させない。
+    await expect(currentHouseholdIdOf(deletedCreatorUser)).resolves.toBeNull();
+  });
+
+  it('他のメンバーが残る世帯の作った人がアカウントを消しても、残った参加者の世帯は元の世帯のまま変わらない', async () => {
+    const household = await placeHouseholdWithMember(remainingCreatorUser, remainingMemberUser);
+    await deleteOwnAccountOf(remainingCreatorUser);
+
+    // C-9 / B-82 設計 規則6: 残ったメンバーの世帯は参加の行が決める。
+    await expect(currentHouseholdIdOf(remainingMemberUser)).resolves.toBe(household);
+  });
+
+  it('世帯を抜けてからアカウントを消した作った人のクレームで呼ぶと、元の世帯ではなく null が返る', async () => {
+    await placeHouseholdWithMember(leftCreatorUser, leftCreatorMemberUser);
+    await withTransaction(
+      connection,
+      leftCreatorUser,
+      (tx) => tx`select private.leave_household()`,
+    );
+    await deleteOwnAccountOf(leftCreatorUser);
+
+    // ADR-098 状況 / B-82 設計 規則7: 抜けて増えた参加の行は利用者と一緒に消える。
+    // 残るのは利用者 ID だけで、それは元の世帯 ID と同じ値である。
+    await expect(currentHouseholdIdOf(leftCreatorUser)).resolves.toBeNull();
   });
 });
