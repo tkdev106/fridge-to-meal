@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, inArray } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { Suggestion } from '../domain/entity/Suggestion.js';
 import { createSuggestion } from '../domain/entity/Suggestion.js';
 import { MealRuleViolation } from '../domain/error/MealRuleViolation.js';
@@ -160,6 +160,12 @@ export class SuggestionRepositoryImpl implements SuggestionRepository {
    * **下端は含む**（`generated_at >= since`）。`count` は `number` に写して返す。
    */
   async countGeneratedByHouseholdSince(householdId: HouseholdId, since: DateTime): Promise<number> {
+    // ADR-099: 同じ世帯の数え〜コミットを直列にし、並行の要求でも上限を超えさせない。
+    // 数える問い合わせと同じ文にしない — READ COMMITTED では文の開始時のスナップショットで数え、
+    // 待っている間に先の要求がコミットした保存が見えない。
+    // セッション単位の `pg_advisory_lock` にしない — Hyperdrive が貸し回す接続に外し忘れが残る。
+    await this.tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${householdId}, 0))`);
+
     const generatedSuggestionIds = this.tx
       .select({ suggestionId: suggestionEntries.suggestionId })
       .from(suggestionEntries)
