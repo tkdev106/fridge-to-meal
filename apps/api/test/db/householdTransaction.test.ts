@@ -10,6 +10,7 @@ import { withHouseholdTransaction } from '../../src/shared/infrastructure/db/Hou
 import { countUser, insertUser } from '../support/db/AuthUsers.js';
 import { APP_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
 import { insertHouseholdMember } from '../support/db/HouseholdMembers.js';
+import { resolvedHousehold } from '../support/db/ResolvedHousehold.js';
 
 /**
  * `withHouseholdTransaction` が、渡された利用者から世帯を引いて本体に渡すこと
@@ -34,6 +35,9 @@ const registeredStockItemId = stockItemIdOf('b73c0000-0003-4000-8000-0000000000f
 
 const deletingUser = 'b73c0000-0004-4000-8000-000000000001';
 const ownerOfJoinedHousehold = 'b73c0000-0004-4000-8000-000000000002';
+
+// B-82 のケース。先頭の並び（`b82b`）で上のケースと分ける。`auth.users` に1度も置かない利用者。
+const neverPlacedUser = 'b82b0000-0001-4000-8000-000000000001';
 
 // 1本の接続で複数のトランザクションを張る（先行 `stockItemRepository.test.ts`）。
 const connection = postgres(APP_CONNECTION_STRING, { max: 1 });
@@ -67,6 +71,7 @@ describe('withHouseholdTransaction（利用者から世帯を引く）', () => {
 
   it('参加の行が無い利用者を渡すと、本体には利用者自身の ID が世帯として渡る', async () => {
     // 規則5・6 / ADR-087 決定1: 参加していない利用者の世帯は、今と同じ自分の ID である。
+    await insertUser(rowConnection, loneUser);
     const received = await withHouseholdTransaction(db, loneUser, async (_tx, householdId) =>
       Promise.resolve(householdId),
     );
@@ -76,9 +81,11 @@ describe('withHouseholdTransaction（利用者から世帯を引く）', () => {
 
   it('参加の行がある利用者の本体で登録した在庫品は、参加先の世帯の在庫品として持ち主から読める', async () => {
     // 規則8 / C-9: 受け取った世帯で書いた行は参加先の世帯のものになり、持ち主のトランザクションから見える。
+    await insertUser(rowConnection, registeredHousehold);
     await joinHousehold(registeringUser, registeredHousehold);
-    await withHouseholdTransaction(db, registeringUser, (tx, householdId) =>
-      new StockItemRepositoryImpl(tx).save(
+    await withHouseholdTransaction(db, registeringUser, (tx, receivedHousehold) => {
+      const householdId = resolvedHousehold(receivedHousehold);
+      return new StockItemRepositoryImpl(tx).save(
         householdId,
         createStockItem({
           id: registeredStockItemId,
@@ -89,11 +96,14 @@ describe('withHouseholdTransaction（利用者から世帯を引く）', () => {
           expiryDate: null,
           useForMeals: true,
         }),
-      ),
-    );
+      );
+    });
 
     const readByOwner = await withHouseholdTransaction(db, registeredHousehold, (tx, householdId) =>
-      new StockItemRepositoryImpl(tx).findById(householdId, registeredStockItemId),
+      new StockItemRepositoryImpl(tx).findById(
+        resolvedHousehold(householdId),
+        registeredStockItemId,
+      ),
     );
 
     expect(readByOwner).toMatchObject({
@@ -108,7 +118,7 @@ describe('withHouseholdTransaction（利用者から世帯を引く）', () => {
     await joinHousehold(deletingUser, ownerOfJoinedHousehold);
 
     await withHouseholdTransaction(db, deletingUser, (tx, householdId) =>
-      new UserDeleterImpl(tx).delete(householdId),
+      new UserDeleterImpl(tx).delete(resolvedHousehold(householdId)),
     );
 
     await expect(
@@ -117,5 +127,15 @@ describe('withHouseholdTransaction（利用者から世帯を引く）', () => {
         countUser(rowConnection, ownerOfJoinedHousehold),
       ]),
     ).resolves.toEqual([0, 1]);
+  });
+
+  it('auth.users に居ない利用者を渡すと、本体には世帯として null が渡る', async () => {
+    // B-82 設計 規則2・8 / ADR-098 決定2: 関数の値が null なら householdIdOf に通さず、例外にもせず
+    // null のまま本体に渡す。断るかどうかは呼ぶ側（main.ts）が決める。
+    const received = await withHouseholdTransaction(db, neverPlacedUser, async (_tx, householdId) =>
+      Promise.resolve(householdId),
+    );
+
+    expect(received).toBeNull();
   });
 });

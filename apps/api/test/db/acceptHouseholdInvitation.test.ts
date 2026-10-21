@@ -10,7 +10,6 @@ import { SuggestionRepositoryImpl } from '../../src/contexts/meal/infrastructure
 import { acceptHouseholdInvitation } from '../../src/contexts/meal/usecase/AcceptHouseholdInvitation.js';
 import { StockItemRepositoryImpl } from '../../src/contexts/pantry/infrastructure/StockItemRepositoryImpl.js';
 import { deleteHouseholdStockItems } from '../../src/contexts/pantry/usecase/DeleteHouseholdStockItems.js';
-import type { HouseholdId } from '../../src/shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../src/shared/domain/HouseholdId.js';
 import { withHouseholdTransaction } from '../../src/shared/infrastructure/db/HouseholdTransaction.js';
 import { insertUser } from '../support/db/AuthUsers.js';
@@ -22,6 +21,7 @@ import { countHouseholdRows } from '../support/db/HouseholdRows.js';
 import { insertChildRow, insertMeal } from '../support/db/MealRows.js';
 import { insertSuggestion, insertSuggestionChildRow } from '../support/db/SuggestionRows.js';
 import { withTransaction } from '../support/db/WithTransaction.js';
+import { resolvedHousehold } from '../support/db/ResolvedHousehold.js';
 
 /**
  * 招待で参加するユースケースを、ローカル Postgres の上で本物の実装から組み、1トランザクションに
@@ -152,7 +152,7 @@ function householdRowsSeenBy(viewer: string, householdId: string): Promise<House
  * 中で参加する（先行 `deleteHouseholdData.test.ts` の `deleteAccountOf`）。
  */
 function acceptOf(userId: string, token: string): Promise<void> {
-  return withHouseholdTransaction(db, householdIdOf(userId), (tx, householdId: HouseholdId) =>
+  return withHouseholdTransaction(db, householdIdOf(userId), (tx, householdId) =>
     acceptHouseholdInvitation({
       countHouseholdMembers: countHouseholdMembers({
         householdMemberCounter: new HouseholdMemberCounterImpl(tx),
@@ -163,7 +163,7 @@ function acceptOf(userId: string, token: string): Promise<void> {
       joinHousehold: joinHousehold({ householdJoiner: new HouseholdJoinerImpl(tx) }),
       mealRepository: new MealRepositoryImpl(tx),
       suggestionRepository: new SuggestionRepositoryImpl(tx),
-    })(householdId, token),
+    })(resolvedHousehold(householdId), token),
   );
 }
 

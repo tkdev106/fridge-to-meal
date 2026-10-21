@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Suggestion } from '../../src/contexts/meal/domain/entity/Suggestion.js';
 import { createSuggestion } from '../../src/contexts/meal/domain/entity/Suggestion.js';
 import { MealRuleViolation } from '../../src/contexts/meal/domain/error/MealRuleViolation.js';
@@ -24,6 +24,7 @@ import type { HouseholdTransaction } from '../../src/shared/infrastructure/db/Ho
 import { withHouseholdTransaction } from '../../src/shared/infrastructure/db/HouseholdTransaction.js';
 import type { HouseholdId } from '../../src/shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../src/shared/domain/HouseholdId.js';
+import { insertUser } from '../support/db/AuthUsers.js';
 import { APP_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
 import { insertSuggestion, insertSuggestionChildRow } from '../support/db/SuggestionRows.js';
 import { withTransaction } from '../support/db/WithTransaction.js';
@@ -81,6 +82,20 @@ const rowConnection = postgres(APP_CONNECTION_STRING, { max: 1 });
 afterAll(async () => {
   await connection.end();
   await rowConnection.end();
+});
+
+/**
+ * このファイルの世帯の識別子を、利用者として `auth.users` に置く。クレームの `sub` の利用者が
+ * 居なければ世帯は null に解決され、どの行も見えず書けなくなる（ADR-098 決定1）。
+ * 複数のケースが同じ識別子を使うので、ケースごとではなくファイルの初めに1度だけ置く。
+ */
+beforeAll(async () => {
+  // ケースの番号は 01〜44。`householdOf` と同じ形で、各ケースの2つの世帯を置く。
+  for (let caseIndex = 1; caseIndex <= 44; caseIndex += 1) {
+    const caseNumber = String(caseIndex).padStart(2, '0');
+    await insertUser(rowConnection, householdOf(caseNumber));
+    await insertUser(rowConnection, householdOf(caseNumber, true));
+  }
 });
 
 /** 提案の1件を作る。由来を省けば生成（C-15）。 */

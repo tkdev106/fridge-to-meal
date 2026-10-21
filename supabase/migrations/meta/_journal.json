@@ -64,6 +64,13 @@
       "when": 1791116410547,
       "tag": "20261004122010_create_household_invitation_and_join",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792601635429,
+      "tag": "20261021165355_resolve_household_only_for_existing_users",
+      "breakpoints": true
     }
   ]
 }

@@ -11,7 +11,6 @@ import { SuggestionRepositoryImpl } from '../../src/contexts/meal/infrastructure
 import { deleteHouseholdData } from '../../src/contexts/meal/usecase/DeleteHouseholdData.js';
 import { StockItemRepositoryImpl } from '../../src/contexts/pantry/infrastructure/StockItemRepositoryImpl.js';
 import { deleteHouseholdStockItems } from '../../src/contexts/pantry/usecase/DeleteHouseholdStockItems.js';
-import type { HouseholdId } from '../../src/shared/domain/HouseholdId.js';
 import { householdIdOf } from '../../src/shared/domain/HouseholdId.js';
 import type { HouseholdTransaction } from '../../src/shared/infrastructure/db/HouseholdTransaction.js';
 import { withHouseholdTransaction } from '../../src/shared/infrastructure/db/HouseholdTransaction.js';
@@ -23,6 +22,7 @@ import { countHouseholdRows } from '../support/db/HouseholdRows.js';
 import { insertChildRow, insertMeal } from '../support/db/MealRows.js';
 import { insertSuggestion, insertSuggestionChildRow } from '../support/db/SuggestionRows.js';
 import { withTransaction } from '../support/db/WithTransaction.js';
+import { resolvedHousehold } from '../support/db/ResolvedHousehold.js';
 
 /**
  * 世帯のデータを消すユースケースを、ローカル Postgres の上で1トランザクションに包んで回す
@@ -104,6 +104,7 @@ describe('世帯のデータを消すユースケース（1トランザクショ
   it('途中の口が投げたら、世帯の献立も提案も1行も消えない', async () => {
     // B-56a 規則8 / ADR-029 決定3(a): 提案 → 献立 → 在庫の順に呼ぶので（規則6）、在庫の口が
     // 投げた時点で提案と献立は消えている。それが巻き戻しで戻ることを見る。
+    await insertUser(rowConnection, rolledBackHousehold);
     await withTransaction(rowConnection, rolledBackHousehold, async (tx) => {
       const props = { mealId: rolledBackMealId, householdId: rolledBackHousehold };
       await insertMeal(tx, props);
@@ -146,6 +147,7 @@ describe('世帯のデータを消すユースケース（1トランザクショ
   it('利用者を消す口が投げたら、世帯の献立も提案も1行も消えない', async () => {
     // B-56d 設計書 規則5・6 / ADR-071 決定2: 利用者は最後に消すので、投げた時点で9表の行は
     // 消えている。それが巻き戻しで戻り、データだけ消えて利用者が残る状態を作らない。
+    await insertUser(rowConnection, userDeletionFailedHousehold);
     await withTransaction(rowConnection, userDeletionFailedHousehold, async (tx) => {
       await tx`
         insert into stock_items (id, household_id, name)
@@ -235,8 +237,8 @@ function deleteAccountOf(
   userId: string,
   deleteUserOf?: (tx: HouseholdTransaction) => DeleteUser,
 ): Promise<void> {
-  return withHouseholdTransaction(db, userId, (tx, householdId: HouseholdId) =>
-    deleteHouseholdDataIn(tx, deleteUserOf)(householdId),
+  return withHouseholdTransaction(db, userId, (tx, householdId) =>
+    deleteHouseholdDataIn(tx, deleteUserOf)(resolvedHousehold(householdId)),
   );
 }
 
@@ -295,7 +297,7 @@ describe('他のメンバーが居る世帯のアカウント削除（B-75b / AD
 
     await expect(
       withHouseholdTransaction(db, threeMemberCreator, (tx, householdId) =>
-        new HouseholdMemberCounterImpl(tx).count(householdId),
+        new HouseholdMemberCounterImpl(tx).count(resolvedHousehold(householdId)),
       ),
     ).resolves.toBe(2);
   });

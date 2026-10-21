@@ -50,3 +50,14 @@ export async function selectExpiresIn(
   `;
   return row?.expires_in ?? null;
 }
+
+/** その世帯の招待の行数を返す。表全体を数える主張はしない。 */
+export async function countHouseholdInvitations(
+  connection: Sql | TransactionSql,
+  householdId: string,
+): Promise<number> {
+  const [row] = await connection<{ count: number }[]>`
+    select count(*)::int as count from household_invitations where household_id = ${householdId}
+  `;
+  return row?.count ?? 0;
+}

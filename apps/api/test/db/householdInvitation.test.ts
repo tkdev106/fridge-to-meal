@@ -9,13 +9,18 @@ import { householdIdOf } from '../../src/shared/domain/HouseholdId.js';
 import { withHouseholdTransaction } from '../../src/shared/infrastructure/db/HouseholdTransaction.js';
 import { insertUser } from '../support/db/AuthUsers.js';
 import { APP_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
-import { insertHouseholdInvitation, selectExpiresIn } from '../support/db/HouseholdInvitations.js';
+import {
+  countHouseholdInvitations,
+  insertHouseholdInvitation,
+  selectExpiresIn,
+} from '../support/db/HouseholdInvitations.js';
 import { insertHouseholdMember } from '../support/db/HouseholdMembers.js';
 import type { HouseholdRowCounts } from '../support/db/HouseholdRows.js';
 import { countHouseholdRows } from '../support/db/HouseholdRows.js';
 import { insertChildRow, insertMeal } from '../support/db/MealRows.js';
 import { insertSuggestion, insertSuggestionChildRow } from '../support/db/SuggestionRows.js';
 import { withTransaction } from '../support/db/WithTransaction.js';
+import { resolvedHousehold } from '../support/db/ResolvedHousehold.js';
 
 /**
  * 招待を作る関数 `private.create_household_invitation()` と、招待で参加する関数
@@ -768,6 +773,70 @@ describe('参加する関数 private.join_household(invitation_token text)', () 
   });
 });
 
+describe('他のメンバーが残る世帯の作った人がアカウントを消したあとのトークン', () => {
+  it('他のメンバーが残る世帯の作った人がアカウントを消したあと、その人のクレームでは世帯の9表の行が1行も見えない', async () => {
+    const creator = userIdOf(37, 1);
+    const member = userIdOf(37, 2);
+    const household = await placeHousehold(creator, [member]);
+    await placeHouseholdData(37, creator, household);
+    await deleteOwnAccountOf(creator);
+
+    // ADR-098 決定1 / C-9 / B-82 設計 規則3・6: 世帯が null の利用者には、9表の RLS がどの行も通さない。
+    await expect(householdRowsSeenBy(creator, household)).resolves.toEqual(emptyRows);
+  });
+
+  it('他のメンバーが残る世帯の作った人がアカウントを消したあとも、残った参加者からは世帯の9表の行がすべて見える', async () => {
+    const creator = userIdOf(38, 1);
+    const member = userIdOf(38, 2);
+    const household = await placeHousehold(creator, [member]);
+    await placeHouseholdData(38, creator, household);
+    await deleteOwnAccountOf(creator);
+
+    // FR-27 / ADR-087 決定6 / C-9 / B-82 設計 規則6: 世帯のデータは残ったメンバーのもののまま。
+    await expect(householdRowsSeenBy(member, household)).resolves.toEqual(placedRowsInAllTables);
+  });
+
+  it('他のメンバーが残る世帯の作った人がアカウントを消したあと、その人のクレームでは残った世帯の在庫品を作れず、権限の違反で断られる', async () => {
+    const creator = userIdOf(39, 1);
+    const member = userIdOf(39, 2);
+    const household = await placeHousehold(creator, [member]);
+    await deleteOwnAccountOf(creator);
+
+    const execution = withTransaction(
+      connection,
+      creator,
+      (tx) => tx`
+        insert into stock_items (id, household_id, name)
+        values (${rowIdOf(39, 'c')}, ${household}, 'にんじん')
+      `,
+    );
+
+    // ADR-098 決定1 / B-82 設計 規則3・6・7章: 書きは既存の RLS テストと同じ断り方。
+    await expect(execution).rejects.toMatchObject({ code: '42501' });
+  });
+
+  it('他のメンバーが残る世帯の作った人がアカウントを消したあと、その人のクレームで招待を作る関数を呼ぶと、例外にならず null が返る', async () => {
+    const creator = userIdOf(40, 1);
+    const member = userIdOf(40, 2);
+    await placeHousehold(creator, [member]);
+    await deleteOwnAccountOf(creator);
+
+    // ADR-098 決定1 / B-82 設計 規則4・6・7章: 世帯が null なら何も書かず null。`not null` 違反で落とさない。
+    await expect(createInvitationOf(creator)).resolves.toBeNull();
+  });
+
+  it('他のメンバーが残る世帯の作った人がアカウントを消したあとに招待を作る関数を呼んでも、残った世帯の招待は1行も増えない', async () => {
+    const creator = userIdOf(41, 1);
+    const member = userIdOf(41, 2);
+    const household = await placeHousehold(creator, [member]);
+    await deleteOwnAccountOf(creator);
+    await createInvitationOf(creator);
+
+    // ADR-098 決定1 / B-82 設計 規則4: 消した人のトークンで残った世帯への招待を作らせない。
+    await expect(countHouseholdInvitations(rowConnection, household)).resolves.toBe(0);
+  });
+});
+
 describe('2関数の置き場所と権限', () => {
   const functionNames = ['create_household_invitation', 'join_household'];
 
@@ -851,7 +920,9 @@ function implInvitationTokenOf(caseNumber: number): string {
 function createWithImpl(userId: string, argumentHousehold?: string): Promise<string> {
   return withHouseholdTransaction(db, householdIdOf(userId), (tx, householdId) =>
     new HouseholdInvitationCreatorImpl(tx).create(
-      argumentHousehold === undefined ? householdId : householdIdOf(argumentHousehold),
+      argumentHousehold === undefined
+        ? resolvedHousehold(householdId)
+        : householdIdOf(argumentHousehold),
     ),
   );
 }
@@ -863,7 +934,9 @@ function joinWithImpl(
 ): Promise<JoinOutcome> {
   return withHouseholdTransaction(db, householdIdOf(userId), (tx, householdId) =>
     new HouseholdJoinerImpl(tx).join(
-      argumentHousehold === undefined ? householdId : householdIdOf(argumentHousehold),
+      argumentHousehold === undefined
+        ? resolvedHousehold(householdId)
+        : householdIdOf(argumentHousehold),
       token,
     ),
   );

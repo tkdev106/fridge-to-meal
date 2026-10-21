@@ -1,6 +1,7 @@
 import postgres from 'postgres';
 import type { TransactionSql } from 'postgres';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { insertUser } from '../support/db/AuthUsers.js';
 import { APP_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
 import { MEAL_CHILD_TABLES, insertChildRow, insertMeal } from '../support/db/MealRows.js';
 import { withTransaction } from '../support/db/WithTransaction.js';
@@ -35,6 +36,17 @@ const connection = postgres(APP_CONNECTION_STRING, { max: 1 });
 
 afterAll(async () => {
   await connection.end();
+});
+
+/**
+ * このファイルの世帯の識別子を、利用者として `auth.users` に置く。クレームの `sub` の利用者が
+ * 居なければ世帯は null に解決され、どの行も見えず書けなくなる（ADR-098 決定1）。
+ * 複数のケースが同じ識別子を使うので、ケースごとではなくファイルの初めに1度だけ置く。
+ */
+beforeAll(async () => {
+  for (const userId of [householdId]) {
+    await insertUser(connection, userId);
+  }
 });
 
 /**

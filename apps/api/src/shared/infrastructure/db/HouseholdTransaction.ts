@@ -21,7 +21,9 @@ export type HouseholdTransaction = Parameters<Parameters<HouseholdDatabase['tran
  *
  * **`sub` には検証済みの利用者 ID を張り、世帯は同じトランザクションで DB の関数
  * `private.current_household_id()` から引いて本体に渡す**（ADR-087 決定2）。参加の行が無い
- * 利用者の世帯は利用者 ID と同じである（同 決定1）。
+ * 利用者の世帯は利用者 ID と同じである（同 決定1）。`auth.users` に居ない利用者（アカウントを消した人の
+ * 期限内のトークン）では関数が `null` を返し、それを**そのまま本体に渡す**（ADR-098 決定2）。
+ * ここで例外にしないのは、断りの型が `contexts/identity` にあり `shared/` からは作れないためである（ADR-059）。
  *
  * **`local` を落とさない。** 接続プーラは接続を貸し回すため、セッションに残した設定は
  * 他人のリクエストに漏れる。
@@ -39,7 +41,7 @@ export type HouseholdTransaction = Parameters<Parameters<HouseholdDatabase['tran
 export function withHouseholdTransaction<T>(
   db: HouseholdDatabase,
   userId: string,
-  body: (tx: HouseholdTransaction, householdId: HouseholdId) => Promise<T>,
+  body: (tx: HouseholdTransaction, householdId: HouseholdId | null) => Promise<T>,
 ): Promise<T> {
   return db.transaction(async (tx) => {
     await tx.execute(sql`set local role authenticated`);
@@ -47,9 +49,10 @@ export function withHouseholdTransaction<T>(
     const claims = JSON.stringify({ sub: userId });
     await tx.execute(sql`select set_config('request.jwt.claims', ${claims}, true)`);
 
-    const [row] = await tx.execute<{ household_id: string }>(
+    const [row] = await tx.execute<{ household_id: string | null }>(
       sql`select private.current_household_id() as household_id`,
     );
-    return body(tx, householdIdOf(row!.household_id));
+    const householdId = row!.household_id;
+    return body(tx, householdId === null ? null : householdIdOf(householdId));
   });
 }
