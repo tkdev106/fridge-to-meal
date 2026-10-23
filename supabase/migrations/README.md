@@ -34,7 +34,7 @@ pnpm --filter @fridge-to-meal/api db:generate --custom --name create_delete_own_
 ```
 
 - **表を作らないので、下の RLS の4点は要らない**（`tableMigrations.test.ts` も表を作るファイルだけを見る）
-- **`public` に関数を置かない。** Supabase の API は `public` を公開しており、`execute` を与えた関数は
+- **`public` に関数を置かない。** Supabase の Data API で `public` を公開すると、`execute` を与えた関数は
   利用者から直接呼べてしまう。公開しないスキーマ（`private`）に置き、`usage` と `execute` は
   `authenticated` にだけ与え、**`public` と `anon` から `execute` を取り上げる**（既定で PUBLIC に付く）
 - **`security definer` にするなら `set search_path = ''` とし、名前はすべてスキーマで修飾する。**

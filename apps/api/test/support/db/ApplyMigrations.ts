@@ -15,6 +15,9 @@ import { OWNER_CONNECTION_STRING } from './ConnectionStrings.js';
 
 /**
  * 公開スキーマごと作り直す。手で作った `public` には既定の権限が付かないので与え直す。
+ * 表の既定の権限は本番の Supabase に揃える — 所有者が作る表に `anon` / `authenticated` の
+ * `TRUNCATE`・`REFERENCES`・`TRIGGER` が付く（`pg_default_acl` で確かめた。`MAINTAIN` は
+ * Postgres 17 からなのでローカルの 16 では与えない）。移行がそれを取り上げることを確かめるため。
  *
  * 移行が作る `private`（利用者を消す関数の置き場。ADR-071 決定1）も消す — 残すと2回目の
  * `create schema private` が落ちる。`auth.users` の行も消す — 前回の実行の利用者が残ると、
@@ -27,6 +30,8 @@ const RESET_SCHEMA_SQL = [
   'drop schema if exists public cascade;',
   'create schema public;',
   'grant usage on schema public to authenticated, anon;',
+  'alter default privileges for role postgres in schema public',
+  '  grant truncate, references, trigger on tables to anon, authenticated;',
 ].join('\n');
 
 /**
