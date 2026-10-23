@@ -71,6 +71,13 @@
       "when": 1792601635429,
       "tag": "20261021165355_resolve_household_only_for_existing_users",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792724840680,
+      "tag": "20261023030720_revoke_bypassing_table_privileges",
+      "breakpoints": true
     }
   ]
 }
