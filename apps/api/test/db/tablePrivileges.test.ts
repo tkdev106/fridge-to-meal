@@ -5,7 +5,7 @@ import { OWNER_CONNECTION_STRING } from '../support/db/ConnectionStrings.js';
 /**
  * `anon` と `authenticated` に、RLS を素通りする表の権限が付いていないこと。
  *
- * `TRUNCATE` は RLS を見ずに全世帯の行を消す（C-9）。`REFERENCES` と `TRIGGER` も api は使わない。
+ * `TRUNCATE` は RLS を見ずに全世帯の行を消す（NFR-09）。`REFERENCES` と `TRIGGER` も api は使わない。
  * Supabase は既定の権限でこれらを `public` の表に付けるので、今ある表と、これから作る表の両方を見る。
  * 見るのは所有者の接続から（権限の一覧は所有者でないと全部は見えない）。
  */
