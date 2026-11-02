@@ -1,5 +1,6 @@
 # 版の更新は minor と patch だけを週に1本の PR にまとめる。major は破壊的変更を伴うので人が判断する
 # （ignore は版の更新にだけ効き、脆弱性の修正は major でも届く）。
+# 公開直後の版に混ざる悪意のある変更を避けるため、版の更新は公開から7日たったものだけにする（脆弱性の修正は待たない）。
 version: 2
 updates:
   - package-ecosystem: npm
@@ -9,6 +10,8 @@ updates:
       day: monday
       time: '09:00'
       timezone: Asia/Tokyo
+    cooldown:
+      default-days: 7
     groups:
       npm:
         update-types: [minor, patch]
@@ -22,6 +25,8 @@ updates:
       day: monday
       time: '09:00'
       timezone: Asia/Tokyo
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         patterns: ['*']
