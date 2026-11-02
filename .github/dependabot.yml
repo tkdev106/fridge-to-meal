@@ -1,0 +1,27 @@
+# 版の更新は minor と patch だけを週に1本の PR にまとめる。major は破壊的変更を伴うので人が判断する
+# （ignore は版の更新にだけ効き、脆弱性の修正は major でも届く）。
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    groups:
+      npm:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    groups:
+      github-actions:
+        patterns: ['*']
