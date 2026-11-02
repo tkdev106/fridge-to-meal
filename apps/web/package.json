@@ -11,18 +11,18 @@
   },
   "dependencies": {
     "@fridge-to-meal/contract": "workspace:*",
-    "@supabase/supabase-js": "^2.116.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "@supabase/supabase-js": "^2.118.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.7",
-    "@vitejs/plugin-react": "^6.1.1",
-    "vite": "^8.2.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "vite": "^8.3.5",
     "vite-plugin-pwa": "^1.3.0",
-    "wrangler": "^4.129.1"
+    "wrangler": "^4.152.0"
   }
 }
