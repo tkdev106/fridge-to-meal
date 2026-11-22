@@ -57,7 +57,7 @@ id = "fefe9ddf248f42388c89824cf08a7445"
 # API キーは GEMINI_API_KEY という名前で、本番は wrangler secret put で、手元は .dev.vars に置く。
 # ここには書かない（NFR-10）。
 [vars]
-GEMINI_MODEL = "gemini-3.5-flash-lite"
+GEMINI_MODEL = "gemini-3.6-flash"
 
 # Workers の可観測性（2026-10-03 にユーザーが指定）。500 の原因をダッシュボードからも追えるように、
 # ログとトレースを全件（head_sampling_rate = 1）保存し、問題の検出も有効にする。

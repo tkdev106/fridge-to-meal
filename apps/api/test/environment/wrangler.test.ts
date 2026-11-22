@@ -67,7 +67,7 @@ describe('wrangler.toml', () => {
     // ADR-079 決定4: モデル名は設定の1か所に置き、コードに既定値を持たない。
     expect(wranglerContent).toContain('[vars]');
     expect(occurrencesOf(wranglerContent, 'GEMINI_MODEL')).toBe(1);
-    expect(wranglerContent).toContain('GEMINI_MODEL = "gemini-3.5-flash-lite"');
+    expect(wranglerContent).toContain('GEMINI_MODEL = "gemini-3.6-flash"');
   });
 
   it('wrangler.toml は Gemini の API キーを含まない', () => {

@@ -7,6 +7,7 @@ export const PRICING = {
   'claude-haiku-4-5': { input: 1.00, output: 5.00 },
   // 有料枠の単価（2026-10-03 に公式の資料で確かめた。ADR-079）。無料枠の間は実際には掛からない。
   'gemini-3.5-flash-lite': { input: 0.30, output: 2.50 },
+  'gemini-3.6-flash': { input: 0.75, output: 3.75 },
 };
 
 export const USD_JPY = 150;

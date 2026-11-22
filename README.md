@@ -24,7 +24,7 @@
 | フロントエンド | React 19 + Vite 8（SPA・PWA） |
 | サーバサイド | Hono on Cloudflare Workers |
 | DB・認証 | Supabase（Postgres + Auth）。DB アクセスは Drizzle ORM、Workers からは Hyperdrive 経由 |
-| 献立の生成 | Gemini（`gemini-3.5-flash-lite`） |
+| 献立の生成 | Gemini（`gemini-3.6-flash`） |
 
 アーキテクチャはオニオン構成です。コンテキスト（在庫・献立・世帯）ごとに垂直にディレクトリを切り、
 ドメイン層とインフラ層は依存関係逆転で結びます。ユースケース層はプレゼンテーション層に依存しません。

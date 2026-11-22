@@ -14,7 +14,7 @@
 | web のログイン | **`@supabase/supabase-js` を `apps/web` に置き、メールとパスワードでサインインする。** セッションは継ぎ目1つの背後に閉じ、**画面はライブラリの型を見ない。** **継ぎ目は `apps/web/src/session/` に置かれた**（B-34）。**画面（`features/identity/`）と結線（`main.tsx`）も置かれた**（B-35）。サインインの失敗の種別は分けておらず、画面の断りの文言は原因を断定しない。**サインアップの断りだけは種別に分ける**（B-73） | ADR-046 / ADR-081 |
 | Workers → Postgres の経路 | **Cloudflare Hyperdrive 経由。** origin は Supabase の直接接続（`db.<ref>.supabase.co:5432`）。Supavisor は使わない。**問い合わせキャッシュは切る** | ADR-042 / ADR-044 |
 | アクセストークンの検証 | **JWKS（ES256）。** 共有秘密は使わない | ADR-043（ADR-031 を置き換え） |
-| LLM | **Gemini `gemini-3.5-flash-lite`（最初は無料枠）。** SDK を使わず `fetch` で呼ぶ | ADR-079（ADR-019 を置き換え） |
+| LLM | **Gemini `gemini-3.6-flash`（無料枠）。** SDK を使わず `fetch` で呼ぶ | ADR-079（ADR-019 を置き換え）、モデルは ADR-101 |
 | 検証 | Vitest 5 / ESLint 10 + typescript-eslint / dependency-cruiser / Prettier。**画面のコンポーネントは jsdom + `@testing-library/react` で描いて観察する**（既定の環境は `node` のまま。要る回だけ `// @vitest-environment jsdom` を宣言する） | `docs/testing.md` / `docs/workflow.md` 2章 / ADR-052 |
 
 ## 実装上の必須事項
