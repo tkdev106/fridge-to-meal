@@ -12,7 +12,7 @@
   "dependencies": {
     "@fridge-to-meal/contract": "workspace:*",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.13.7",
+    "hono": "^4.13.16",
     "postgres": "^3.4.9"
   },
   "devDependencies": {
