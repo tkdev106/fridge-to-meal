@@ -41,10 +41,10 @@ jobs:
     timeout-minutes: 10
     # 所有者の接続文字列はジョブ全体の env に置かない。使うステップにだけ渡す（ADR-077 決定5）。
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 版を固定する。上げるときは手元で dry-run を見てから（ADR-077 決定2）。
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@v3
         with:
           version: 2.119.0
 
